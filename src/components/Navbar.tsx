@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Mic, Tags, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon } from 'lucide-react';
+import { Sparkles, Mic, Tags, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, Lock } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 export const Navbar: React.FC = () => {
@@ -22,6 +22,7 @@ export const Navbar: React.FC = () => {
     { name: 'Capacity', href: '#telemetry', icon: Cpu },
     { name: 'DesiCrew Partner', href: '#partner', icon: Handshake },
     { name: 'Team', href: '#team', icon: Users },
+    { name: 'Admin', href: '#team', icon: Lock },
     { name: 'Contact', href: '#contact', icon: Mail },
   ];
 
