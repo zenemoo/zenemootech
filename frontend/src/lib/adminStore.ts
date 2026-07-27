@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { mediaApi } from '../services/api';
+import { mediaApi, contactApi } from '../services/api';
 
 export interface SiteConfig {
   supabaseUrl: string;
@@ -100,8 +100,17 @@ export const getSupabaseClient = () => {
   return null;
 };
 
-// Fetch all contact inquiries from Supabase DB
+// Fetch all contact inquiries from Backend API / Supabase DB
 export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
+  try {
+    const res = await contactApi.getAll();
+    if (res.data && res.data.data && Array.isArray(res.data.data)) {
+      return res.data.data as ContactInquiry[];
+    }
+  } catch (err) {
+    console.warn('Backend contact fetch warning:', err);
+  }
+
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
@@ -114,8 +123,17 @@ export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
   return [];
 };
 
-// Submit a new contact inquiry to Supabase DB
+// Submit a new contact inquiry to Backend API & Supabase DB
 export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>): Promise<ContactInquiry> => {
+  try {
+    const res = await contactApi.submit(inquiry);
+    if (res.data && res.data.data) {
+      return res.data.data as ContactInquiry;
+    }
+  } catch (err) {
+    console.warn('Backend contact submit warning:', err);
+  }
+
   const newInquiry: ContactInquiry = {
     id: Date.now().toString(),
     ...inquiry,
@@ -126,7 +144,7 @@ export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'c
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from('contacts').insert([newInquiry]).select();
+      const { data, error } = await supabase.from('contacts').insert([inquiry]).select();
       if (!error && data && data[0]) {
         return data[0] as ContactInquiry;
       }

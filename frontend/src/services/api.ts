@@ -47,7 +47,9 @@ export const serviceApi = {
 
 // Contact APIs
 export const contactApi = {
+  getAll: () => api.get('/contact'),
   submit: (data: any) => api.post('/contact', data),
+  delete: (id: string) => api.delete(`/contact/${id}`),
 };
 
 // Settings APIs

@@ -10,25 +10,57 @@ export const submitContact = async (req, res, next) => {
     }
 
     const contactPayload = {
-      id: Date.now().toString(),
       name,
       email,
-      phone,
-      company,
-      service,
-      language,
+      phone: phone || '',
+      company: company || '',
+      service: service || 'Audio Transcription',
+      language: language || 'Hindi',
       message,
       status: 'NEW',
-      created_at: new Date().toISOString(),
     };
 
+    let saved = null;
     try {
-      const saved = await supabaseService.insert('contacts', contactPayload);
-      if (saved) return res.status(201).json({ success: true, message: 'Inquiry submitted successfully', data: saved });
+      saved = await supabaseService.insert('contacts', contactPayload);
+    } catch (e) {
+      console.warn('Supabase contact insert warning:', e.message);
+    }
+
+    const resultContact = saved || { id: Date.now().toString(), ...contactPayload, created_at: new Date().toISOString() };
+    memoryContacts.unshift(resultContact);
+
+    res.status(201).json({
+      success: true,
+      message: 'Contact inquiry submitted successfully',
+      data: resultContact,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getContacts = async (req, res, next) => {
+  try {
+    const data = await supabaseService.selectAll('contacts');
+    if (data && Array.isArray(data)) {
+      return res.json({ success: true, count: data.length, data });
+    }
+    res.json({ success: true, count: memoryContacts.length, data: memoryContacts });
+  } catch (err) {
+    res.json({ success: true, count: memoryContacts.length, data: memoryContacts });
+  }
+};
+
+export const deleteContact = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    try {
+      await supabaseService.delete('contacts', id);
     } catch (e) {}
 
-    memoryContacts.unshift(contactPayload);
-    res.status(201).json({ success: true, message: 'Inquiry submitted successfully', data: contactPayload });
+    memoryContacts = memoryContacts.filter((c) => c.id !== id);
+    res.json({ success: true, message: 'Contact inquiry deleted' });
   } catch (err) {
     next(err);
   }

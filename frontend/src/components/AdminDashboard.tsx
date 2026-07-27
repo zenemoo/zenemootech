@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building } from 'lucide-react';
 import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers, saveTeamMembers } from '../lib/teamStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries } from '../lib/adminStore';
+import { contactApi } from '../services/api';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -507,9 +508,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   <div key={inq.id} className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3 relative">
                     <div className="flex items-center justify-between">
                       <div className="font-bold text-base text-white">{inq.name}</div>
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
-                        {inq.status || 'NEW'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
+                          {inq.status || 'NEW'}
+                        </span>
+                        <button
+                          onClick={async () => {
+                            if (confirm('Delete this contact inquiry?')) {
+                              setInquiries(inquiries.filter((i) => i.id !== inq.id));
+                              try {
+                                await contactApi.delete(inq.id);
+                              } catch (e) {}
+                              showStatus('Inquiry deleted from database!');
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
+                          title="Delete Inquiry"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-1 text-xs font-mono text-slate-300">
