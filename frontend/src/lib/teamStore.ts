@@ -26,22 +26,37 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [];
 
 const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v7';
 
+export const normalizeTeamPositions = (members: TeamMember[]): TeamMember[] => {
+  if (!members || members.length === 0) return [];
+  
+  // Sort members by position ASC (fallback to index order if positions are duplicate/missing)
+  const sorted = [...members].sort((a, b) => {
+    const posA = typeof a.position === 'number' && a.position > 0 ? a.position : 999;
+    const posB = typeof b.position === 'number' && b.position > 0 ? b.position : 999;
+    if (posA === posB) return 0;
+    return posA - posB;
+  });
+
+  // Always re-assign sequential position numbers 1..N
+  return sorted.map((m, idx) => ({
+    ...m,
+    position: idx + 1,
+    designation: m.designation || m.role || 'Specialist',
+    role: m.designation || m.role || 'Specialist',
+    image_url: m.image_url || m.image || '/assets/executive.png',
+    image: m.image_url || m.image || '/assets/executive.png',
+    status: m.status || 'active',
+    category: m.category || 'Engineering',
+  }));
+};
+
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const liveMembers = (res.data.data as TeamMember[]).map((m, idx) => ({
-        ...m,
-        position: m.position || idx + 1,
-        designation: m.designation || m.role || 'Specialist',
-        image_url: m.image_url || m.image || '/assets/executive.png',
-        status: m.status || 'active',
-        category: m.category || 'Engineering',
-      }));
-      // Always sort by position ASC
-      liveMembers.sort((a, b) => a.position - b.position);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(liveMembers));
-      return liveMembers;
+      const normalized = normalizeTeamPositions(res.data.data as TeamMember[]);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      return normalized;
     }
   } catch (err) {
     console.warn('Backend team fetch offline, using cache:', err);
@@ -51,7 +66,7 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   if (cached) {
     try {
       const parsed = JSON.parse(cached) as TeamMember[];
-      return parsed.sort((a, b) => (a.position || 1) - (b.position || 1));
+      return normalizeTeamPositions(parsed);
     } catch (e) {}
   }
 
@@ -59,44 +74,97 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
 };
 
 export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<TeamMember[]> => {
-  if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
-    try {
+  try {
+    if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
       const res = await teamApi.update(member.id, member);
       if (res.data && res.data.team) {
-        return res.data.team;
+        const normalized = normalizeTeamPositions(res.data.team);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+        return normalized;
       }
-    } catch (e) {
-      console.warn('Update failed, creating new record:', e);
+    } else {
+      const res = await teamApi.create(member);
+      if (res.data && res.data.team) {
+        const normalized = normalizeTeamPositions(res.data.team);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+        return normalized;
+      }
     }
+  } catch (e) {
+    console.warn('Save API call failed, saving locally:', e);
   }
 
-  const res = await teamApi.create(member);
-  if (res.data && res.data.team) {
-    return res.data.team;
+  // Local fallback
+  const cached = await getStoredTeamMembers();
+  let updatedList: TeamMember[];
+  if (member.id) {
+    updatedList = cached.map((m) => (m.id === member.id ? { ...m, ...member } as TeamMember : m));
+  } else {
+    const newId = Date.now().toString();
+    const newMember: TeamMember = {
+      id: newId,
+      position: cached.length + 1,
+      name: member.name || 'New Team Member',
+      designation: member.designation || member.role || 'Specialist',
+      role: member.designation || member.role || 'Specialist',
+      image_url: member.image_url || member.image || '/assets/executive.png',
+      image: member.image_url || member.image || '/assets/executive.png',
+      bio: member.bio || '',
+      skills: member.skills || ['Specialist'],
+      badge: member.badge || 'Specialist',
+      status: member.status || 'active',
+      category: member.category || 'Engineering',
+    };
+    updatedList = [...cached, newMember];
   }
-  return await getStoredTeamMembers();
+  const normalized = normalizeTeamPositions(updatedList);
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
 };
 
 export const reorderTeamMemberInApi = async (id: string, newPosition: number): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.reorder(id, newPosition);
     if (res.data && res.data.data) {
-      return res.data.data as TeamMember[];
+      const normalized = normalizeTeamPositions(res.data.data as TeamMember[]);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      return normalized;
     }
   } catch (e) {
-    console.warn('Reorder API failed:', e);
+    console.warn('Reorder API failed, performing local reorder:', e);
   }
-  return await getStoredTeamMembers();
+
+  // Local reorder fallback
+  const cached = await getStoredTeamMembers();
+  const currentList = normalizeTeamPositions(cached);
+  const targetIndex = currentList.findIndex((m) => m.id === id);
+  if (targetIndex !== -1) {
+    const clampedPos = Math.max(1, Math.min(newPosition, currentList.length));
+    const [targetMember] = currentList.splice(targetIndex, 1);
+    currentList.splice(clampedPos - 1, 0, targetMember);
+    const updatedList = normalizeTeamPositions(currentList);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
+    return updatedList;
+  }
+
+  return currentList;
 };
 
 export const deleteTeamMemberFromApi = async (id: string): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.delete(id);
     if (res.data && res.data.team) {
-      return res.data.team;
+      const normalized = normalizeTeamPositions(res.data.team);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      return normalized;
     }
   } catch (e) {
-    console.warn('Team delete warning:', e);
+    console.warn('Team delete API failed, performing local deletion:', e);
   }
-  return await getStoredTeamMembers();
+
+  const cached = await getStoredTeamMembers();
+  const filtered = cached.filter((m) => m.id !== id);
+  const normalized = normalizeTeamPositions(filtered);
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
 };

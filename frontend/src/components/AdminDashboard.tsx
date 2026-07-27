@@ -86,11 +86,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     if (targetPos === member.position) return;
 
     const clampedPos = Math.max(1, Math.min(targetPos, teamList.length));
-    if (confirm(`Move "${member.name}" from Position #${member.position} to Position #${clampedPos}? All other team members will reorder automatically.`)) {
-      const updated = await reorderTeamMemberInApi(member.id, clampedPos);
-      setTeamList(updated);
-      showStatus(`Moved ${member.name} to Position #${clampedPos}! All positions reordered 1..${updated.length}`);
-    }
+    const updated = await reorderTeamMemberInApi(member.id, clampedPos);
+    setTeamList(updated);
+    showStatus(`Moved ${member.name} from Position #${member.position} to Position #${clampedPos}! All positions reordered 1..${updated.length}`);
   };
 
   const handleMoveUp = async (member: TeamMember) => {
@@ -663,8 +661,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
                         {/* Editable Position Input */}
                         <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-400">Pos:</span>
+                          <span className="text-[10px] text-slate-400 font-mono">Pos:</span>
                           <input
+                            key={`${m.id}-${m.position}`}
                             type="number"
                             min={1}
                             max={teamList.length}
@@ -675,8 +674,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                               }
                             }}
                             onBlur={(e) => {
-                              if (e.target.value !== String(m.position)) {
-                                handlePositionChange(m, e.target.value);
+                              const val = (e.target as HTMLInputElement).value;
+                              if (val !== String(m.position)) {
+                                handlePositionChange(m, val);
                               }
                             }}
                             className="w-12 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-center font-bold text-cyan-300 text-xs focus:outline-none focus:border-cyan-400"

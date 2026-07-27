@@ -4,7 +4,11 @@ export const supabaseService = {
   // Query helper
   async selectAll(table) {
     if (!supabase) return null;
-    const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: true });
     if (error) throw error;
     return data;
   },

@@ -78,7 +78,7 @@ export const Team: React.FC = () => {
                       {member.badge}
                     </span>
                     {/* Position Number Pill */}
-                    <span className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-slate-300 font-bold">
+                    <span className="absolute top-3 right-3 px-2.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-cyan-500/30 text-[10px] font-mono text-cyan-300 font-bold shadow-sm">
                       #{member.position}
                     </span>
                   </div>

@@ -6,8 +6,13 @@ let memoryTeam = [];
 const normalizeAndSavePositions = async (list) => {
   if (!Array.isArray(list) || list.length === 0) return [];
 
-  // Sort by position ASC
-  const sorted = [...list].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
+  // Sort by position ASC; if positions are equal or invalid, maintain array order
+  const sorted = [...list].sort((a, b) => {
+    const posA = Number(a.position);
+    const posB = Number(b.position);
+    if (isNaN(posA) || isNaN(posB) || posA === posB) return 0;
+    return posA - posB;
+  });
 
   // Re-assign sequential position numbers 1..N
   const normalized = sorted.map((member, index) => ({
@@ -39,15 +44,14 @@ export const getTeam = async (req, res, next) => {
   try {
     const data = await supabaseService.selectAll('team');
     if (data && Array.isArray(data) && data.length > 0) {
-      // Sort by position ASC
-      const sortedData = data.sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
-      return res.json({ success: true, count: sortedData.length, data: sortedData });
+      const normalized = await normalizeAndSavePositions(data);
+      return res.json({ success: true, count: normalized.length, data: normalized });
     }
-    const sortedMemory = [...memoryTeam].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
-    res.json({ success: true, count: sortedMemory.length, data: sortedMemory });
+    const normalizedMemory = await normalizeAndSavePositions(memoryTeam);
+    res.json({ success: true, count: normalizedMemory.length, data: normalizedMemory });
   } catch (err) {
-    const sortedMemory = [...memoryTeam].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
-    res.json({ success: true, count: sortedMemory.length, data: sortedMemory });
+    const normalizedMemory = await normalizeAndSavePositions(memoryTeam);
+    res.json({ success: true, count: normalizedMemory.length, data: normalizedMemory });
   }
 };
 
