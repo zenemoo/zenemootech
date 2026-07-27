@@ -1,5 +1,7 @@
 import { supabase } from '../config/supabase.js';
 
+const isUuid = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 export const supabaseService = {
   // Query helper
   async selectAll(table) {
@@ -14,7 +16,7 @@ export const supabaseService = {
   },
 
   async selectById(table, id) {
-    if (!supabase) return null;
+    if (!supabase || !isUuid(id)) return null;
     const { data, error } = await supabase.from(table).select('*').eq('id', id).single();
     if (error) throw error;
     return data;
@@ -28,14 +30,14 @@ export const supabaseService = {
   },
 
   async update(table, id, row) {
-    if (!supabase) return null;
+    if (!supabase || !isUuid(id)) return null;
     const { data, error } = await supabase.from(table).update(row).eq('id', id).select();
     if (error) throw error;
-    return data[0];
+    return data ? data[0] : null;
   },
 
   async delete(table, id) {
-    if (!supabase) return null;
+    if (!supabase || !isUuid(id)) return false;
     const { data, error } = await supabase.from(table).delete().eq('id', id);
     if (error) throw error;
     return true;

@@ -23,66 +23,15 @@ export interface TeamMember {
   updated_at?: string;
 }
 
-export const DEFAULT_TEAM_MEMBERS: TeamMember[] = [
-  {
-    id: 'team_1',
-    position: 1,
-    name: 'Prem Prasad Pradhan',
-    designation: 'Founder & Data Operations Director',
-    role: 'Founder & Data Operations Director',
-    image_url: '/assets/executive.png',
-    image: '/assets/executive.png',
-    fallback: '/assets/executive.png',
-    bio: 'Leads team operations, project execution, and quality control for data and AI projects across DesiCrew partner ecosystem.',
-    skills: ['Team Leadership', 'Project Management', 'Quality Control', 'Data Solutions'],
-    badge: 'Founder',
-    email: 'zenemootech@gmail.com',
-    status: 'active',
-    category: 'Leadership',
-  },
-  {
-    id: 'team_2',
-    position: 2,
-    name: 'Madhushmita Das',
-    designation: 'Audio Transcription Specialist',
-    role: 'Audio Transcription Specialist',
-    image_url: '/assets/executive.png',
-    image: '/assets/executive.png',
-    fallback: '/assets/executive.png',
-    bio: 'Supports transcription and data annotation projects with a focus on accuracy, consistency, and multi-dialect language verification.',
-    skills: ['Audio Transcription', 'Data Annotation', 'Odia/Hindi Accuracy', 'QC Support'],
-    badge: 'Senior Annotator',
-    email: 'zenemootech@gmail.com',
-    status: 'active',
-    category: 'Engineering',
-  },
-  {
-    id: 'team_3',
-    position: 3,
-    name: 'Chandan Biswal',
-    designation: 'Audio Transcription Specialist',
-    role: 'Audio Transcription Specialist',
-    image_url: '/assets/executive.png',
-    image: '/assets/executive.png',
-    fallback: '/assets/executive.png',
-    bio: 'Works on transcription, data annotation, and file processing tasks. Contributes to daily production targets with high quality standards.',
-    skills: ['Transcription', 'Data Annotation', 'Quality Focus', 'Speed Accuracy'],
-    badge: 'Specialist',
-    email: 'zenemootech@gmail.com',
-    status: 'active',
-    category: 'Engineering',
-  },
-];
-
-export const INITIAL_TEAM_MEMBERS: TeamMember[] = DEFAULT_TEAM_MEMBERS;
+export const INITIAL_TEAM_MEMBERS: TeamMember[] = [];
 
 const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v7';
 
 export const normalizeTeamPositions = (members: TeamMember[]): TeamMember[] => {
-  const target = Array.isArray(members) && members.length > 0 ? members : DEFAULT_TEAM_MEMBERS;
+  if (!Array.isArray(members) || members.length === 0) return [];
   
   // Sort members by position ASC (fallback to index order if positions are duplicate/missing)
-  const sorted = [...target].sort((a, b) => {
+  const sorted = [...members].sort((a, b) => {
     const posA = typeof a.position === 'number' && a.position > 0 ? a.position : 999;
     const posB = typeof b.position === 'number' && b.position > 0 ? b.position : 999;
     if (posA === posB) return 0;
@@ -97,6 +46,7 @@ export const normalizeTeamPositions = (members: TeamMember[]): TeamMember[] => {
     role: m.designation || m.role || 'Specialist',
     image_url: m.image_url || m.image || '/assets/executive.png',
     image: m.image_url || m.image || '/assets/executive.png',
+    email: m.email || 'zenemootech@gmail.com',
     status: m.status || 'active',
     category: m.category || 'Engineering',
   }));
@@ -106,7 +56,7 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   // 1. Fetch from Backend API
   try {
     const res = await teamApi.getAll();
-    if (res.data && res.data.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+    if (res.data && res.data.data && Array.isArray(res.data.data)) {
       const normalized = normalizeTeamPositions(res.data.data as TeamMember[]);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
       return normalized;
@@ -120,7 +70,7 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   if (supabase) {
     try {
       const { data, error } = await supabase.from('team').select('*').order('position', { ascending: true });
-      if (!error && data && data.length > 0) {
+      if (!error && data && Array.isArray(data)) {
         const normalized = normalizeTeamPositions(data as TeamMember[]);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
         return normalized;
@@ -130,19 +80,16 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
 
   // 3. Read from LocalStorage Cache
   const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (cached) {
+  if (cached !== null) {
     try {
       const parsed = JSON.parse(cached) as TeamMember[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return normalizeTeamPositions(parsed);
       }
     } catch (e) {}
   }
 
-  // 4. Guaranteed Default Team Seed Fallback
-  const defaultNormalized = normalizeTeamPositions(DEFAULT_TEAM_MEMBERS);
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(defaultNormalized));
-  return defaultNormalized;
+  return [];
 };
 
 export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<TeamMember[]> => {

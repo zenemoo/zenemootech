@@ -237,7 +237,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                 {members.some((m) => m.id === editingMember.id) ? 'Edit Team Member' : 'Add New Team Member'}
               </h4>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-mono text-slate-300 mb-1.5">Full Name *</label>
                   <input
@@ -257,8 +257,19 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                     required
                     placeholder="Audio Transcription Specialist"
                     value={editingMember.role}
-                    onChange={(e) => setEditingMember({ ...editingMember, role: e.target.value })}
+                    onChange={(e) => setEditingMember({ ...editingMember, role: e.target.value, designation: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-slate-300 mb-1.5">Contact Email ID</label>
+                  <input
+                    type="email"
+                    placeholder="zenemootech@gmail.com"
+                    value={editingMember.email || ''}
+                    onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-cyan-400"
                   />
                 </div>
               </div>
