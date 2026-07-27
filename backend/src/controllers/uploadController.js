@@ -13,7 +13,11 @@ export const uploadMedia = async (req, res, next) => {
     const title = req.body.title || req.file.originalname;
 
     // 1. Upload to Cloudinary
-    const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder);
+    const cloudinaryRes = await cloudinaryService.uploadStream(
+      req.file.buffer,
+      folder,
+      req.file.mimetype || 'image/jpeg'
+    );
 
     // 2. Prepare Supabase Media Record
     const mediaPayload = {
@@ -89,7 +93,11 @@ export const updateMedia = async (req, res, next) => {
     let updatedPayload = { ...existingMedia };
     if (req.file) {
       const folder = req.body.folder || existingMedia?.folder || 'zenemoo/team';
-      const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder);
+      const cloudinaryRes = await cloudinaryService.uploadStream(
+        req.file.buffer,
+        folder,
+        req.file.mimetype || 'image/jpeg'
+      );
 
       updatedPayload = {
         ...updatedPayload,
