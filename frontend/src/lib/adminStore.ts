@@ -4,9 +4,9 @@ import { mediaApi } from '../services/api';
 export interface SiteConfig {
   supabaseUrl: string;
   supabaseAnonKey: string;
-  cloudinaryCloudName: string;
-  cloudinaryUploadPreset: string;
   adminPasscode: string;
+  cloudinaryCloudName?: string;
+  cloudinaryUploadPreset?: string;
 }
 
 export interface TelemetryConfig {
@@ -43,15 +43,12 @@ export interface MediaRecord {
   created_at?: string;
 }
 
-const CONFIG_STORAGE_KEY = 'zenemoo_admin_config_v2';
-const TELEMETRY_STORAGE_KEY = 'zenemoo_telemetry_config_v2';
-const CONTACTS_STORAGE_KEY = 'zenemoo_contacts_inquiries_v2';
+const CONFIG_STORAGE_KEY = 'zenemoo_admin_config_v3';
+const TELEMETRY_STORAGE_KEY = 'zenemoo_telemetry_config_v3';
 
 export const DEFAULT_CONFIG: SiteConfig = {
   supabaseUrl: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://wkbkomwjuywdeaxgchxw.supabase.co',
   supabaseAnonKey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
-  cloudinaryCloudName: (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'rwoe0mm9',
-  cloudinaryUploadPreset: (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || 'zenemoo_preset',
   adminPasscode: 'zenemoo2026',
 };
 
@@ -90,7 +87,7 @@ export const saveTelemetryConfig = (config: TelemetryConfig): void => {
   localStorage.setItem(TELEMETRY_STORAGE_KEY, JSON.stringify(config));
 };
 
-// Dynamic Supabase Client based on config
+// Dynamic Supabase Client based on VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY
 export const getSupabaseClient = () => {
   const config = getSiteConfig();
   if (config.supabaseUrl && config.supabaseAnonKey) {
@@ -114,13 +111,6 @@ export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
       }
     } catch (err) {}
   }
-
-  const cached = localStorage.getItem(CONTACTS_STORAGE_KEY);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (e) {}
-  }
   return [];
 };
 
@@ -143,49 +133,25 @@ export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'c
     } catch (err) {}
   }
 
-  const cached = await getContactInquiries();
-  const updated = [newInquiry, ...cached];
-  localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(updated));
   return newInquiry;
 };
 
-// Cloudinary + Supabase Production Image Uploader
+// Production Media Uploader: Streams ONLY through Backend API to Cloudinary + Supabase
 export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team'): Promise<string> => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('folder', folder);
   formData.append('title', file.name);
 
-  // 1. Upload through Backend API to Cloudinary + Supabase
   try {
     const res = await mediaApi.upload(formData);
     if (res.data && res.data.media && res.data.media.image_url) {
-      return res.data.media.image_url; // Returns official Cloudinary HTTPS URL
+      return res.data.media.image_url; // Always returns secure HTTPS Cloudinary URL from Supabase record
     }
-  } catch (err) {
-    console.warn('Backend API upload failed, using direct Cloudinary upload fallback...');
+    throw new Error(res.data?.message || 'Backend upload failed to return a valid Cloudinary HTTPS URL');
+  } catch (err: any) {
+    const errorMsg = err.response?.data?.message || err.message || 'Image upload failed';
+    console.error('Production Upload Error:', errorMsg);
+    throw new Error(errorMsg);
   }
-
-  // 2. Direct Cloudinary Client API Fallback
-  const config = getSiteConfig();
-  const cloudName = config.cloudinaryCloudName || 'rwoe0mm9';
-  const uploadPreset = config.cloudinaryUploadPreset || 'zenemoo_preset';
-
-  try {
-    const formData2 = new FormData();
-    formData2.append('file', file);
-    formData2.append('upload_preset', uploadPreset);
-    formData2.append('folder', folder);
-
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData2,
-    });
-    const data = await res.json();
-    if (data.secure_url) {
-      return data.secure_url;
-    }
-  } catch (err: any) {}
-
-  throw new Error('Image upload failed. Please check server and Cloudinary credentials.');
 };
