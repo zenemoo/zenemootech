@@ -31,7 +31,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Mounting API Routes
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    service: 'ZENEMOO Data Solutions API Server',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Mounting API Routes under /api
 app.use('/api/auth', authRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/services', serviceRoutes);
@@ -41,6 +49,17 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/media', uploadRoutes);
+
+// Root Fallback Aliases (Handles direct non-/api requests seamlessly)
+app.use('/auth', authRoutes);
+app.use('/team', teamRoutes);
+app.use('/services', serviceRoutes);
+app.use('/portfolio', portfolioRoutes);
+app.use('/blog', blogRoutes);
+app.use('/contact', contactRoutes);
+app.use('/settings', settingsRoutes);
+app.use('/upload', uploadRoutes);
+app.use('/media', uploadRoutes);
 
 // Global 404 Route Handler
 app.use('*', (req, res) => {

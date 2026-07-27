@@ -1,9 +1,13 @@
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
+let rawApiUrl = (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
+rawApiUrl = rawApiUrl.replace(/\/+$/, '');
+if (!rawApiUrl.endsWith('/api')) {
+  rawApiUrl = `${rawApiUrl}/api`;
+}
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: rawApiUrl,
   headers: {
     'Content-Type': 'application/json',
   },
