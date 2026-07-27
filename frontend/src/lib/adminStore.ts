@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { uploadApi } from '../services/api';
 
 export interface SiteConfig {
   supabaseUrl: string;
@@ -134,30 +135,45 @@ export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'c
   return newInquiry;
 };
 
-// Dynamic Cloudinary Image Upload
+// Cloudinary Image Upload (Tries Backend API endpoint first, then Cloudinary API, then fallback)
 export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team'): Promise<string> => {
+  // 1. Try Backend API POST /api/upload (Uses backend Cloudinary API key & secret)
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+    const res = await uploadApi.uploadMedia(formData);
+    if (res.data && res.data.data && res.data.data.url) {
+      return res.data.data.url; // Returns https://res.cloudinary.com/...
+    }
+  } catch (err) {
+    console.warn('Backend Cloudinary upload endpoint offline, trying client upload...');
+  }
+
+  // 2. Direct Cloudinary Client API
   const config = getSiteConfig();
   const cloudName = config.cloudinaryCloudName || 'rwoe0mm9';
   const uploadPreset = config.cloudinaryUploadPreset || 'zenemoo_preset';
 
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', uploadPreset);
-  formData.append('folder', folder);
-
   try {
+    const formData2 = new FormData();
+    formData2.append('file', file);
+    formData2.append('upload_preset', uploadPreset);
+    formData2.append('folder', folder);
+
     const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
       method: 'POST',
-      body: formData,
+      body: formData2,
     });
     const data = await res.json();
     if (data.secure_url) {
       return data.secure_url;
     }
   } catch (err: any) {
-    console.warn('Cloudinary upload fallback:', err);
+    console.warn('Cloudinary direct upload fallback:', err);
   }
 
+  // 3. Fallback to Data URL preview
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result as string);
