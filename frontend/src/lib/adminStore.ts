@@ -156,6 +156,8 @@ export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'c
 
 // Production Media Uploader: Streams through Backend API to Cloudinary + Supabase with client fallback
 export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team'): Promise<string> => {
+  let finalUrl = '';
+
   // Tier 1: Upload via Backend API to Cloudinary & Supabase
   try {
     const formData = new FormData();
@@ -165,43 +167,66 @@ export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team
 
     const res = await mediaApi.upload(formData);
     if (res.data && res.data.media && res.data.media.image_url) {
-      return res.data.media.image_url;
+      finalUrl = res.data.media.image_url;
     }
   } catch (err: any) {
     console.warn('Backend upload API unavailable, attempting client fallbacks:', err.message);
   }
 
   // Tier 2: Direct Unsigned Cloudinary Upload
-  try {
-    const cloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'rwoe0mm9';
-    const directFormData = new FormData();
-    directFormData.append('file', file);
-    directFormData.append('upload_preset', 'ml_default');
-    directFormData.append('folder', folder);
+  if (!finalUrl) {
+    try {
+      const cloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'rwoe0mm9';
+      const directFormData = new FormData();
+      directFormData.append('file', file);
+      directFormData.append('upload_preset', 'ml_default');
+      directFormData.append('folder', folder);
 
-    const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: directFormData,
-    });
-    if (cloudRes.ok) {
-      const data = await cloudRes.json();
-      if (data.secure_url) return data.secure_url;
+      const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
+        body: directFormData,
+      });
+      if (cloudRes.ok) {
+        const data = await cloudRes.json();
+        if (data.secure_url) finalUrl = data.secure_url;
+      }
+    } catch (e) {
+      console.warn('Direct Cloudinary upload warning:', e);
     }
-  } catch (e) {
-    console.warn('Direct Cloudinary upload warning:', e);
   }
 
-  // Tier 3: Guaranteed Base64 Data URL Fallback (Instant preview)
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Failed to read image file'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Image file read error'));
-    reader.readAsDataURL(file);
-  });
+  // Tier 3: Guaranteed Base64 Data URL Fallback
+  if (!finalUrl) {
+    finalUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to read image file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Image file read error'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Always write metadata into Supabase public.media table for database persistence
+  const supabase = getSupabaseClient();
+  if (supabase && finalUrl) {
+    try {
+      await supabase.from('media').insert([{
+        title: file.name,
+        folder,
+        public_id: `zenemoo_${Date.now()}`,
+        image_url: finalUrl,
+        uploaded_by: 'admin',
+        created_at: new Date().toISOString(),
+      }]);
+    } catch (e) {
+      console.warn('Supabase media table insert warning:', e);
+    }
+  }
+
+  return finalUrl;
 };

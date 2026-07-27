@@ -53,11 +53,45 @@ export const normalizeTeamPositions = (members: TeamMember[]): TeamMember[] => {
 };
 
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
+  let mediaList: any[] = [];
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data: mediaData } = await supabase
+        .from('media')
+        .select('*')
+        .eq('folder', 'zenemoo/team')
+        .order('created_at', { ascending: false });
+      if (mediaData && Array.isArray(mediaData)) {
+        mediaList = mediaData;
+      }
+    } catch (e) {}
+  }
+
+  const attachMediaImage = (m: TeamMember) => {
+    let finalImg = m.image_url || m.image;
+    if (!finalImg || finalImg === '/assets/executive.png') {
+      const match = mediaList.find((media) =>
+        media.title && m.name && media.title.toLowerCase().includes(m.name.split(' ')[0].toLowerCase())
+      );
+      if (match && match.image_url) {
+        finalImg = match.image_url;
+      }
+    }
+    return {
+      ...m,
+      image_url: finalImg || '/assets/executive.png',
+      image: finalImg || '/assets/executive.png',
+    };
+  };
+
   // 1. Fetch from Backend API
   try {
     const res = await teamApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const normalized = normalizeTeamPositions(res.data.data as TeamMember[]);
+      const raw = res.data.data as TeamMember[];
+      const merged = raw.map(attachMediaImage);
+      const normalized = normalizeTeamPositions(merged);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
       return normalized;
     }
@@ -66,12 +100,13 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   }
 
   // 2. Fetch directly from Supabase DB JS Client
-  const supabase = getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase.from('team').select('*').order('position', { ascending: true });
       if (!error && data && Array.isArray(data)) {
-        const normalized = normalizeTeamPositions(data as TeamMember[]);
+        const raw = data as TeamMember[];
+        const merged = raw.map(attachMediaImage);
+        const normalized = normalizeTeamPositions(merged);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
         return normalized;
       }
@@ -84,7 +119,8 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
     try {
       const parsed = JSON.parse(cached) as TeamMember[];
       if (Array.isArray(parsed)) {
-        return normalizeTeamPositions(parsed);
+        const merged = parsed.map(attachMediaImage);
+        return normalizeTeamPositions(merged);
       }
     } catch (e) {}
   }
