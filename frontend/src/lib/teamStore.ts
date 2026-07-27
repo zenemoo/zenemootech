@@ -24,7 +24,7 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
     bio: 'Leads team operations, project execution, and multi-stage quality control for data and AI projects.',
     skills: ['Project Management', 'Team Leadership', 'Quality Control', 'DesiCrew Vendor'],
     badge: 'Founder',
-    email: 'mr.prem2006@gmail.com',
+    email: 'contact@mrprem.in',
   },
   {
     id: '2',
@@ -35,7 +35,7 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
     bio: 'Works on transcription, data annotation, and file processing tasks.',
     skills: ['Transcription', 'Data Annotation', 'Quality Focus', 'Productivity'],
     badge: 'Specialist',
-    email: 'quantumcoderstechlab@gmail.com',
+    email: 'zenemootech@gmail.com',
   },
 ];
 

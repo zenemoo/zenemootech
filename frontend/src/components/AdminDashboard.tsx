@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building } from 'lucide-react';
 import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers, saveTeamMembers } from '../lib/teamStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries } from '../lib/adminStore';
-import { contactApi } from '../services/api';
+import { contactApi, subscriberApi } from '../services/api';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -13,7 +13,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'inquiries' | 'telemetry' | 'keys'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
 
   // Team State
   const [teamList, setTeamList] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
@@ -24,10 +24,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   // Inquiries State
   const [inquiries, setInquiries] = useState<ContactInquiry[]>([]);
 
+  // Subscribers State
+  const [subscribers, setSubscribers] = useState<{ id: string; email: string; subscribed_at: string }[]>([]);
+  const [newSubEmail, setNewSubEmail] = useState('');
+  const [editingSub, setEditingSub] = useState<{ id: string; email: string } | null>(null);
+
   // Config State
   const [config, setConfig] = useState<SiteConfig>(getSiteConfig());
   const [telemetry, setTelemetry] = useState<TelemetryConfig>(getTelemetryConfig());
   const [statusMessage, setStatusMessage] = useState('');
+
+  const loadSubscribers = async () => {
+    try {
+      const res = await subscriberApi.getAll();
+      if (res.data && res.data.data) {
+        setSubscribers(res.data.data);
+      }
+    } catch (e) {}
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -35,6 +49,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       setTeamList(members);
       const contactData = await getContactInquiries();
       setInquiries(contactData);
+      await loadSubscribers();
     };
     loadData();
   }, []);
@@ -259,6 +274,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             }`}
           >
             <Mail className="w-4 h-4" /> Contact Inquiries ({inquiries.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('subscribers')}
+            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
+              activeTab === 'subscribers'
+                ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
+                : 'bg-white/[0.03] text-slate-400 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" /> Newsletter Subscribers ({subscribers.length})
           </button>
 
           <button
@@ -507,7 +533,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 {inquiries.map((inq) => (
                   <div key={inq.id} className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3 relative">
                     <div className="flex items-center justify-between">
-                      <div className="font-bold text-base text-white">{inq.name}</div>
+                      <div>
+                        <div className="font-bold text-base text-white">{inq.name}</div>
+                        {(inq as any).inquiry_id && (
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                            {(inq as any).inquiry_id}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
                           {inq.status || 'NEW'}
@@ -560,6 +593,155 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
                     <div className="text-[10px] font-mono text-slate-500 text-right">
                       Received: {new Date(inq.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: NEWSLETTER SUBSCRIBERS */}
+        {activeTab === 'subscribers' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-cyan-400" /> Zenemoo Dispatch Newsletter Subscribers ({subscribers.length})
+                </h3>
+                <p className="text-xs font-mono text-slate-400">
+                  Subscribers registered via the website footer dispatch box. Stored in Supabase PostgreSQL <code className="text-cyan-300">subscribers</code> table.
+                </p>
+              </div>
+
+              <button
+                onClick={loadSubscribers}
+                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh Subscribers
+              </button>
+            </div>
+
+            {/* Add New Subscriber Form */}
+            <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-4">
+              <h4 className="text-sm font-bold font-display text-white">Add New Newsletter Subscriber</h4>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!newSubEmail || !newSubEmail.includes('@')) return;
+                  try {
+                    await subscriberApi.subscribe(newSubEmail);
+                    setNewSubEmail('');
+                    await loadSubscribers();
+                    showStatus('Subscriber added successfully!');
+                  } catch (err: any) {
+                    showStatus(err.response?.data?.message || 'Error adding subscriber');
+                  }
+                }}
+                className="flex gap-3 max-w-lg"
+              >
+                <input
+                  type="email"
+                  required
+                  placeholder="subscriber@company.com"
+                  value={newSubEmail}
+                  onChange={(e) => setNewSubEmail(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs shrink-0 flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" /> Add Email
+                </button>
+              </form>
+            </div>
+
+            {/* Editing Subscriber Modal */}
+            {editingSub && (
+              <div className="glass-panel p-6 rounded-2xl border border-cyan-500/40 space-y-4 bg-black/80">
+                <h4 className="text-sm font-bold text-white">Modify Subscriber Email</h4>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      await subscriberApi.update(editingSub.id, editingSub.email);
+                      setEditingSub(null);
+                      await loadSubscribers();
+                      showStatus('Subscriber email updated!');
+                    } catch (err: any) {
+                      showStatus(err.response?.data?.message || 'Error updating subscriber');
+                    }
+                  }}
+                  className="flex gap-3 max-w-lg"
+                >
+                  <input
+                    type="email"
+                    required
+                    value={editingSub.email}
+                    onChange={(e) => setEditingSub({ ...editingSub, email: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shrink-0"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSub(null)}
+                    className="px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 text-xs font-mono"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Subscriber List Grid */}
+            {subscribers.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                <Sparkles className="w-10 h-10 text-slate-500 mx-auto" />
+                <h4 className="text-base font-bold text-white">No Newsletter Subscribers Yet</h4>
+                <p className="text-xs font-mono text-slate-400">
+                  Subscribers joining via the website footer form will be listed here automatically.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {subscribers.map((sub) => (
+                  <div key={sub.id} className="glass-panel p-4 rounded-2xl border border-white/10 flex items-center justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="font-mono text-xs text-white font-bold truncate">{sub.email}</div>
+                      <div className="text-[10px] font-mono text-slate-500">
+                        Subscribed: {new Date(sub.subscribed_at).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={() => setEditingSub({ id: sub.id, email: sub.email })}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10"
+                        title="Edit Subscriber"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Delete subscriber ${sub.email}?`)) {
+                            setSubscribers(subscribers.filter((s) => s.id !== sub.id));
+                            try {
+                              await subscriberApi.delete(sub.id);
+                            } catch (e) {}
+                            showStatus('Subscriber deleted!');
+                          }
+                        }}
+                        className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
+                        title="Delete Subscriber"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))}

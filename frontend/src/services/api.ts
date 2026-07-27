@@ -52,6 +52,14 @@ export const contactApi = {
   delete: (id: string) => api.delete(`/contact/${id}`),
 };
 
+// Newsletter Subscriber APIs
+export const subscriberApi = {
+  getAll: () => api.get('/subscribers'),
+  subscribe: (email: string) => api.post('/subscribers', { email }),
+  update: (id: string, email: string) => api.put(`/subscribers/${id}`, { email }),
+  delete: (id: string) => api.delete(`/subscribers/${id}`),
+};
+
 // Settings APIs
 export const settingsApi = {
   get: () => api.get('/settings'),

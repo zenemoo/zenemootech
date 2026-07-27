@@ -87,9 +87,10 @@ CREATE TABLE IF NOT EXISTS public.testimonials (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 8. Contacts Table
+-- 8. Contacts Table (With Unique inquiry_id)
 CREATE TABLE IF NOT EXISTS public.contacts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inquiry_id TEXT UNIQUE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
     phone TEXT,
@@ -101,7 +102,14 @@ CREATE TABLE IF NOT EXISTS public.contacts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 9. Settings Table
+-- 9. Subscribers Table (Newsletter Dispatch)
+CREATE TABLE IF NOT EXISTS public.subscribers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    subscribed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 10. Settings Table
 CREATE TABLE IF NOT EXISTS public.settings (
     id INT PRIMARY KEY DEFAULT 1,
     site_name TEXT DEFAULT 'ZENEMOO',
@@ -110,8 +118,8 @@ CREATE TABLE IF NOT EXISTS public.settings (
     monthly_output INT DEFAULT 3600,
     accuracy_rate INT DEFAULT 99,
     active_specialists INT DEFAULT 20,
-    contact_email TEXT DEFAULT 'quantumcoderstechlab@gmail.com',
-    contact_phone TEXT DEFAULT '+91 9827775230',
+    contact_email TEXT DEFAULT 'zenemootech@gmail.com',
+    contact_phone TEXT DEFAULT '+91 98000 00000',
     location TEXT DEFAULT 'Berhampur, Odisha, India – 760001',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

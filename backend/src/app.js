@@ -9,6 +9,7 @@ import serviceRoutes from './routes/serviceRoutes.js';
 import portfolioRoutes from './routes/portfolioRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
+import subscriberRoutes from './routes/subscriberRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -46,17 +47,19 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/subscribers', subscriberRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/media', uploadRoutes);
 
-// Root Fallback Aliases (Handles direct non-/api requests seamlessly)
+// Root Fallback Aliases
 app.use('/auth', authRoutes);
 app.use('/team', teamRoutes);
 app.use('/services', serviceRoutes);
 app.use('/portfolio', portfolioRoutes);
 app.use('/blog', blogRoutes);
 app.use('/contact', contactRoutes);
+app.use('/subscribers', subscriberRoutes);
 app.use('/settings', settingsRoutes);
 app.use('/upload', uploadRoutes);
 app.use('/media', uploadRoutes);

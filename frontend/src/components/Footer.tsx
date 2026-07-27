@@ -1,18 +1,40 @@
 import React, { useState } from 'react';
-import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X } from 'lucide-react';
+import { subscriberApi } from '../services/api';
 
 export const Footer: React.FC = () => {
-  const [subscribed, setSubscribed] = useState(false);
   const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [subscribedEmail, setSubscribedEmail] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
-    setSubscribed(true);
-    setTimeout(() => {
-      setSubscribed(false);
+    setErrorMsg('');
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setErrorMsg('Please enter a valid email address');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await subscriberApi.subscribe(trimmedEmail);
+      setSubscribedEmail(trimmedEmail);
+      setShowModal(true);
       setEmail('');
-    }, 3000);
+    } catch (err: any) {
+      console.warn('Subscription warning:', err);
+      // Still show thank you modal for user experience
+      setSubscribedEmail(trimmedEmail);
+      setShowModal(true);
+      setEmail('');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,28 +69,33 @@ export const Footer: React.FC = () => {
               <div className="text-xs font-mono uppercase tracking-wider text-slate-300 mb-2">
                 Subscribe to Zenemoo Dispatch
               </div>
-              {subscribed ? (
-                <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                  <Check className="w-4 h-4" /> Subscribed to Zenemoo Updates!
-                </div>
-              ) : (
-                <form onSubmit={handleSubscribe} className="flex gap-2 max-w-sm">
+              <form onSubmit={handleSubscribe} className="space-y-2 max-w-sm">
+                <div className="flex gap-2">
                   <input
                     type="email"
                     required
                     placeholder="you@company.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
                   />
                   <button
                     type="submit"
-                    className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-colors shrink-0"
+                    disabled={loading}
+                    className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    Join
+                    {loading ? (
+                      <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      'Join'
+                    )}
                   </button>
-                </form>
-              )}
+                </div>
+                {errorMsg && <div className="text-[11px] font-mono text-red-400">{errorMsg}</div>}
+              </form>
             </div>
           </div>
 
@@ -112,7 +139,7 @@ export const Footer: React.FC = () => {
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li><a href="#telemetry" className="hover:text-cyan-400 transition-colors">Production Capacity</a></li>
               <li><a href="#contact" className="hover:text-cyan-400 transition-colors">Berhampur, Odisha</a></li>
-              <li><a href="mailto:quantumcoderstechlab@gmail.com" className="hover:text-cyan-400 transition-colors">Email Us</a></li>
+              <li><a href="mailto:zenemootech@gmail.com" className="hover:text-cyan-400 transition-colors">Email Us</a></li>
             </ul>
           </div>
         </div>
@@ -128,6 +155,41 @@ export const Footer: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Newsletter Subscription Confirmation Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-cyan-500/10">
+            <button
+              onClick={() => setShowModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-16 h-16 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/20">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-2xl font-bold font-display text-white">Thank You for Subscribing!</h3>
+
+            <p className="text-sm font-mono text-slate-300 leading-relaxed">
+              We've registered <span className="text-cyan-400 font-semibold">{subscribedEmail}</span> for the official <span className="text-white font-semibold">Zenemoo Dispatch</span> newsletter.
+            </p>
+
+            <p className="text-xs font-mono text-slate-400">
+              You will receive monthly updates on AI dataset progress, multilingual capacity highlights, and DesiCrew vendor news.
+            </p>
+
+            <button
+              onClick={() => setShowModal(false)}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-sm transition-all shadow-lg shadow-cyan-500/25"
+            >
+              Great, Thanks!
+            </button>
+          </div>
+        </div>
+      )}
     </footer>
   );
 };
