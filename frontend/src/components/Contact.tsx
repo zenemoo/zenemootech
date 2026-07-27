@@ -1,8 +1,20 @@
 import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, ShieldCheck, UserCheck, MessageSquare, Copy, Check, X, Ticket } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
+
+const COUNTRY_CODES = [
+  { code: '+91', country: 'India 🇮🇳', flag: '🇮🇳', len: 10 },
+  { code: '+1', country: 'US / Canada 🇺🇸', flag: '🇺🇸', len: 10 },
+  { code: '+44', country: 'United Kingdom 🇬🇧', flag: '🇬🇧', len: 10 },
+  { code: '+971', country: 'UAE 🇦🇪', flag: '🇦🇪', len: 9 },
+  { code: '+65', country: 'Singapore 🇸🇬', flag: '🇸🇬', len: 8 },
+  { code: '+61', country: 'Australia 🇦🇺', flag: '🇦🇺', len: 9 },
+  { code: '+49', country: 'Germany 🇩🇪', flag: '🇩🇪', len: 10 },
+  { code: '+966', country: 'Saudi Arabia 🇸🇦', flag: '🇸🇦', len: 9 },
+  { code: '+974', country: 'Qatar 🇶🇦', flag: '🇶🇦', len: 8 },
+];
 
 export const Contact: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -10,11 +22,14 @@ export const Contact: React.FC = () => {
   const [submittedId, setSubmittedId] = useState('');
   const [copied, setCopied] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+
+  const [countryCode, setCountryCode] = useState('+91');
+  const [phoneNumber, setPhoneNumber] = useState('');
 
   const [form, setForm] = useState({
     name: '',
     email: '',
-    phone: '',
     company: '',
     service: 'Audio Transcription',
     language: 'Hindi',
@@ -30,20 +45,42 @@ export const Contact: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEmailError('');
+    setPhoneError('');
 
+    // 1. Email Format Validation
     const trimmedEmail = form.email.trim().toLowerCase();
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       setEmailError('Please enter a valid corporate or personal email address.');
       return;
     }
 
+    // 2. Phone Number Format Validation (Numbers only)
+    const cleanPhone = phoneNumber.replace(/\D/g, ''); // strip non-digits
+    if (phoneNumber.trim() !== '') {
+      if (cleanPhone.length === 0 || /\D/.test(phoneNumber.trim().replace(/[\s-]/g, ''))) {
+        setPhoneError('Phone number must contain digits only (no letters).');
+        return;
+      }
+      if (countryCode === '+91' && cleanPhone.length !== 10) {
+        setPhoneError('Indian mobile number must be exactly 10 digits.');
+        return;
+      }
+      if (cleanPhone.length < 6 || cleanPhone.length > 13) {
+        setPhoneError('Please enter a valid phone number (6-13 digits).');
+        return;
+      }
+    }
+
     setLoading(true);
     const inquiryId = generateInquiryId();
     setSubmittedId(inquiryId);
 
+    const fullPhone = phoneNumber.trim() ? `${countryCode} ${cleanPhone}` : '';
+
     const payload = {
       ...form,
       email: trimmedEmail,
+      phone: fullPhone,
       inquiry_id: inquiryId,
     };
 
@@ -57,8 +94,8 @@ export const Contact: React.FC = () => {
     }
 
     confetti({
-      particleCount: 100,
-      spread: 80,
+      particleCount: 90,
+      spread: 70,
       origin: { y: 0.6 },
       colors: ['#06b6d4', '#3b82f6', '#a855f7'],
     });
@@ -74,10 +111,10 @@ export const Contact: React.FC = () => {
 
   const closeModal = () => {
     setShowModal(false);
+    setPhoneNumber('');
     setForm({
       name: '',
       email: '',
-      phone: '',
       company: '',
       service: 'Audio Transcription',
       language: 'Hindi',
@@ -141,16 +178,35 @@ export const Contact: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Country Code Selector + Phone Number */}
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Phone / WhatsApp</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. +91 98000 00000"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
-                  />
+                  <label className="block text-xs font-mono text-slate-300 mb-2">Phone / WhatsApp (Digits Only)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={countryCode}
+                      onChange={(e) => setCountryCode(e.target.value)}
+                      className="px-3 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-400 shrink-0"
+                    >
+                      {COUNTRY_CODES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.code}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="tel"
+                      placeholder="98000 00000"
+                      value={phoneNumber}
+                      onChange={(e) => {
+                        setPhoneNumber(e.target.value);
+                        if (phoneError) setPhoneError('');
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm transition-all"
+                    />
+                  </div>
+                  {phoneError && <div className="text-xs font-mono text-red-400 mt-1">{phoneError}</div>}
                 </div>
+
                 <div>
                   <label className="block text-xs font-mono text-slate-300 mb-2">Company / Organization</label>
                   <input
@@ -302,10 +358,10 @@ export const Contact: React.FC = () => {
         </div>
       </div>
 
-      {/* Futuristic Confirmation Modal Popup */}
+      {/* Sleek Professional Confirmation Modal Popup */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-          <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 max-w-lg w-full relative space-y-6 text-center shadow-2xl shadow-cyan-500/20">
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-cyan-500/20">
             <button
               onClick={closeModal}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
@@ -313,23 +369,23 @@ export const Contact: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
 
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-black border border-cyan-400 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/30">
-              <CheckCircle2 className="w-8 h-8 text-black" />
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-black border border-cyan-400 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/30">
+              <CheckCircle2 className="w-7 h-7 text-black" />
             </div>
 
             <div>
-              <h3 className="text-2xl font-bold font-display text-white">Project Inquiry Submitted!</h3>
+              <h3 className="text-xl font-bold font-display text-white">Inquiry Submitted!</h3>
               <p className="text-xs font-mono text-slate-400 mt-1">
-                Your inquiry has been stored in Supabase PostgreSQL &amp; assigned a unique ticket ID.
+                Your project specs have been sent to Prem Prasad Pradhan &amp; saved in database.
               </p>
             </div>
 
             {/* Reference Ticket ID Badge */}
-            <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-2 text-center">
+            <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-1.5 text-center">
               <div className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1.5">
                 <Ticket className="w-3.5 h-3.5 text-cyan-400" /> Reference Ticket ID
               </div>
-              <div className="text-2xl font-black font-mono text-cyan-300 tracking-wider">
+              <div className="text-xl font-black font-mono text-cyan-300 tracking-wider">
                 {submittedId}
               </div>
               <button
@@ -348,20 +404,16 @@ export const Contact: React.FC = () => {
               </button>
             </div>
 
-            <div className="text-xs font-mono text-slate-300 space-y-1 text-left bg-white/[0.03] p-4 rounded-xl border border-white/5">
-              <div><span className="text-slate-500">Submitted By:</span> <strong className="text-white">{form.name}</strong></div>
-              <div><span className="text-slate-500">Corporate Email:</span> <strong className="text-cyan-300">{form.email}</strong></div>
+            <div className="text-xs font-mono text-slate-300 space-y-1 text-left bg-white/[0.03] p-3.5 rounded-xl border border-white/5">
+              <div><span className="text-slate-500">Name:</span> <strong className="text-white">{form.name}</strong></div>
+              <div><span className="text-slate-500">Email:</span> <strong className="text-cyan-300">{form.email}</strong></div>
+              {phoneNumber && <div><span className="text-slate-500">Phone:</span> <strong className="text-white">{countryCode} {phoneNumber}</strong></div>}
               <div><span className="text-slate-500">Service:</span> <strong className="text-white">{form.service}</strong></div>
-              <div><span className="text-slate-500">Language:</span> <strong className="text-white">{form.language}</strong></div>
             </div>
-
-            <p className="text-xs text-slate-400 font-mono">
-              Prem Prasad Pradhan and the Zenemo Tech team will review your specs and contact you within 24 hours.
-            </p>
 
             <button
               onClick={closeModal}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25"
             >
               Done &amp; Close
             </button>
