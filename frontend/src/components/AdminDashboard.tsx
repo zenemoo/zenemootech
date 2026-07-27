@@ -86,9 +86,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     if (targetPos === member.position) return;
 
     const clampedPos = Math.max(1, Math.min(targetPos, teamList.length));
-    const updated = await reorderTeamMemberInApi(member.id, clampedPos);
-    setTeamList(updated);
-    showStatus(`Moved ${member.name} from Position #${member.position} to Position #${clampedPos}! All positions reordered 1..${updated.length}`);
+    if (confirm(`Move "${member.name}" from Position #${member.position} to Position #${clampedPos}? All other team members will reorder automatically.`)) {
+      const updated = await reorderTeamMemberInApi(member.id, clampedPos);
+      setTeamList(updated);
+      showStatus(`Moved ${member.name} to Position #${clampedPos}! All positions reordered 1..${updated.length}`);
+    }
   };
 
   const handleMoveUp = async (member: TeamMember) => {
@@ -468,7 +470,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 </div>
 
                 <form onSubmit={handleSaveMember} className="space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-mono text-slate-300 mb-1.5">Full Name *</label>
                       <input
@@ -489,16 +491,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                         value={editingMember.designation || editingMember.role}
                         onChange={(e) => setEditingMember({ ...editingMember, designation: e.target.value, role: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Contact Email ID</label>
-                      <input
-                        type="email"
-                        placeholder="zenemootech@gmail.com"
-                        value={editingMember.email || ''}
-                        onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-cyan-400"
                       />
                     </div>
                   </div>
@@ -671,9 +663,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
                         {/* Editable Position Input */}
                         <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-400 font-mono">Pos:</span>
+                          <span className="text-[10px] text-slate-400">Pos:</span>
                           <input
-                            key={`${m.id}-${m.position}`}
                             type="number"
                             min={1}
                             max={teamList.length}
@@ -684,9 +675,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                               }
                             }}
                             onBlur={(e) => {
-                              const val = (e.target as HTMLInputElement).value;
-                              if (val !== String(m.position)) {
-                                handlePositionChange(m, val);
+                              if (e.target.value !== String(m.position)) {
+                                handlePositionChange(m, e.target.value);
                               }
                             }}
                             className="w-12 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-center font-bold text-cyan-300 text-xs focus:outline-none focus:border-cyan-400"
