@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, CheckCircle, ShieldCheck, UserCheck, MessageSquare } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { saveContactInquiry } from '../lib/adminStore';
+import { contactApi } from '../services/api';
 
 export const Contact: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
@@ -14,9 +16,15 @@ export const Contact: React.FC = () => {
     message: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
+
+    try {
+      await saveContactInquiry(form);
+      await contactApi.submit(form);
+    } catch (err) {}
+
     confetti({
       particleCount: 80,
       spread: 70,

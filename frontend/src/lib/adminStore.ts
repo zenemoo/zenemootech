@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { TeamMember, INITIAL_TEAM_MEMBERS } from './teamStore';
 
 export interface SiteConfig {
   supabaseUrl: string;
@@ -16,13 +15,27 @@ export interface TelemetryConfig {
   activeSpecialists: number;
 }
 
-const CONFIG_STORAGE_KEY = 'zenemoo_admin_config_v1';
-const TELEMETRY_STORAGE_KEY = 'zenemoo_telemetry_config_v1';
+export interface ContactInquiry {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  service?: string;
+  language?: string;
+  message: string;
+  status: string;
+  created_at: string;
+}
+
+const CONFIG_STORAGE_KEY = 'zenemoo_admin_config_v2';
+const TELEMETRY_STORAGE_KEY = 'zenemoo_telemetry_config_v2';
+const CONTACTS_STORAGE_KEY = 'zenemoo_contacts_inquiries_v2';
 
 export const DEFAULT_CONFIG: SiteConfig = {
-  supabaseUrl: (import.meta as any).env?.VITE_SUPABASE_URL || '',
-  supabaseAnonKey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '',
-  cloudinaryCloudName: (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'zenemoo',
+  supabaseUrl: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://wkbkomwjuywdeaxgchxw.supabase.co',
+  supabaseAnonKey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
+  cloudinaryCloudName: (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || 'rwoe0mm9',
   cloudinaryUploadPreset: (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || 'zenemoo_preset',
   adminPasscode: 'zenemoo2026',
 };
@@ -75,15 +88,62 @@ export const getSupabaseClient = () => {
   return null;
 };
 
+// Fetch all contact inquiries from Supabase DB or LocalStorage
+export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('contacts').select('*').order('created_at', { ascending: false });
+      if (!error && data && data.length > 0) {
+        return data as ContactInquiry[];
+      }
+    } catch (err) {}
+  }
+
+  const cached = localStorage.getItem(CONTACTS_STORAGE_KEY);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (e) {}
+  }
+  return [];
+};
+
+// Submit a new contact inquiry to Supabase DB & LocalStorage
+export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>): Promise<ContactInquiry> => {
+  const newInquiry: ContactInquiry = {
+    id: Date.now().toString(),
+    ...inquiry,
+    status: 'NEW',
+    created_at: new Date().toISOString(),
+  };
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('contacts').insert([newInquiry]).select();
+      if (!error && data && data[0]) {
+        return data[0] as ContactInquiry;
+      }
+    } catch (err) {}
+  }
+
+  const cached = await getContactInquiries();
+  const updated = [newInquiry, ...cached];
+  localStorage.setItem(CONTACTS_STORAGE_KEY, JSON.stringify(updated));
+  return newInquiry;
+};
+
 // Dynamic Cloudinary Image Upload
-export const uploadImageToCloudinary = async (file: File): Promise<string> => {
+export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team'): Promise<string> => {
   const config = getSiteConfig();
-  const cloudName = config.cloudinaryCloudName || 'zenemoo';
+  const cloudName = config.cloudinaryCloudName || 'rwoe0mm9';
   const uploadPreset = config.cloudinaryUploadPreset || 'zenemoo_preset';
 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', uploadPreset);
+  formData.append('folder', folder);
 
   try {
     const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
@@ -94,14 +154,10 @@ export const uploadImageToCloudinary = async (file: File): Promise<string> => {
     if (data.secure_url) {
       return data.secure_url;
     }
-    if (data.error?.message) {
-      throw new Error(data.error.message);
-    }
   } catch (err: any) {
-    console.warn('Cloudinary upload warning:', err);
+    console.warn('Cloudinary upload fallback:', err);
   }
 
-  // Fallback to Data URL if Cloudinary upload preset is not set
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result as string);

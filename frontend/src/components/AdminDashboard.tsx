@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building } from 'lucide-react';
 import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers, saveTeamMembers } from '../lib/teamStore';
-import { SiteConfig, TelemetryConfig, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary } from '../lib/adminStore';
+import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries } from '../lib/adminStore';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -12,13 +12,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'telemetry' | 'keys'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'inquiries' | 'telemetry' | 'keys'>('team');
 
   // Team State
   const [teamList, setTeamList] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [skillsInput, setSkillsInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+
+  // Inquiries State
+  const [inquiries, setInquiries] = useState<ContactInquiry[]>([]);
 
   // Config State
   const [config, setConfig] = useState<SiteConfig>(getSiteConfig());
@@ -29,6 +32,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     const loadData = async () => {
       const members = await getStoredTeamMembers();
       setTeamList(members);
+      const contactData = await getContactInquiries();
+      setInquiries(contactData);
     };
     loadData();
   }, []);
@@ -99,7 +104,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setTeamList(updatedList);
     await saveTeamMembers(updatedList);
     setEditingMember(null);
-    showStatus('Team member saved to database & storage!');
+    showStatus('Team member saved to Supabase database!');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,14 +112,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     if (!file || !editingMember) return;
     setIsUploading(true);
     try {
-      const url = await uploadImageToCloudinary(file);
+      const url = await uploadImageToCloudinary(file, 'zenemoo/team');
       setEditingMember({ ...editingMember, image: url });
-      showStatus('Image uploaded to Cloudinary!');
+      showStatus('Image uploaded to Cloudinary CDN (zenemoo/team)!');
     } catch (err: any) {
       alert('Upload failed: ' + (err.message || 'Error uploading file'));
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleRefreshInquiries = async () => {
+    const contactData = await getContactInquiries();
+    setInquiries(contactData);
+    showStatus('Contact inquiries refreshed!');
   };
 
   // Config Handlers
@@ -149,7 +160,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           <div>
             <h2 className="text-2xl font-bold font-display text-white">Zenemoo Admin Dashboard</h2>
             <p className="text-xs font-mono text-slate-400 mt-1">
-              Enter passcode to manage Supabase, Cloudinary, and site content.
+              Enter passcode to manage Supabase, Cloudinary, and contact messages.
             </p>
           </div>
 
@@ -170,7 +181,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
               type="submit"
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold text-sm shadow-xl shadow-cyan-500/25 hover:opacity-95 transition-all"
             >
-              Access Admin Portal
+              Access Admin Control Center
             </button>
           </form>
 
@@ -239,6 +250,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </button>
 
           <button
+            onClick={() => setActiveTab('inquiries')}
+            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
+              activeTab === 'inquiries'
+                ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
+                : 'bg-white/[0.03] text-slate-400 hover:text-white'
+            }`}
+          >
+            <Mail className="w-4 h-4" /> Contact Inquiries ({inquiries.length})
+          </button>
+
+          <button
             onClick={() => setActiveTab('telemetry')}
             className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
               activeTab === 'telemetry'
@@ -257,7 +279,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 : 'bg-white/[0.03] text-slate-400 hover:text-white'
             }`}
           >
-            <Key className="w-4 h-4" /> Supabase &amp; Cloudinary Keys
+            <Key className="w-4 h-4" /> API Keys &amp; Credentials
           </button>
         </div>
 
@@ -348,7 +370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   {/* Cloudinary Image Upload */}
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
                     <label className="block text-xs font-mono text-cyan-300 font-bold flex items-center gap-2">
-                      <Cloud className="w-4 h-4" /> Cloudinary Image Uploader &amp; URL
+                      <Cloud className="w-4 h-4" /> Cloudinary Image Uploader (Folder: zenemoo/team)
                     </label>
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
@@ -361,7 +383,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                       <div className="flex-1 space-y-2">
                         <input
                           type="url"
-                          placeholder="https://res.cloudinary.com/.../photo.jpg"
+                          placeholder="https://res.cloudinary.com/rwoe0mm9/image/upload/zenemoo/team/..."
                           value={editingMember.image}
                           onChange={(e) => setEditingMember({ ...editingMember, image: e.target.value })}
                           className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
@@ -450,7 +472,85 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
-        {/* TAB 2: TELEMETRY & CAPACITY */}
+        {/* TAB 2: CONTACT INQUIRIES FROM WEBSITE FORM */}
+        {activeTab === 'inquiries' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-blue-400" /> Website Contact Form Submissions
+                </h3>
+                <p className="text-xs font-mono text-slate-400">
+                  Submissions stored in Supabase PostgreSQL database <code className="text-cyan-300">contacts</code> table.
+                </p>
+              </div>
+
+              <button
+                onClick={handleRefreshInquiries}
+                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh Inquiries
+              </button>
+            </div>
+
+            {inquiries.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                <MessageSquare className="w-10 h-10 text-slate-500 mx-auto" />
+                <h4 className="text-base font-bold text-white">No Contact Inquiries Yet</h4>
+                <p className="text-xs font-mono text-slate-400">
+                  Submissions from the public website contact form will appear here automatically.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {inquiries.map((inq) => (
+                  <div key={inq.id} className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3 relative">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-base text-white">{inq.name}</div>
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
+                        {inq.status || 'NEW'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 text-xs font-mono text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                        <a href={`mailto:${inq.email}`} className="hover:underline">{inq.email}</a>
+                      </div>
+                      {inq.phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-3.5 h-3.5 text-purple-400" />
+                          <span>{inq.phone}</span>
+                        </div>
+                      )}
+                      {inq.company && (
+                        <div className="flex items-center gap-2">
+                          <Building className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{inq.company}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 text-[11px] font-mono text-cyan-300">
+                      <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/5">Service: {inq.service || 'N/A'}</span>
+                      <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/5">Lang: {inq.language || 'N/A'}</span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 bg-black/40 p-3 rounded-xl border border-white/5 italic">
+                      "{inq.message}"
+                    </p>
+
+                    <div className="text-[10px] font-mono text-slate-500 text-right">
+                      Received: {new Date(inq.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: TELEMETRY & CAPACITY */}
         {activeTab === 'telemetry' && (
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-2xl mx-auto space-y-6">
             <h3 className="text-xl font-bold font-display text-white">Update Site Telemetry Metrics</h3>
@@ -506,7 +606,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
-        {/* TAB 3: SUPABASE & CLOUDINARY KEYS GUIDE */}
+        {/* TAB 4: SUPABASE & CLOUDINARY KEYS GUIDE */}
         {activeTab === 'keys' && (
           <div className="space-y-6 max-w-3xl mx-auto">
             <h3 className="text-xl font-bold font-display text-white">API Keys &amp; Database Credentials</h3>
@@ -521,7 +621,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   <label className="block text-slate-300 mb-1">VITE_SUPABASE_URL</label>
                   <input
                     type="text"
-                    placeholder="https://your-project.supabase.co"
                     value={config.supabaseUrl}
                     onChange={(e) => setConfig({ ...config, supabaseUrl: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
@@ -532,7 +631,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   <label className="block text-slate-300 mb-1">VITE_SUPABASE_ANON_KEY</label>
                   <input
                     type="password"
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                     value={config.supabaseAnonKey}
                     onChange={(e) => setConfig({ ...config, supabaseAnonKey: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
@@ -549,7 +647,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   <label className="block text-slate-300 mb-1">VITE_CLOUDINARY_CLOUD_NAME</label>
                   <input
                     type="text"
-                    placeholder="zenemoo"
                     value={config.cloudinaryCloudName}
                     onChange={(e) => setConfig({ ...config, cloudinaryCloudName: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
@@ -560,7 +657,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   <label className="block text-slate-300 mb-1">VITE_CLOUDINARY_UPLOAD_PRESET</label>
                   <input
                     type="text"
-                    placeholder="zenemoo_preset"
                     value={config.cloudinaryUploadPreset}
                     onChange={(e) => setConfig({ ...config, cloudinaryUploadPreset: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
