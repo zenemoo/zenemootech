@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -52,11 +52,18 @@ export const settingsApi = {
   update: (data: any) => api.put('/settings', data),
 };
 
-// Media Upload APIs (Cloudinary via Backend)
-export const uploadApi = {
-  uploadMedia: (formData: FormData) =>
+// Cloudinary + Supabase Media APIs
+export const mediaApi = {
+  getAll: () => api.get('/media'),
+  upload: (formData: FormData) =>
     api.post('/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  deleteMedia: (publicId: string) => api.delete(`/upload/${encodeURIComponent(publicId)}`),
+  update: (id: string, formData: FormData) =>
+    api.put(`/media/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  delete: (id: string) => api.delete(`/media/${encodeURIComponent(id)}`),
 };
+
+export const uploadApi = mediaApi;

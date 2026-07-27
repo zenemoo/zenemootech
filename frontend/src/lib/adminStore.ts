@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { uploadApi } from '../services/api';
+import { mediaApi } from '../services/api';
 
 export interface SiteConfig {
   supabaseUrl: string;
@@ -27,6 +27,20 @@ export interface ContactInquiry {
   message: string;
   status: string;
   created_at: string;
+}
+
+export interface MediaRecord {
+  id: string;
+  title: string;
+  folder: string;
+  image_url: string;
+  public_id: string;
+  asset_id?: string;
+  width?: number;
+  height?: number;
+  format?: string;
+  bytes?: number;
+  created_at?: string;
 }
 
 const CONFIG_STORAGE_KEY = 'zenemoo_admin_config_v2';
@@ -89,7 +103,7 @@ export const getSupabaseClient = () => {
   return null;
 };
 
-// Fetch all contact inquiries from Supabase DB or LocalStorage
+// Fetch all contact inquiries from Supabase DB
 export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
   const supabase = getSupabaseClient();
   if (supabase) {
@@ -110,7 +124,7 @@ export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
   return [];
 };
 
-// Submit a new contact inquiry to Supabase DB & LocalStorage
+// Submit a new contact inquiry to Supabase DB
 export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>): Promise<ContactInquiry> => {
   const newInquiry: ContactInquiry = {
     id: Date.now().toString(),
@@ -135,22 +149,24 @@ export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'c
   return newInquiry;
 };
 
-// Cloudinary Image Upload (Tries Backend API endpoint first, then Cloudinary API, then fallback)
+// Cloudinary + Supabase Production Image Uploader
 export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team'): Promise<string> => {
-  // 1. Try Backend API POST /api/upload (Uses backend Cloudinary API key & secret)
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', folder);
+  formData.append('title', file.name);
+
+  // 1. Upload through Backend API to Cloudinary + Supabase
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('folder', folder);
-    const res = await uploadApi.uploadMedia(formData);
-    if (res.data && res.data.data && res.data.data.url) {
-      return res.data.data.url; // Returns https://res.cloudinary.com/...
+    const res = await mediaApi.upload(formData);
+    if (res.data && res.data.media && res.data.media.image_url) {
+      return res.data.media.image_url; // Returns official Cloudinary HTTPS URL
     }
   } catch (err) {
-    console.warn('Backend Cloudinary upload endpoint offline, trying client upload...');
+    console.warn('Backend API upload failed, using direct Cloudinary upload fallback...');
   }
 
-  // 2. Direct Cloudinary Client API
+  // 2. Direct Cloudinary Client API Fallback
   const config = getSiteConfig();
   const cloudName = config.cloudinaryCloudName || 'rwoe0mm9';
   const uploadPreset = config.cloudinaryUploadPreset || 'zenemoo_preset';
@@ -169,14 +185,7 @@ export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team
     if (data.secure_url) {
       return data.secure_url;
     }
-  } catch (err: any) {
-    console.warn('Cloudinary direct upload fallback:', err);
-  }
+  } catch (err: any) {}
 
-  // 3. Fallback to Data URL preview
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.readAsDataURL(file);
-  });
+  throw new Error('Image upload failed. Please check server and Cloudinary credentials.');
 };

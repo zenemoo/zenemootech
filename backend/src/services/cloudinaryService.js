@@ -13,9 +13,13 @@ export const cloudinaryService = {
           if (error) return reject(error);
           resolve({
             url: result.secure_url,
+            secure_url: result.secure_url,
             public_id: result.public_id,
-            format: result.format,
-            bytes: result.bytes,
+            asset_id: result.asset_id || result.public_id,
+            width: result.width || 0,
+            height: result.height || 0,
+            format: result.format || 'jpg',
+            bytes: result.bytes || 0,
           });
         }
       );

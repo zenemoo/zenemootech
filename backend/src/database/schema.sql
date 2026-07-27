@@ -1,12 +1,27 @@
 -- ZENEMOO Data Solutions Supabase PostgreSQL Schema Definition
 
--- 1. Team Table
+-- 1. Media Table (Cloudinary + Supabase Asset Storage)
+CREATE TABLE IF NOT EXISTS public.media (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT,
+    folder TEXT NOT NULL DEFAULT 'zenemoo/team',
+    public_id TEXT NOT NULL,
+    image_url TEXT NOT NULL,
+    asset_id TEXT,
+    width INT,
+    height INT,
+    format TEXT,
+    bytes BIGINT,
+    uploaded_by TEXT DEFAULT 'admin',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 2. Team Table
 CREATE TABLE IF NOT EXISTS public.team (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     role TEXT NOT NULL,
     image TEXT NOT NULL,
-    fallback TEXT,
     bio TEXT,
     skills TEXT[] DEFAULT '{}',
     badge TEXT DEFAULT 'Specialist',
@@ -16,7 +31,7 @@ CREATE TABLE IF NOT EXISTS public.team (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 2. Services Table
+-- 3. Services Table
 CREATE TABLE IF NOT EXISTS public.services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
@@ -28,7 +43,7 @@ CREATE TABLE IF NOT EXISTS public.services (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. Portfolio Table
+-- 4. Portfolio Table
 CREATE TABLE IF NOT EXISTS public.portfolio (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
@@ -39,7 +54,7 @@ CREATE TABLE IF NOT EXISTS public.portfolio (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 4. Blog Table
+-- 5. Blog Table
 CREATE TABLE IF NOT EXISTS public.blog (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
@@ -51,7 +66,7 @@ CREATE TABLE IF NOT EXISTS public.blog (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. Gallery Table
+-- 6. Gallery Table
 CREATE TABLE IF NOT EXISTS public.gallery (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT,
@@ -61,7 +76,7 @@ CREATE TABLE IF NOT EXISTS public.gallery (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 6. Testimonials Table
+-- 7. Testimonials Table
 CREATE TABLE IF NOT EXISTS public.testimonials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     author TEXT NOT NULL,
@@ -72,7 +87,7 @@ CREATE TABLE IF NOT EXISTS public.testimonials (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 7. Contacts Table
+-- 8. Contacts Table
 CREATE TABLE IF NOT EXISTS public.contacts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -86,7 +101,7 @@ CREATE TABLE IF NOT EXISTS public.contacts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 8. Settings Table
+-- 9. Settings Table
 CREATE TABLE IF NOT EXISTS public.settings (
     id INT PRIMARY KEY DEFAULT 1,
     site_name TEXT DEFAULT 'ZENEMOO',

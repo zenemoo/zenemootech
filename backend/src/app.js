@@ -40,6 +40,7 @@ app.use('/api/blog', blogRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/media', uploadRoutes);
 
 // Global 404 Route Handler
 app.use('*', (req, res) => {
