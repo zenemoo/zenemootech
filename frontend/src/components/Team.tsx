@@ -20,6 +20,13 @@ export const Team: React.FC = () => {
       }
     };
     loadTeam();
+
+    window.addEventListener('zenemoo_team_updated', loadTeam);
+    window.addEventListener('focus', loadTeam);
+    return () => {
+      window.removeEventListener('zenemoo_team_updated', loadTeam);
+      window.removeEventListener('focus', loadTeam);
+    };
   }, []);
 
   return (

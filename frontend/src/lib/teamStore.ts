@@ -92,6 +92,12 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   return [];
 };
 
+const notifyTeamUpdate = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('zenemoo_team_updated'));
+  }
+};
+
 export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<TeamMember[]> => {
   try {
     if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
@@ -99,6 +105,7 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
       if (res.data && res.data.team) {
         const normalized = normalizeTeamPositions(res.data.team);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+        notifyTeamUpdate();
         return normalized;
       }
     } else {
@@ -106,6 +113,7 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
       if (res.data && res.data.team) {
         const normalized = normalizeTeamPositions(res.data.team);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+        notifyTeamUpdate();
         return normalized;
       }
     }
@@ -131,6 +139,7 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
       bio: member.bio || '',
       skills: member.skills || ['Specialist'],
       badge: member.badge || 'Specialist',
+      email: member.email || 'zenemootech@gmail.com',
       status: member.status || 'active',
       category: member.category || 'Engineering',
     };
@@ -138,6 +147,7 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
   }
   const normalized = normalizeTeamPositions(updatedList);
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+  notifyTeamUpdate();
   return normalized;
 };
 
@@ -147,6 +157,7 @@ export const reorderTeamMemberInApi = async (id: string, newPosition: number): P
     if (res.data && res.data.data) {
       const normalized = normalizeTeamPositions(res.data.data as TeamMember[]);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      notifyTeamUpdate();
       return normalized;
     }
   } catch (e) {
@@ -163,6 +174,7 @@ export const reorderTeamMemberInApi = async (id: string, newPosition: number): P
     currentList.splice(clampedPos - 1, 0, targetMember);
     const updatedList = normalizeTeamPositions(currentList);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedList));
+    notifyTeamUpdate();
     return updatedList;
   }
 
@@ -175,6 +187,7 @@ export const deleteTeamMemberFromApi = async (id: string): Promise<TeamMember[]>
     if (res.data && res.data.team) {
       const normalized = normalizeTeamPositions(res.data.team);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      notifyTeamUpdate();
       return normalized;
     }
   } catch (e) {
@@ -185,5 +198,6 @@ export const deleteTeamMemberFromApi = async (id: string): Promise<TeamMember[]>
   const filtered = cached.filter((m) => m.id !== id);
   const normalized = normalizeTeamPositions(filtered);
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+  notifyTeamUpdate();
   return normalized;
 };
