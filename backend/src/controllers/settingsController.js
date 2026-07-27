@@ -1,0 +1,38 @@
+import { supabaseService } from '../services/supabaseService.js';
+
+let memorySettings = {
+  site_name: 'ZENEMOO',
+  tagline: 'Professional Language & AI Data Services',
+  daily_output: 180,
+  monthly_output: 3600,
+  accuracy_rate: 99,
+  active_specialists: 20,
+  contact_email: 'quantumcoderstechlab@gmail.com',
+  contact_phone: '+91 9827775230',
+  location: 'Berhampur, Odisha, India – 760001',
+};
+
+export const getSettings = async (req, res, next) => {
+  try {
+    const data = await supabaseService.selectById('settings', 1);
+    if (data) return res.json({ success: true, data });
+    res.json({ success: true, data: memorySettings });
+  } catch (err) {
+    res.json({ success: true, data: memorySettings });
+  }
+};
+
+export const updateSettings = async (req, res, next) => {
+  try {
+    const updatedData = { ...req.body };
+    try {
+      const updated = await supabaseService.update('settings', 1, updatedData);
+      if (updated) return res.json({ success: true, data: updated });
+    } catch (e) {}
+
+    memorySettings = { ...memorySettings, ...updatedData };
+    res.json({ success: true, data: memorySettings });
+  } catch (err) {
+    next(err);
+  }
+};

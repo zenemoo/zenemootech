@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { teamApi } from '../services/api';
 
 export interface TeamMember {
   id: string;
@@ -152,82 +152,29 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
   },
 ];
 
-// Supabase Setup
-const env = (import.meta as any).env || {};
-const supabaseUrl = env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || '';
-export const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
-
-// LocalStorage Persistence Key
 const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v1';
 
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
-  // 1. Try Supabase if configured
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
-      if (!error && data && data.length > 0) {
-        return data as TeamMember[];
-      }
-    } catch (err) {
-      console.warn('Supabase fetch failed, using local storage fallback', err);
+  try {
+    const res = await teamApi.getAll();
+    if (res.data && res.data.data && res.data.data.length > 0) {
+      return res.data.data as TeamMember[];
     }
+  } catch (err) {
+    console.warn('Backend API offline, using local storage fallback');
   }
 
-  // 2. Local Storage Fallback
   const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (cached) {
     try {
       return JSON.parse(cached);
-    } catch (e) {
-      console.error('Failed to parse cached team members', e);
-    }
+    } catch (e) {}
   }
 
-  // 3. Default Initial Team Members
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_TEAM_MEMBERS));
   return INITIAL_TEAM_MEMBERS;
 };
 
 export const saveTeamMembers = async (members: TeamMember[]): Promise<void> => {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(members));
-
-  // Sync to Supabase if available
-  if (supabase) {
-    try {
-      await supabase.from('team_members').upsert(members);
-    } catch (err) {
-      console.warn('Supabase save warning:', err);
-    }
-  }
-};
-
-// Cloudinary Image Upload Helper
-export const uploadToCloudinary = async (file: File): Promise<string> => {
-  const env = (import.meta as any).env || {};
-  const cloudName = env.VITE_CLOUDINARY_CLOUD_NAME || 'zenemoo';
-  const uploadPreset = env.VITE_CLOUDINARY_UPLOAD_PRESET || 'zenemoo_team';
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', uploadPreset);
-
-  try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-    const data = await res.json();
-    if (data.secure_url) {
-      return data.secure_url;
-    }
-    throw new Error(data.error?.message || 'Cloudinary upload failed');
-  } catch (err: any) {
-    // If unsigned preset is not configured, convert file to data URL for instant working preview!
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(file);
-    });
-  }
 };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Edit, Trash2, Upload, Database, Cloud, CheckCircle, ShieldAlert, Sparkles, Image, RefreshCw, Save, Key } from 'lucide-react';
-import { TeamMember, uploadToCloudinary, supabase } from '../lib/teamStore';
+import { TeamMember } from '../lib/teamStore';
+import { uploadImageToCloudinary, getSupabaseClient } from '../lib/adminStore';
 
 interface TeamAdminModalProps {
   isOpen: boolean;
@@ -59,7 +60,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
     if (!file || !editingMember) return;
     setIsUploading(true);
     try {
-      const url = await uploadToCloudinary(file);
+      const url = await uploadImageToCloudinary(file);
       setEditingMember({ ...editingMember, image: url });
     } catch (err) {
       alert('Failed to upload image. Please try entering an image URL.');
@@ -393,7 +394,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                   <span className="flex items-center gap-2 text-cyan-400 font-bold">
                     <Database className="w-4 h-4" /> Supabase Database
                   </span>
-                  {supabase ? (
+                  {getSupabaseClient() ? (
                     <span className="text-emerald-400 flex items-center gap-1">
                       <CheckCircle className="w-4 h-4" /> Connected
                     </span>
