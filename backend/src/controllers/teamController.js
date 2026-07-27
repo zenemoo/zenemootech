@@ -1,13 +1,61 @@
 import { supabaseService } from '../services/supabaseService.js';
 
-let memoryTeam = [];
+const DEFAULT_TEAM = [
+  {
+    id: 'team_1',
+    position: 1,
+    name: 'Prem Prasad Pradhan',
+    designation: 'Founder & Data Operations Director',
+    role: 'Founder & Data Operations Director',
+    bio: 'Leads team operations, project execution, and quality control for data and AI projects across DesiCrew partner ecosystem.',
+    image_url: '/assets/executive.png',
+    image: '/assets/executive.png',
+    skills: ['Team Leadership', 'Project Management', 'Quality Control', 'Data Solutions'],
+    badge: 'Founder',
+    email: 'zenemootech@gmail.com',
+    status: 'active',
+    category: 'Leadership',
+  },
+  {
+    id: 'team_2',
+    position: 2,
+    name: 'Madhushmita Das',
+    designation: 'Audio Transcription Specialist',
+    role: 'Audio Transcription Specialist',
+    bio: 'Supports transcription and data annotation projects with a focus on accuracy, consistency, and multi-dialect language verification.',
+    image_url: '/assets/executive.png',
+    image: '/assets/executive.png',
+    skills: ['Audio Transcription', 'Data Annotation', 'Odia/Hindi Accuracy', 'QC Support'],
+    badge: 'Senior Annotator',
+    email: 'zenemootech@gmail.com',
+    status: 'active',
+    category: 'Engineering',
+  },
+  {
+    id: 'team_3',
+    position: 3,
+    name: 'Chandan Biswal',
+    designation: 'Audio Transcription Specialist',
+    role: 'Audio Transcription Specialist',
+    bio: 'Works on transcription, data annotation, and file processing tasks. Contributes to daily production targets with high quality standards.',
+    image_url: '/assets/executive.png',
+    image: '/assets/executive.png',
+    skills: ['Transcription', 'Data Annotation', 'Quality Focus', 'Speed Accuracy'],
+    badge: 'Specialist',
+    email: 'zenemootech@gmail.com',
+    status: 'active',
+    category: 'Engineering',
+  },
+];
+
+let memoryTeam = [...DEFAULT_TEAM];
 
 // Helper: Normalize team positions to guarantee 1..N sequential order with 0 gaps and 0 duplicates
 const normalizeAndSavePositions = async (list) => {
-  if (!Array.isArray(list) || list.length === 0) return [];
+  const targetList = Array.isArray(list) && list.length > 0 ? list : DEFAULT_TEAM;
 
   // Sort by position ASC; if positions are equal or invalid, maintain array order
-  const sorted = [...list].sort((a, b) => {
+  const sorted = [...targetList].sort((a, b) => {
     const posA = Number(a.position);
     const posB = Number(b.position);
     if (isNaN(posA) || isNaN(posB) || posA === posB) return 0;
@@ -24,7 +72,7 @@ const normalizeAndSavePositions = async (list) => {
   // Update records in Supabase PostgreSQL
   try {
     for (const member of normalized) {
-      if (member.id && !member.id.startsWith('temp_')) {
+      if (member.id && !member.id.startsWith('temp_') && !member.id.startsWith('team_')) {
         await supabaseService.update('team', member.id, {
           position: member.position,
           updated_at: member.updated_at,
@@ -47,6 +95,23 @@ export const getTeam = async (req, res, next) => {
       const normalized = await normalizeAndSavePositions(data);
       return res.json({ success: true, count: normalized.length, data: normalized });
     }
+
+    // If Supabase table is empty, attempt auto-seed of default team members
+    try {
+      for (const m of DEFAULT_TEAM) {
+        const payload = { ...m, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        delete payload.id;
+        await supabaseService.insert('team', payload);
+      }
+      const seeded = await supabaseService.selectAll('team');
+      if (seeded && seeded.length > 0) {
+        const normalized = await normalizeAndSavePositions(seeded);
+        return res.json({ success: true, count: normalized.length, data: normalized });
+      }
+    } catch (seedErr) {
+      console.warn('Supabase auto-seed warning:', seedErr.message);
+    }
+
     const normalizedMemory = await normalizeAndSavePositions(memoryTeam);
     res.json({ success: true, count: normalizedMemory.length, data: normalizedMemory });
   } catch (err) {
