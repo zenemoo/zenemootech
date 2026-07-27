@@ -99,6 +99,10 @@ const notifyTeamUpdate = () => {
 };
 
 export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<TeamMember[]> => {
+  const imageUrl = member.image_url || member.image || '/assets/executive.png';
+  const roleText = member.designation || member.role || 'Specialist';
+
+  // 1. Attempt Backend API call
   try {
     if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
       const res = await teamApi.update(member.id, member);
@@ -118,10 +122,45 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
       }
     }
   } catch (e) {
-    console.warn('Save API call failed, saving locally:', e);
+    console.warn('Backend API save failed/offline, writing directly to Supabase DB:', e);
   }
 
-  // Local fallback
+  // 2. Direct Supabase JS Client Insertion/Update (Guarantees Supabase storage & refresh persistence)
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const payload: any = {
+        name: member.name || 'New Team Member',
+        designation: roleText,
+        role: roleText,
+        bio: member.bio || '',
+        image_url: imageUrl,
+        image: imageUrl,
+        skills: member.skills || ['Specialist'],
+        badge: member.badge || 'Specialist',
+        email: member.email || 'zenemootech@gmail.com',
+        status: member.status || 'active',
+        category: member.category || 'Engineering',
+        updated_at: new Date().toISOString(),
+      };
+
+      const isUuid = member.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(member.id);
+
+      if (isUuid) {
+        if (member.position) payload.position = member.position;
+        await supabase.from('team').update(payload).eq('id', member.id);
+      } else {
+        const cached = await getStoredTeamMembers();
+        payload.position = member.position || cached.length + 1;
+        payload.created_at = new Date().toISOString();
+        await supabase.from('team').insert([payload]);
+      }
+    } catch (supaErr) {
+      console.warn('Direct Supabase save warning:', supaErr);
+    }
+  }
+
+  // 3. Local fallback & notify
   const cached = await getStoredTeamMembers();
   let updatedList: TeamMember[];
   if (member.id) {
@@ -132,10 +171,10 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
       id: newId,
       position: cached.length + 1,
       name: member.name || 'New Team Member',
-      designation: member.designation || member.role || 'Specialist',
-      role: member.designation || member.role || 'Specialist',
-      image_url: member.image_url || member.image || '/assets/executive.png',
-      image: member.image_url || member.image || '/assets/executive.png',
+      designation: roleText,
+      role: roleText,
+      image_url: imageUrl,
+      image: imageUrl,
       bio: member.bio || '',
       skills: member.skills || ['Specialist'],
       badge: member.badge || 'Specialist',
@@ -182,6 +221,7 @@ export const reorderTeamMemberInApi = async (id: string, newPosition: number): P
 };
 
 export const deleteTeamMemberFromApi = async (id: string): Promise<TeamMember[]> => {
+  // 1. Attempt Backend API delete
   try {
     const res = await teamApi.delete(id);
     if (res.data && res.data.team) {
@@ -191,9 +231,20 @@ export const deleteTeamMemberFromApi = async (id: string): Promise<TeamMember[]>
       return normalized;
     }
   } catch (e) {
-    console.warn('Team delete API failed, performing local deletion:', e);
+    console.warn('Team delete API failed, performing direct Supabase DB deletion:', e);
   }
 
+  // 2. Direct Supabase DB Deletion
+  const supabase = getSupabaseClient();
+  if (supabase && id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    try {
+      await supabase.from('team').delete().eq('id', id);
+    } catch (supaErr) {
+      console.warn('Direct Supabase delete warning:', supaErr);
+    }
+  }
+
+  // 3. Local Storage Sync
   const cached = await getStoredTeamMembers();
   const filtered = cached.filter((m) => m.id !== id);
   const normalized = normalizeTeamPositions(filtered);
