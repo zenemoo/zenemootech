@@ -14,13 +14,11 @@ export interface TeamMember {
   github?: string;
 }
 
-// Zero hardcoded dummy team members - only members added in Admin Control Center will be displayed
 export const INITIAL_TEAM_MEMBERS: TeamMember[] = [];
 
-const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v5';
+const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v6';
 
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
-  // 1. Fetch live team data from Backend API / Supabase PostgreSQL database
   try {
     const res = await teamApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
@@ -29,10 +27,9 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
       return liveMembers;
     }
   } catch (err) {
-    console.warn('Backend API fetch offline, checking local storage cache...');
+    console.warn('Backend team fetch offline, using cache:', err);
   }
 
-  // 2. Local storage cache fallback
   const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (cached) {
     try {
@@ -43,23 +40,29 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   return [];
 };
 
-export const saveTeamMembers = async (members: TeamMember[]): Promise<void> => {
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(members));
-
-  // Sync with backend API / Supabase PostgreSQL database
-  try {
-    for (const member of members) {
-      if (member.id && !member.id.startsWith('temp_')) {
-        try {
-          await teamApi.update(member.id, member);
-        } catch (e) {
-          await teamApi.create(member);
-        }
-      } else {
-        await teamApi.create(member);
+export const saveTeamMemberToApi = async (member: Omit<TeamMember, 'id'> & { id?: string }): Promise<TeamMember> => {
+  if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
+    try {
+      const res = await teamApi.update(member.id, member);
+      if (res.data && res.data.data) {
+        return res.data.data as TeamMember;
       }
+    } catch (e) {
+      console.warn('Update failed, creating new record:', e);
     }
-  } catch (err) {
-    console.warn('Backend team sync warning:', err);
+  }
+
+  const res = await teamApi.create(member);
+  if (res.data && res.data.data) {
+    return res.data.data as TeamMember;
+  }
+  return { id: Date.now().toString(), ...member } as TeamMember;
+};
+
+export const deleteTeamMemberFromApi = async (id: string): Promise<void> => {
+  try {
+    await teamApi.delete(id);
+  } catch (e) {
+    console.warn('Team delete warning:', e);
   }
 };

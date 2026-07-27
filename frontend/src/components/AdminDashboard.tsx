@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building } from 'lucide-react';
-import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers, saveTeamMembers } from '../lib/teamStore';
+import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi } from '../lib/teamStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
@@ -67,7 +67,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   // Team Handlers
   const handleCreateMember = () => {
     const newMember: TeamMember = {
-      id: Date.now().toString(),
+      id: '',
       name: '',
       role: 'Audio Transcription Specialist',
       image: '',
@@ -75,7 +75,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       bio: '',
       skills: ['Transcription', 'Data Annotation', 'Quality Focus'],
       badge: 'Specialist',
-      email: 'quantumcoderstechlab@gmail.com',
+      email: 'zenemootech@gmail.com',
     };
     setEditingMember(newMember);
     setSkillsInput(newMember.skills.join(', '));
@@ -87,11 +87,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   };
 
   const handleDeleteMember = async (id: string) => {
-    if (confirm('Delete this team member from database?')) {
-      const updated = teamList.filter((m) => m.id !== id);
-      setTeamList(updated);
-      await saveTeamMembers(updated);
-      showStatus('Team member deleted successfully!');
+    if (confirm('Delete this team member from Supabase database?')) {
+      await deleteTeamMemberFromApi(id);
+      const liveMembers = await getStoredTeamMembers();
+      setTeamList(liveMembers);
+      showStatus('Team member deleted from Supabase database!');
     }
   };
 
@@ -104,23 +104,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
-    const updatedMember = {
+    const memberToSave = {
       ...editingMember,
       skills: parsedSkills.length > 0 ? parsedSkills : ['Specialist'],
     };
 
-    const exists = teamList.some((m) => m.id === updatedMember.id);
-    let updatedList: TeamMember[];
-    if (exists) {
-      updatedList = teamList.map((m) => (m.id === updatedMember.id ? updatedMember : m));
-    } else {
-      updatedList = [updatedMember, ...teamList];
+    try {
+      await saveTeamMemberToApi(memberToSave);
+      const liveMembers = await getStoredTeamMembers();
+      setTeamList(liveMembers);
+      setEditingMember(null);
+      showStatus('Team member saved live to Supabase PostgreSQL database!');
+    } catch (err: any) {
+      alert('Error saving team member: ' + (err.message || 'Server error'));
     }
-
-    setTeamList(updatedList);
-    await saveTeamMembers(updatedList);
-    setEditingMember(null);
-    showStatus('Team member saved to Supabase database!');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
