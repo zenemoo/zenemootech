@@ -16,7 +16,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [activeTab, setActiveTab] = useState<'team' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
 
   // Team State
-  const [teamList, setTeamList] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
+  const [teamList, setTeamList] = useState<TeamMember[]>([]);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [skillsInput, setSkillsInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);

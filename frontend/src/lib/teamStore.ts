@@ -14,47 +14,25 @@ export interface TeamMember {
   github?: string;
 }
 
-export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
-  {
-    id: '1',
-    name: 'Prem Prasad Pradhan',
-    role: 'Founder & Vendor Manager',
-    image: '/assets/executive.png',
-    fallback: '/assets/executive.png',
-    bio: 'Leads team operations, project execution, and multi-stage quality control for data and AI projects.',
-    skills: ['Project Management', 'Team Leadership', 'Quality Control', 'DesiCrew Vendor'],
-    badge: 'Founder',
-    email: 'contact@mrprem.in',
-  },
-  {
-    id: '2',
-    name: 'Chandan Biswal',
-    role: 'Data Annotator & Transcription Specialist',
-    image: '/assets/face_restoration.png',
-    fallback: '/assets/face_restoration.png',
-    bio: 'Works on transcription, data annotation, and file processing tasks.',
-    skills: ['Transcription', 'Data Annotation', 'Quality Focus', 'Productivity'],
-    badge: 'Specialist',
-    email: 'zenemootech@gmail.com',
-  },
-];
+// Zero hardcoded dummy team members - only members added in Admin Control Center will be displayed
+export const INITIAL_TEAM_MEMBERS: TeamMember[] = [];
 
-const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v4';
+const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v5';
 
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
-  // 1. Fetch live team data from Backend API / Supabase
+  // 1. Fetch live team data from Backend API / Supabase PostgreSQL database
   try {
     const res = await teamApi.getAll();
-    if (res.data && res.data.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+    if (res.data && res.data.data && Array.isArray(res.data.data)) {
       const liveMembers = res.data.data as TeamMember[];
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(liveMembers));
       return liveMembers;
     }
   } catch (err) {
-    console.warn('Backend API fetch offline, checking local storage...');
+    console.warn('Backend API fetch offline, checking local storage cache...');
   }
 
-  // 2. Local storage cache
+  // 2. Local storage cache fallback
   const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (cached) {
     try {
@@ -62,13 +40,13 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
     } catch (e) {}
   }
 
-  return INITIAL_TEAM_MEMBERS;
+  return [];
 };
 
 export const saveTeamMembers = async (members: TeamMember[]): Promise<void> => {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(members));
 
-  // Sync each new or updated team member with backend API / Supabase
+  // Sync with backend API / Supabase PostgreSQL database
   try {
     for (const member of members) {
       if (member.id && !member.id.startsWith('temp_')) {

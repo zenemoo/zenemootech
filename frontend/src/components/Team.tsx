@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Github, Linkedin, Mail, Star } from 'lucide-react';
-import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers } from '../lib/teamStore';
+import { Users, Star, UserCheck } from 'lucide-react';
+import { TeamMember, getStoredTeamMembers } from '../lib/teamStore';
 
 export const Team: React.FC = () => {
-  const [members, setMembers] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadTeam = async () => {
-      const data = await getStoredTeamMembers();
-      setMembers(data);
+      try {
+        const data = await getStoredTeamMembers();
+        setMembers(data);
+      } finally {
+        setLoading(false);
+      }
     };
     loadTeam();
   }, []);
@@ -32,91 +37,87 @@ export const Team: React.FC = () => {
         </div>
 
         {/* Dynamic Team Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {members.map((member) => (
-            <div
-              key={member.id}
-              className="glass-panel glass-panel-interactive rounded-3xl p-6 border border-white/10 relative group overflow-hidden flex flex-col justify-between"
-            >
-              <div>
-                {/* Profile Image */}
-                <div className="relative h-48 rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-cyan-500/40 transition-colors bg-slate-900">
-                  <img
-                    src={member.image || member.fallback || '/assets/executive.png'}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
-                    }}
-                    alt={member.name}
-                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#090b12] via-transparent to-transparent opacity-70"></div>
-                  <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-cyan-300 flex items-center gap-1">
-                    {member.badge === 'Founder' && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
-                    {member.badge}
-                  </span>
-                </div>
-
-                {/* Name & Role */}
-                <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors">
-                  {member.name}
-                </h3>
-                <div className="text-xs font-mono text-purple-400 font-semibold mb-3 leading-snug">{member.role}</div>
-
-                {/* Bio */}
-                <p className="text-xs text-slate-400 leading-relaxed font-normal mb-4">
-                  {member.bio}
-                </p>
-
-                {/* Skills Pills */}
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {member.skills?.map((sk, sIdx) => (
-                    <span key={sIdx} className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/5 text-[10px] font-mono text-slate-300">
-                      {sk}
+        {loading ? (
+          <div className="py-16 text-center space-y-3 font-mono text-xs text-cyan-400">
+            <span className="inline-block w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></span>
+            <div>Loading Zenemoo Team Directory...</div>
+          </div>
+        ) : members.length === 0 ? (
+          <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 max-w-md mx-auto space-y-3">
+            <UserCheck className="w-10 h-10 text-cyan-400 mx-auto" />
+            <h3 className="text-lg font-bold font-display text-white">Team Directory Updating</h3>
+            <p className="text-xs font-mono text-slate-400">
+              Team members added in the Admin Control Center will appear here live.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="glass-panel glass-panel-interactive rounded-3xl p-6 border border-white/10 relative group overflow-hidden flex flex-col justify-between"
+              >
+                <div>
+                  {/* Profile Image */}
+                  <div className="relative h-48 rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-cyan-500/40 transition-colors bg-slate-900">
+                    <img
+                      src={member.image || member.fallback || '/assets/executive.png'}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
+                      }}
+                      alt={member.name}
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#090b12] via-transparent to-transparent opacity-70"></div>
+                    <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-cyan-300 flex items-center gap-1">
+                      {member.badge === 'Founder' && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
+                      {member.badge}
                     </span>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              {/* Links */}
-              <div className="pt-3 border-t border-white/10 flex items-center justify-between">
-                <span className="text-[10px] font-mono text-slate-500">Zenemo Tech Specialist</span>
-                <div className="flex items-center gap-2">
+                  {/* Name & Role */}
+                  <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors">
+                    {member.name}
+                  </h3>
+                  <div className="text-xs font-mono text-purple-400 mb-3">{member.role}</div>
+
+                  {/* Bio */}
+                  <p className="text-xs text-slate-400 mb-4 line-clamp-3 leading-relaxed font-sans">
+                    {member.bio}
+                  </p>
+
+                  {/* Skills tags */}
+                  {member.skills && member.skills.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {member.skills.map((skill, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/5 text-[10px] font-mono text-slate-300"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer status */}
+                <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono text-slate-400">
+                  <span className="text-[10px]">Zenemo Tech Specialist</span>
                   {member.email && (
                     <a
                       href={`mailto:${member.email}`}
-                      className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 transition-all"
-                      title="Email Member"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-colors"
+                      title="Contact Email"
                     >
-                      <Mail className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                  {member.linkedin && (
-                    <a
-                      href={member.linkedin}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-blue-500/20 text-slate-300 hover:text-blue-300 border border-white/10 transition-all"
-                      title="LinkedIn"
-                    >
-                      <Linkedin className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                  {member.github && (
-                    <a
-                      href={member.github}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 transition-all"
-                      title="GitHub"
-                    >
-                      <Github className="w-3.5 h-3.5" />
+                      <Users className="w-3.5 h-3.5" />
                     </a>
                   )}
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
