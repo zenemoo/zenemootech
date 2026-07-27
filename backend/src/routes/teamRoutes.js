@@ -1,10 +1,17 @@
 import { Router } from 'express';
-import { getTeam, createTeamMember, updateTeamMember, deleteTeamMember } from '../controllers/teamController.js';
+import {
+  getTeam,
+  createTeamMember,
+  updateTeamMember,
+  reorderTeam,
+  deleteTeamMember,
+} from '../controllers/teamController.js';
 
 const router = Router();
 
 router.get('/', getTeam);
 router.post('/', createTeamMember);
+router.put('/reorder', reorderTeam);
 router.put('/:id', updateTeamMember);
 router.delete('/:id', deleteTeamMember);
 

@@ -28,14 +28,19 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
   const handleCreateNew = () => {
     const newMember: TeamMember = {
       id: Date.now().toString(),
+      position: members.length + 1,
       name: '',
+      designation: 'Data Annotation Specialist',
       role: 'Data Annotation Specialist',
       image: '',
+      image_url: '',
       fallback: '/assets/executive.png',
       bio: '',
       skills: ['Annotation', 'Transcription', 'Quality Focus'],
       badge: 'Specialist',
-      email: 'quantumcoderstechlab@gmail.com',
+      email: 'zenemootech@gmail.com',
+      status: 'active',
+      category: 'Engineering',
     };
     setEditingMember(newMember);
     setSkillsInput(newMember.skills.join(', '));

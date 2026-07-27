@@ -33,6 +33,7 @@ export const authApi = {
 export const teamApi = {
   getAll: () => api.get('/team'),
   create: (data: any) => api.post('/team', data),
+  reorder: (id: string, newPosition: number) => api.put('/team/reorder', { id, newPosition }),
   update: (id: string, data: any) => api.put(`/team/${id}`, data),
   delete: (id: string) => api.delete(`/team/${id}`),
 };

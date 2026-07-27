@@ -16,24 +16,32 @@ CREATE TABLE IF NOT EXISTS public.media (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 2. Team Table
+-- 2. Team Table (With Automatic Position Engine, Status & Category)
 CREATE TABLE IF NOT EXISTS public.team (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    position INT NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
-    role TEXT NOT NULL,
-    image TEXT NOT NULL,
+    designation TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'Specialist',
     bio TEXT,
+    image_url TEXT NOT NULL,
+    image TEXT,
     skills TEXT[] DEFAULT '{}',
     badge TEXT DEFAULT 'Specialist',
-    email TEXT,
     linkedin TEXT,
     github TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    email TEXT,
+    phone TEXT,
+    status TEXT DEFAULT 'active',
+    category TEXT DEFAULT 'Engineering',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 3. Services Table
 CREATE TABLE IF NOT EXISTS public.services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    position INT NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     subtitle TEXT,
     description TEXT NOT NULL,
@@ -46,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.services (
 -- 4. Portfolio Table
 CREATE TABLE IF NOT EXISTS public.portfolio (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    position INT NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     category TEXT NOT NULL,
     image_url TEXT NOT NULL,
@@ -57,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.portfolio (
 -- 5. Blog Table
 CREATE TABLE IF NOT EXISTS public.blog (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    position INT NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
     content TEXT NOT NULL,
@@ -69,6 +79,7 @@ CREATE TABLE IF NOT EXISTS public.blog (
 -- 6. Gallery Table
 CREATE TABLE IF NOT EXISTS public.gallery (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    position INT NOT NULL DEFAULT 1,
     title TEXT,
     image_url TEXT NOT NULL,
     cloudinary_public_id TEXT,
@@ -79,6 +90,7 @@ CREATE TABLE IF NOT EXISTS public.gallery (
 -- 7. Testimonials Table
 CREATE TABLE IF NOT EXISTS public.testimonials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    position INT NOT NULL DEFAULT 1,
     author TEXT NOT NULL,
     role TEXT NOT NULL,
     company TEXT NOT NULL,
@@ -87,7 +99,7 @@ CREATE TABLE IF NOT EXISTS public.testimonials (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 8. Contacts Table (With Unique inquiry_id)
+-- 8. Contacts Table
 CREATE TABLE IF NOT EXISTS public.contacts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     inquiry_id TEXT UNIQUE,
@@ -102,7 +114,7 @@ CREATE TABLE IF NOT EXISTS public.contacts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 9. Subscribers Table (Newsletter Dispatch)
+-- 9. Subscribers Table
 CREATE TABLE IF NOT EXISTS public.subscribers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT UNIQUE NOT NULL,

@@ -10,7 +10,11 @@ export const Team: React.FC = () => {
     const loadTeam = async () => {
       try {
         const data = await getStoredTeamMembers();
-        setMembers(data);
+        // Filter only active status members for public website and sort by position ASC
+        const activeMembers = data
+          .filter((m) => m.status !== 'inactive')
+          .sort((a, b) => a.position - b.position);
+        setMembers(activeMembers);
       } finally {
         setLoading(false);
       }
@@ -61,7 +65,7 @@ export const Team: React.FC = () => {
                   {/* Profile Image */}
                   <div className="relative h-48 rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-cyan-500/40 transition-colors bg-slate-900">
                     <img
-                      src={member.image || member.fallback || '/assets/executive.png'}
+                      src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
                       }}
@@ -73,13 +77,17 @@ export const Team: React.FC = () => {
                       {member.badge === 'Founder' && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
                       {member.badge}
                     </span>
+                    {/* Position Number Pill */}
+                    <span className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-slate-300 font-bold">
+                      #{member.position}
+                    </span>
                   </div>
 
-                  {/* Name & Role */}
+                  {/* Name & Designation */}
                   <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors">
                     {member.name}
                   </h3>
-                  <div className="text-xs font-mono text-purple-400 mb-3">{member.role}</div>
+                  <div className="text-xs font-mono text-purple-400 mb-3">{member.designation || member.role}</div>
 
                   {/* Bio */}
                   <p className="text-xs text-slate-400 mb-4 line-clamp-3 leading-relaxed font-sans">
@@ -103,7 +111,7 @@ export const Team: React.FC = () => {
 
                 {/* Footer status */}
                 <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono text-slate-400">
-                  <span className="text-[10px]">Zenemo Tech Specialist</span>
+                  <span className="text-[10px]">{member.category || 'Specialist'}</span>
                   {member.email && (
                     <a
                       href={`mailto:${member.email}`}

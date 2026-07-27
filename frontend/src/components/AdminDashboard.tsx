@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building } from 'lucide-react';
-import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi } from '../lib/teamStore';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
@@ -21,6 +22,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [skillsInput, setSkillsInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
+  // Search & Filter State for Team
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
   // Inquiries State
   const [inquiries, setInquiries] = useState<ContactInquiry[]>([]);
 
@@ -34,6 +40,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [telemetry, setTelemetry] = useState<TelemetryConfig>(getTelemetryConfig());
   const [statusMessage, setStatusMessage] = useState('');
 
+  const showStatus = (msg: string) => {
+    setStatusMessage(msg);
+    setTimeout(() => setStatusMessage(''), 3500);
+  };
+
   const loadSubscribers = async () => {
     try {
       const res = await subscriberApi.getAll();
@@ -43,10 +54,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     } catch (e) {}
   };
 
+  const loadTeamData = async () => {
+    const members = await getStoredTeamMembers();
+    setTeamList(members);
+  };
+
   useEffect(() => {
     const loadData = async () => {
-      const members = await getStoredTeamMembers();
-      setTeamList(members);
+      await loadTeamData();
       const contactData = await getContactInquiries();
       setInquiries(contactData);
       await loadSubscribers();
@@ -64,18 +79,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
   };
 
-  // Team Handlers
+  // Team Reordering & Position Handlers
+  const handlePositionChange = async (member: TeamMember, targetPosInput: string) => {
+    const targetPos = parseInt(targetPosInput, 10);
+    if (isNaN(targetPos) || targetPos < 1) return;
+    if (targetPos === member.position) return;
+
+    const clampedPos = Math.max(1, Math.min(targetPos, teamList.length));
+    if (confirm(`Move "${member.name}" from Position #${member.position} to Position #${clampedPos}? All other team members will reorder automatically.`)) {
+      const updated = await reorderTeamMemberInApi(member.id, clampedPos);
+      setTeamList(updated);
+      showStatus(`Moved ${member.name} to Position #${clampedPos}! All positions reordered 1..${updated.length}`);
+    }
+  };
+
+  const handleMoveUp = async (member: TeamMember) => {
+    if (member.position <= 1) return;
+    const targetPos = member.position - 1;
+    const updated = await reorderTeamMemberInApi(member.id, targetPos);
+    setTeamList(updated);
+    showStatus(`Moved ${member.name} up to Position #${targetPos}`);
+  };
+
+  const handleMoveDown = async (member: TeamMember) => {
+    if (member.position >= teamList.length) return;
+    const targetPos = member.position + 1;
+    const updated = await reorderTeamMemberInApi(member.id, targetPos);
+    setTeamList(updated);
+    showStatus(`Moved ${member.name} down to Position #${targetPos}`);
+  };
+
+  const handleToggleStatus = async (member: TeamMember) => {
+    const newStatus = member.status === 'inactive' ? 'active' : 'inactive';
+    const updatedMember = { ...member, status: newStatus as 'active' | 'inactive' };
+    const updatedList = await saveTeamMemberToApi(updatedMember);
+    setTeamList(updatedList);
+    showStatus(`Updated ${member.name} status to ${newStatus.toUpperCase()}`);
+  };
+
   const handleCreateMember = () => {
+    const nextPos = teamList.length + 1;
     const newMember: TeamMember = {
       id: '',
+      position: nextPos,
       name: '',
+      designation: 'Audio Transcription Specialist',
       role: 'Audio Transcription Specialist',
+      image_url: '',
       image: '',
       fallback: '/assets/executive.png',
       bio: '',
       skills: ['Transcription', 'Data Annotation', 'Quality Focus'],
       badge: 'Specialist',
       email: 'zenemootech@gmail.com',
+      status: 'active',
+      category: 'Engineering',
     };
     setEditingMember(newMember);
     setSkillsInput(newMember.skills.join(', '));
@@ -86,12 +144,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setSkillsInput(m.skills ? m.skills.join(', ') : '');
   };
 
-  const handleDeleteMember = async (id: string) => {
-    if (confirm('Delete this team member from Supabase database?')) {
-      await deleteTeamMemberFromApi(id);
-      const liveMembers = await getStoredTeamMembers();
-      setTeamList(liveMembers);
-      showStatus('Team member deleted from Supabase database!');
+  const handleDeleteMember = async (id: string, name: string) => {
+    if (confirm(`Delete "${name}" from Supabase database? Remaining team members will be renumbered 1..N automatically.`)) {
+      const updated = await deleteTeamMemberFromApi(id);
+      setTeamList(updated);
+      showStatus('Team member deleted and remaining positions renumbered!');
     }
   };
 
@@ -106,13 +163,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
     const memberToSave = {
       ...editingMember,
+      designation: editingMember.designation || editingMember.role || 'Specialist',
+      role: editingMember.designation || editingMember.role || 'Specialist',
+      image_url: editingMember.image_url || editingMember.image || '/assets/executive.png',
+      image: editingMember.image_url || editingMember.image || '/assets/executive.png',
       skills: parsedSkills.length > 0 ? parsedSkills : ['Specialist'],
     };
 
     try {
-      await saveTeamMemberToApi(memberToSave);
-      const liveMembers = await getStoredTeamMembers();
-      setTeamList(liveMembers);
+      const updatedList = await saveTeamMemberToApi(memberToSave);
+      setTeamList(updatedList);
       setEditingMember(null);
       showStatus('Team member saved live to Supabase PostgreSQL database!');
     } catch (err: any) {
@@ -126,7 +186,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setIsUploading(true);
     try {
       const url = await uploadImageToCloudinary(file, 'zenemoo/team');
-      setEditingMember({ ...editingMember, image: url });
+      setEditingMember({ ...editingMember, image_url: url, image: url });
       showStatus('Image uploaded to Cloudinary CDN (zenemoo/team)!');
     } catch (err: any) {
       alert('Upload failed: ' + (err.message || 'Error uploading file'));
@@ -141,116 +201,120 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     showStatus('Contact inquiries refreshed!');
   };
 
-  // Config Handlers
-  const handleSaveKeys = (e: React.FormEvent) => {
+  const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
     saveSiteConfig(config);
-    showStatus('API Credentials saved successfully!');
+    showStatus('Supabase & Cloudinary credentials updated locally!');
   };
 
   const handleSaveTelemetry = (e: React.FormEvent) => {
     e.preventDefault();
     saveTelemetryConfig(telemetry);
-    showStatus('Telemetry metrics updated!');
+    showStatus('Telemetry capacity metrics updated!');
   };
 
-  const showStatus = (msg: string) => {
-    setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(''), 4000);
-  };
+  // Filtered team list
+  const filteredTeam = teamList.filter((m) => {
+    const matchesSearch =
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.designation || m.role || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.email || '').toLowerCase().includes(searchQuery.toLowerCase());
 
-  // PASSCODE LOGIN SCREEN
+    const matchesStatus =
+      statusFilter === 'all' ? true : m.status === statusFilter;
+
+    const matchesCategory =
+      categoryFilter === 'all' ? true : m.category === categoryFilter;
+
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
+
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-4">
-        <div className="glass-panel max-w-md w-full p-8 rounded-3xl border border-white/10 text-center space-y-6">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500 via-blue-600 to-purple-600 p-[2px] mx-auto shadow-xl shadow-cyan-500/20">
-            <div className="w-full h-full bg-[#0a0b12] rounded-full flex items-center justify-center">
-              <Lock className="w-8 h-8 text-cyan-400" />
-            </div>
+      <div className="min-h-screen bg-[#050507] flex items-center justify-center p-4 relative z-50 font-sans">
+        <div className="glass-panel p-8 rounded-3xl border border-white/10 max-w-md w-full space-y-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] mx-auto shadow-lg shadow-cyan-500/25">
+            <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold font-display text-white">Zenemoo Admin Dashboard</h2>
-            <p className="text-xs font-mono text-slate-400 mt-1">
-              Enter passcode to manage Supabase, Cloudinary, and contact messages.
-            </p>
+            <h2 className="text-2xl font-extrabold font-display text-white tracking-tight">
+              Zenemoo Admin Control Center
+            </h2>
+            <p className="text-xs font-mono text-cyan-400 mt-1">Supabase &amp; Cloudinary Ecosystem Access</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
+              <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-cyan-400" /> Admin Passcode Required
+              </label>
               <input
                 type="password"
                 required
-                placeholder="Enter Passcode (default: zenemoo2026)"
+                placeholder="Enter passcode..."
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-cyan-400 font-mono text-center"
+                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm"
               />
-              {passError && <p className="text-xs text-red-400 font-mono mt-2">{passError}</p>}
+              {passError && <div className="text-xs font-mono text-red-400 mt-1">{passError}</div>}
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold text-sm shadow-xl shadow-cyan-500/25 hover:opacity-95 transition-all"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
             >
-              Access Admin Control Center
+              Authenticate &amp; Access Admin <ArrowLeft className="w-4 h-4 rotate-180" />
             </button>
           </form>
 
           <button
             onClick={onExit}
-            className="text-xs font-mono text-slate-400 hover:text-white inline-flex items-center gap-1.5"
+            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Return to Website
+            <ArrowLeft className="w-3.5 h-3.5" /> Return to Main Website
           </button>
         </div>
       </div>
     );
   }
 
-  // MAIN ADMIN DASHBOARD
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-100 font-sans relative z-50">
-      {/* Top Admin Navbar */}
-      <header className="bg-[#0a0b12] border-b border-white/10 sticky top-0 z-40 px-4 sm:px-8 py-4 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div className="min-h-screen bg-[#050507] text-slate-200 p-4 sm:p-8 relative z-50 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Admin Header Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-panel p-6 rounded-3xl border border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[2px]">
-              <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold">
+              <Database className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-lg font-bold font-display text-white flex items-center gap-2">
+              <h1 className="text-2xl font-extrabold font-display text-white tracking-tight">
                 Zenemoo Admin Control Center
               </h1>
-              <div className="text-[11px] font-mono text-cyan-400">
-                Supabase &amp; Cloudinary Ecosystem Management
-              </div>
+              <p className="text-xs font-mono text-slate-400">
+                Automatic Sequential Reordering Engine • Supabase &amp; Cloudinary Live Storage
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {statusMessage && (
-              <span className="px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-mono animate-pulse">
-                ✓ {statusMessage}
-              </span>
+              <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono animate-fade-in flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5" /> {statusMessage}
+              </div>
             )}
-
             <button
               onClick={onExit}
-              className="px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 text-slate-200 text-xs font-mono flex items-center gap-2 transition-all"
+              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2 transition-colors"
             >
-              <ArrowLeft className="w-4 h-4 text-cyan-400" />
-              Exit to Website
+              <ArrowLeft className="w-4 h-4" /> Exit to Website
             </button>
           </div>
         </div>
-      </header>
 
-      {/* Main Admin Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-8 font-mono text-xs overflow-x-auto">
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/10 font-mono text-xs">
           <button
             onClick={() => setActiveTab('team')}
             className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
@@ -259,7 +323,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 : 'bg-white/[0.03] text-slate-400 hover:text-white'
             }`}
           >
-            <Users className="w-4 h-4" /> Team Members ({teamList.length})
+            <Users className="w-4 h-4" /> Team Directory ({teamList.length})
           </button>
 
           <button
@@ -307,31 +371,98 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </button>
         </div>
 
-        {/* TAB 1: TEAM MEMBERS MANAGEMENT */}
+        {/* TAB 1: TEAM MEMBERS MANAGEMENT WITH AUTOMATIC REORDERING ENGINE */}
         {activeTab === 'team' && (
           <div className="space-y-8">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold font-display text-white">Team Directory Management</h3>
-                <p className="text-xs font-mono text-slate-400">
-                  Add, edit, or delete team members. Photos uploaded are synced with Cloudinary &amp; Supabase.
-                </p>
+            {/* Top Bar: Stats Metrics & Add Team Member */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="glass-panel p-5 rounded-2xl border border-cyan-500/20 space-y-1">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Current Team Members</div>
+                <div className="text-3xl font-extrabold font-display text-cyan-300">{teamList.length}</div>
+                <div className="text-[11px] font-mono text-slate-500">Ordered 1..{teamList.length} (0 Gaps)</div>
               </div>
 
-              <button
-                onClick={handleCreateMember}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 hover:opacity-95 flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" /> Add Team Member
-              </button>
+              <div className="glass-panel p-5 rounded-2xl border border-purple-500/20 space-y-1">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Next Available Position</div>
+                <div className="text-3xl font-extrabold font-display text-purple-300">#{teamList.length + 1}</div>
+                <div className="text-[11px] font-mono text-slate-500">Auto-assigned on new upload</div>
+              </div>
+
+              <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-mono text-slate-400 uppercase">Reordering Engine</div>
+                  <div className="text-sm font-bold text-emerald-400 font-mono">Sequential 1..N Active</div>
+                  <div className="text-[11px] font-mono text-slate-500">Auto-shifts &amp; auto-renumbers</div>
+                </div>
+
+                <button
+                  onClick={handleCreateMember}
+                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> Add Team Member
+                </button>
+              </div>
             </div>
 
-            {/* Editing Form Modal */}
+            {/* Search Bar & Category/Status Filters */}
+            <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 font-mono text-xs">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="Search by name, designation, or email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-slate-400">Status:</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as any)}
+                    className="px-3 py-2 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active Only</option>
+                    <option value="inactive">Inactive Only</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400">Category:</span>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="Leadership">Leadership</option>
+                    <option value="Engineering">Engineering</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Quality">Quality Control</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={loadTeamData}
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center gap-1.5"
+                  title="Refresh Team List"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Editing Member Modal Form */}
             {editingMember && (
               <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-6 bg-black/80">
                 <div className="flex items-center justify-between pb-4 border-b border-white/10">
                   <h4 className="text-lg font-bold font-display text-white">
-                    {teamList.some((m) => m.id === editingMember.id) ? 'Edit Team Member' : 'Add New Specialist'}
+                    {editingMember.id && !editingMember.id.startsWith('temp_') ? 'Edit Team Member' : `Add New Team Member (Auto Position #${teamList.length + 1})`}
                   </h4>
                   <button onClick={() => setEditingMember(null)} className="text-slate-400 hover:text-white">
                     <X className="w-5 h-5" />
@@ -352,19 +483,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Role Title *</label>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Designation *</label>
                       <input
                         type="text"
                         required
                         placeholder="Data Annotation Specialist"
-                        value={editingMember.role}
-                        onChange={(e) => setEditingMember({ ...editingMember, role: e.target.value })}
+                        value={editingMember.designation || editingMember.role}
+                        onChange={(e) => setEditingMember({ ...editingMember, designation: e.target.value, role: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Category</label>
+                      <select
+                        value={editingMember.category || 'Engineering'}
+                        onChange={(e) => setEditingMember({ ...editingMember, category: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="Leadership">Leadership</option>
+                        <option value="Engineering">Engineering</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Quality">Quality Control</option>
+                      </select>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-mono text-slate-300 mb-1.5">Badge Title</label>
                       <select
@@ -379,16 +524,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                         <option>QC Lead</option>
                       </select>
                     </div>
+
                     <div>
-                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Skills (Comma-separated)</label>
-                      <input
-                        type="text"
-                        placeholder="Transcription, Annotation, Quality Focus"
-                        value={skillsInput}
-                        onChange={(e) => setSkillsInput(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
-                      />
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Visibility Status</label>
+                      <select
+                        value={editingMember.status || 'active'}
+                        onChange={(e) => setEditingMember({ ...editingMember, status: e.target.value as any })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="active">Active (Visible on Site)</option>
+                        <option value="inactive">Inactive (Hidden)</option>
+                      </select>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-1.5">Skills (Comma-separated)</label>
+                    <input
+                      type="text"
+                      placeholder="Transcription, Annotation, Quality Focus"
+                      value={skillsInput}
+                      onChange={(e) => setSkillsInput(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                    />
                   </div>
 
                   {/* Cloudinary Image Upload */}
@@ -398,8 +556,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     </label>
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
-                        {editingMember.image ? (
-                          <img src={editingMember.image} alt="Preview" className="w-full h-full object-cover" />
+                        {editingMember.image_url || editingMember.image ? (
+                          <img src={editingMember.image_url || editingMember.image} alt="Preview" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">No Image</div>
                         )}
@@ -408,8 +566,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                         <input
                           type="url"
                           placeholder="https://res.cloudinary.com/rwoe0mm9/image/upload/zenemoo/team/..."
-                          value={editingMember.image}
-                          onChange={(e) => setEditingMember({ ...editingMember, image: e.target.value })}
+                          value={editingMember.image_url || editingMember.image}
+                          onChange={(e) => setEditingMember({ ...editingMember, image_url: e.target.value, image: e.target.value })}
                           className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
                         />
                         <label className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-mono cursor-pointer hover:bg-purple-500/30 transition-all">
@@ -451,48 +609,150 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
               </div>
             )}
 
-            {/* Team Directory Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {teamList.map((m) => (
-                <div key={m.id} className="glass-panel p-5 rounded-2xl border border-white/10 space-y-4 flex flex-col justify-between">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={m.image || m.fallback || '/assets/executive.png'}
-                      onError={(e) => { (e.target as HTMLImageElement).src = m.fallback || '/assets/executive.png'; }}
-                      alt={m.name}
-                      className="w-14 h-14 rounded-xl object-cover border border-white/10 shrink-0"
-                    />
-                    <div>
-                      <h4 className="font-bold text-white text-base font-display">{m.name}</h4>
-                      <div className="text-xs font-mono text-purple-400">{m.role}</div>
-                      <span className="inline-block mt-1 px-2 py-0.5 rounded bg-white/[0.04] text-[10px] font-mono text-cyan-300">
-                        {m.badge}
-                      </span>
-                    </div>
-                  </div>
+            {/* Team Cards Grid with Framer Motion Animation */}
+            {filteredTeam.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                <Users className="w-10 h-10 text-slate-500 mx-auto" />
+                <h4 className="text-base font-bold text-white">No Team Members Found</h4>
+                <p className="text-xs font-mono text-slate-400">
+                  {searchQuery || statusFilter !== 'all' || categoryFilter !== 'all'
+                    ? 'No team members match your filter criteria.'
+                    : 'Click "Add Team Member" above to create your first team record.'}
+                </p>
+              </div>
+            ) : (
+              <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AnimatePresence>
+                  {filteredTeam.map((m) => (
+                    <motion.div
+                      layout
+                      key={m.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.25 }}
+                      className={`glass-panel p-5 rounded-2xl border transition-all space-y-4 flex flex-col justify-between ${
+                        m.status === 'inactive' ? 'border-amber-500/30 opacity-60' : 'border-white/10 hover:border-cyan-500/40'
+                      }`}
+                    >
+                      {/* Top Bar: Position Pill & Status Badge */}
+                      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3 font-mono text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold text-xs">
+                            Position #{m.position}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleMoveUp(m)}
+                              disabled={m.position <= 1}
+                              className="p-1 rounded bg-white/5 hover:bg-cyan-500/20 text-slate-300 disabled:opacity-30 disabled:hover:bg-white/5"
+                              title="Move Up 1 Position"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5 text-cyan-400" />
+                            </button>
+                            <button
+                              onClick={() => handleMoveDown(m)}
+                              disabled={m.position >= teamList.length}
+                              className="p-1 rounded bg-white/5 hover:bg-cyan-500/20 text-slate-300 disabled:opacity-30 disabled:hover:bg-white/5"
+                              title="Move Down 1 Position"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5 text-cyan-400" />
+                            </button>
+                          </div>
+                        </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
-                    <span className="text-[10px] font-mono text-slate-500">ID: {m.id}</span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleEditMember(m)}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10"
-                        title="Edit Member"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMember(m.id)}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 text-slate-300 hover:text-red-400 border border-white/10"
-                        title="Delete Member"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                        {/* Editable Position Input */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-slate-400">Pos:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={teamList.length}
+                            defaultValue={m.position}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handlePositionChange(m, (e.target as HTMLInputElement).value);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value !== String(m.position)) {
+                                handlePositionChange(m, e.target.value);
+                              }
+                            }}
+                            className="w-12 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-center font-bold text-cyan-300 text-xs focus:outline-none focus:border-cyan-400"
+                            title="Edit position number and press Enter"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Card Content */}
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={m.image_url || m.image || m.fallback || '/assets/executive.png'}
+                          onError={(e) => { (e.target as HTMLImageElement).src = m.fallback || '/assets/executive.png'; }}
+                          alt={m.name}
+                          className="w-14 h-14 rounded-xl object-cover border border-white/10 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-white text-base font-display truncate">{m.name}</h4>
+                          </div>
+                          <div className="text-xs font-mono text-purple-400 truncate">{m.designation || m.role}</div>
+                          <div className="flex items-center gap-1.5 mt-1.5">
+                            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-[10px] font-mono text-cyan-300">
+                              {m.badge}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-white/[0.04] text-[10px] font-mono text-slate-400">
+                              {m.category || 'Engineering'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Actions Footer */}
+                      <div className="flex items-center justify-between pt-3 border-t border-white/10 font-mono text-xs">
+                        <button
+                          onClick={() => handleToggleStatus(m)}
+                          className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition-all ${
+                            m.status === 'inactive'
+                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                          }`}
+                          title="Toggle Visibility Status"
+                        >
+                          {m.status === 'inactive' ? (
+                            <>
+                              <EyeOff className="w-3 h-3" /> INACTIVE (HIDDEN)
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-3 h-3" /> ACTIVE
+                            </>
+                          )}
+                        </button>
+
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleEditMember(m)}
+                            className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10"
+                            title="Edit Member Specs"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMember(m.id, m.name)}
+                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
+                            title="Delete Member"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
           </div>
         )}
 
@@ -747,7 +1007,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
-        {/* TAB 3: TELEMETRY & CAPACITY */}
+        {/* TAB 4: TELEMETRY & CAPACITY */}
         {activeTab === 'telemetry' && (
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-2xl mx-auto space-y-6">
             <h3 className="text-xl font-bold font-display text-white">Update Site Telemetry Metrics</h3>
@@ -774,7 +1034,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">Quality &amp; Accuracy Rate (%)</label>
+                <label className="block text-slate-300 mb-1">Accuracy SLA Rate (%)</label>
                 <input
                   type="number"
                   value={telemetry.accuracyRate}
@@ -784,7 +1044,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">Total Active Team Members</label>
+                <label className="block text-slate-300 mb-1">Active Team Specialists</label>
                 <input
                   type="number"
                   value={telemetry.activeSpecialists}
@@ -795,7 +1055,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-500/20"
+                className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-500/20"
               >
                 Save Telemetry Metrics
               </button>
@@ -803,70 +1063,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
-        {/* TAB 4: SUPABASE & CLOUDINARY KEYS GUIDE */}
+        {/* TAB 5: LIVE API KEYS & CREDENTIALS */}
         {activeTab === 'keys' && (
-          <div className="space-y-6 max-w-3xl mx-auto">
-            <h3 className="text-xl font-bold font-display text-white">API Keys &amp; Database Credentials</h3>
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-3xl mx-auto space-y-6">
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold font-display text-white">Supabase &amp; Cloudinary Live Config</h3>
+              <p className="text-xs font-mono text-slate-400">
+                View live ecosystem credentials configured in project build.
+              </p>
+            </div>
 
-            <form onSubmit={handleSaveKeys} className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 space-y-6 font-mono text-xs">
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-                  <Database className="w-4 h-4" /> Supabase Database Credentials
-                </h4>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">VITE_SUPABASE_URL</label>
-                  <input
-                    type="text"
-                    value={config.supabaseUrl}
-                    onChange={(e) => setConfig({ ...config, supabaseUrl: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">VITE_SUPABASE_ANON_KEY</label>
-                  <input
-                    type="password"
-                    value={config.supabaseAnonKey}
-                    onChange={(e) => setConfig({ ...config, supabaseAnonKey: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
-                  />
-                </div>
+            <form onSubmit={handleSaveConfig} className="space-y-4 font-mono text-xs">
+              <div>
+                <label className="block text-cyan-300 font-bold mb-1">Supabase Project URL</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={config.supabaseUrl}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
+                />
               </div>
 
-              <div className="space-y-4 pt-4 border-t border-white/10">
-                <h4 className="text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                  <Cloud className="w-4 h-4" /> Cloudinary CDN Upload Credentials
-                </h4>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">VITE_CLOUDINARY_CLOUD_NAME</label>
-                  <input
-                    type="text"
-                    value={config.cloudinaryCloudName}
-                    onChange={(e) => setConfig({ ...config, cloudinaryCloudName: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">VITE_CLOUDINARY_UPLOAD_PRESET</label>
-                  <input
-                    type="text"
-                    value={config.cloudinaryUploadPreset}
-                    onChange={(e) => setConfig({ ...config, cloudinaryUploadPreset: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
-                  />
-                </div>
+              <div>
+                <label className="block text-cyan-300 font-bold mb-1">Supabase Public Anon Key</label>
+                <textarea
+                  readOnly
+                  rows={2}
+                  value={config.supabaseAnonKey}
+                  className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-400 text-[11px] font-mono resize-none"
+                ></textarea>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3.5 rounded-xl bg-emerald-500 text-black font-bold text-xs shadow-lg shadow-emerald-500/20"
-              >
-                Save Credentials
-              </button>
+              <div>
+                <label className="block text-purple-300 font-bold mb-1">Cloudinary Cloud Name</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={config.cloudinaryCloudName || 'rwoe0mm9'}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-purple-300 font-bold mb-1">Cloudinary Unsigned Upload Preset</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={config.cloudinaryUploadPreset || 'zenemoo_preset'}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs leading-relaxed">
+                ✅ Live Supabase PostgreSQL &amp; Cloudinary CDN ecosystem are fully connected.
+              </div>
             </form>
           </div>
         )}
