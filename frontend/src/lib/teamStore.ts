@@ -19,7 +19,7 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
     id: '1',
     name: 'Prem Prasad Pradhan',
     role: 'Founder & Vendor Manager',
-    image: 'https://www.quantumcoderstechlab.codes/assets/Data%20Solutions/Team_Member/Prem_Prasad_Pradhan.png',
+    image: '/assets/executive.png',
     fallback: '/assets/executive.png',
     bio: 'Leads team operations, project execution, and multi-stage quality control for data and AI projects.',
     skills: ['Project Management', 'Team Leadership', 'Quality Control', 'DesiCrew Vendor'],
@@ -30,7 +30,7 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
     id: '2',
     name: 'Chandan Biswal',
     role: 'Data Annotator & Transcription Specialist',
-    image: 'https://www.quantumcoderstechlab.codes/assets/Data%20Solutions/Team_Member/chandan.jpeg',
+    image: '/assets/face_restoration.png',
     fallback: '/assets/face_restoration.png',
     bio: 'Works on transcription, data annotation, and file processing tasks.',
     skills: ['Transcription', 'Data Annotation', 'Quality Focus', 'Productivity'],
@@ -39,7 +39,7 @@ export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
   },
 ];
 
-const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v3';
+const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v4';
 
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   // 1. Fetch live team data from Backend API / Supabase

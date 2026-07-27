@@ -5,7 +5,7 @@ let memoryPortfolio = [
     id: '1',
     title: 'DesiCrew Multilingual Speech Dataset',
     category: 'Speech AI',
-    image_url: 'https://www.quantumcoderstechlab.codes/assets/images/Team%20Member/SamirKumarDash.jpg',
+    image_url: '/assets/hero_enhanced.png',
     description: '3,600+ minutes of timestamped verbatim Hindi and Odia speech datasets.',
     client: 'DesiCrew Solutions',
   },
