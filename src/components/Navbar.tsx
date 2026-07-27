@@ -22,7 +22,6 @@ export const Navbar: React.FC = () => {
     { name: 'Capacity', href: '#telemetry', icon: Cpu },
     { name: 'DesiCrew Partner', href: '#partner', icon: Handshake },
     { name: 'Team', href: '#team', icon: Users },
-    { name: 'Admin', href: '#team', icon: Lock },
     { name: 'Contact', href: '#contact', icon: Mail },
   ];
 

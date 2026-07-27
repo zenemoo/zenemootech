@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { CursorSpotlight } from './components/CursorSpotlight';
 import { ThreeNeuralBackground } from './components/ThreeNeuralBackground';
@@ -13,36 +13,58 @@ import { Partner } from './components/Partner';
 import { Team } from './components/Team';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
+import { AdminDashboard } from './components/AdminDashboard';
 
 export function App() {
+  const [isAdminView, setIsAdminView] = useState(false);
+
+  useEffect(() => {
+    const checkHash = () => {
+      setIsAdminView(window.location.hash === '#admin');
+    };
+
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
+
+  const handleExitAdmin = () => {
+    window.location.hash = '';
+    setIsAdminView(false);
+  };
+
   return (
     <ThemeProvider>
-      <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
-        {/* Interactive Mouse Spotlight */}
-        <CursorSpotlight />
+      {isAdminView ? (
+        <AdminDashboard onExit={handleExitAdmin} />
+      ) : (
+        <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
+          {/* Interactive Mouse Spotlight */}
+          <CursorSpotlight />
 
-        {/* 3D WebGL Neural Background Canvas */}
-        <ThreeNeuralBackground />
+          {/* 3D WebGL Neural Background Canvas */}
+          <ThreeNeuralBackground />
 
-        {/* Top Navbar */}
-        <Navbar />
+          {/* Top Navbar */}
+          <Navbar />
 
-        {/* Main Content Sections */}
-        <main className="relative z-10">
-          <Hero />
-          <TelemetryStats />
-          <Services />
-          <Languages />
-          <AIPlayground />
-          <Architecture />
-          <Partner />
-          <Team />
-          <Contact />
-        </main>
+          {/* Main Content Sections */}
+          <main className="relative z-10">
+            <Hero />
+            <TelemetryStats />
+            <Services />
+            <Languages />
+            <AIPlayground />
+            <Architecture />
+            <Partner />
+            <Team />
+            <Contact />
+          </main>
 
-        {/* Mega Footer */}
-        <Footer />
-      </div>
+          {/* Mega Footer */}
+          <Footer />
+        </div>
+      )}
     </ThemeProvider>
   );
 }

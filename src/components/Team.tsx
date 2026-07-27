@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Github, Linkedin, Mail, Star, Lock, Settings } from 'lucide-react';
-import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers, saveTeamMembers } from '../lib/teamStore';
-import { TeamAdminModal } from './TeamAdminModal';
+import { Users, Github, Linkedin, Mail, Star } from 'lucide-react';
+import { TeamMember, INITIAL_TEAM_MEMBERS, getStoredTeamMembers } from '../lib/teamStore';
 
 export const Team: React.FC = () => {
   const [members, setMembers] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
 
   useEffect(() => {
     const loadTeam = async () => {
@@ -15,21 +13,11 @@ export const Team: React.FC = () => {
     loadTeam();
   }, []);
 
-  const handleSaveMembers = async (updated: TeamMember[]) => {
-    setMembers(updated);
-    await saveTeamMembers(updated);
-  };
-
-  const handleResetDefaults = async () => {
-    setMembers(INITIAL_TEAM_MEMBERS);
-    await saveTeamMembers(INITIAL_TEAM_MEMBERS);
-  };
-
   return (
     <section id="team" className="py-24 relative z-10 bg-noise">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header with Admin Portal Button */}
-        <div className="text-center max-w-3xl mx-auto mb-16 relative">
+        {/* Header */}
+        <div className="text-center max-w-3xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono mb-4">
             <Users className="w-3.5 h-3.5" />
             THE ZENEMOO TECH TEAM
@@ -38,18 +26,9 @@ export const Team: React.FC = () => {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-display text-white tracking-tight mb-4">
             Meet Our Data Solutions Team
           </h2>
-          <p className="text-slate-400 text-base sm:text-lg mb-6">
+          <p className="text-slate-400 text-base sm:text-lg">
             Our specialized team of transcribers, annotators, and quality control leads delivering enterprise accuracy for DesiCrew Solutions and AI tech companies.
           </p>
-
-          {/* Admin Panel Launch Button */}
-          <button
-            onClick={() => setIsAdminOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 hover:border-cyan-500/40 text-slate-300 hover:text-cyan-300 font-mono text-xs transition-all shadow-lg backdrop-blur-md"
-          >
-            <Lock className="w-3.5 h-3.5 text-cyan-400" />
-            Team Admin Portal (Supabase &amp; Cloudinary)
-          </button>
         </div>
 
         {/* Dynamic Team Grid */}
@@ -139,15 +118,6 @@ export const Team: React.FC = () => {
           ))}
         </div>
       </div>
-
-      {/* Admin Panel Modal */}
-      <TeamAdminModal
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-        members={members}
-        onSaveMembers={handleSaveMembers}
-        onResetDefaults={handleResetDefaults}
-      />
     </section>
   );
 };
