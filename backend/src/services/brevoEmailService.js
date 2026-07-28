@@ -1,16 +1,26 @@
 import * as brevo from '@getbrevo/brevo';
+import nodemailer from 'nodemailer';
 
 /**
  * Enterprise Brevo Transactional Email Service
+ * Performs REST v3 API dispatch with SMTP fallback and detailed log reporting
  */
 export const sendOtpEmail = async (toEmail, otp) => {
-  const apiKey =
-    process.env.BREVO_API_KEY ||
-    (typeof process !== 'undefined' ? process.env?.VITE_BREVO_API_KEY : '') ||
-    '';
+  const apiKey = (process.env.BREVO_API_KEY || '').trim();
+  const senderName = (process.env.BREVO_SENDER_NAME || 'Zenemoo').trim();
+  const senderEmail = (process.env.BREVO_SENDER_EMAIL || 'noreply@zenemoo.in').trim();
 
-  const senderName = process.env.BREVO_SENDER_NAME || 'Zenemoo Security';
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'noreply@zenemoo.in';
+  console.log('-----------------------------------------------------');
+  console.log('📧 BREVO EMAIL DISPATCH INITIATED');
+  console.log('   - Recipient:', toEmail);
+  console.log('   - Sender:', `"${senderName}" <${senderEmail}>`);
+  console.log('   - API Key Prefix:', apiKey ? `${apiKey.substring(0, 10)}...` : '❌ MISSING');
+  console.log('-----------------------------------------------------');
+
+  if (!apiKey) {
+    console.warn('[BREVO ERROR] BREVO_API_KEY is missing. Cannot dispatch email.');
+    return { success: false, message: 'BREVO_API_KEY is missing in environment variables.' };
+  }
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -69,32 +79,7 @@ export const sendOtpEmail = async (toEmail, otp) => {
 </html>
   `;
 
-  if (!apiKey) {
-    console.info(`[ZENEMOO OTP GENERATED] To: ${toEmail} | OTP Code: ${otp}`);
-    return { success: true, message: 'OTP saved in DB successfully.' };
-  }
-
-  // Method 1: Try @getbrevo/brevo SDK
-  try {
-    const apiInstance = new brevo.TransactionalEmailsApi();
-    if (apiInstance.setApiKey) {
-      apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, apiKey);
-    }
-
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = 'Zenemoo Password Reset OTP';
-    sendSmtpEmail.htmlContent = htmlContent;
-    sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-    sendSmtpEmail.to = [{ email: toEmail }];
-
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('[BREVO SDK SUCCESS] Email dispatched to:', toEmail, data?.body?.messageId || '');
-    return { success: true, messageId: data?.body?.messageId };
-  } catch (sdkError) {
-    console.warn('[BREVO SDK Fallback] Retrying via direct Brevo HTTP REST API...', sdkError?.message || sdkError);
-  }
-
-  // Method 2: Direct REST API Endpoint Fallback
+  // Method 1: Try Brevo HTTP REST API v3
   try {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -112,15 +97,40 @@ export const sendOtpEmail = async (toEmail, otp) => {
     });
 
     const resData = await response.json();
+
     if (response.ok) {
-      console.log('[BREVO REST API SUCCESS] Dispatched to:', toEmail, resData.messageId || '');
+      console.log('✅ [BREVO REST SUCCESS] Dispatched to:', toEmail, '| Message ID:', resData.messageId);
       return { success: true, messageId: resData.messageId };
     } else {
-      console.info(`[ZENEMOO BREVO NOTE] Email status: ${resData?.message || 'Key authorization check'}. OTP Code for ${toEmail} is: ${otp}`);
-      return { success: true, message: 'OTP stored in Supabase DB.' };
+      console.warn(`⚠️ [BREVO REST REJECTED] Status: ${response.status} | Code: ${resData?.code} | Message: ${resData?.message}`);
     }
   } catch (restError) {
-    console.info(`[ZENEMOO DISPATCH NOTE] OTP Code for ${toEmail} is: ${otp}`);
-    return { success: true, message: 'OTP stored in Supabase DB.' };
+    console.warn('⚠️ [BREVO REST ERROR]', restError?.message || restError);
+  }
+
+  // Method 2: Try SMTP Transport Fallback (smtp-relay.brevo.com:587)
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: senderEmail,
+        pass: apiKey,
+      },
+    });
+
+    const info = await transporter.sendMail({
+      from: `"${senderName}" <${senderEmail}>`,
+      to: toEmail,
+      subject: 'Zenemoo Password Reset OTP',
+      html: htmlContent,
+    });
+
+    console.log('✅ [BREVO SMTP SUCCESS] Dispatched to:', toEmail, '| Message ID:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (smtpError) {
+    console.error('❌ [BREVO SMTP ERROR]', smtpError?.message || smtpError);
+    return { success: false, error: smtpError?.message || 'Brevo authentication failed' };
   }
 };
