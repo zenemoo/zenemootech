@@ -374,6 +374,27 @@ export const Contact: React.FC = () => {
               </div>
             </div>
 
+            {/* Phone & WhatsApp Card */}
+            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase text-[11px] mb-1">
+                <Phone className="w-4 h-4" /> Phone &amp; WhatsApp Helpline
+              </div>
+              <div className="text-white font-bold text-base flex items-center justify-between gap-3">
+                <a href="tel:+919827775230" className="hover:text-emerald-400 transition-colors">
+                  +91 9827775230
+                </a>
+                <a
+                  href="https://wa.me/919827775230"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold shrink-0"
+                >
+                  WhatsApp
+                </a>
+              </div>
+              <div className="text-slate-400">Available Mon–Sat, 9:00 AM – 7:00 PM IST</div>
+            </div>
+
             {/* Location */}
             <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
               <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px] mb-1">

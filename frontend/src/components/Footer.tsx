@@ -167,7 +167,6 @@ export const Footer: React.FC = () => {
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-500">
           <div>
             Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
-            <span className="text-[11px] text-slate-500 block sm:inline sm:ml-2">(Formerly known as QuantumCoders Data Solution)</span>
           </div>
           <div className="flex items-center gap-3 text-slate-400 font-bold">
             <a

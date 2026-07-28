@@ -161,7 +161,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       eligibility_criteria: ['PC/Laptop Hardware Required', 'Fast Internet Connection', 'Native Listening & Typing Accuracy'],
       linkedin_post_url: '',
       pdf_link: '',
-      contact_details: { contact_person: 'Operations Lead', email: 'zenemootech@gmail.com', phone: '+91 98765 43210' },
+      contact_details: { contact_person: 'Operations Lead', email: 'zenemootech@gmail.com', phone: '+91 9827775230' },
       custom_questions: [
         { id: 'q1', label: 'What is your Odia typing speed (words per minute)?', type: 'text', required: true },
         { id: 'q2', label: 'How many hours daily can you dedicate to transcription work?', type: 'select', options: ['2-3 Hours', '4-5 Hours (Recommended)', '6+ Hours (Full-Time)'], required: true },
@@ -177,7 +177,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setPdfLink('');
     setContactPerson('Operations Lead');
     setContactEmail('zenemootech@gmail.com');
-    setContactPhone('+91 98765 43210');
+    setContactPhone('+91 9827775230');
     setCustomQuestionsList([
       { id: 'q1', label: 'What is your Odia typing speed (words per minute)?', type: 'text', required: true },
       { id: 'q2', label: 'How many hours daily can you dedicate to transcription work?', type: 'select', options: ['2-3 Hours', '4-5 Hours (Recommended)', '6+ Hours (Full-Time)'], required: true },
@@ -940,7 +940,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                       </label>
                       <input
                         type="tel"
-                        placeholder="+91 9876543210"
+                        placeholder="+91 9827775230"
                         value={editingMember.phone || ''}
                         onChange={(e) => setEditingMember({ ...editingMember, phone: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
