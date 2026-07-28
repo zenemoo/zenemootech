@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase, Linkedin, FileText, Mail, Phone, X, Send, Globe, Check, Award, Clock } from 'lucide-react';
+import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase, Linkedin, FileText, Mail, Phone, X, Send, Globe, Check, Award, Clock, Download, Maximize2, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
 import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
@@ -13,6 +13,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [opportunity, setOpportunity] = useState<OpportunityProgram | null>(null);
   const [loading, setLoading] = useState(true);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Form State
   const [applicantName, setApplicantName] = useState('');
@@ -33,6 +34,28 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
       setLoading(false);
     });
   }, [opportunityId]);
+
+  const handleDownloadBanner = async (imageUrl: string, title: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const cleanName = (title || 'program_opportunity').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      link.download = `ZENEMOO_${cleanName}_Banner.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.target = '_blank';
+      link.download = `ZENEMOO_Program_Banner.png`;
+      link.click();
+    }
+  };
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,14 +317,30 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 
             {/* RIGHT COLUMN: 4 COLS (Poster Banner Graphic Card & Sticky Apply Button) */}
             <div className="lg:col-span-4 space-y-6 sticky top-24">
-              {/* Poster Graphic Card */}
+              {/* Poster Graphic Card (Dynamic A4 Height & Lightbox Zoom) */}
               {opportunity.poster_url ? (
-                <div className="glass-panel p-3 rounded-3xl border border-white/10 overflow-hidden group shadow-2xl">
-                  <img
-                    src={opportunity.poster_url}
-                    alt={opportunity.title}
-                    className="w-full h-80 object-cover rounded-2xl group-hover:scale-[1.02] transition-all duration-500"
-                  />
+                <div className="space-y-3">
+                  <div className="glass-panel p-2.5 rounded-3xl border border-white/10 overflow-hidden group shadow-2xl relative bg-black/40">
+                    <div className="relative overflow-hidden rounded-2xl cursor-pointer" onClick={() => setIsPreviewOpen(true)}>
+                      <img
+                        src={opportunity.poster_url}
+                        alt={opportunity.title}
+                        className="w-full h-auto max-h-[580px] object-contain rounded-2xl group-hover:scale-[1.01] transition-all duration-300 mx-auto"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-mono font-bold backdrop-blur-[2px]">
+                        <Maximize2 className="w-4 h-4 text-cyan-400" /> Click to Expand Poster
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Download Banner Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadBanner(opportunity.poster_url!, opportunity.title)}
+                    className="w-full py-3 px-4 rounded-2xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-500/10"
+                  >
+                    <Download className="w-4 h-4 text-purple-400" /> Download Banner Poster (HD)
+                  </button>
                 </div>
               ) : (
                 <div className="glass-panel p-8 rounded-3xl border border-white/10 text-center space-y-4 shadow-2xl">
@@ -370,6 +409,43 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
           </div>
         </div>
       </main>
+
+      {/* FULLSCREEN POSTER BANNER LIGHTBOX PREVIEW */}
+      <AnimatePresence>
+        {isPreviewOpen && opportunity?.poster_url && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4"
+            onClick={() => setIsPreviewOpen(false)}
+          >
+            <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center space-y-4">
+              <button
+                onClick={() => setIsPreviewOpen(false)}
+                className="absolute -top-12 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <img
+                src={opportunity.poster_url}
+                alt={opportunity.title}
+                className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/20"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownloadBanner(opportunity.poster_url!, opportunity.title);
+                }}
+                className="px-6 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-mono text-xs font-bold flex items-center gap-2 shadow-xl cursor-pointer"
+              >
+                <Download className="w-4 h-4" /> Download Official Poster Image (HD)
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* DYNAMIC CANDIDATE APPLICATION MODAL */}
       <AnimatePresence>
