@@ -165,6 +165,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       ...editingMember,
       designation: editingMember.designation || editingMember.role || 'Specialist',
       role: editingMember.designation || editingMember.role || 'Specialist',
+      badge: editingMember.badge || 'Specialist',
+      email: editingMember.email || '',
       image_url: editingMember.image_url || editingMember.image || '/assets/executive.png',
       image: editingMember.image_url || editingMember.image || '/assets/executive.png',
       skills: parsedSkills.length > 0 ? parsedSkills : ['Specialist'],

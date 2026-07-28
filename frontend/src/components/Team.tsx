@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Star, UserCheck } from 'lucide-react';
+import { Users, Star, UserCheck, Mail } from 'lucide-react';
 import { TeamMember, getStoredTeamMembers } from '../lib/teamStore';
 
 export const Team: React.FC = () => {
@@ -75,7 +75,7 @@ export const Team: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-[#090b12] via-transparent to-transparent opacity-70"></div>
                     <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-cyan-300 flex items-center gap-1">
                       {member.badge === 'Founder' && <Star className="w-3 h-3 text-amber-400 fill-amber-400" />}
-                      {member.badge}
+                      {member.badge || 'Specialist'}
                     </span>
                     {/* Position Number Pill */}
                     <span className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-slate-300 font-bold">
@@ -111,16 +111,17 @@ export const Team: React.FC = () => {
 
                 {/* Footer status */}
                 <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono text-slate-400">
-                  <span className="text-[10px]">{member.category || 'Specialist'}</span>
-                  {member.email && (
+                  <span className="text-[10px]">{member.department || member.category || 'Specialist'}</span>
+                  {member.email ? (
                     <a
                       href={`mailto:${member.email}`}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-colors"
-                      title="Contact Email"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-colors flex items-center gap-1.5 text-[10px]"
+                      title={`Email: ${member.email}`}
                     >
-                      <Users className="w-3.5 h-3.5" />
+                      <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="truncate max-w-[120px]">{member.email}</span>
                     </a>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ))}

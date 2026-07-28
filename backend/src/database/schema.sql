@@ -14,6 +14,8 @@ CREATE TABLE team (
   name TEXT NOT NULL,
   designation TEXT,
   department TEXT,
+  badge TEXT DEFAULT 'Specialist',
+  skills TEXT[] DEFAULT '{}',
   bio TEXT,
   image_url TEXT,
   public_id TEXT,

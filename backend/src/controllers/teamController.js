@@ -9,7 +9,6 @@ const normalizeAndSavePositions = async () => {
   const sorted = [...list].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
 
   // Check if normalization is needed
-  let needsUpdate = false;
   const updatedList = [];
 
   for (let index = 0; index < sorted.length; index++) {
@@ -17,7 +16,6 @@ const normalizeAndSavePositions = async () => {
     const expectedPosition = index + 1;
 
     if (member.position !== expectedPosition) {
-      needsUpdate = true;
       const updated = await supabaseService.update('team', member.id, {
         position: expectedPosition,
         updated_at: new Date().toISOString(),
@@ -55,11 +53,20 @@ export const createTeamMember = async (req, res, next) => {
     const imageUrl = req.body.image_url || req.body.image || '/assets/executive.png';
     const designation = req.body.designation || req.body.role || 'Specialist';
 
+    let skillsArray = [];
+    if (Array.isArray(req.body.skills)) {
+      skillsArray = req.body.skills;
+    } else if (typeof req.body.skills === 'string') {
+      skillsArray = req.body.skills.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    }
+
     const newMemberPayload = {
       position: newPosition,
       name: req.body.name || 'New Team Member',
       designation,
       department: req.body.department || req.body.category || 'Engineering',
+      badge: req.body.badge || 'Specialist',
+      skills: skillsArray,
       bio: req.body.bio || '',
       image_url: imageUrl,
       public_id: req.body.public_id || '',
@@ -151,6 +158,11 @@ export const updateTeamMember = async (req, res, next) => {
     if (updatePayload.category && !updatePayload.department) {
       updatePayload.department = updatePayload.category;
     }
+    if (updatePayload.skills) {
+      if (typeof updatePayload.skills === 'string') {
+        updatePayload.skills = updatePayload.skills.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+      }
+    }
 
     // Clean payload to match team table columns only
     const cleanPayload = {};
@@ -159,6 +171,8 @@ export const updateTeamMember = async (req, res, next) => {
       'name',
       'designation',
       'department',
+      'badge',
+      'skills',
       'bio',
       'image_url',
       'public_id',

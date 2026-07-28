@@ -32,15 +32,30 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const liveMembers = (res.data.data as TeamMember[]).map((m, idx) => ({
-        ...m,
-        position: Number(m.position || idx + 1),
-        designation: m.designation || m.role || 'Specialist',
-        image_url: m.image_url || m.image || '/assets/executive.png',
-        status: m.status || 'active',
-        department: m.department || m.category || 'Engineering',
-        category: m.department || m.category || 'Engineering',
-      }));
+      const liveMembers = (res.data.data as any[]).map((m, idx) => {
+        let parsedSkills: string[] = [];
+        if (Array.isArray(m.skills)) {
+          parsedSkills = m.skills;
+        } else if (typeof m.skills === 'string') {
+          try {
+            parsedSkills = JSON.parse(m.skills);
+          } catch (e) {
+            parsedSkills = m.skills.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          }
+        }
+
+        return {
+          ...m,
+          position: Number(m.position || idx + 1),
+          designation: m.designation || m.role || 'Specialist',
+          badge: m.badge || 'Specialist',
+          skills: parsedSkills,
+          image_url: m.image_url || m.image || '/assets/executive.png',
+          status: m.status || 'active',
+          department: m.department || m.category || 'Engineering',
+          category: m.department || m.category || 'Engineering',
+        } as TeamMember;
+      });
       // Always sort by position ASC
       return liveMembers.sort((a, b) => a.position - b.position);
     }
