@@ -16,14 +16,13 @@ import { Footer } from './components/Footer';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TeamDirectoryPage } from './components/TeamDirectoryPage';
 import { OpportunitiesPage } from './components/OpportunitiesPage';
-import { DesicrewContributorsPage } from './components/DesicrewContributorsPage';
 import { OpportunityDetailPage } from './components/OpportunityDetailPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'opportunities' | 'desicrew-contributors' | 'opportunity-detail'
+    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail'
   >('home');
-  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('op_desicrew');
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
 
   useEffect(() => {
     const checkRoute = () => {
@@ -32,13 +31,19 @@ export function App() {
         setCurrentRoute('admin');
       } else if (hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
-      } else if (hash === '#opportunities' || hash === '#projects' || hash === '#programs') {
+      } else if (
+        hash === '#opportunities' ||
+        hash === '#projects' ||
+        hash === '#programs' ||
+        hash === '#desicrew-contributors' ||
+        hash === '#desicrew' ||
+        hash === '#language-contributors'
+      ) {
+        window.location.hash = 'opportunities';
         setCurrentRoute('opportunities');
-      } else if (hash === '#desicrew-contributors' || hash === '#desicrew' || hash === '#language-contributors') {
-        setCurrentRoute('desicrew-contributors');
       } else if (hash.startsWith('#opportunity/') || hash.startsWith('#program/')) {
         const oppId = hash.replace('#opportunity/', '').replace('#program/', '');
-        setSelectedOpportunityId(oppId || 'op_desicrew');
+        setSelectedOpportunityId(oppId || '');
         setCurrentRoute('opportunity-detail');
       } else {
         setCurrentRoute('home');
@@ -79,14 +84,6 @@ export function App() {
         <OpportunityDetailPage
           opportunityId={selectedOpportunityId}
           onBack={() => {
-            window.location.hash = 'opportunities';
-            setCurrentRoute('opportunities');
-          }}
-        />
-      ) : currentRoute === 'desicrew-contributors' ? (
-        <DesicrewContributorsPage
-          onBack={handleBackToHome}
-          onBackToOpportunities={() => {
             window.location.hash = 'opportunities';
             setCurrentRoute('opportunities');
           }}
