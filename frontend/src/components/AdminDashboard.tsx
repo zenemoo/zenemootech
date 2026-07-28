@@ -7,7 +7,7 @@ import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportu
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
-import { downloadBackupCodesTxt, get2faStatusApi, verify2faSetupApi, disable2faApi, forgotPasswordWithTotpApi } from '../lib/twoFactorStore';
+import { downloadBackupCodesTxt, get2faStatusApi, verify2faSetupApi, disable2faApi, forgotPasswordWithTotpApi, registerAdminApi } from '../lib/twoFactorStore';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -18,6 +18,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [adminEmail, setAdminEmail] = useState('');
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
+
+  // First-Time Admin Registration State
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [regFullName, setRegFullName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [regError, setRegError] = useState('');
+  const [regMsg, setRegMsg] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Forgot Password via Google Authenticator TOTP State
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -102,6 +112,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       setForgotError(err.message || 'Failed to update password.');
     } finally {
       setIsSubmittingReset(false);
+    }
+  };
+
+  const handleRegisterAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError('');
+    setRegMsg('');
+
+    if (!isEmailAuthorized(regEmail)) {
+      setRegError('Access Denied: Email is not authorized for administrator registration.');
+      return;
+    }
+
+    if (regPassword.length < 8) {
+      setRegError('Password must be at least 8 characters long.');
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      setRegError('Passwords do not match.');
+      return;
+    }
+
+    setIsRegistering(true);
+
+    try {
+      const res = await registerAdminApi({
+        fullName: regFullName,
+        email: regEmail,
+        password: regPassword,
+        confirmPassword: regConfirmPassword,
+      });
+
+      setRegMsg(res.message || 'Admin account created successfully! Proceeding to 2FA Setup...');
+      setTimeout(() => {
+        setShowRegisterModal(false);
+        setAdminEmail(regEmail);
+        setPasscode(regPassword);
+        setShowGoogleAuthModal(true);
+      }, 1500);
+    } catch (err: any) {
+      setRegError(err.message || 'Failed to create admin account.');
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -754,8 +808,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             </button>
           </form>
 
-          {/* Google Authenticator 2FA Quick Action Button */}
-          <div className="pt-2 border-t border-white/10">
+          {/* Create Admin Account & 2FA Setup Buttons */}
+          <div className="pt-2 border-t border-white/10 space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRegEmail(adminEmail || 'mr.prem2006@gmail.com');
+                setShowRegisterModal(true);
+              }}
+              className="w-full py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:text-white font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <UserCheck className="w-4 h-4 text-purple-400" /> Create New Admin Account
+            </button>
+
             <button
               type="button"
               onClick={() => setShowGoogleAuthModal(true)}
@@ -772,6 +837,120 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             <ArrowLeft className="w-3.5 h-3.5" /> Return to Main Website
           </button>
         </div>
+
+        {/* CREATE ADMIN ACCOUNT REGISTRATION MODAL */}
+        {showRegisterModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-purple-500/30 max-w-md w-full relative space-y-5 text-left font-mono max-h-[90vh] overflow-y-auto shadow-2xl">
+              <button
+                onClick={() => setShowRegisterModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center font-bold">
+                  <UserCheck className="w-6 h-6 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-display text-white">Create Admin Account</h3>
+                  <p className="text-[11px] text-slate-400">First-Time Registration &amp; 2FA Enrollment</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleRegisterAdminSubmit} className="space-y-4">
+                {/* Full Name */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold">
+                    Full Name:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Prem (Zenemoo Administrator)"
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
+                  />
+                </div>
+
+                {/* Email Address */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-cyan-400" /> Authorized Admin Email:
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="mr.prem2006@gmail.com or @zenemoo.in"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-400" /> Password (hashed with bcrypt):
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    placeholder="Create strong password (min 8 chars)..."
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
+                  />
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold">
+                    Confirm Password:
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    placeholder="Confirm password..."
+                    value={regConfirmPassword}
+                    onChange={(e) => setRegConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
+                  />
+                </div>
+
+                {regMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold leading-relaxed">
+                    ✓ {regMsg}
+                  </div>
+                )}
+
+                {regError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
+                    ⚠️ {regError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isRegistering}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-white font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isRegistering ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Creating Account...
+                    </>
+                  ) : (
+                    'Register Account & Continue to 2FA Setup'
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* GOOGLE AUTHENTICATOR 2FA QR SETUP & VERIFICATION MODAL */}
         {showGoogleAuthModal && (

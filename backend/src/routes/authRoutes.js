@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, logout, getProfile } from '../controllers/authController.js';
+import { registerAdmin, login, logout, getMe, getProfile } from '../controllers/authController.js';
 import {
   get2faStatus,
   setup2fa,
@@ -14,13 +14,18 @@ import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 
-// Legacy / Direct Auth & Forgot Password
+// Authentication Endpoints
+router.post('/register', registerAdmin);
 router.post('/login', login);
 router.post('/logout', logout);
-router.post('/forgot-password', forgotPasswordWithTotp);
+router.get('/me', authMiddleware, getMe);
 router.get('/profile', authMiddleware, getProfile);
 
-// Production 2FA Endpoints (Google Authenticator TOTP RFC 6238)
+// Password Management
+router.post('/forgot-password', forgotPasswordWithTotp);
+router.post('/reset-password', forgotPasswordWithTotp);
+
+// Google Authenticator (RFC 6238 TOTP) 2FA Endpoints
 router.get('/2fa/status', get2faStatus);
 router.post('/2fa/setup', setup2fa);
 router.post('/2fa/verify', verify2faSetup);

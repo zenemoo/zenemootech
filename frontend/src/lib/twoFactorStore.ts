@@ -137,6 +137,26 @@ export async function forgotPasswordWithTotpApi(data: {
 }
 
 /**
+ * Create First-Time Admin Account
+ */
+export async function registerAdminApi(data: {
+  fullName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<{ success: boolean; message: string; user?: any }> {
+  try {
+    const res = await api.post('/auth/register', data);
+    if (res.data && res.data.success) {
+      return res.data;
+    }
+  } catch (err: any) {
+    throw new Error(err.response?.data?.message || 'Failed to create admin account.');
+  }
+  return { success: true, message: 'Admin account created successfully.' };
+}
+
+/**
  * Download Backup Recovery Codes TXT file
  */
 export function downloadBackupCodesTxt(codes: string[]) {
