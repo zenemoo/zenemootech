@@ -7,7 +7,7 @@ import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportu
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
-import { downloadBackupCodesTxt, get2faStatusApi, verify2faSetupApi, disable2faApi } from '../lib/twoFactorStore';
+import { downloadBackupCodesTxt, get2faStatusApi, verify2faSetupApi, disable2faApi, forgotPasswordWithTotpApi } from '../lib/twoFactorStore';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -19,12 +19,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
 
-  // Forgot Password / OTP Reset State
+  // Forgot Password via Google Authenticator TOTP State
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request');
-  const [sentOtpCode, setSentOtpCode] = useState('');
-  const [enteredOtp, setEnteredOtp] = useState('');
+  const [resetTotpCode, setResetTotpCode] = useState('');
+  const [newPasswordVal, setNewPasswordVal] = useState('');
+  const [confirmPasswordVal, setConfirmPasswordVal] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmittingReset, setIsSubmittingReset] = useState(false);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [forgotMsg, setForgotMsg] = useState('');
   const [forgotError, setForgotError] = useState('');
 
@@ -43,6 +46,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [disableError, setDisableError] = useState('');
 
   const GOOGLE_AUTH_SECRET = 'ZENEMOO2026ADMINKEY';
+
+  // Password strength calculator
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return { label: 'None', score: 0, color: 'bg-slate-700' };
+    let score = 0;
+    if (pass.length >= 8) score += 1;
+    if (/[A-Z]/.test(pass)) score += 1;
+    if (/[0-9]/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+    if (score <= 1) return { label: 'Weak', score: 25, color: 'bg-red-500' };
+    if (score === 2) return { label: 'Fair', score: 50, color: 'bg-amber-500' };
+    if (score === 3) return { label: 'Strong', score: 75, color: 'bg-cyan-400' };
+    return { label: 'Excellent', score: 100, color: 'bg-emerald-400' };
+  };
+
+  const handleForgotPasswordWithTotpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotMsg('');
+
+    if (!isEmailAuthorized(forgotEmail)) {
+      setForgotError('Access Denied: Email is not registered as an authorized Zenemoo administrator.');
+      return;
+    }
+
+    if (newPasswordVal.length < 8) {
+      setForgotError('New password must be at least 8 characters long.');
+      return;
+    }
+
+    if (newPasswordVal !== confirmPasswordVal) {
+      setForgotError('New Password and Confirm Password do not match.');
+      return;
+    }
+
+    setIsSubmittingReset(true);
+
+    try {
+      const res = await forgotPasswordWithTotpApi({
+        email: forgotEmail,
+        totpCode: !useRecoveryCode ? resetTotpCode : undefined,
+        recoveryCode: useRecoveryCode ? resetTotpCode : undefined,
+        newPassword: newPasswordVal,
+      });
+
+      setForgotMsg(res.message || 'Password updated successfully! Redirecting to login...');
+      setTimeout(() => {
+        setShowForgotModal(false);
+        setPasscode(newPasswordVal);
+        showStatus('Password updated successfully!');
+      }, 1500);
+    } catch (err: any) {
+      setForgotError(err.message || 'Failed to update password.');
+    } finally {
+      setIsSubmittingReset(false);
+    }
+  };
 
   const handleVerifyGoogleAuth = (e: React.FormEvent) => {
     e.preventDefault();
@@ -617,36 +678,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
   };
 
-  const handleSendOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotError('');
-    setForgotMsg('');
 
-    if (!isEmailAuthorized(forgotEmail)) {
-      setForgotError('Access Denied: Email is not registered as an authorized Zenemoo administrator.');
-      return;
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setSentOtpCode(code);
-    setForgotStep('verify');
-    setForgotMsg(`A 6-digit authentication reset OTP [ ${code} ] has been generated for ${forgotEmail}.`);
-  };
-
-  const handleVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotError('');
-
-    if (enteredOtp.trim() === sentOtpCode || enteredOtp.trim() === '202600') {
-      setIsAuthenticated(true);
-      setShowForgotModal(false);
-      setForgotStep('request');
-      setForgotMsg('');
-      showStatus('Authenticated via Gmail Authenticator OTP Reset');
-    } else {
-      setForgotError('Invalid OTP verification code. Please check your email or enter the 6-digit code displayed.');
-    }
-  };
 
   if (!isAuthenticated) {
     return (
@@ -842,104 +874,155 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
-        {/* FORGOT PASSWORD / GMAIL AUTHENTICATOR MODAL */}
+        {/* FORGOT PASSWORD VIA GOOGLE AUTHENTICATOR TOTP MODAL */}
         {showForgotModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-left font-mono">
+            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-left font-mono max-h-[90vh] overflow-y-auto shadow-2xl">
               <button
-                onClick={() => {
-                  setShowForgotModal(false);
-                  setForgotStep('request');
-                }}
+                onClick={() => setShowForgotModal(false)}
                 className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
 
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center">
-                  <Key className="w-5 h-5" />
+                <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-6 h-6 text-cyan-400" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold font-display text-white">Gmail Admin Authenticator</h3>
-                  <p className="text-[11px] text-slate-400">Password Reset for Authorized Admins</p>
+                  <h3 className="text-lg font-bold font-display text-white">Reset Admin Password</h3>
+                  <p className="text-[11px] text-slate-400">Google Authenticator (TOTP) Verification</p>
                 </div>
               </div>
 
-              {forgotStep === 'request' ? (
-                <form onSubmit={handleSendOtp} className="space-y-4">
-                  <div>
-                    <label className="block text-xs text-slate-300 mb-1 font-bold">
-                      Enter Authorized Admin Gmail / Email:
+              <form onSubmit={handleForgotPasswordWithTotpSubmit} className="space-y-4">
+                {/* Admin Email */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-cyan-400" /> Registered Admin Email:
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="mr.prem2006@gmail.com or @zenemoo.in"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+
+                {/* 6-Digit Google Authenticator TOTP Code or Backup Recovery Code */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs text-slate-300 font-bold flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                      {useRecoveryCode ? 'Enter Single-Use Recovery Code:' : '6-Digit Google Authenticator Code:'}
                     </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="mr.prem2006@gmail.com or @zenemoo.in"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  {forgotError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
-                      ⚠️ {forgotError}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    Send 6-Digit Verification Code
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyOtp} className="space-y-4">
-                  {forgotMsg && (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs leading-relaxed font-bold">
-                      ✓ {forgotMsg}
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs text-slate-300 mb-1 font-bold">
-                      Enter 6-Digit Verification Code:
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter 6-digit OTP..."
-                      value={enteredOtp}
-                      onChange={(e) => setEnteredOtp(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-center tracking-widest text-lg font-bold focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  {forgotError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
-                      ⚠️ {forgotError}
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setForgotStep('request')}
-                      className="w-1/2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                      onClick={() => {
+                        setUseRecoveryCode(!useRecoveryCode);
+                        setResetTotpCode('');
+                      }}
+                      className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
                     >
-                      Resend Code
-                    </button>
-                    <button
-                      type="submit"
-                      className="w-1/2 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition-colors cursor-pointer"
-                    >
-                      Verify &amp; Sign In
+                      {useRecoveryCode ? 'Use App TOTP Code' : 'Use Backup Recovery Code'}
                     </button>
                   </div>
-                </form>
-              )}
+                  <input
+                    type="text"
+                    required
+                    maxLength={useRecoveryCode ? 14 : 6}
+                    placeholder={useRecoveryCode ? 'e.g. 8F3A-9K2L' : 'e.g. 849204'}
+                    value={resetTotpCode}
+                    onChange={(e) => setResetTotpCode(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-center tracking-widest text-lg font-bold focus:outline-none focus:border-emerald-400 font-mono"
+                  />
+                </div>
+
+                {/* New Password */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-400" /> New Admin Password:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      placeholder="Enter new password (min 8 chars)..."
+                      value={newPasswordVal}
+                      onChange={(e) => setNewPasswordVal(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  {/* Password Strength Bar */}
+                  {newPasswordVal && (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">Password Strength:</span>
+                        <span className="font-bold text-cyan-300">{getPasswordStrength(newPasswordVal).label}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${getPasswordStrength(newPasswordVal).color}`}
+                          style={{ width: `${getPasswordStrength(newPasswordVal).score}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1 font-bold">
+                    Confirm New Password:
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="Confirm new password..."
+                    value={confirmPasswordVal}
+                    onChange={(e) => setConfirmPasswordVal(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
+                  />
+                </div>
+
+                {forgotMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold leading-relaxed">
+                    ✓ {forgotMsg}
+                  </div>
+                )}
+
+                {forgotError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
+                    ⚠️ {forgotError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingReset}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmittingReset ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Verifying TOTP Code...
+                    </>
+                  ) : (
+                    'Verify Code & Update Password'
+                  )}
+                </button>
+              </form>
             </div>
           </div>
         )}

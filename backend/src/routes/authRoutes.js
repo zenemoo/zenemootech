@@ -8,14 +8,16 @@ import {
   disable2fa,
   reset2fa,
   verifyRecoveryCode,
+  forgotPasswordWithTotp,
 } from '../controllers/twoFactorController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 
-// Legacy / Direct Auth
+// Legacy / Direct Auth & Forgot Password
 router.post('/login', login);
 router.post('/logout', logout);
+router.post('/forgot-password', forgotPasswordWithTotp);
 router.get('/profile', authMiddleware, getProfile);
 
 // Production 2FA Endpoints (Google Authenticator TOTP RFC 6238)

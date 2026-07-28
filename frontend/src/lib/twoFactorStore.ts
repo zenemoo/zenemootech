@@ -106,6 +106,26 @@ export async function disable2faApi(passcode: string, totpCode: string): Promise
 }
 
 /**
+ * Reset Password using Google Authenticator TOTP or Backup Recovery Code
+ */
+export async function forgotPasswordWithTotpApi(data: {
+  email: string;
+  totpCode?: string;
+  recoveryCode?: string;
+  newPassword: string;
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await api.post('/auth/forgot-password', data);
+    if (res.data) {
+      return res.data;
+    }
+  } catch (err: any) {
+    throw new Error(err.response?.data?.message || 'Failed to update password. Please verify your email & 6-digit TOTP code.');
+  }
+  return { success: true, message: 'Password updated successfully.' };
+}
+
+/**
  * Download Backup Recovery Codes TXT file
  */
 export function downloadBackupCodesTxt(codes: string[]) {
