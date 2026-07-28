@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Mic, Tags, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, Lock } from 'lucide-react';
+import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, ArrowLeft } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  onBack?: () => void;
+  showBackButton?: boolean;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -36,7 +41,7 @@ export const Navbar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Logo & Company Name (ZENEMOO) */}
-          <a href="#" className="flex items-center gap-3 group">
+          <a href="#" className="flex items-center gap-3 group shrink-0">
             <div className="relative h-11 w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300">
               <img
                 src="/assets/logo.png"
@@ -49,22 +54,32 @@ export const Navbar: React.FC = () => {
             </span>
           </a>
 
-          {/* Nav Links */}
-          <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] light:bg-black/[0.04] p-1.5 rounded-full border border-white/10 light:border-black/10 backdrop-blur-md">
-            {navLinks.map((link) => {
-              const Icon = link.icon;
-              return (
-                <a
-                  key={link.name}
-                  href={link.href}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium text-slate-300 light:text-slate-700 hover:text-white light:hover:text-black hover:bg-white/10 light:hover:bg-black/10 transition-all duration-200"
-                >
-                  <Icon className="w-3.5 h-3.5 text-cyan-400" />
-                  {link.name}
-                </a>
-              );
-            })}
-          </nav>
+          {/* Nav Links OR Dedicated Page Back Button */}
+          {showBackButton && onBack ? (
+            <button
+              onClick={onBack}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer group shadow-lg shadow-cyan-500/10"
+            >
+              <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
+              Return to Zenemoo Home
+            </button>
+          ) : (
+            <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] light:bg-black/[0.04] p-1.5 rounded-full border border-white/10 light:border-black/10 backdrop-blur-md">
+              {navLinks.map((link) => {
+                const Icon = link.icon;
+                return (
+                  <a
+                    key={link.name}
+                    href={link.href}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium text-slate-300 light:text-slate-700 hover:text-white light:hover:text-black hover:bg-white/10 light:hover:bg-black/10 transition-all duration-200"
+                  >
+                    <Icon className="w-3.5 h-3.5 text-cyan-400" />
+                    {link.name}
+                  </a>
+                );
+              })}
+            </nav>
+          )}
 
           {/* Theme Toggle Button (Dark / Light Mode) */}
           <div className="flex items-center gap-3">
@@ -86,19 +101,21 @@ export const Navbar: React.FC = () => {
               )}
             </button>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMobileOpen(!mobileOpen)}
-              className="xl:hidden p-2 rounded-xl bg-white/5 light:bg-black/5 border border-white/10 light:border-black/10 text-slate-300 light:text-slate-800 hover:text-white"
-            >
-              {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            {/* Mobile Menu Button (Only when not showing back button) */}
+            {!showBackButton && (
+              <button
+                onClick={() => setMobileOpen(!mobileOpen)}
+                className="xl:hidden p-2 rounded-xl bg-white/5 light:bg-black/5 border border-white/10 light:border-black/10 text-slate-300 light:text-slate-800 hover:text-white"
+              >
+                {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Mobile Drawer */}
-      {mobileOpen && (
+      {mobileOpen && !showBackButton && (
         <div className="xl:hidden mt-3 px-4 pt-2 pb-6 bg-[#090a0f]/95 light:bg-white/95 border-b border-white/10 light:border-black/10 backdrop-blur-2xl">
           <div className="flex flex-col gap-2">
             {navLinks.map((link) => {

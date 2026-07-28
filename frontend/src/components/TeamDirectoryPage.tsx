@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Star, Mail, Search, ArrowLeft, Sparkles, UserCheck } from 'lucide-react';
+import { Star, Mail, Search, Sparkles, UserCheck } from 'lucide-react';
 import { TeamMember, getStoredTeamMembers } from '../lib/teamStore';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -57,27 +57,11 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
       {/* 3D WebGL Neural Background Canvas */}
       <ThreeNeuralBackground />
 
-      {/* Top Navbar */}
-      <Navbar />
+      {/* Top Navbar with Back Button for this page only */}
+      <Navbar showBackButton={true} onBack={onBack} />
 
       <main className="relative z-10 pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          {/* Top Bar: Back to Home & Breadcrumb */}
-          <div className="flex items-center justify-between border-b border-white/10 pb-6">
-            <button
-              onClick={onBack}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 text-xs font-mono transition-all cursor-pointer group"
-            >
-              <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-              Return to Zenemoo Home
-            </button>
-
-            <div className="text-xs font-mono text-cyan-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              Live URL Route: <code className="text-white bg-white/10 px-2 py-0.5 rounded">/#team-directory</code>
-            </div>
-          </div>
-
           {/* Hero Header for Team Directory Page */}
           <div className="text-center max-w-3xl mx-auto space-y-4">
             <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono">
