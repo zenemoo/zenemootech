@@ -1,5 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Shield, Lock, Mail, MapPin, CheckCircle2 } from 'lucide-react';
+import { CursorSpotlight } from './CursorSpotlight';
+import { ThreeNeuralBackground } from './ThreeNeuralBackground';
 
 interface PrivacyPolicyPageProps {
   onBack: () => void;
@@ -8,6 +10,12 @@ interface PrivacyPolicyPageProps {
 export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onBack }) => {
   return (
     <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Interactive Mouse Spotlight */}
+      <CursorSpotlight />
+
+      {/* 3D WebGL Neural Background Canvas */}
+      <ThreeNeuralBackground />
+
       {/* Background ambient lighting */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -45,7 +53,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onBack }) 
               🔐 Privacy Policy
             </h1>
             <p className="text-xs font-mono text-cyan-400">
-              QuantumCoders Data Solutions (Zenemoo) &bull; Last Updated: April 2026
+              Zenemoo &bull; Last Updated: April 2026
             </p>
           </div>
 
@@ -57,7 +65,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onBack }) 
                 <span className="text-cyan-400 font-mono">1.</span> Introduction
               </h2>
               <p>
-                QuantumCoders Data Solutions ("we", "our", or "us") values your privacy. This Privacy Policy explains how we collect and use information when you contact us through our website.
+                Zenemoo ("we", "our", or "us") values your privacy. This Privacy Policy explains how we collect and use information when you contact us through our website.
               </p>
               <p className="text-cyan-300 font-mono text-xs pt-1">
                 By using our website, you agree to this Privacy Policy.
@@ -176,13 +184,13 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onBack }) 
               <div className="space-y-2 font-mono text-xs text-cyan-300">
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-cyan-400" />
-                  <span>Email:</span>
-                  <a href="mailto:mr.prem2006@gmail.com" className="text-white font-bold hover:underline">mr.prem2006@gmail.com</a>
+                  <span>Team Email:</span>
+                  <a href="mailto:zenemootech@gmail.com" className="text-white font-bold hover:underline">zenemootech@gmail.com</a>
                 </div>
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-cyan-400" />
-                  <span>Team Email:</span>
-                  <a href="mailto:quantumcoderstechlab@gmail.com" className="text-white font-bold hover:underline">quantumcoderstechlab@gmail.com</a>
+                  <span>Founder Email:</span>
+                  <a href="mailto:contact@mrprem.in" className="text-white font-bold hover:underline">contact@mrprem.in</a>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-cyan-400" />

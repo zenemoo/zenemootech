@@ -1,5 +1,7 @@
 import React from 'react';
 import { ArrowLeft, FileText, Mail, MapPin, CheckCircle2 } from 'lucide-react';
+import { CursorSpotlight } from './CursorSpotlight';
+import { ThreeNeuralBackground } from './ThreeNeuralBackground';
 
 interface TermsConditionsPageProps {
   onBack: () => void;
@@ -8,6 +10,12 @@ interface TermsConditionsPageProps {
 export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack }) => {
   return (
     <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Interactive Mouse Spotlight */}
+      <CursorSpotlight />
+
+      {/* 3D WebGL Neural Background Canvas */}
+      <ThreeNeuralBackground />
+
       {/* Background ambient lighting */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -45,7 +53,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
               📜 Terms &amp; Conditions
             </h1>
             <p className="text-xs font-mono text-purple-300">
-              QuantumCoders Data Solutions (Zenemoo) &bull; Last Updated: April 2026
+              Zenemoo &bull; Last Updated: April 2026
             </p>
           </div>
 
@@ -57,7 +65,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
                 <span className="text-purple-400 font-mono">1.</span> Introduction
               </h2>
               <p>
-                Welcome to QuantumCoders Data Solutions. These Terms &amp; Conditions govern your use of our website and services. By contacting us or using our services, you agree to these terms.
+                Welcome to Zenemoo. These Terms &amp; Conditions govern your use of our website and services. By contacting us or using our services, you agree to these terms.
               </p>
             </section>
 
@@ -68,7 +76,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
               <h2 className="text-xl font-bold font-display text-white flex items-center gap-2">
                 <span className="text-purple-400 font-mono">2.</span> Services Overview
               </h2>
-              <p>QuantumCoders Data Solutions provides services including:</p>
+              <p>Zenemoo provides services including:</p>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-xs text-slate-200 pt-1">
                 <li className="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" /> Audio Transcription
@@ -170,7 +178,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
               <h2 className="text-xl font-bold font-display text-white flex items-center gap-2">
                 <span className="text-purple-400 font-mono">8.</span> Limitation of Liability
               </h2>
-              <p>QuantumCoders Data Solutions is not liable for:</p>
+              <p>Zenemoo is not liable for:</p>
               <ul className="space-y-2 font-mono text-xs text-slate-300">
                 <li className="flex items-center gap-2">&bull; Any indirect or incidental damages</li>
                 <li className="flex items-center gap-2">&bull; Loss caused due to incorrect or incomplete information provided by the client</li>
@@ -221,13 +229,13 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
               <div className="space-y-2 font-mono text-xs text-purple-300">
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-purple-400" />
-                  <span>Email:</span>
-                  <a href="mailto:mr.prem2006@gmail.com" className="text-white font-bold hover:underline">mr.prem2006@gmail.com</a>
+                  <span>Team Email:</span>
+                  <a href="mailto:zenemootech@gmail.com" className="text-white font-bold hover:underline">zenemootech@gmail.com</a>
                 </div>
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-purple-400" />
-                  <span>Team Email:</span>
-                  <a href="mailto:quantumcoderstechlab@gmail.com" className="text-white font-bold hover:underline">quantumcoderstechlab@gmail.com</a>
+                  <span>Founder Email:</span>
+                  <a href="mailto:contact@mrprem.in" className="text-white font-bold hover:underline">contact@mrprem.in</a>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-purple-400" />
