@@ -592,6 +592,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     ></textarea>
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-cyan-400" /> Contact Email Address
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="founder@zenemoo.com"
+                        value={editingMember.email || ''}
+                        onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-purple-400" /> Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="+91 9876543210"
+                        value={editingMember.phone || ''}
+                        onChange={(e) => setEditingMember({ ...editingMember, phone: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
+                        <Building className="w-3.5 h-3.5 text-amber-400" /> LinkedIn Profile URL
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://linkedin.com/in/..."
+                        value={editingMember.linkedin || ''}
+                        onChange={(e) => setEditingMember({ ...editingMember, linkedin: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
                     <button
                       type="button"

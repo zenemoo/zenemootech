@@ -115,11 +115,10 @@ export const Team: React.FC = () => {
                   {member.email ? (
                     <a
                       href={`mailto:${member.email}`}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-colors flex items-center gap-1.5 text-[10px]"
-                      title={`Email: ${member.email}`}
+                      className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 transition-all flex items-center justify-center group/mail"
+                      title={`Send email to ${member.name} (${member.email})`}
                     >
-                      <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="truncate max-w-[120px]">{member.email}</span>
+                      <Mail className="w-4 h-4 text-cyan-400 group-hover/mail:scale-110 transition-transform" />
                     </a>
                   ) : null}
                 </div>
