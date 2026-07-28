@@ -31,8 +31,16 @@ app.use(
 // Express Cookie Parser
 app.use(cookieParser());
 
-// CORS Config
-app.use(cors({ origin: true, credentials: true }));
+// Dynamic OWASP & Credentials CORS Config
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Dynamically reflect requesting origin for withCredentials support
+      callback(null, origin || true);
+    },
+    credentials: true,
+  })
+);
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
