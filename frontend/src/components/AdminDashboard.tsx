@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
-import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries } from '../lib/adminStore';
+import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
 interface AdminDashboardProps {
@@ -29,6 +29,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
   // Inquiries State
   const [inquiries, setInquiries] = useState<ContactInquiry[]>([]);
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [tempNoteText, setTempNoteText] = useState<string>('');
 
   // Subscribers State
   const [subscribers, setSubscribers] = useState<{ id: string; email: string; subscribed_at: string }[]>([]);
@@ -820,72 +822,188 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {inquiries.map((inq) => (
-                  <div key={inq.id} className="glass-panel p-6 rounded-2xl border border-white/10 space-y-3 relative">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-bold text-base text-white">{inq.name}</div>
-                        {(inq as any).inquiry_id && (
-                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
-                            {(inq as any).inquiry_id}
+                {inquiries.map((inq) => {
+                  const code =
+                    inq.inquiry_code ||
+                    (inq as any).inquiry_id ||
+                    (inq as any).code ||
+                    `ZNM-${inq.id.substring(0, 6).toUpperCase()}`;
+                  const lang = inq.language || (inq as any).lang || (inq as any).languages || 'Hindi';
+                  const serviceName = inq.service || 'Data Solutions';
+
+                  const replySubject = `[Zenemoo Inquiry #${code}] Response regarding ${serviceName}`;
+                  const replyBody = `Dear ${inq.name},\n\nThank you for contacting Zenemoo Data Solutions regarding your project inquiry.\n\n- Inquiry Reference Code: ${code}\n- Requested Service: ${serviceName}\n- Target Language(s): ${lang}\n- Your Message: "${inq.message}"\n\nOur operations and lead engineering team has reviewed your specifications. We are pleased to confirm team capacity for your project.\n\nPlease let us know if you have additional audio/data files or benchmark instructions.\n\nBest regards,\nPrem Prasad Pradhan\nFounder & Vendor Manager | Zenemoo Tech Team\nEmail: contact@mrprem.in | zenemootech@gmail.com\nWebsite: https://zenemoo.com`;
+
+                  return (
+                    <div
+                      key={inq.id}
+                      className="glass-panel p-6 rounded-2xl border border-white/10 space-y-4 relative flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        {/* Top Header: Client Name, Ticket Code, Status Toggle & Delete */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-base text-white">{inq.name}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                                Ticket: #{code}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Clickable Read/Unread Status Toggle Badge */}
+                            <button
+                              onClick={async () => {
+                                const newStatus = inq.status === 'read' ? 'unread' : 'read';
+                                setInquiries(
+                                  inquiries.map((i) => (i.id === inq.id ? { ...i, status: newStatus } : i))
+                                );
+                                const updated = await updateContactInquiry(inq.id, { status: newStatus });
+                                if (updated) {
+                                  showStatus(`Marked inquiry #${code} as ${newStatus.toUpperCase()}`);
+                                }
+                              }}
+                              className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold cursor-pointer transition-all ${
+                                inq.status === 'read'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                              }`}
+                              title="Click to toggle Read / Unread status"
+                            >
+                              {inq.status === 'read' ? '✓ READ' : '● UNREAD'}
+                            </button>
+
+                            <button
+                              onClick={async () => {
+                                if (confirm(`Delete contact inquiry #${code}?`)) {
+                                  setInquiries(inquiries.filter((i) => i.id !== inq.id));
+                                  try {
+                                    await contactApi.delete(inq.id);
+                                  } catch (e) {}
+                                  showStatus('Inquiry deleted from database!');
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
+                              title="Delete Inquiry"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Contact Info: Email, Phone, Company */}
+                        <div className="space-y-1 text-xs font-mono text-slate-300">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                            <a href={`mailto:${inq.email}`} className="hover:underline text-cyan-300">
+                              {inq.email}
+                            </a>
+                          </div>
+                          {inq.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-3.5 h-3.5 text-purple-400" />
+                              <span>{inq.phone}</span>
+                            </div>
+                          )}
+                          {inq.company && (
+                            <div className="flex items-center gap-2">
+                              <Building className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>{inq.company}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Service & Language Badges */}
+                        <div className="flex flex-wrap gap-2 text-[11px] font-mono text-cyan-300">
+                          <span className="px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 flex items-center gap-1">
+                            <span className="text-slate-400">Service:</span>{' '}
+                            <strong className="text-white">{serviceName}</strong>
                           </span>
-                        )}
+                          <span className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center gap-1">
+                            <span className="text-slate-400">Lang:</span>{' '}
+                            <strong className="text-cyan-300">{lang}</strong>
+                          </span>
+                        </div>
+
+                        {/* Message Box */}
+                        <p className="text-xs text-slate-300 bg-black/40 p-3.5 rounded-xl border border-white/5 italic font-sans leading-relaxed">
+                          "{inq.message}"
+                        </p>
+
+                        {/* Internal Admin Notes Section */}
+                        <div className="space-y-2 pt-3 border-t border-white/10">
+                          <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="flex items-center gap-1.5 font-bold text-slate-300">
+                              <FileText className="w-3.5 h-3.5 text-purple-400" /> Internal Admin Notes
+                            </span>
+                            {editingNotesId === inq.id ? (
+                              <button
+                                onClick={async () => {
+                                  setInquiries(
+                                    inquiries.map((i) => (i.id === inq.id ? { ...i, notes: tempNoteText } : i))
+                                  );
+                                  await updateContactInquiry(inq.id, { notes: tempNoteText });
+                                  showStatus(`Saved internal note for inquiry #${code}`);
+                                  setEditingNotesId(null);
+                                }}
+                                className="px-2.5 py-0.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 text-[10px] font-bold cursor-pointer transition-all"
+                              >
+                                Save Note
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingNotesId(inq.id);
+                                  setTempNoteText(inq.notes || '');
+                                }}
+                                className="text-cyan-400 hover:underline text-[10px] font-mono cursor-pointer"
+                              >
+                                {inq.notes ? 'Edit Note' : '+ Add Note'}
+                              </button>
+                            )}
+                          </div>
+
+                          {editingNotesId === inq.id ? (
+                            <textarea
+                              rows={2}
+                              value={tempNoteText}
+                              onChange={(e) => setTempNoteText(e.target.value)}
+                              placeholder="Type internal notes (e.g., Spoke on phone 28th July, quote sent for 50 hrs audio)..."
+                              className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-purple-500/40 text-white text-xs font-sans focus:outline-none focus:border-cyan-400"
+                            />
+                          ) : inq.notes ? (
+                            <div className="text-xs font-sans text-purple-200 bg-purple-950/30 p-2.5 rounded-xl border border-purple-500/20">
+                              {inq.notes}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] font-mono text-slate-500 italic">No internal admin notes yet.</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
-                          {inq.status || 'NEW'}
-                        </span>
-                        <button
-                          onClick={async () => {
-                            if (confirm('Delete this contact inquiry?')) {
-                              setInquiries(inquiries.filter((i) => i.id !== inq.id));
-                              try {
-                                await contactApi.delete(inq.id);
-                              } catch (e) {}
-                              showStatus('Inquiry deleted from database!');
-                            }
-                          }}
-                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
-                          title="Delete Inquiry"
+
+                      {/* Bottom Footer: Reply Email Button & Received Timestamp */}
+                      <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 font-mono text-xs mt-3">
+                        <a
+                          href={`mailto:${inq.email}?subject=${encodeURIComponent(replySubject)}&body=${encodeURIComponent(
+                            replyBody
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500/20 to-blue-600/20 hover:from-cyan-500/30 hover:to-blue-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all shadow-md group cursor-pointer"
+                          title="Click to open email client with pre-filled subject, inquiry code, and response template"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          <Mail className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                          Reply via Pre-defined Email
+                        </a>
+
+                        <div className="text-[10px] font-mono text-slate-500 text-right shrink-0">
+                          Received: {new Date(inq.created_at).toLocaleString()}
+                        </div>
                       </div>
                     </div>
-
-                    <div className="space-y-1 text-xs font-mono text-slate-300">
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                        <a href={`mailto:${inq.email}`} className="hover:underline">{inq.email}</a>
-                      </div>
-                      {inq.phone && (
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-purple-400" />
-                          <span>{inq.phone}</span>
-                        </div>
-                      )}
-                      {inq.company && (
-                        <div className="flex items-center gap-2">
-                          <Building className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{inq.company}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2 text-[11px] font-mono text-cyan-300">
-                      <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/5">Service: {inq.service || 'N/A'}</span>
-                      <span className="px-2 py-0.5 rounded bg-white/[0.04] border border-white/5">Lang: {inq.language || 'N/A'}</span>
-                    </div>
-
-                    <p className="text-xs text-slate-300 bg-black/40 p-3 rounded-xl border border-white/5 italic">
-                      "{inq.message}"
-                    </p>
-
-                    <div className="text-[10px] font-mono text-slate-500 text-right">
-                      Received: {new Date(inq.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

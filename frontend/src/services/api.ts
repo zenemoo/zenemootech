@@ -50,6 +50,7 @@ export const serviceApi = {
 export const contactApi = {
   getAll: () => api.get('/contact'),
   submit: (data: any) => api.post('/contact', data),
+  update: (id: string, data: any) => api.put(`/contact/${id}`, data),
   delete: (id: string) => api.delete(`/contact/${id}`),
 };
 

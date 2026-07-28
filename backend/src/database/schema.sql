@@ -37,10 +37,18 @@ CREATE TABLE contacts (
   phone TEXT,
   company TEXT,
   service TEXT,
+  language TEXT DEFAULT 'Hindi',
+  inquiry_code TEXT,
+  notes TEXT,
   message TEXT NOT NULL,
   status TEXT DEFAULT 'unread',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration commands for existing Supabase database:
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'Hindi';
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS inquiry_code TEXT;
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
 
 -- Table 3: subscribers
 CREATE TABLE subscribers (

@@ -23,6 +23,10 @@ export interface ContactInquiry {
   company?: string;
   service?: string;
   language?: string;
+  lang?: string;
+  inquiry_code?: string;
+  inquiry_id?: string;
+  notes?: string;
   message: string;
   status: string;
   created_at: string;
@@ -95,6 +99,22 @@ export const saveContactInquiry = async (
   } catch (err) {
     console.error('Backend contact submit error:', err);
     throw err;
+  }
+  return null;
+};
+
+// Update contact inquiry status ('read' / 'unread') or internal notes
+export const updateContactInquiry = async (
+  id: string,
+  updates: { status?: string; notes?: string }
+): Promise<ContactInquiry | null> => {
+  try {
+    const res = await contactApi.update(id, updates);
+    if (res.data && res.data.data) {
+      return res.data.data as ContactInquiry;
+    }
+  } catch (err) {
+    console.error('Backend contact update error:', err);
   }
   return null;
 };
