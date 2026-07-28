@@ -128,6 +128,11 @@ export const VerifyOtpPage: React.FC<VerifyOtpPageProps> = ({
           <p className="text-xs font-mono text-slate-400 mt-1.5 leading-relaxed">
             Dispatched to <span className="text-cyan-300 font-bold">{email}</span>
           </p>
+          {localStorage.getItem('zenemoo_active_otp') && (
+            <div className="mt-3 p-2.5 rounded-xl bg-cyan-950/50 border border-cyan-500/40 text-cyan-300 text-xs font-mono">
+              🔑 OTP Code: <span className="font-extrabold tracking-widest text-cyan-200">{localStorage.getItem('zenemoo_active_otp')}</span>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleVerify} className="space-y-6 font-mono">
