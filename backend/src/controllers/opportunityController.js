@@ -1,7 +1,7 @@
-const { supabase } = require('../config/supabase');
+import { supabase } from '../config/supabase.js';
 
 // 1. GET ALL OPPORTUNITY PROGRAMS (Sorted by position ASC)
-const getOpportunities = async (req, res) => {
+export const getOpportunities = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('opportunities')
@@ -21,7 +21,7 @@ const getOpportunities = async (req, res) => {
 };
 
 // 2. CREATE NEW OPPORTUNITY PROGRAM
-const createOpportunity = async (req, res) => {
+export const createOpportunity = async (req, res) => {
   try {
     const {
       name,
@@ -83,7 +83,7 @@ const createOpportunity = async (req, res) => {
 };
 
 // 3. UPDATE OPPORTUNITY PROGRAM
-const updateOpportunity = async (req, res) => {
+export const updateOpportunity = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = { ...req.body, updated_at: new Date().toISOString() };
@@ -108,7 +108,7 @@ const updateOpportunity = async (req, res) => {
 };
 
 // 4. REORDER OPPORTUNITY POSITION
-const reorderOpportunity = async (req, res) => {
+export const reorderOpportunity = async (req, res) => {
   try {
     const { id } = req.params;
     const { newPosition } = req.body;
@@ -150,7 +150,7 @@ const reorderOpportunity = async (req, res) => {
 };
 
 // 5. DELETE OPPORTUNITY PROGRAM
-const deleteOpportunity = async (req, res) => {
+export const deleteOpportunity = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -171,12 +171,4 @@ const deleteOpportunity = async (req, res) => {
     console.error('deleteOpportunity controller exception:', err.message);
     return res.status(500).json({ error: err.message });
   }
-};
-
-module.exports = {
-  getOpportunities,
-  createOpportunity,
-  updateOpportunity,
-  reorderOpportunity,
-  deleteOpportunity,
 };

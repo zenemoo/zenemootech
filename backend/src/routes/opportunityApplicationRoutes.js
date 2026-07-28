@@ -1,15 +1,16 @@
-const express = require('express');
-const router = express.Router();
-const {
+import express from 'express';
+import {
   getApplications,
   submitApplication,
   updateApplication,
   deleteApplication,
-} = require('../controllers/opportunityApplicationController');
+} from '../controllers/opportunityApplicationController.js';
+
+const router = express.Router();
 
 router.get('/', getApplications);
 router.post('/', submitApplication);
 router.put('/:id', updateApplication);
 router.delete('/:id', deleteApplication);
 
-module.exports = router;
+export default router;

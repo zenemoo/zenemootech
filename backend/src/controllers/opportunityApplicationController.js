@@ -1,7 +1,7 @@
-const { supabase } = require('../config/supabase');
+import { supabase } from '../config/supabase.js';
 
 // 1. GET ALL APPLICATIONS (Filtered by opportunity_id if provided)
-const getApplications = async (req, res) => {
+export const getApplications = async (req, res) => {
   try {
     const { opportunity_id } = req.query;
 
@@ -24,7 +24,7 @@ const getApplications = async (req, res) => {
 };
 
 // 2. SUBMIT CANDIDATE APPLICATION
-const submitApplication = async (req, res) => {
+export const submitApplication = async (req, res) => {
   try {
     const {
       opportunity_id,
@@ -68,7 +68,7 @@ const submitApplication = async (req, res) => {
 };
 
 // 3. UPDATE APPLICATION STATUS OR ADMIN NOTES
-const updateApplication = async (req, res) => {
+export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = { ...req.body, updated_at: new Date().toISOString() };
@@ -92,7 +92,7 @@ const updateApplication = async (req, res) => {
 };
 
 // 4. DELETE APPLICATION
-const deleteApplication = async (req, res) => {
+export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -104,11 +104,4 @@ const deleteApplication = async (req, res) => {
     console.error('deleteApplication controller exception:', err.message);
     return res.status(500).json({ error: err.message });
   }
-};
-
-module.exports = {
-  getApplications,
-  submitApplication,
-  updateApplication,
-  deleteApplication,
 };
