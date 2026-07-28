@@ -73,8 +73,19 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
       .order('position', { ascending: true });
 
     if (!error && Array.isArray(data)) {
-      saveLocalOpportunities(data as OpportunityProgram[]);
-      return data as OpportunityProgram[];
+      const formatted = data.map((op: any) => ({
+        ...op,
+        features: Array.isArray(op.features) ? op.features : [],
+        requirements: Array.isArray(op.requirements) ? op.requirements : [],
+        language_skills: Array.isArray(op.language_skills) ? op.language_skills : [],
+        eligibility_criteria: Array.isArray(op.eligibility_criteria) ? op.eligibility_criteria : [],
+        contact_details: op.contact_details || {},
+        custom_questions: Array.isArray(op.custom_questions) ? op.custom_questions : [],
+      }));
+      saveLocalOpportunities(formatted as OpportunityProgram[]);
+      return formatted as OpportunityProgram[];
+    } else if (error) {
+      console.warn('Supabase fetch opportunities error:', error.message);
     }
   } catch (err: any) {
     console.warn('Direct Supabase fetch opportunities error. Trying API fallback:', err.message);
@@ -94,12 +105,13 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
   return getLocalOpportunities();
 };
 
-// Save or update opportunity directly in Supabase
+// Save or update opportunity directly in Supabase (with column fallback safety)
 export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgram>): Promise<OpportunityProgram[]> => {
   let localList = getLocalOpportunities();
 
   const isUUID = opportunity.id && opportunity.id.includes('-');
-  const payloadToSave = {
+  
+  const fullPayload = {
     title: opportunity.title || 'New Opportunity Program',
     partner_name: opportunity.partner_name || 'Partner Company',
     badge: opportunity.badge || 'ACTIVE',
@@ -121,40 +133,58 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     updated_at: new Date().toISOString(),
   };
 
+  const corePayload = {
+    title: fullPayload.title,
+    partner_name: fullPayload.partner_name,
+    badge: fullPayload.badge,
+    status: fullPayload.status,
+    description: fullPayload.description,
+    features: fullPayload.features,
+    requirements: fullPayload.requirements,
+    poster_url: fullPayload.poster_url,
+    public_id: fullPayload.public_id,
+    action_url: fullPayload.action_url,
+    position: fullPayload.position,
+    updated_at: fullPayload.updated_at,
+  };
+
   try {
+    let resError;
     if (isUUID) {
       const { error } = await supabase
         .from('opportunities')
-        .update(payloadToSave)
+        .update(fullPayload)
         .eq('id', opportunity.id);
-      if (error) console.error('Supabase update opportunity error:', error.message);
+      resError = error;
     } else {
       const { error } = await supabase
         .from('opportunities')
-        .insert([{ ...payloadToSave, created_at: new Date().toISOString() }]);
-      if (error) console.error('Supabase insert opportunity error:', error.message);
+        .insert([{ ...fullPayload, created_at: new Date().toISOString() }]);
+      resError = error;
     }
 
-    return await getStoredOpportunities();
+    if (resError) {
+      console.warn('Primary Supabase save failed, attempting core payload insert:', resError.message);
+      if (isUUID) {
+        await supabase.from('opportunities').update(corePayload).eq('id', opportunity.id);
+      } else {
+        await supabase.from('opportunities').insert([{ ...corePayload, created_at: new Date().toISOString() }]);
+      }
+    }
+
+    const updatedList = await getStoredOpportunities();
+    if (updatedList.length > 0) return updatedList;
   } catch (err: any) {
-    console.warn('Direct Supabase save error. Trying backend API or local fallback:', err.message);
+    console.warn('Direct Supabase save error. Trying local fallback:', err.message);
   }
 
-  // Fallback API / LocalStorage
-  try {
-    if (isUUID) {
-      await opportunityApi.update(opportunity.id!, payloadToSave);
-    } else {
-      await opportunityApi.create(payloadToSave);
-    }
-  } catch (e) {}
-
+  // Fallback LocalStorage update
   if (opportunity.id && (opportunity.id.startsWith('op_') || localList.some((op) => op.id === opportunity.id))) {
-    localList = localList.map((op) => (op.id === opportunity.id ? ({ ...op, ...opportunity } as OpportunityProgram) : op));
+    localList = localList.map((op) => (op.id === opportunity.id ? ({ ...op, ...fullPayload } as OpportunityProgram) : op));
   } else {
     const newRecord: OpportunityProgram = {
       id: `op_${Date.now()}`,
-      ...payloadToSave,
+      ...fullPayload,
       created_at: new Date().toISOString(),
     } as OpportunityProgram;
     localList.push(newRecord);
