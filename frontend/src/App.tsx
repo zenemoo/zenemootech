@@ -14,29 +14,50 @@ import { Team } from './components/Team';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { AdminDashboard } from './components/AdminDashboard';
+import { TeamDirectoryPage } from './components/TeamDirectoryPage';
 
 export function App() {
-  const [isAdminView, setIsAdminView] = useState(false);
+  const [currentRoute, setCurrentRoute] = useState<'home' | 'admin' | 'team-directory'>('home');
 
   useEffect(() => {
-    const checkHash = () => {
-      setIsAdminView(window.location.hash === '#admin');
+    const checkRoute = () => {
+      const hash = window.location.hash;
+      if (hash === '#admin') {
+        setCurrentRoute('admin');
+      } else if (hash === '#team-directory' || hash === '#full-team') {
+        setCurrentRoute('team-directory');
+      } else {
+        setCurrentRoute('home');
+      }
     };
 
-    checkHash();
-    window.addEventListener('hashchange', checkHash);
-    return () => window.removeEventListener('hashchange', checkHash);
+    checkRoute();
+    window.addEventListener('hashchange', checkRoute);
+    return () => window.removeEventListener('hashchange', checkRoute);
   }, []);
 
   const handleExitAdmin = () => {
     window.location.hash = '';
-    setIsAdminView(false);
+    setCurrentRoute('home');
+  };
+
+  const handleBackToHome = () => {
+    window.location.hash = 'team';
+    setCurrentRoute('home');
+    setTimeout(() => {
+      const el = document.getElementById('team');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
   };
 
   return (
     <ThemeProvider>
-      {isAdminView ? (
+      {currentRoute === 'admin' ? (
         <AdminDashboard onExit={handleExitAdmin} />
+      ) : currentRoute === 'team-directory' ? (
+        <TeamDirectoryPage onBack={handleBackToHome} />
       ) : (
         <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
           {/* Interactive Mouse Spotlight */}
