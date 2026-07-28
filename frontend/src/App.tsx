@@ -29,24 +29,8 @@ export function App() {
   useEffect(() => {
     const checkRoute = () => {
       const hash = window.location.hash;
-      const path = window.location.pathname;
-
-      // Secret Admin Private Route matching
-      const envRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8');
-      const secretAdminHash = envRoute.replace(/^\//, '');
-      const isSecretAdminRoute =
-        hash === `#${secretAdminHash}` ||
-        hash === '#portal/9KqvA2Nz8' ||
-        hash === '#manage/portal/x93LmK/admin' ||
-        path.includes('9KqvA2Nz8') ||
-        path.includes('x93LmK');
-
-      if (isSecretAdminRoute) {
+      if (hash === '#admin') {
         setCurrentRoute('admin');
-      } else if (hash === '#admin' || path === '/admin') {
-        // Redirection away from public #admin to home
-        window.location.hash = '';
-        setCurrentRoute('home');
       } else if (hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
       } else if (hash === '#privacy' || hash === '#privacy-policy') {

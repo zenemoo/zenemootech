@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, ShieldCheck } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -7,7 +7,6 @@ import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportu
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
-import { downloadBackupCodesTxt, get2faStatusApi, verify2faSetupApi, disable2faApi, forgotPasswordWithTotpApi, registerAdminApi } from '../lib/twoFactorStore';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -15,164 +14,10 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('');
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
 
-  // First-Time Admin Registration State
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [regFullName, setRegFullName] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regConfirmPassword, setRegConfirmPassword] = useState('');
-  const [regError, setRegError] = useState('');
-  const [regMsg, setRegMsg] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
-
-  // Forgot Password via Google Authenticator TOTP State
-  const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [resetTotpCode, setResetTotpCode] = useState('');
-  const [newPasswordVal, setNewPasswordVal] = useState('');
-  const [confirmPasswordVal, setConfirmPasswordVal] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isSubmittingReset, setIsSubmittingReset] = useState(false);
-  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
-  const [forgotMsg, setForgotMsg] = useState('');
-  const [forgotError, setForgotError] = useState('');
-
-  // Google Authenticator TOTP 2FA State
-  const [showGoogleAuthModal, setShowGoogleAuthModal] = useState(false);
-  const [totpCode, setTotpCode] = useState('');
-  const [totpError, setTotpError] = useState('');
-  const [copiedSecret, setCopiedSecret] = useState(false);
-
-  // 2FA Admin Settings State
-  const [is2faEnabled, setIs2faEnabled] = useState(false);
-  const [generatedRecoveryCodes, setGeneratedRecoveryCodes] = useState<string[]>([]);
-  const [showDisable2faModal, setShowDisable2faModal] = useState(false);
-  const [disablePasscode, setDisablePasscode] = useState('');
-  const [disableTotp, setDisableTotp] = useState('');
-  const [disableError, setDisableError] = useState('');
-
-  const GOOGLE_AUTH_SECRET = 'ZENEMOO2026ADMINKEY';
-
-  // Password strength calculator
-  const getPasswordStrength = (pass: string) => {
-    if (!pass) return { label: 'None', score: 0, color: 'bg-slate-700' };
-    let score = 0;
-    if (pass.length >= 8) score += 1;
-    if (/[A-Z]/.test(pass)) score += 1;
-    if (/[0-9]/.test(pass)) score += 1;
-    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
-
-    if (score <= 1) return { label: 'Weak', score: 25, color: 'bg-red-500' };
-    if (score === 2) return { label: 'Fair', score: 50, color: 'bg-amber-500' };
-    if (score === 3) return { label: 'Strong', score: 75, color: 'bg-cyan-400' };
-    return { label: 'Excellent', score: 100, color: 'bg-emerald-400' };
-  };
-
-  const handleForgotPasswordWithTotpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotError('');
-    setForgotMsg('');
-
-    if (!isEmailAuthorized(forgotEmail)) {
-      setForgotError('Access Denied: Email is not registered as an authorized Zenemoo administrator.');
-      return;
-    }
-
-    if (newPasswordVal.length < 8) {
-      setForgotError('New password must be at least 8 characters long.');
-      return;
-    }
-
-    if (newPasswordVal !== confirmPasswordVal) {
-      setForgotError('New Password and Confirm Password do not match.');
-      return;
-    }
-
-    setIsSubmittingReset(true);
-
-    try {
-      const res = await forgotPasswordWithTotpApi({
-        email: forgotEmail,
-        totpCode: !useRecoveryCode ? resetTotpCode : undefined,
-        recoveryCode: useRecoveryCode ? resetTotpCode : undefined,
-        newPassword: newPasswordVal,
-      });
-
-      setForgotMsg(res.message || 'Password updated successfully! Redirecting to login...');
-      setTimeout(() => {
-        setShowForgotModal(false);
-        setPasscode(newPasswordVal);
-        showStatus('Password updated successfully!');
-      }, 1500);
-    } catch (err: any) {
-      setForgotError(err.message || 'Failed to update password.');
-    } finally {
-      setIsSubmittingReset(false);
-    }
-  };
-
-  const handleRegisterAdminSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRegError('');
-    setRegMsg('');
-
-    if (!isEmailAuthorized(regEmail)) {
-      setRegError('Access Denied: Email is not authorized for administrator registration.');
-      return;
-    }
-
-    if (regPassword.length < 8) {
-      setRegError('Password must be at least 8 characters long.');
-      return;
-    }
-
-    if (regPassword !== regConfirmPassword) {
-      setRegError('Passwords do not match.');
-      return;
-    }
-
-    setIsRegistering(true);
-
-    try {
-      const res = await registerAdminApi({
-        fullName: regFullName,
-        email: regEmail,
-        password: regPassword,
-        confirmPassword: regConfirmPassword,
-      });
-
-      setRegMsg(res.message || 'Admin account created successfully! Proceeding to 2FA Setup...');
-      setTimeout(() => {
-        setShowRegisterModal(false);
-        setAdminEmail(regEmail);
-        setPasscode(regPassword);
-        setShowGoogleAuthModal(true);
-      }, 1500);
-    } catch (err: any) {
-      setRegError(err.message || 'Failed to create admin account.');
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
-  const handleVerifyGoogleAuth = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTotpError('');
-
-    if (totpCode.trim().length === 6 || totpCode.trim() === '202600') {
-      setIsAuthenticated(true);
-      setShowGoogleAuthModal(false);
-      showStatus('Authenticated via Google Authenticator 2FA');
-    } else {
-      setTotpError('Invalid 6-digit code. Enter the live code generated by your Google Authenticator app.');
-    }
-  };
-
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys' | 'security'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
 
   // Team State
   const [teamList, setTeamList] = useState<TeamMember[]>([]);
@@ -692,54 +537,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     return matchesSearch && matchesStatus && matchesCategory;
   });
 
-  // Authorized Email Whitelist Checker
-  const AUTHORIZED_EMAILS = [
-    'mr.prem2006@gmail.com',
-    'contact@zenemoo.in',
-    'support@zenemoo.in',
-    'info@zenemoo.in',
-    'zenemootech@gmail.com',
-    'contact@mrprem.in',
-  ];
-
-  const isEmailAuthorized = (emailStr: string) => {
-    const clean = emailStr.trim().toLowerCase();
-    if (AUTHORIZED_EMAILS.includes(clean)) return true;
-    if (clean.endsWith('@zenemoo.in')) return true;
-    return false;
-  };
-
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPassError('');
-
-    if (!isEmailAuthorized(adminEmail)) {
-      setPassError('Access Denied: Only authorized admin emails (mr.prem2006@gmail.com or @zenemoo.in) can access the Zenemoo Admin Control Center.');
-      return;
-    }
-
-    const cleanPass = passcode.trim();
-    const customPass = localStorage.getItem('zenemoo_admin_passcode');
-    if (
-      (customPass && cleanPass === customPass) ||
-      cleanPass === 'zenemoo2026' ||
-      cleanPass === 'mrprem2026' ||
-      cleanPass === 'zenemooadmin' ||
-      cleanPass.length >= 6
-    ) {
-      setIsAuthenticated(true);
-      setPassError('');
-    } else {
-      setPassError('Invalid admin password. Please try again or use Forgot Password reset.');
-    }
-  };
-
-
-
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#050507] flex items-center justify-center p-4 relative z-50 font-sans">
-        <div className="glass-panel p-8 rounded-3xl border border-white/10 max-w-md w-full space-y-6 text-center shadow-2xl">
+        <div className="glass-panel p-8 rounded-3xl border border-white/10 max-w-md w-full space-y-6 text-center">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] mx-auto shadow-lg shadow-cyan-500/25">
             <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
           </div>
@@ -748,465 +549,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             <h2 className="text-2xl font-extrabold font-display text-white tracking-tight">
               Zenemoo Admin Control Center
             </h2>
-            <p className="text-xs font-mono text-cyan-400 mt-1">Authorized Administrators Only</p>
+            <p className="text-xs font-mono text-cyan-400 mt-1">Supabase &amp; Cloudinary Ecosystem Access</p>
           </div>
 
-          <form onSubmit={handleAdminLogin} className="space-y-4 text-left font-mono">
-            {/* Admin Email Input */}
+          <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
-              <label className="block text-xs text-slate-300 mb-1.5 flex items-center gap-1.5 font-bold">
-                <Mail className="w-3.5 h-3.5 text-cyan-400" /> Authorized Admin Email
+              <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-cyan-400" /> Admin Passcode Required
               </label>
-              <input
-                type="email"
-                required
-                placeholder="mr.prem2006@gmail.com or @zenemoo.in"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
-              />
-            </div>
-
-            {/* Admin Password Input */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs text-slate-300 flex items-center gap-1.5 font-bold">
-                  <Lock className="w-3.5 h-3.5 text-purple-400" /> Admin Passcode
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setForgotEmail(adminEmail || 'mr.prem2006@gmail.com');
-                    setShowForgotModal(true);
-                  }}
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
-                >
-                  Forgot Password?
-                </button>
-              </div>
               <input
                 type="password"
                 required
                 placeholder="Enter passcode..."
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm"
               />
+              {passError && <div className="text-xs font-mono text-red-400 mt-1">{passError}</div>}
             </div>
-
-            {passError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono leading-relaxed">
-                ⚠️ {passError}
-              </div>
-            )}
 
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
             >
-              Authenticate Admin <ArrowLeft className="w-4 h-4 rotate-180" />
+              Authenticate &amp; Access Admin <ArrowLeft className="w-4 h-4 rotate-180" />
             </button>
           </form>
 
-          {/* Create Admin Account & 2FA Setup Buttons */}
-          <div className="pt-2 border-t border-white/10 space-y-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRegEmail(adminEmail || 'mr.prem2006@gmail.com');
-                setShowRegisterModal(true);
-              }}
-              className="w-full py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:text-white font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <UserCheck className="w-4 h-4 text-purple-400" /> Create New Admin Account
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowGoogleAuthModal(true)}
-              className="w-full py-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-cyan-500/30 text-cyan-300 hover:text-white font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Connect Google Authenticator 2FA
-            </button>
-          </div>
-
           <button
             onClick={onExit}
-            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
+            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Return to Main Website
           </button>
         </div>
-
-        {/* CREATE ADMIN ACCOUNT REGISTRATION MODAL */}
-        {showRegisterModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-purple-500/30 max-w-md w-full relative space-y-5 text-left font-mono max-h-[90vh] overflow-y-auto shadow-2xl">
-              <button
-                onClick={() => setShowRegisterModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center font-bold">
-                  <UserCheck className="w-6 h-6 text-purple-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold font-display text-white">Create Admin Account</h3>
-                  <p className="text-[11px] text-slate-400">First-Time Registration &amp; 2FA Enrollment</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleRegisterAdminSubmit} className="space-y-4">
-                {/* Full Name */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold">
-                    Full Name:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Prem (Zenemoo Administrator)"
-                    value={regFullName}
-                    onChange={(e) => setRegFullName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
-                  />
-                </div>
-
-                {/* Email Address */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-cyan-400" /> Authorized Admin Email:
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="mr.prem2006@gmail.com or @zenemoo.in"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
-
-                {/* Password */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-purple-400" /> Password (hashed with bcrypt):
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    placeholder="Create strong password (min 8 chars)..."
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
-                  />
-                </div>
-
-                {/* Confirm Password */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold">
-                    Confirm Password:
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    placeholder="Confirm password..."
-                    value={regConfirmPassword}
-                    onChange={(e) => setRegConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
-                  />
-                </div>
-
-                {regMsg && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold leading-relaxed">
-                    ✓ {regMsg}
-                  </div>
-                )}
-
-                {regError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
-                    ⚠️ {regError}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isRegistering}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-white font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isRegistering ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Creating Account...
-                    </>
-                  ) : (
-                    'Register Account & Continue to 2FA Setup'
-                  )}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* GOOGLE AUTHENTICATOR 2FA QR SETUP & VERIFICATION MODAL */}
-        {showGoogleAuthModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 max-w-md w-full relative space-y-5 text-left font-mono max-h-[90vh] overflow-y-auto shadow-2xl">
-              <button
-                onClick={() => setShowGoogleAuthModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-black border border-emerald-400 flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-6 h-6 text-black" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold font-display text-white">Google Authenticator 2FA</h3>
-                  <p className="text-[11px] text-cyan-400">Two-Factor Authentication Setup</p>
-                </div>
-              </div>
-
-              {/* Step 1 & 2 Instructions */}
-              <div className="space-y-3 text-xs text-slate-300">
-                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-[10px]">1</span>
-                    Install Google Authenticator App
-                  </div>
-                  <p className="text-[11px] text-slate-400 pl-6">
-                    Download &amp; open <strong>Google Authenticator</strong> on your phone (Google Play Store or Apple App Store).
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-[10px]">2</span>
-                    Scan QR Code or Enter Setup Key
-                  </div>
-
-                  {/* QR Code Container */}
-                  <div className="bg-white p-3 rounded-2xl w-44 h-44 mx-auto border border-white/20 shadow-xl flex items-center justify-center">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/Zenemoo:${encodeURIComponent(adminEmail || 'mr.prem2006@gmail.com')}?secret=ZENEMOO2026ADMINKEY&issuer=Zenemoo`}
-                      alt="Google Authenticator QR Code"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-
-                  {/* Secret Key Display */}
-                  <div className="p-2.5 rounded-xl bg-black/40 border border-cyan-500/30 text-center space-y-1">
-                    <div className="text-[10px] text-slate-400 uppercase">Secret Setup Key:</div>
-                    <div className="text-sm font-black font-mono text-cyan-300 tracking-wider">
-                      {GOOGLE_AUTH_SECRET}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(GOOGLE_AUTH_SECRET);
-                        setCopiedSecret(true);
-                        setTimeout(() => setCopiedSecret(false), 2000);
-                      }}
-                      className="text-[10px] text-cyan-400 hover:underline cursor-pointer pt-0.5 inline-block"
-                    >
-                      {copiedSecret ? '✓ Key Copied to Clipboard!' : 'Copy Secret Key'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 3: Enter TOTP Code */}
-              <form onSubmit={handleVerifyGoogleAuth} className="space-y-4 pt-1">
-                <div>
-                  <label className="block text-xs text-slate-200 mb-1.5 font-bold flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-emerald-400" /> Enter 6-Digit Code from Google Authenticator App:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    placeholder="e.g. 849204"
-                    value={totpCode}
-                    onChange={(e) => setTotpCode(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-center tracking-widest text-xl font-bold focus:outline-none focus:border-emerald-400 font-mono"
-                  />
-                </div>
-
-                {totpError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
-                    ⚠️ {totpError}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-bold font-display text-sm transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
-                >
-                  Verify Google Authenticator Code &amp; Access Admin
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* FORGOT PASSWORD VIA GOOGLE AUTHENTICATOR TOTP MODAL */}
-        {showForgotModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-left font-mono max-h-[90vh] overflow-y-auto shadow-2xl">
-              <button
-                onClick={() => setShowForgotModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-6 h-6 text-cyan-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold font-display text-white">Reset Admin Password</h3>
-                  <p className="text-[11px] text-slate-400">Google Authenticator (TOTP) Verification</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleForgotPasswordWithTotpSubmit} className="space-y-4">
-                {/* Admin Email */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-cyan-400" /> Registered Admin Email:
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="mr.prem2006@gmail.com or @zenemoo.in"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
-
-                {/* 6-Digit Google Authenticator TOTP Code or Backup Recovery Code */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs text-slate-300 font-bold flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                      {useRecoveryCode ? 'Enter Single-Use Recovery Code:' : '6-Digit Google Authenticator Code:'}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUseRecoveryCode(!useRecoveryCode);
-                        setResetTotpCode('');
-                      }}
-                      className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
-                    >
-                      {useRecoveryCode ? 'Use App TOTP Code' : 'Use Backup Recovery Code'}
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    maxLength={useRecoveryCode ? 14 : 6}
-                    placeholder={useRecoveryCode ? 'e.g. 8F3A-9K2L' : 'e.g. 849204'}
-                    value={resetTotpCode}
-                    onChange={(e) => setResetTotpCode(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-center tracking-widest text-lg font-bold focus:outline-none focus:border-emerald-400 font-mono"
-                  />
-                </div>
-
-                {/* New Password */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-purple-400" /> New Admin Password:
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      minLength={8}
-                      placeholder="Enter new password (min 8 chars)..."
-                      value={newPasswordVal}
-                      onChange={(e) => setNewPasswordVal(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-slate-400 hover:text-white cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* Password Strength Bar */}
-                  {newPasswordVal && (
-                    <div className="mt-2 space-y-1">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-400">Password Strength:</span>
-                        <span className="font-bold text-cyan-300">{getPasswordStrength(newPasswordVal).label}</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-300 ${getPasswordStrength(newPasswordVal).color}`}
-                          style={{ width: `${getPasswordStrength(newPasswordVal).score}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Confirm Password */}
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1 font-bold">
-                    Confirm New Password:
-                  </label>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={8}
-                    placeholder="Confirm new password..."
-                    value={confirmPasswordVal}
-                    onChange={(e) => setConfirmPasswordVal(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-400 font-mono"
-                  />
-                </div>
-
-                {forgotMsg && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold leading-relaxed">
-                    ✓ {forgotMsg}
-                  </div>
-                )}
-
-                {forgotError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs leading-relaxed">
-                    ⚠️ {forgotError}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isSubmittingReset}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isSubmittingReset ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Verifying TOTP Code...
-                    </>
-                  ) : (
-                    'Verify Code & Update Password'
-                  )}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -1322,17 +698,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             }`}
           >
             <Key className="w-4 h-4" /> API Keys &amp; Credentials
-          </button>
-
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'security'
-                ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" /> Security &amp; 2FA
           </button>
         </div>
 
@@ -2674,95 +2039,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 ✅ Live Supabase PostgreSQL &amp; Cloudinary CDN ecosystem are fully connected.
               </div>
             </form>
-          </div>
-        )}
-
-        {/* TAB 8: SECURITY & GOOGLE AUTHENTICATOR 2FA SETTINGS */}
-        {activeTab === 'security' && (
-          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-3xl mx-auto space-y-6 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div>
-                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-emerald-400" /> Enterprise 2FA &amp; Security Settings
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Google Authenticator (RFC 6238 TOTP) Two-Factor Authentication Management
-                </p>
-              </div>
-              <div className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                is2faEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-red-500/20 text-red-300 border border-red-500/40'
-              }`}>
-                {is2faEnabled ? '✅ 2FA Active' : '❌ 2FA Disabled'}
-              </div>
-            </div>
-
-            {/* 2FA Status Banner */}
-            <div className={`p-5 rounded-2xl border ${
-              is2faEnabled ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-            }`}>
-              <div className="font-bold text-sm text-white mb-1 flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                {is2faEnabled ? 'Two-Factor Authentication is Enabled' : 'Two-Factor Authentication is Disabled'}
-              </div>
-              <p className="text-xs leading-relaxed text-slate-300">
-                {is2faEnabled
-                  ? 'Your Zenemoo Admin Control Center is protected with Google Authenticator TOTP. Every login requires your email, password, and live 6-digit TOTP code.'
-                  : 'We strongly recommend connecting Google Authenticator to protect your administrator account from unauthorized access.'}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setShowGoogleAuthModal(true)}
-                className="p-4 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold transition-all text-left space-y-1 group cursor-pointer"
-              >
-                <div className="text-white text-sm font-display font-bold flex items-center gap-2">
-                  <Key className="w-4 h-4 text-cyan-400 group-hover:rotate-12 transition-transform" />
-                  Configure Google Authenticator 2FA
-                </div>
-                <div className="text-[11px] text-slate-400">Scan QR Code &amp; verify 6-digit TOTP app code</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const codes = generatedRecoveryCodes.length > 0 ? generatedRecoveryCodes : Array.from({ length: 10 }, (_, i) => `${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`);
-                  setGeneratedRecoveryCodes(codes);
-                  downloadBackupCodesTxt(codes);
-                  showStatus('Downloaded 10 Backup Recovery Codes');
-                }}
-                className="p-4 rounded-2xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 font-bold transition-all text-left space-y-1 group cursor-pointer"
-              >
-                <div className="text-white text-sm font-display font-bold flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
-                  Download 10 Backup Recovery Codes
-                </div>
-                <div className="text-[11px] text-slate-400">Download single-use recovery codes TXT file</div>
-              </button>
-            </div>
-
-            {/* Audit Log Overview */}
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
-              <div className="text-white font-bold text-sm flex items-center gap-2">
-                <Activity className="w-4 h-4 text-cyan-400" /> Security Audit Log &amp; Protection Status
-              </div>
-              <div className="space-y-2 text-[11px] text-slate-300">
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03]">
-                  <span>RFC 6238 TOTP Standard:</span>
-                  <span className="text-emerald-400 font-bold">SHA-1, 30s Interval (Drift Window ±30s)</span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03]">
-                  <span>Failed Attempts Rate Limiting:</span>
-                  <span className="text-cyan-300 font-bold">Max 5 attempts / min (15 min lockout)</span>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03]">
-                  <span>Single-Use Recovery Codes:</span>
-                  <span className="text-purple-300 font-bold">10 High-Entropy Single-Use Codes</span>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
