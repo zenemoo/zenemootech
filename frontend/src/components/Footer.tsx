@@ -165,19 +165,23 @@ export const Footer: React.FC = () => {
             Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
           </div>
           <div className="flex items-center gap-3 text-slate-400 font-bold">
-            <button
-              onClick={() => setLegalModal('privacy')}
+            <a
+              href="#privacy"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
             >
               Privacy Policy
-            </button>
+            </a>
             <span>·</span>
-            <button
-              onClick={() => setLegalModal('terms')}
+            <a
+              href="#terms"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
             >
               Terms &amp; Conditions
-            </button>
+            </a>
           </div>
         </div>
       </div>

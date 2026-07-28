@@ -17,10 +17,12 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { TeamDirectoryPage } from './components/TeamDirectoryPage';
 import { OpportunitiesPage } from './components/OpportunitiesPage';
 import { OpportunityDetailPage } from './components/OpportunityDetailPage';
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { TermsConditionsPage } from './components/TermsConditionsPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail'
+    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
 
@@ -31,6 +33,10 @@ export function App() {
         setCurrentRoute('admin');
       } else if (hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
+      } else if (hash === '#privacy' || hash === '#privacy-policy') {
+        setCurrentRoute('privacy');
+      } else if (hash === '#terms' || hash === '#terms-and-conditions' || hash === '#terms-conditions') {
+        setCurrentRoute('terms');
       } else if (
         hash === '#opportunities' ||
         hash === '#projects' ||
@@ -78,6 +84,10 @@ export function App() {
         <AdminDashboard onExit={handleExitAdmin} />
       ) : currentRoute === 'team-directory' ? (
         <TeamDirectoryPage onBack={handleBackToHome} />
+      ) : currentRoute === 'privacy' ? (
+        <PrivacyPolicyPage onBack={handleBackToHome} />
+      ) : currentRoute === 'terms' ? (
+        <TermsConditionsPage onBack={handleBackToHome} />
       ) : currentRoute === 'opportunities' ? (
         <OpportunitiesPage onBack={handleBackToHome} onSelectProgram={handleSelectProgram} />
       ) : currentRoute === 'opportunity-detail' ? (
