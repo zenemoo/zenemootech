@@ -147,13 +147,9 @@ export const Footer: React.FC = () => {
         </div>
 
         {/* Bottom copyright */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-500">
+        <div className="pt-8 flex items-center justify-center text-center text-xs font-mono text-slate-500">
           <div>
-            Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo Data Solutions</span>. All Rights Reserved.
-          </div>
-          <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Certified DesiCrew Vendor • Active Since 2023
+            Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
           </div>
         </div>
       </div>

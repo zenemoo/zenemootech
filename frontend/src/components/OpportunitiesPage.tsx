@@ -480,7 +480,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       {/* Footer */}
       <footer className="py-6 border-t border-white/10 light:border-slate-200 bg-[#050505]/60 light:bg-white/60 backdrop-blur-md text-center text-xs font-mono text-slate-400">
         <div className="max-w-7xl mx-auto px-4">
-          &copy; 2026 ZENEMOO Data Solutions. All Rights Reserved. Enterprise Vendor Partner with DesiCrew Solutions.
+          Copyright &copy; 2026 <span className="text-slate-200 font-semibold">Zenemoo</span>. All Rights Reserved.
         </div>
       </footer>
     </div>
