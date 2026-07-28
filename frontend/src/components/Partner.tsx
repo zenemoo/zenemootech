@@ -12,8 +12,9 @@ export const Partner: React.FC = () => {
     });
   }, []);
 
-  // Duplicate list for infinite seamless marquee ticker loop
-  const marqueeItems = [...partnerList, ...partnerList];
+  // Only duplicate for marquee scrolling when 5 or more partner companies exist
+  const isMarqueeActive = partnerList.length >= 5;
+  const marqueeItems = isMarqueeActive ? [...partnerList, ...partnerList] : partnerList;
 
   return (
     <section id="partner" className="py-24 relative z-10 bg-[#050507]">
@@ -134,11 +135,15 @@ export const Partner: React.FC = () => {
             {/* Marquee Container with Gradient Side Masks */}
             <div className="relative overflow-hidden py-4 rounded-2xl bg-white/[0.01] border border-white/5">
               {/* Left & Right Gradient Fade Overlays */}
-              <div className="absolute top-0 bottom-0 left-0 w-24 bg-gradient-to-r from-[#050507] to-transparent z-10 pointer-events-none"></div>
-              <div className="absolute top-0 bottom-0 right-0 w-24 bg-gradient-to-l from-[#050507] to-transparent z-10 pointer-events-none"></div>
+              {isMarqueeActive && (
+                <>
+                  <div className="absolute top-0 bottom-0 left-0 w-24 bg-gradient-to-r from-[#050507] to-transparent z-10 pointer-events-none"></div>
+                  <div className="absolute top-0 bottom-0 right-0 w-24 bg-gradient-to-l from-[#050507] to-transparent z-10 pointer-events-none"></div>
+                </>
+              )}
 
-              {/* Continuous Ticker */}
-              <div className="animate-marquee gap-4 px-4">
+              {/* Ticker Container */}
+              <div className={isMarqueeActive ? 'animate-marquee gap-4 px-4' : 'flex flex-wrap items-center justify-center gap-4 px-4'}>
                 {marqueeItems.map((item, idx) => (
                   <div
                     key={`${item.id}-${idx}`}
