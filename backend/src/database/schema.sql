@@ -1,88 +1,133 @@
--- ==============================================================================
--- ZENEMOO ENTERPRISE SECURITY & ADMIN DASHBOARD DATABASE SCHEMA
--- OWASP ASVS Level 2+ Compliant PostgreSQL / Supabase Schema
--- ==============================================================================
+-- ZENEMOO Production Database Schema
+-- Run this script in the Supabase SQL Editor to wipe existing tables and initialize the new architecture.
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Step 1: Remove old tables
+DROP TABLE IF EXISTS team CASCADE;
+DROP TABLE IF EXISTS contacts CASCADE;
+DROP TABLE IF EXISTS subscribers CASCADE;
+DROP TABLE IF EXISTS media CASCADE;
 
--- 1. ADMINS TABLE (Role-Based Access Control & Mandatory 2FA)
-CREATE TABLE IF NOT EXISTS admins (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'SuperAdmin' CHECK (role IN ('SuperAdmin', 'Admin', 'Moderator', 'Editor', 'Viewer')),
-    totp_secret TEXT,
-    totp_enabled BOOLEAN DEFAULT false,
-    recovery_codes JSONB DEFAULT '[]'::jsonb,
-    failed_attempts INTEGER DEFAULT 0,
-    locked_until TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Step 2: Create Table 1: team
+CREATE TABLE team (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position INTEGER UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  designation TEXT,
+  department TEXT,
+  badge TEXT DEFAULT 'Specialist',
+  skills TEXT[] DEFAULT '{}',
+  bio TEXT,
+  image_url TEXT,
+  public_id TEXT,
+  linkedin TEXT,
+  github TEXT,
+  twitter TEXT,
+  email TEXT,
+  phone TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. SESSIONS TABLE (Device Tracking & Refresh Token Blacklisting)
-CREATE TABLE IF NOT EXISTS sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    admin_id UUID REFERENCES admins(id) ON DELETE CASCADE,
-    refresh_token_hash TEXT UNIQUE NOT NULL,
-    device_name TEXT,
-    browser TEXT,
-    os TEXT,
-    ip_address TEXT,
-    country TEXT DEFAULT 'India',
-    city TEXT DEFAULT 'Berhampur',
-    user_agent TEXT,
-    last_seen TIMESTAMPTZ DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- Table 2: contacts
+CREATE TABLE contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT,
+  company TEXT,
+  service TEXT,
+  language TEXT DEFAULT 'Hindi',
+  inquiry_code TEXT,
+  notes TEXT,
+  message TEXT NOT NULL,
+  status TEXT DEFAULT 'unread',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. EMAIL OTPS TABLE (6-Digit OTP Email Verification)
-CREATE TABLE IF NOT EXISTS email_otps (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    admin_id UUID REFERENCES admins(id) ON DELETE CASCADE,
-    otp_hash TEXT NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    attempts INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- Migration commands for existing Supabase database:
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'Hindi';
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS inquiry_code TEXT;
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Table 3: subscribers
+CREATE TABLE subscribers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  status TEXT DEFAULT 'active',
+  subscribed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. AUDIT LOGS TABLE (Comprehensive Security Audit Logging)
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    admin_id UUID REFERENCES admins(id) ON DELETE SET NULL,
-    admin_email TEXT,
-    action TEXT NOT NULL,
-    ip_address TEXT,
-    user_agent TEXT,
-    browser TEXT,
-    os TEXT,
-    country TEXT DEFAULT 'India',
-    city TEXT DEFAULT 'Berhampur',
-    details JSONB DEFAULT '{}'::jsonb,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
+-- Table 4: media
+CREATE TABLE media (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT,
+  folder TEXT DEFAULT 'zenemoo/team',
+  public_id TEXT,
+  image_url TEXT NOT NULL,
+  asset_id TEXT,
+  width INTEGER,
+  height INTEGER,
+  format TEXT,
+  bytes INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ==============================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
--- Block all direct public access; access allowed ONLY via backend service_role
--- ==============================================================================
+-- Table 5: partners
+CREATE TABLE partners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position INTEGER DEFAULT 1,
+  name TEXT NOT NULL,
+  role TEXT,
+  badge TEXT DEFAULT 'AI Partner',
+  image_url TEXT,
+  public_id TEXT,
+  website_url TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-ALTER TABLE admins ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE email_otps ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+-- Table 6: opportunities
+CREATE TABLE opportunities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position INTEGER DEFAULT 1,
+  title TEXT NOT NULL,
+  partner_name TEXT NOT NULL,
+  badge TEXT DEFAULT 'ACTIVE',
+  status TEXT DEFAULT 'active', -- active, stopped, coming_soon
+  description TEXT,
+  company_logo TEXT,
+  poster_url TEXT,
+  public_id TEXT,
+  features TEXT[],
+  requirements TEXT[],
+  language_skills TEXT[],
+  eligibility_criteria TEXT[],
+  linkedin_post_url TEXT,
+  pdf_link TEXT,
+  contact_details JSONB DEFAULT '{}', -- { email, phone, contact_person }
+  custom_questions JSONB DEFAULT '[]', -- array of admin questions { id, label, type, required }
+  action_url TEXT DEFAULT '#desicrew-contributors',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Drop old public policies if any
-DROP POLICY IF EXISTS "Service Role Only Admin Access" ON admins;
-DROP POLICY IF EXISTS "Service Role Only Sessions Access" ON sessions;
-DROP POLICY IF EXISTS "Service Role Only OTPs Access" ON email_otps;
-DROP POLICY IF EXISTS "Service Role Only Audit Logs Access" ON audit_logs;
+-- Table 7: opportunity_applications
+CREATE TABLE opportunity_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  applicant_id TEXT UNIQUE,
+  opportunity_id TEXT NOT NULL,
+  opportunity_title TEXT NOT NULL,
+  applicant_name TEXT NOT NULL,
+  applicant_email TEXT NOT NULL,
+  applicant_phone TEXT NOT NULL,
+  answers JSONB DEFAULT '{}',
+  status TEXT DEFAULT 'pending', -- pending, shortlisted, accepted, rejected
+  admin_notes TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Apply strict service_role policies
-CREATE POLICY "Service Role Only Admin Access" ON admins FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "Service Role Only Sessions Access" ON sessions FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "Service Role Only OTPs Access" ON email_otps FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "Service Role Only Audit Logs Access" ON audit_logs FOR ALL USING (auth.role() = 'service_role');
+
+
