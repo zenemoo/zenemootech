@@ -19,18 +19,42 @@ import { OpportunitiesPage } from './components/OpportunitiesPage';
 import { OpportunityDetailPage } from './components/OpportunityDetailPage';
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { TermsConditionsPage } from './components/TermsConditionsPage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { VerifyOtpPage } from './components/VerifyOtpPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms'
+    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
+  const [resetEmail, setResetEmail] = useState<string>('');
+  const [verifiedOtp, setVerifiedOtp] = useState<string>('');
 
   useEffect(() => {
     const checkRoute = () => {
       const hash = window.location.hash;
-      if (hash === '#admin') {
+      const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+
+      // Check if hash matches secret private route or allowed secret aliases
+      const isSecretAdminRoute =
+        hash === `#${secretEnvRoute}` ||
+        hash === '#portal/9KqvA2Nz8' ||
+        hash === '#manage/portal/x93LmK/admin' ||
+        hash === '#portal-9KqvA2Nz8';
+
+      if (isSecretAdminRoute) {
         setCurrentRoute('admin');
+      } else if (hash === '#admin') {
+        // Obfuscate standard #admin route: redirect to homepage
+        window.location.hash = '';
+        setCurrentRoute('home');
+      } else if (hash === '#forgot-password' || hash === '#/forgot-password') {
+        setCurrentRoute('forgot-password');
+      } else if (hash === '#forgot-password/verify' || hash === '#/forgot-password/verify') {
+        setCurrentRoute('forgot-password-verify');
+      } else if (hash === '#forgot-password/reset' || hash === '#/forgot-password/reset') {
+        setCurrentRoute('forgot-password-reset');
       } else if (hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
       } else if (hash === '#privacy' || hash === '#privacy-policy') {
@@ -69,12 +93,17 @@ export function App() {
   const handleBackToHome = () => {
     window.location.hash = '';
     setCurrentRoute('home');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSelectProgram = (programId: string) => {
-    window.location.hash = `opportunity/${programId}`;
-    setSelectedOpportunityId(programId);
+  const handleReturnToAdminLogin = () => {
+    const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+    window.location.hash = secretEnvRoute;
+    setCurrentRoute('admin');
+  };
+
+  const handleSelectProgram = (id: string) => {
+    setSelectedOpportunityId(id);
+    window.location.hash = `#opportunity/${id}`;
     setCurrentRoute('opportunity-detail');
   };
 
@@ -82,6 +111,34 @@ export function App() {
     <ThemeProvider>
       {currentRoute === 'admin' ? (
         <AdminDashboard onExit={handleExitAdmin} />
+      ) : currentRoute === 'forgot-password' ? (
+        <ForgotPasswordPage
+          onNavigateVerify={(email) => {
+            setResetEmail(email);
+            window.location.hash = '/forgot-password/verify';
+            setCurrentRoute('forgot-password-verify');
+          }}
+          onReturnLogin={handleReturnToAdminLogin}
+        />
+      ) : currentRoute === 'forgot-password-verify' ? (
+        <VerifyOtpPage
+          email={resetEmail || 'mr.prem2006@gmail.com'}
+          onNavigateReset={(otp) => {
+            setVerifiedOtp(otp);
+            window.location.hash = '/forgot-password/reset';
+            setCurrentRoute('forgot-password-reset');
+          }}
+          onBackToEmail={() => {
+            window.location.hash = '/forgot-password';
+            setCurrentRoute('forgot-password');
+          }}
+        />
+      ) : currentRoute === 'forgot-password-reset' ? (
+        <ResetPasswordPage
+          email={resetEmail || 'mr.prem2006@gmail.com'}
+          otp={verifiedOtp}
+          onSuccessRedirectLogin={handleReturnToAdminLogin}
+        />
       ) : currentRoute === 'team-directory' ? (
         <TeamDirectoryPage onBack={handleBackToHome} />
       ) : currentRoute === 'privacy' ? (

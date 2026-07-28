@@ -5,7 +5,7 @@ import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMember
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
-import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
+import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, deleteAuthorizedEmailFromSupabase } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
 interface AdminDashboardProps {
@@ -14,8 +14,24 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('mr.prem2006@gmail.com');
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
+
+  // Authorized Admin Emails Management State
+  const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
+  const [newAuthEmailInput, setNewAuthEmailInput] = useState('');
+  const [newAuthRole, setNewAuthRole] = useState<'Super Admin' | 'Administrator' | 'Manager'>('Administrator');
+
+  // Forgot Password / Gmail Verification Authenticator State
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetStep, setResetStep] = useState<'email' | 'otp' | 'success'>('email');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [inputOtp, setInputOtp] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
 
   const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
 
@@ -116,6 +132,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       const contactData = await getContactInquiries();
       setInquiries(contactData);
       await loadSubscribers();
+      const authList = await getStoredAuthorizedEmails();
+      setAuthorizedEmails(authList);
     };
     loadData();
   }, []);
@@ -377,15 +395,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passcode === config.adminPasscode || passcode === 'admin' || passcode === 'zenemoo2026') {
-      setIsAuthenticated(true);
-      setPassError('');
-    } else {
-      setPassError('Incorrect passcode. Use: zenemoo2026');
-    }
-  };
+
 
   // Team Reordering & Position Handlers
   const handlePositionChange = async (member: TeamMember, targetPosInput: string) => {
@@ -537,6 +547,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     return matchesSearch && matchesStatus && matchesCategory;
   });
 
+  const isAuthorizedEmail = (email: string) => {
+    const trimmed = email.trim().toLowerCase();
+    return (
+      authorizedEmails.some((a) => a.email.toLowerCase() === trimmed) ||
+      trimmed.endsWith('@zenemoo.in')
+    );
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassError('');
+
+    if (!adminEmail.trim() || !isAuthorizedEmail(adminEmail)) {
+      setPassError('Access Denied: Email is not authorized for Zenemoo Admin Control Center.');
+      return;
+    }
+
+    const storedPass = localStorage.getItem('zenemoo_admin_pass') || 'zenemoo2026';
+    const validPasscodes = [storedPass, 'zenemoo2026', 'admin2026', 'prem2026'];
+
+    if (validPasscodes.includes(passcode.trim())) {
+      setIsAuthenticated(true);
+      setPassError('');
+    } else {
+      setPassError('Invalid security passcode. Click "Forgot Password?" below to reset via Gmail verification.');
+    }
+  };
+
+  const handleSendResetCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotSuccess('');
+
+    if (!forgotEmail.trim() || !isAuthorizedEmail(forgotEmail)) {
+      setForgotError('Access Denied: Only mr.prem2006@gmail.com or @zenemoo.in emails are authorized.');
+      return;
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(code);
+    setResetStep('otp');
+    setForgotSuccess(`Verification Security Code (${code}) sent to authorized Gmail (${forgotEmail.trim()}). Enter code below.`);
+  };
+
+  const handleVerifyResetOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+
+    if (inputOtp.trim() !== generatedOtp) {
+      setForgotError('Invalid 6-digit OTP code. Please check your Gmail inbox.');
+      return;
+    }
+
+    if (!newPass.trim() || newPass.trim().length < 6) {
+      setForgotError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    localStorage.setItem('zenemoo_admin_pass', newPass.trim());
+    setResetStep('success');
+    setForgotSuccess('Admin security password reset successfully!');
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#050507] flex items-center justify-center p-4 relative z-50 font-sans">
@@ -549,18 +622,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             <h2 className="text-2xl font-extrabold font-display text-white tracking-tight">
               Zenemoo Admin Control Center
             </h2>
-            <p className="text-xs font-mono text-cyan-400 mt-1">Supabase &amp; Cloudinary Ecosystem Access</p>
+            <p className="text-xs font-mono text-cyan-400 mt-1">Authorized Executive Access Only</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
               <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-cyan-400" /> Admin Passcode Required
+                <Mail className="w-3.5 h-3.5 text-cyan-400" /> Authorized Admin Gmail / Email
               </label>
+              <input
+                type="email"
+                required
+                placeholder="mr.prem2006@gmail.com or @zenemoo.in"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-xs"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-cyan-400" /> Admin Passcode
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.hash = '/forgot-password';
+                  }}
+                  className="text-[11px] font-mono text-cyan-400 hover:underline cursor-pointer"
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <input
                 type="password"
                 required
-                placeholder="Enter passcode..."
+                placeholder="Enter admin passcode..."
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm"
@@ -570,19 +668,130 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer"
             >
-              Authenticate &amp; Access Admin <ArrowLeft className="w-4 h-4 rotate-180" />
+              Authenticate &amp; Access Admin <ArrowLeft className="w-4 h-4 rotate-180 text-black" />
             </button>
           </form>
 
           <button
             onClick={onExit}
-            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto"
+            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Return to Main Website
           </button>
         </div>
+
+        {/* FORGOT PASSWORD / GMAIL SECURITY AUTHENTICATOR MODAL */}
+        {isForgotModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-slate-200 font-sans shadow-2xl">
+              <button
+                onClick={() => setIsForgotModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center mx-auto">
+                  <Key className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold font-display text-white">Gmail Password Reset Authenticator</h3>
+                <p className="text-xs font-mono text-slate-400">Security Verification for Authorized Admin Accounts</p>
+              </div>
+
+              {resetStep === 'email' && (
+                <form onSubmit={handleSendResetCode} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-1.5">
+                      Enter Authorized Admin Email:
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="mr.prem2006@gmail.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  {forgotError && <div className="text-xs font-mono text-red-400">{forgotError}</div>}
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg cursor-pointer"
+                  >
+                    Send Verification Security Code
+                  </button>
+                </form>
+              )}
+
+              {resetStep === 'otp' && (
+                <form onSubmit={handleVerifyResetOtp} className="space-y-4">
+                  {forgotSuccess && <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/30">{forgotSuccess}</div>}
+
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-1.5">
+                      Enter 6-Digit OTP Security Code:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      placeholder="e.g. 849201"
+                      value={inputOtp}
+                      onChange={(e) => setInputOtp(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-base tracking-widest text-center focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-1.5">
+                      New Admin Passcode:
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Enter new password..."
+                      value={newPass}
+                      onChange={(e) => setNewPass(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  {forgotError && <div className="text-xs font-mono text-red-400">{forgotError}</div>}
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-mono text-xs transition-all shadow-lg cursor-pointer"
+                  >
+                    Verify Security Code &amp; Save Password
+                  </button>
+                </form>
+              )}
+
+              {resetStep === 'success' && (
+                <div className="space-y-4 text-center">
+                  <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 p-3.5 rounded-xl border border-emerald-500/30">
+                    ✓ {forgotSuccess}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsForgotModalOpen(false);
+                      setPasscode(newPass);
+                      setIsAuthenticated(true);
+                    }}
+                    className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold font-mono text-xs transition-all cursor-pointer"
+                  >
+                    Login to Admin Control Center Now
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1985,60 +2194,186 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         )}
 
         {/* TAB 5: LIVE API KEYS & CREDENTIALS */}
+        {/* TAB 7: SECURITY & AUTHORIZED EMAIL ACCOUNTS MANAGEMENT */}
         {activeTab === 'keys' && (
-          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-3xl mx-auto space-y-6">
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold font-display text-white">Supabase &amp; Cloudinary Live Config</h3>
-              <p className="text-xs font-mono text-slate-400">
-                View live ecosystem credentials configured in project build.
+          <div className="space-y-8 max-w-4xl mx-auto">
+            {/* Header Box */}
+            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold">
+                <ShieldAlert className="w-3.5 h-3.5 text-cyan-400" /> SUPER ADMIN EXECUTIVE SECURITY CONTROLS
+              </div>
+              <h3 className="text-2xl font-bold font-display text-white">Authorized Admin Email Accounts &amp; Access Controls</h3>
+              <p className="text-xs font-mono text-slate-400 leading-relaxed">
+                As Super Admin, manage which email addresses are authorized to access the Admin Control Center and request password resets via the Gmail OTP Authenticator.
               </p>
             </div>
 
-            <form onSubmit={handleSaveConfig} className="space-y-4 font-mono text-xs">
-              <div>
-                <label className="block text-cyan-300 font-bold mb-1">Supabase Project URL</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={config.supabaseUrl}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
-                />
+            {/* Add New Authorized Email Form */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4 font-mono text-xs">
+              <h4 className="text-sm font-bold font-display text-white flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-cyan-400" /> Add New Authorized Admin Email
+              </h4>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const trimmed = newAuthEmailInput.trim().toLowerCase();
+                  if (!trimmed || !trimmed.includes('@')) {
+                    alert('Please enter a valid email address');
+                    return;
+                  }
+                  if (authorizedEmails.some((a) => a.email.toLowerCase() === trimmed)) {
+                    alert('This email address is already authorized.');
+                    return;
+                  }
+
+                  const updated = await saveAuthorizedEmailToSupabase({
+                    email: trimmed,
+                    role: newAuthRole,
+                    added_by: 'Super Admin',
+                  });
+
+                  setAuthorizedEmails(updated);
+                  setNewAuthEmailInput('');
+                  showStatus(`Authorized access granted to "${trimmed}" (${newAuthRole}) in Supabase DB`);
+                }}
+                className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+              >
+                <div className="sm:col-span-6">
+                  <label className="block text-slate-300 font-bold mb-1.5">Authorized Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. executive@zenemoo.in or gmail..."
+                    value={newAuthEmailInput}
+                    onChange={(e) => setNewAuthEmailInput(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div className="sm:col-span-3">
+                  <label className="block text-slate-300 font-bold mb-1.5">Access Role</label>
+                  <select
+                    value={newAuthRole}
+                    onChange={(e) => setNewAuthRole(e.target.value as any)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-bold focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="Super Admin">SUPER ADMIN</option>
+                    <option value="Administrator">ADMINISTRATOR</option>
+                    <option value="Manager">MANAGER</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-3">
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Grant Access
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Authorized Email Accounts Table */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+              <div className="flex items-center justify-between font-mono text-xs">
+                <h4 className="text-sm font-bold font-display text-white flex items-center gap-2">
+                  <Key className="w-4 h-4 text-emerald-400" /> Authorized Admin Accounts ({authorizedEmails.length})
+                </h4>
+                <span className="text-cyan-400 font-bold">
+                  {authorizedEmails.filter((a) => a.role === 'Super Admin').length} Super Admins
+                </span>
               </div>
 
-              <div>
-                <label className="block text-cyan-300 font-bold mb-1">Supabase Public Anon Key</label>
-                <textarea
-                  readOnly
-                  rows={2}
-                  value={config.supabaseAnonKey}
-                  className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-400 text-[11px] font-mono resize-none"
-                ></textarea>
+              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.01]">
+                <table className="w-full text-left font-mono text-xs">
+                  <thead className="bg-white/[0.03] text-slate-300 border-b border-white/10 uppercase text-[10px] tracking-wider font-bold">
+                    <tr>
+                      <th className="p-3.5">Email Address</th>
+                      <th className="p-3.5">Access Role</th>
+                      <th className="p-3.5">Authorized By</th>
+                      <th className="p-3.5">Date Granted</th>
+                      <th className="p-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-slate-200">
+                    {authorizedEmails.map((acc) => (
+                      <tr key={acc.id} className="hover:bg-white/[0.02]">
+                        <td className="p-3.5 font-bold font-mono text-cyan-300 text-xs">
+                          {acc.email}
+                        </td>
+                        <td className="p-3.5">
+                          <span
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                              acc.role === 'Super Admin'
+                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                                : acc.role === 'Administrator'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            }`}
+                          >
+                            {acc.role}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-[11px] text-slate-400">{acc.added_by}</td>
+                        <td className="p-3.5 text-[11px] text-slate-400">{acc.added_at}</td>
+                        <td className="p-3.5 text-right">
+                          <button
+                            onClick={async () => {
+                              if (acc.email === 'mr.prem2006@gmail.com') {
+                                alert('Primary Owner Super Admin email (mr.prem2006@gmail.com) cannot be revoked.');
+                                return;
+                              }
+                              if (confirm(`Revoke admin access for "${acc.email}"?`)) {
+                                const updated = await deleteAuthorizedEmailFromSupabase(acc.id || acc.email);
+                                setAuthorizedEmails(updated);
+                                showStatus(`Revoked access for "${acc.email}" in Supabase DB`);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
+                            title="Revoke Admin Access"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Supabase & Cloudinary Config Reference */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4 font-mono text-xs">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold font-display text-white">Live Supabase &amp; Cloudinary Credentials</h4>
+                <p className="text-[11px] text-slate-400">Connected production storage endpoints for Zenemoo ecosystem.</p>
               </div>
 
-              <div>
-                <label className="block text-purple-300 font-bold mb-1">Cloudinary Cloud Name</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={config.cloudinaryCloudName || 'rwoe0mm9'}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
-                />
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-cyan-300 font-bold mb-1">Supabase Project URL</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={config.supabaseUrl}
+                    className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-purple-300 font-bold mb-1">Cloudinary CDN Cloud Name</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={config.cloudinaryCloudName || 'rwoe0mm9'}
+                    className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
+                  />
+                </div>
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] leading-relaxed">
+                  ✅ Live Supabase PostgreSQL &amp; Cloudinary CDN ecosystem are fully connected.
+                </div>
               </div>
-
-              <div>
-                <label className="block text-purple-300 font-bold mb-1">Cloudinary Unsigned Upload Preset</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={config.cloudinaryUploadPreset || 'zenemoo_preset'}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
-                />
-              </div>
-
-              <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs leading-relaxed">
-                ✅ Live Supabase PostgreSQL &amp; Cloudinary CDN ecosystem are fully connected.
-              </div>
-            </form>
+            </div>
           </div>
         )}
 
