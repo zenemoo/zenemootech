@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 
 import authRoutes from './routes/authRoutes.js';
 import teamRoutes from './routes/teamRoutes.js';
@@ -19,18 +20,28 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
-// Global Middleware
-app.use(helmet());
-app.use(cors({ origin: '*', credentials: true }));
+// OWASP Security Headers via Helmet
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Managed at gateway/frontend level
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// Express Cookie Parser
+app.use(cookieParser());
+
+// CORS Config
+app.use(cors({ origin: true, credentials: true }));
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health Check API Route
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ONLINE',
-    service: 'ZENEMOO Data Solutions API Server',
+    service: 'ZENEMOO Security & API Server',
     timestamp: new Date().toISOString(),
   });
 });
@@ -38,13 +49,14 @@ app.get('/api/health', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ONLINE',
-    service: 'ZENEMOO Data Solutions API Server',
+    service: 'ZENEMOO Security & API Server',
     timestamp: new Date().toISOString(),
   });
 });
 
 // Mounting API Routes under /api
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', authRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/partners', partnerRoutes);
@@ -62,6 +74,7 @@ app.use('/api/media', uploadRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
+app.use('/admin', authRoutes);
 app.use('/team', teamRoutes);
 app.use('/services', serviceRoutes);
 app.use('/partners', partnerRoutes);

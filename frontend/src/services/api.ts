@@ -8,25 +8,48 @@ if (!rawApiUrl.endsWith('/api')) {
 
 export const api = axios.create({
   baseURL: rawApiUrl,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor for JWT authentication header
+// Request interceptor for fallback bearer token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('zenemoo_jwt_token');
+  const token = sessionStorage.getItem('zenemoo_access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Auth APIs
+// Enterprise Auth APIs
 export const authApi = {
-  login: (passcode: string) => api.post('/auth/login', { passcode }),
+  login: (payload: { email?: string; password?: string; passcode?: string; turnstileToken?: string }) =>
+    api.post('/auth/login', payload),
+
+  verifyEmailOTP: (payload: { tempToken: string; otp: string }) =>
+    api.post('/auth/verify-email-otp', payload),
+
+  verifyTOTP: (payload: { tempToken: string; totpCode?: string; recoveryCode?: string }) =>
+    api.post('/auth/verify-totp', payload),
+
+  setup2FA: () => api.post('/auth/setup-2fa'),
+
+  confirm2FA: (totpCode: string) => api.post('/auth/confirm-2fa', { totpCode }),
+
+  getProfile: () => api.get('/auth/me'),
+
+  getSessions: () => api.get('/auth/sessions'),
+
+  revokeSession: (sessionId: string) => api.delete(`/auth/session/${sessionId}`),
+
+  getAuditLogs: () => api.get('/auth/audit-logs'),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/auth/change-password', { currentPassword, newPassword }),
+
   logout: () => api.post('/auth/logout'),
-  getProfile: () => api.get('/auth/profile'),
 };
 
 // Team APIs
