@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield } from 'lucide-react';
 import { subscriberApi } from '../services/api';
 
 export const Footer: React.FC = () => {
@@ -8,6 +8,20 @@ export const Footer: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [subscribedEmail, setSubscribedEmail] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Legal Modal State: 'privacy' | 'terms' | null
+  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash;
+      if (hash === '#privacy') setLegalModal('privacy');
+      if (hash === '#terms') setLegalModal('terms');
+    };
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +42,6 @@ export const Footer: React.FC = () => {
       setEmail('');
     } catch (err: any) {
       console.warn('Subscription warning:', err);
-      // Still show thank you modal for user experience
       setSubscribedEmail(trimmedEmail);
       setShowModal(true);
       setEmail('');
@@ -85,7 +98,7 @@ export const Footer: React.FC = () => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
                     {loading ? (
                       <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
@@ -146,10 +159,25 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom copyright */}
-        <div className="pt-8 flex items-center justify-center text-center text-xs font-mono text-slate-500">
+        {/* Bottom copyright & Legal Privacy / Terms Links */}
+        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-500">
           <div>
             Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
+          </div>
+          <div className="flex items-center gap-3 text-slate-400 font-bold">
+            <button
+              onClick={() => setLegalModal('privacy')}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Privacy Policy
+            </button>
+            <span>·</span>
+            <button
+              onClick={() => setLegalModal('terms')}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Terms &amp; Conditions
+            </button>
           </div>
         </div>
       </div>
@@ -160,7 +188,7 @@ export const Footer: React.FC = () => {
           <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-cyan-500/10">
             <button
               onClick={() => setShowModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -175,16 +203,190 @@ export const Footer: React.FC = () => {
               We've registered <span className="text-cyan-400 font-semibold">{subscribedEmail}</span> for the official <span className="text-white font-semibold">Zenemoo Dispatch</span> newsletter.
             </p>
 
-            <p className="text-xs font-mono text-slate-400">
-              You will receive monthly updates on AI dataset progress, multilingual capacity highlights, and DesiCrew vendor news.
-            </p>
-
             <button
               onClick={() => setShowModal(false)}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-sm transition-all shadow-lg shadow-cyan-500/25"
+              className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
             >
-              Great, Thanks!
+              Done
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* LEGAL DEDICATED PRIVACY POLICY & TERMS MODAL */}
+      {legalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-xl animate-fade-in overflow-y-auto">
+          <div className="glass-panel p-6 sm:p-10 rounded-3xl border border-cyan-500/30 max-w-3xl w-full my-8 space-y-6 max-h-[85vh] overflow-y-auto relative shadow-2xl text-slate-200 font-sans">
+            {/* Close Button */}
+            <button
+              onClick={() => setLegalModal(null)}
+              className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Navigation Tabs */}
+            <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+              <button
+                onClick={() => setLegalModal('privacy')}
+                className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                  legalModal === 'privacy'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    : 'text-slate-400 hover:text-white bg-white/[0.03]'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5" /> Privacy Policy
+              </button>
+              <button
+                onClick={() => setLegalModal('terms')}
+                className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                  legalModal === 'terms'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    : 'text-slate-400 hover:text-white bg-white/[0.03]'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" /> Terms &amp; Conditions
+              </button>
+            </div>
+
+            {/* PRIVACY POLICY CONTENT */}
+            {legalModal === 'privacy' ? (
+              <div className="space-y-6 text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold mb-2">
+                    <Shield className="w-3.5 h-3.5 text-cyan-400" /> OFFICIAL PRIVACY STATEMENT
+                  </div>
+                  <h2 className="text-2xl font-bold font-display text-white">Privacy Policy</h2>
+                  <p className="text-xs font-mono text-slate-400 mt-1">QuantumCoders Data Solutions (Zenemoo) • Last Updated: April 2026</p>
+                </div>
+
+                <div className="space-y-4">
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">1. Introduction</h3>
+                    <p>
+                      QuantumCoders Data Solutions ("we", "our", or "us") values your privacy. This Privacy Policy explains how we collect and use information when you contact us through our website. By using our website, you agree to this Privacy Policy.
+                    </p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">2. Information We Collect</h3>
+                    <p>We only collect information that you voluntarily provide through our contact form. This may include:</p>
+                    <ul className="list-disc list-inside space-y-1 text-slate-400 font-mono text-xs pt-1">
+                      <li>Full Name</li>
+                      <li>Email Address</li>
+                      <li>Phone / WhatsApp Number (optional)</li>
+                      <li>Company / Organization Name (optional)</li>
+                      <li>Project details or inquiry message</li>
+                    </ul>
+                    <p className="pt-1 text-emerald-400 font-bold font-mono text-xs">✓ We do not collect any unnecessary or hidden data.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">3. How We Use Your Information</h3>
+                    <p>The information you provide is used only for:</p>
+                    <ul className="list-disc list-inside space-y-1 text-slate-400 font-mono text-xs pt-1">
+                      <li>Responding to your project inquiry</li>
+                      <li>Communicating with you regarding your language data requirements</li>
+                      <li>Understanding your project scope and timelines</li>
+                    </ul>
+                    <p className="pt-1 text-cyan-300">We do not use your data for unsolicited marketing or advertising without your permission.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">4. Data Sharing &amp; Protection</h3>
+                    <p>We respect your privacy. Your information is <strong>never sold, rented, or shared with third parties</strong>. Data is accessed strictly by our internal engineering team for project communication. We may share information only if required by applicable law.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">5. Data Security</h3>
+                    <p>We take all reasonable security measures to keep your information safe. Access is limited strictly to authorized internal team members and data is handled responsibly with industry-standard encryption protocols.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">6. Data Retention &amp; Rights</h3>
+                    <p>We keep your information only as long as needed to respond to your inquiry and maintain communication. You have the right to request access to your data, ask us to correct or delete your data, or withdraw your consent at any time.</p>
+                  </section>
+
+                  <section className="space-y-2 bg-cyan-500/10 p-5 rounded-2xl border border-cyan-500/30 font-mono text-xs">
+                    <h3 className="font-bold text-cyan-300 text-sm">8. Contact Us Regarding Privacy</h3>
+                    <p className="text-slate-300">If you have any questions or data requests regarding this Privacy Policy, contact us directly:</p>
+                    <div className="space-y-1 text-cyan-400 pt-1">
+                      <div>📧 Direct Email: <a href="mailto:mr.prem2006@gmail.com" className="hover:underline text-white font-bold">mr.prem2006@gmail.com</a></div>
+                      <div>📧 Team Email: <a href="mailto:quantumcoderstechlab@gmail.com" className="hover:underline text-white font-bold">quantumcoderstechlab@gmail.com</a></div>
+                      <div>📍 Location: Berhampur, Odisha, India</div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : (
+              /* TERMS & CONDITIONS CONTENT */
+              <div className="space-y-6 text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono text-xs font-bold mb-2">
+                    <FileText className="w-3.5 h-3.5 text-purple-400" /> SERVICE TERMS AGREEMENT
+                  </div>
+                  <h2 className="text-2xl font-bold font-display text-white">Terms &amp; Conditions</h2>
+                  <p className="text-xs font-mono text-slate-400 mt-1">QuantumCoders Data Solutions (Zenemoo) • Last Updated: April 2026</p>
+                </div>
+
+                <div className="space-y-4">
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">1. Introduction</h3>
+                    <p>
+                      Welcome to QuantumCoders Data Solutions. These Terms &amp; Conditions govern your use of our website and services. By contacting us or utilizing our services, you agree to these terms.
+                    </p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">2. Services Overview</h3>
+                    <p>QuantumCoders Data Solutions provides enterprise language technology services including:</p>
+                    <ul className="list-disc list-inside space-y-1 text-slate-400 font-mono text-xs pt-1">
+                      <li>Audio Transcription &amp; Timestamping</li>
+                      <li>Data Annotation &amp; Speech Labeling</li>
+                      <li>Multilingual Voice Over &amp; Recording</li>
+                      <li>Audio Segmentation &amp; Quality Review</li>
+                      <li>AI Speech Data Collection Support</li>
+                    </ul>
+                    <p className="pt-1 text-slate-300">All services are delivered strictly based on agreed project guidelines, SLAs, and mutual contract agreement.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">3. Use of Website &amp; Communication</h3>
+                    <p>By using our website, you agree to provide accurate contact information and not to use the website for any unlawful or disruptive activities. When you contact us, you agree that we may contact you via email or phone regarding your project inquiry.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">4. Project Terms &amp; Payments</h3>
+                    <p>Scope, timelines, and accuracy SLAs will be formally agreed upon before starting any project. Payment terms will be clearly established prior to project execution with zero hidden charges.</p>
+                  </section>
+
+                  <section className="space-y-1.5 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <h3 className="font-bold text-white text-base">5. Confidentiality &amp; Intellectual Property</h3>
+                    <p>We respect strict client data confidentiality. Any dataset shared with us is used exclusively for agreed project deliverables. All client-provided data remains the exclusive property of the client.</p>
+                  </section>
+
+                  <section className="space-y-2 bg-purple-500/10 p-5 rounded-2xl border border-purple-500/30 font-mono text-xs">
+                    <h3 className="font-bold text-purple-300 text-sm">6. Contact Information</h3>
+                    <p className="text-slate-300">For any inquiries regarding these Terms &amp; Conditions, reach out to our legal team:</p>
+                    <div className="space-y-1 text-purple-300 pt-1">
+                      <div>📧 Direct Email: <a href="mailto:mr.prem2006@gmail.com" className="hover:underline text-white font-bold">mr.prem2006@gmail.com</a></div>
+                      <div>📧 Team Email: <a href="mailto:quantumcoderstechlab@gmail.com" className="hover:underline text-white font-bold">quantumcoderstechlab@gmail.com</a></div>
+                      <div>📍 Location: Berhampur, Odisha, India</div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer Close Button */}
+            <div className="pt-4 border-t border-white/10 flex justify-end">
+              <button
+                onClick={() => setLegalModal(null)}
+                className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg cursor-pointer"
+              >
+                Close Window
+              </button>
+            </div>
           </div>
         </div>
       )}
