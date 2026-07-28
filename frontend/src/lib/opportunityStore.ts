@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient';
 import { opportunityApi } from '../services/api';
 
 export interface CustomQuestion {
@@ -63,8 +64,22 @@ const saveLocalOpportunities = (list: OpportunityProgram[]): OpportunityProgram[
   return sorted;
 };
 
-// Fetch opportunities ordered by position ASC
+// Fetch opportunities ordered by position ASC directly from Supabase (with fallback)
 export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('opportunities')
+      .select('*')
+      .order('position', { ascending: true });
+
+    if (!error && Array.isArray(data)) {
+      saveLocalOpportunities(data as OpportunityProgram[]);
+      return data as OpportunityProgram[];
+    }
+  } catch (err: any) {
+    console.warn('Direct Supabase fetch opportunities error. Trying API fallback:', err.message);
+  }
+
   try {
     const res = await opportunityApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
@@ -73,65 +88,89 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
       return live;
     }
   } catch (err: any) {
-    console.warn('Backend opportunities API unavailable. Using local storage:', err.message);
+    console.warn('Backend API fallback unavailable. Using local storage:', err.message);
   }
+
   return getLocalOpportunities();
 };
 
-// Save or update opportunity
+// Save or update opportunity directly in Supabase
 export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgram>): Promise<OpportunityProgram[]> => {
   let localList = getLocalOpportunities();
 
+  const isUUID = opportunity.id && opportunity.id.includes('-');
+  const payloadToSave = {
+    title: opportunity.title || 'New Opportunity Program',
+    partner_name: opportunity.partner_name || 'Partner Company',
+    badge: opportunity.badge || 'ACTIVE',
+    status: opportunity.status || 'active',
+    description: opportunity.description || '',
+    company_logo: opportunity.company_logo || '',
+    poster_url: opportunity.poster_url || '',
+    public_id: opportunity.public_id || '',
+    features: Array.isArray(opportunity.features) ? opportunity.features : [],
+    requirements: Array.isArray(opportunity.requirements) ? opportunity.requirements : [],
+    language_skills: Array.isArray(opportunity.language_skills) ? opportunity.language_skills : [],
+    eligibility_criteria: Array.isArray(opportunity.eligibility_criteria) ? opportunity.eligibility_criteria : [],
+    linkedin_post_url: opportunity.linkedin_post_url || '',
+    pdf_link: opportunity.pdf_link || '',
+    contact_details: opportunity.contact_details || {},
+    custom_questions: Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [],
+    action_url: opportunity.action_url || '#desicrew-contributors',
+    position: opportunity.position || localList.length + 1,
+    updated_at: new Date().toISOString(),
+  };
+
   try {
-    let res;
-    if (opportunity.id && !opportunity.id.startsWith('op_') && !opportunity.id.startsWith('temp_')) {
-      res = await opportunityApi.update(opportunity.id, opportunity);
+    if (isUUID) {
+      const { error } = await supabase
+        .from('opportunities')
+        .update(payloadToSave)
+        .eq('id', opportunity.id);
+      if (error) console.error('Supabase update opportunity error:', error.message);
     } else {
-      const { id, ...newPayload } = opportunity;
-      res = await opportunityApi.create(newPayload);
+      const { error } = await supabase
+        .from('opportunities')
+        .insert([{ ...payloadToSave, created_at: new Date().toISOString() }]);
+      if (error) console.error('Supabase insert opportunity error:', error.message);
     }
-    if (res.data && res.data.opportunities && Array.isArray(res.data.opportunities)) {
-      saveLocalOpportunities(res.data.opportunities);
-      return res.data.opportunities;
-    }
+
+    return await getStoredOpportunities();
   } catch (err: any) {
-    console.warn('Backend opportunity save API error. Saving to local storage:', err.message);
+    console.warn('Direct Supabase save error. Trying backend API or local fallback:', err.message);
   }
 
-  // Fallback LocalStorage
+  // Fallback API / LocalStorage
+  try {
+    if (isUUID) {
+      await opportunityApi.update(opportunity.id!, payloadToSave);
+    } else {
+      await opportunityApi.create(payloadToSave);
+    }
+  } catch (e) {}
+
   if (opportunity.id && (opportunity.id.startsWith('op_') || localList.some((op) => op.id === opportunity.id))) {
     localList = localList.map((op) => (op.id === opportunity.id ? ({ ...op, ...opportunity } as OpportunityProgram) : op));
   } else {
     const newRecord: OpportunityProgram = {
       id: `op_${Date.now()}`,
-      position: localList.length + 1,
-      title: opportunity.title || 'New Program Opportunity',
-      partner_name: opportunity.partner_name || 'DesiCrew Solutions',
-      badge: opportunity.badge || 'ACTIVE',
-      status: opportunity.status || 'active',
-      description: opportunity.description || '',
-      company_logo: opportunity.company_logo || '',
-      poster_url: opportunity.poster_url || '',
-      public_id: opportunity.public_id || '',
-      features: Array.isArray(opportunity.features) ? opportunity.features : [],
-      requirements: Array.isArray(opportunity.requirements) ? opportunity.requirements : [],
-      language_skills: Array.isArray(opportunity.language_skills) ? opportunity.language_skills : [],
-      eligibility_criteria: Array.isArray(opportunity.eligibility_criteria) ? opportunity.eligibility_criteria : [],
-      linkedin_post_url: opportunity.linkedin_post_url || '',
-      pdf_link: opportunity.pdf_link || '',
-      contact_details: opportunity.contact_details || {},
-      custom_questions: Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [],
-      action_url: opportunity.action_url || '#desicrew-contributors',
+      ...payloadToSave,
       created_at: new Date().toISOString(),
-    };
+    } as OpportunityProgram;
     localList.push(newRecord);
   }
 
   return saveLocalOpportunities(localList);
 };
 
-// Reorder position
+// Reorder position directly in Supabase
 export const reorderOpportunityInApi = async (id: string, newPosition: number): Promise<OpportunityProgram[]> => {
+  try {
+    if (id && id.includes('-')) {
+      await supabase.from('opportunities').update({ position: newPosition }).eq('id', id);
+    }
+  } catch (e) {}
+
   let localList = getLocalOpportunities();
   const targetIndex = localList.findIndex((p) => p.id === id);
   if (targetIndex !== -1) {
@@ -141,33 +180,19 @@ export const reorderOpportunityInApi = async (id: string, newPosition: number): 
     localList = saveLocalOpportunities(localList);
   }
 
-  try {
-    const res = await opportunityApi.reorder(id, newPosition);
-    if (res.data && res.data.opportunities && Array.isArray(res.data.opportunities)) {
-      saveLocalOpportunities(res.data.opportunities);
-      return res.data.opportunities;
-    }
-  } catch (err: any) {
-    console.warn('Backend opportunity reorder API error:', err.message);
-  }
-
-  return localList;
+  return getStoredOpportunities();
 };
 
-// Delete opportunity
+// Delete opportunity directly from Supabase
 export const deleteOpportunityFromApi = async (id: string): Promise<OpportunityProgram[]> => {
+  try {
+    if (id && id.includes('-')) {
+      await supabase.from('opportunities').delete().eq('id', id);
+    }
+  } catch (e) {}
+
   let localList = getLocalOpportunities().filter((p) => p.id !== id);
   localList = saveLocalOpportunities(localList);
 
-  try {
-    const res = await opportunityApi.delete(id);
-    if (res.data && res.data.opportunities && Array.isArray(res.data.opportunities)) {
-      saveLocalOpportunities(res.data.opportunities);
-      return res.data.opportunities;
-    }
-  } catch (err: any) {
-    console.warn('Backend opportunity delete API error:', err.message);
-  }
-
-  return localList;
+  return getStoredOpportunities();
 };

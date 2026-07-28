@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient';
 import { partnerApi } from '../services/api';
 
 export interface PartnerCompany {
@@ -39,8 +40,22 @@ const saveLocalPartners = (list: PartnerCompany[]): PartnerCompany[] => {
   return sorted;
 };
 
-// Fetch partners ordered by position ASC
+// Fetch partners ordered by position ASC directly from Supabase
 export const getStoredPartners = async (): Promise<PartnerCompany[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('partners')
+      .select('*')
+      .order('position', { ascending: true });
+
+    if (!error && Array.isArray(data)) {
+      saveLocalPartners(data as PartnerCompany[]);
+      return data as PartnerCompany[];
+    }
+  } catch (err: any) {
+    console.warn('Direct Supabase partners error:', err.message);
+  }
+
   try {
     const res = await partnerApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
@@ -54,42 +69,50 @@ export const getStoredPartners = async (): Promise<PartnerCompany[]> => {
   return getLocalPartners();
 };
 
-// Create or update partner company in Supabase DB with LocalStorage fallback
+// Create or update partner company directly in Supabase
 export const savePartnerToApi = async (partner: Partial<PartnerCompany>): Promise<PartnerCompany[]> => {
   let localList = getLocalPartners();
+  const isUUID = partner.id && partner.id.includes('-');
+
+  const payloadToSave = {
+    name: partner.name || 'New Partner',
+    role: partner.role || 'Language Data & AI Partner',
+    badge: partner.badge || 'AI Partner',
+    image_url: partner.image_url || '',
+    public_id: partner.public_id || '',
+    website_url: partner.website_url || '',
+    status: partner.status || 'active',
+    position: partner.position || localList.length + 1,
+    updated_at: new Date().toISOString(),
+  };
 
   try {
-    let res;
-    if (partner.id && !partner.id.startsWith('temp_') && !partner.id.startsWith('partner_')) {
-      res = await partnerApi.update(partner.id, partner);
+    if (isUUID) {
+      await supabase.from('partners').update(payloadToSave).eq('id', partner.id);
     } else {
-      const { id, ...newPayload } = partner;
-      res = await partnerApi.create(newPayload);
+      await supabase.from('partners').insert([{ ...payloadToSave, created_at: new Date().toISOString() }]);
     }
-    if (res.data && res.data.partners && Array.isArray(res.data.partners)) {
-      saveLocalPartners(res.data.partners);
-      return res.data.partners;
-    }
+    return await getStoredPartners();
   } catch (err: any) {
-    console.warn('Backend partner save API error. Saving to local storage:', err.message);
+    console.warn('Direct Supabase save partner error:', err.message);
   }
 
-  // Fallback to LocalStorage
+  try {
+    if (isUUID) {
+      await partnerApi.update(partner.id!, payloadToSave);
+    } else {
+      await partnerApi.create(payloadToSave);
+    }
+  } catch (e) {}
+
   if (partner.id && !partner.id.startsWith('temp_')) {
     localList = localList.map((p) => (p.id === partner.id ? ({ ...p, ...partner } as PartnerCompany) : p));
   } else {
     const newPartner: PartnerCompany = {
       id: `partner_${Date.now()}`,
-      position: localList.length + 1,
-      name: partner.name || 'New Partner',
-      role: partner.role || 'Language Data & AI Partner',
-      badge: partner.badge || 'AI Partner',
-      image_url: partner.image_url || '',
-      public_id: partner.public_id || '',
-      website_url: partner.website_url || '',
-      status: partner.status || 'active',
+      ...payloadToSave,
       created_at: new Date().toISOString(),
-    };
+    } as PartnerCompany;
     localList.push(newPartner);
   }
 
@@ -98,6 +121,12 @@ export const savePartnerToApi = async (partner: Partial<PartnerCompany>): Promis
 
 // Reorder partner position
 export const reorderPartnerInApi = async (id: string, newPosition: number): Promise<PartnerCompany[]> => {
+  try {
+    if (id && id.includes('-')) {
+      await supabase.from('partners').update({ position: newPosition }).eq('id', id);
+    }
+  } catch (e) {}
+
   let localList = getLocalPartners();
   const targetIndex = localList.findIndex((p) => p.id === id);
   if (targetIndex !== -1) {
@@ -107,33 +136,19 @@ export const reorderPartnerInApi = async (id: string, newPosition: number): Prom
     localList = saveLocalPartners(localList);
   }
 
-  try {
-    const res = await partnerApi.reorder(id, newPosition);
-    if (res.data && res.data.partners && Array.isArray(res.data.partners)) {
-      saveLocalPartners(res.data.partners);
-      return res.data.partners;
-    }
-  } catch (err: any) {
-    console.warn('Backend partner reorder API error:', err.message);
-  }
-
-  return localList;
+  return getStoredPartners();
 };
 
 // Delete partner company
 export const deletePartnerFromApi = async (id: string): Promise<PartnerCompany[]> => {
+  try {
+    if (id && id.includes('-')) {
+      await supabase.from('partners').delete().eq('id', id);
+    }
+  } catch (e) {}
+
   let localList = getLocalPartners().filter((p) => p.id !== id);
   localList = saveLocalPartners(localList);
 
-  try {
-    const res = await partnerApi.delete(id);
-    if (res.data && res.data.partners && Array.isArray(res.data.partners)) {
-      saveLocalPartners(res.data.partners);
-      return res.data.partners;
-    }
-  } catch (err: any) {
-    console.warn('Backend partner delete API error:', err.message);
-  }
-
-  return localList;
+  return getStoredPartners();
 };
