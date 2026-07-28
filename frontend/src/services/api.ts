@@ -46,6 +46,15 @@ export const serviceApi = {
   delete: (id: string) => api.delete(`/services/${id}`),
 };
 
+// Partner Companies APIs
+export const partnerApi = {
+  getAll: () => api.get('/partners'),
+  create: (data: any) => api.post('/partners', data),
+  reorder: (id: string, newPosition: number) => api.put('/partners/reorder', { id, newPosition }),
+  update: (id: string, data: any) => api.put(`/partners/${id}`, data),
+  delete: (id: string) => api.delete(`/partners/${id}`),
+};
+
 // Contact APIs
 export const contactApi = {
   getAll: () => api.get('/contact'),

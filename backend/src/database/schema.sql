@@ -72,3 +72,18 @@ CREATE TABLE media (
   bytes INTEGER,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Table 5: partners
+CREATE TABLE partners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position INTEGER DEFAULT 1,
+  name TEXT NOT NULL,
+  role TEXT,
+  badge TEXT DEFAULT 'AI Partner',
+  image_url TEXT,
+  public_id TEXT,
+  website_url TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);

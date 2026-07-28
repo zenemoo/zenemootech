@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
+import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
@@ -14,13 +15,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
 
   // Team State
   const [teamList, setTeamList] = useState<TeamMember[]>([]);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [skillsInput, setSkillsInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+
+  // Partners State
+  const [partnersList, setPartnersList] = useState<PartnerCompany[]>([]);
+  const [editingPartner, setEditingPartner] = useState<PartnerCompany | null>(null);
+  const [isPartnerUploading, setIsPartnerUploading] = useState(false);
 
   // Search & Filter State for Team
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,15 +67,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setTeamList(members);
   };
 
+  const loadPartnersData = async () => {
+    const partners = await getStoredPartners();
+    setPartnersList(partners);
+  };
+
   useEffect(() => {
     const loadData = async () => {
       await loadTeamData();
+      await loadPartnersData();
       const contactData = await getContactInquiries();
       setInquiries(contactData);
       await loadSubscribers();
     };
     loadData();
   }, []);
+
+  // Partner CRUD & Cloudinary Logo Handlers
+  const handleCreatePartner = () => {
+    setEditingPartner({
+      id: `temp_${Date.now()}`,
+      position: partnersList.length + 1,
+      name: '',
+      role: 'Language Data & AI Partner',
+      badge: 'AI Partner',
+      image_url: '',
+      public_id: '',
+      website_url: '',
+      status: 'active',
+    });
+  };
+
+  const handleSavePartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPartner) return;
+    try {
+      const updated = await savePartnerToApi(editingPartner);
+      setPartnersList(updated);
+      setEditingPartner(null);
+      showStatus(`Saved partner company "${editingPartner.name}"!`);
+    } catch (err: any) {
+      alert('Error saving partner company: ' + (err.message || 'Server error'));
+    }
+  };
+
+  const handlePartnerLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingPartner) return;
+    setIsPartnerUploading(true);
+    try {
+      const url = await uploadImageToCloudinary(file, 'zenemoo/partners');
+      setEditingPartner({ ...editingPartner, image_url: url });
+      showStatus('Partner logo uploaded to Cloudinary CDN (zenemoo/partners)!');
+    } catch (err: any) {
+      alert('Upload failed: ' + (err.message || 'Error uploading file'));
+    } finally {
+      setIsPartnerUploading(false);
+    }
+  };
+
+  const handlePartnerPositionChange = async (partner: PartnerCompany, targetPosInput: string) => {
+    const targetPos = parseInt(targetPosInput, 10);
+    if (isNaN(targetPos) || targetPos < 1) return;
+    if (targetPos === partner.position) return;
+    const clampedPos = Math.max(1, Math.min(targetPos, partnersList.length));
+
+    const targetIndex = partnersList.findIndex((p) => p.id === partner.id);
+    if (targetIndex === -1) return;
+    const updated = [...partnersList];
+    const [moved] = updated.splice(targetIndex, 1);
+    updated.splice(clampedPos - 1, 0, moved);
+
+    const renumbered = updated.map((item, index) => ({
+      ...item,
+      position: index + 1,
+    }));
+    setPartnersList(renumbered);
+
+    try {
+      const apiResult = await reorderPartnerInApi(partner.id, clampedPos);
+      if (apiResult && apiResult.length > 0) {
+        setPartnersList(apiResult);
+      }
+      showStatus(`Moved "${partner.name}" to position #${clampedPos}`);
+    } catch (err) {
+      showStatus('Error updating position in database');
+      await loadPartnersData();
+    }
+  };
+
+  const handleDeletePartner = async (id: string, name: string) => {
+    if (confirm(`Delete partner company "${name}"?`)) {
+      try {
+        const updated = await deletePartnerFromApi(id);
+        setPartnersList(updated);
+        showStatus(`Deleted partner "${name}" from database`);
+      } catch (err) {
+        showStatus('Error deleting partner company');
+      }
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -325,7 +422,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 : 'bg-white/[0.03] text-slate-400 hover:text-white'
             }`}
           >
-            <Users className="w-4 h-4" /> Team Directory ({teamList.length})
+            <Users className="w-4 h-4" /> Team Roster ({teamList.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('partners')}
+            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
+              activeTab === 'partners'
+                ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                : 'bg-white/[0.03] text-slate-400 hover:text-white'
+            }`}
+          >
+            <Handshake className="w-4 h-4" /> Enterprise Partners ({partnersList.length})
           </button>
 
           <button
@@ -787,6 +895,299 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   ))}
                 </AnimatePresence>
               </motion.div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: ENTERPRISE PARTNERS MANAGEMENT */}
+        {activeTab === 'partners' && (
+          <div className="space-y-8">
+            {/* Stats Metrics & Add Partner Button */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 space-y-1">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Enterprise Partners</div>
+                <div className="text-3xl font-extrabold font-display text-emerald-300">{partnersList.length}</div>
+                <div className="text-[11px] font-mono text-slate-500">Active Marquee Slider</div>
+              </div>
+
+              <div className="glass-panel p-5 rounded-2xl border border-cyan-500/20 space-y-1">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Next Position</div>
+                <div className="text-3xl font-extrabold font-display text-cyan-300">#{partnersList.length + 1}</div>
+                <div className="text-[11px] font-mono text-slate-500">Auto-assigned on creation</div>
+              </div>
+
+              <div className="glass-panel p-5 rounded-2xl border border-purple-500/20 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-mono text-slate-400 uppercase">Cloudinary CDN</div>
+                  <div className="text-sm font-bold text-purple-300 font-mono">zenemoo/partners</div>
+                  <div className="text-[11px] font-mono text-slate-500">Logo image uploads active</div>
+                </div>
+
+                <button
+                  onClick={handleCreatePartner}
+                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> Add Partner Company
+                </button>
+              </div>
+            </div>
+
+            {/* Editing Partner Modal Form */}
+            {editingPartner && (
+              <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-emerald-500/30 space-y-6 bg-black/90">
+                <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                  <h4 className="text-lg font-bold font-display text-white flex items-center gap-2">
+                    <Handshake className="w-5 h-5 text-emerald-400" />
+                    {editingPartner.id && !editingPartner.id.startsWith('temp_')
+                      ? 'Edit Partner Company'
+                      : `Add New Partner Company (Position #${partnersList.length + 1})`}
+                  </h4>
+                  <button onClick={() => setEditingPartner(null)} className="text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSavePartner} className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Company Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g., DesiCrew Solutions, Karya AI, Disha AI"
+                        value={editingPartner.name}
+                        onChange={(e) => setEditingPartner({ ...editingPartner, name: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Category / Role *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g., Certified Vendor Partner (1.5+ Yrs)"
+                        value={editingPartner.role || ''}
+                        onChange={(e) => setEditingPartner({ ...editingPartner, role: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Badge Tag</label>
+                      <select
+                        value={editingPartner.badge || 'AI Partner'}
+                        onChange={(e) => setEditingPartner({ ...editingPartner, badge: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-emerald-400"
+                      >
+                        <option value="Primary Partner">Primary Partner</option>
+                        <option value="AI Partner">AI Partner</option>
+                        <option value="Data Partner">Data Partner</option>
+                        <option value="Speech Tech">Speech Tech</option>
+                        <option value="NLP Framework">NLP Framework</option>
+                        <option value="Indic AI">Indic AI</option>
+                        <option value="Research Data">Research Data</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Website Link (URL)</label>
+                      <input
+                        type="url"
+                        placeholder="https://www.desicrew.in"
+                        value={editingPartner.website_url || ''}
+                        onChange={(e) => setEditingPartner({ ...editingPartner, website_url: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-mono text-slate-300 mb-1.5">Status</label>
+                      <select
+                        value={editingPartner.status || 'active'}
+                        onChange={(e) => setEditingPartner({ ...editingPartner, status: e.target.value as any })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-emerald-400"
+                      >
+                        <option value="active">Active (Visible in Marquee)</option>
+                        <option value="inactive">Inactive (Hidden)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Cloudinary Logo Uploader */}
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
+                    <label className="block text-xs font-mono text-emerald-300 font-bold flex items-center gap-2">
+                      <Cloud className="w-4 h-4" /> Cloudinary Logo Uploader (Folder: zenemoo/partners)
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 p-2 overflow-hidden shrink-0 flex items-center justify-center">
+                        {editingPartner.image_url ? (
+                          <img src={editingPartner.image_url} alt="Logo Preview" className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="text-[10px] text-slate-500 font-mono text-center">No Logo</div>
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="url"
+                          placeholder="https://res.cloudinary.com/rwoe0mm9/image/upload/zenemoo/partners/..."
+                          value={editingPartner.image_url || ''}
+                          onChange={(e) => setEditingPartner({ ...editingPartner, image_url: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-emerald-400"
+                        />
+                        <div className="flex items-center gap-2">
+                          <label className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5">
+                            <Upload className="w-3.5 h-3.5" />
+                            {isPartnerUploading ? 'Uploading to Cloudinary...' : 'Upload Logo File'}
+                            <input type="file" accept="image/*" onChange={handlePartnerLogoUpload} className="hidden" />
+                          </label>
+                          <span className="text-[10px] font-mono text-slate-500">Supports PNG, SVG, JPG, WebP</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setEditingPartner(null)}
+                      className="px-5 py-2.5 rounded-xl bg-white/5 text-slate-300 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 cursor-pointer"
+                    >
+                      Save Partner Company
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Partners Cards Grid */}
+            {partnersList.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                <Handshake className="w-10 h-10 text-slate-500 mx-auto" />
+                <h4 className="text-base font-bold text-white">No Partner Companies Added Yet</h4>
+                <p className="text-xs font-mono text-slate-400">
+                  Click "Add Partner Company" above to add partner records. They will appear live in the website marquee slider once created.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {partnersList.map((p) => (
+                <div
+                  key={p.id}
+                  className={`glass-panel p-5 rounded-2xl border transition-all space-y-4 flex flex-col justify-between ${
+                    p.status === 'inactive' ? 'border-amber-500/30 opacity-60' : 'border-white/10 hover:border-emerald-500/40'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    {/* Header: Position Selector & Action Buttons */}
+                    <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono text-slate-400">Position:</span>
+                        <select
+                          value={p.position}
+                          onChange={(e) => handlePartnerPositionChange(p, e.target.value)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono font-bold text-xs focus:outline-none cursor-pointer"
+                        >
+                          {partnersList.map((_, idx) => (
+                            <option key={idx + 1} value={idx + 1} className="bg-slate-900 text-white">
+                              #{idx + 1}
+                            </option>
+                          ))}
+                        </select>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            disabled={p.position === 1}
+                            onClick={() => handlePartnerPositionChange(p, String(p.position - 1))}
+                            className="p-1 rounded bg-white/5 hover:bg-emerald-500/20 text-slate-300 disabled:opacity-30 cursor-pointer"
+                            title="Move Up"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            disabled={p.position === partnersList.length}
+                            onClick={() => handlePartnerPositionChange(p, String(p.position + 1))}
+                            className="p-1 rounded bg-white/5 hover:bg-emerald-500/20 text-slate-300 disabled:opacity-30 cursor-pointer"
+                            title="Move Down"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                          p.status === 'active'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                        }`}
+                      >
+                        {p.status}
+                      </span>
+                    </div>
+
+                    {/* Logo & Company Info */}
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-900 border border-white/10 p-1.5 shrink-0 flex items-center justify-center">
+                        {p.image_url ? (
+                          <img src={p.image_url} alt={p.name} className="w-full h-full object-contain" />
+                        ) : (
+                          <Globe className="w-6 h-6 text-emerald-400" />
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="font-bold text-base text-white">{p.name}</div>
+                        {p.badge && (
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                            {p.badge}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-mono text-slate-300 bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                      {p.role || 'Language Data & AI Partner'}
+                    </p>
+
+                    {p.website_url && (
+                      <a
+                        href={p.website_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-mono text-cyan-400 hover:underline"
+                      >
+                        {p.website_url} <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => setEditingPartner(p)}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 text-xs font-mono flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit className="w-3.5 h-3.5" /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeletePartner(p.id, p.name)}
+                      className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
+                      title="Delete Partner Company"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
             )}
           </div>
         )}

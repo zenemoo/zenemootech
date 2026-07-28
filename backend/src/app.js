@@ -12,6 +12,7 @@ import contactRoutes from './routes/contactRoutes.js';
 import subscriberRoutes from './routes/subscriberRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import partnerRoutes from './routes/partnerRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -44,6 +45,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/services', serviceRoutes);
+app.use('/api/partners', partnerRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/contact', contactRoutes);
@@ -58,6 +60,7 @@ app.use('/api/media', uploadRoutes);
 app.use('/auth', authRoutes);
 app.use('/team', teamRoutes);
 app.use('/services', serviceRoutes);
+app.use('/partners', partnerRoutes);
 app.use('/portfolio', portfolioRoutes);
 app.use('/blog', blogRoutes);
 app.use('/contact', contactRoutes);

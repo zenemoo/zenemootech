@@ -1,7 +1,20 @@
-import React from 'react';
-import { Handshake, ExternalLink, Quote, Building, CheckCircle2, Award, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Handshake, ExternalLink, Quote, Building, CheckCircle2, Sparkles, Globe2 } from 'lucide-react';
+import { PartnerCompany, getStoredPartners } from '../lib/partnerStore';
 
 export const Partner: React.FC = () => {
+  const [partnerList, setPartnerList] = useState<PartnerCompany[]>([]);
+
+  useEffect(() => {
+    getStoredPartners().then((data) => {
+      const activeOnly = data.filter((p) => p.status === 'active');
+      setPartnerList(activeOnly.length > 0 ? activeOnly : []);
+    });
+  }, []);
+
+  // Duplicate list for infinite seamless marquee ticker loop
+  const marqueeItems = [...partnerList, ...partnerList];
+
   return (
     <section id="partner" className="py-24 relative z-10 bg-[#050507]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -90,7 +103,7 @@ export const Partner: React.FC = () => {
         </div>
 
         {/* Testimonial Card */}
-        <div className="max-w-4xl mx-auto glass-panel rounded-3xl p-8 sm:p-10 border border-white/10 relative overflow-hidden text-center">
+        <div className="max-w-4xl mx-auto glass-panel rounded-3xl p-8 sm:p-10 border border-white/10 relative overflow-hidden text-center mb-16">
           <Quote className="w-12 h-12 text-cyan-500/20 mx-auto mb-4" />
           <p className="text-lg sm:text-xl text-slate-200 font-normal italic leading-relaxed mb-6">
             "They consistently deliver projects on time with good quality and follow project guidelines properly. The team is reliable, responsive, and easy to work with for ongoing language data and transcription projects."
@@ -105,6 +118,67 @@ export const Partner: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* CONTINUOUS SLIDING RIGHT-TO-LEFT MARQUEE BANNER */}
+        {partnerList.length > 0 && (
+          <div className="space-y-6">
+            <div className="text-center space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-mono uppercase tracking-widest">
+                <Sparkles className="w-3 h-3" /> COLLABORATING ECOSYSTEM &amp; CLIENT DATA PIPELINES
+              </div>
+              <h3 className="text-xl font-bold font-display text-white">
+                Organizations &amp; AI Frameworks We Work With
+              </h3>
+            </div>
+
+            {/* Marquee Container with Gradient Side Masks */}
+            <div className="relative overflow-hidden py-4 rounded-2xl bg-white/[0.01] border border-white/5">
+              {/* Left & Right Gradient Fade Overlays */}
+              <div className="absolute top-0 bottom-0 left-0 w-24 bg-gradient-to-r from-[#050507] to-transparent z-10 pointer-events-none"></div>
+              <div className="absolute top-0 bottom-0 right-0 w-24 bg-gradient-to-l from-[#050507] to-transparent z-10 pointer-events-none"></div>
+
+              {/* Continuous Ticker */}
+              <div className="animate-marquee gap-4 px-4">
+                {marqueeItems.map((item, idx) => (
+                  <div
+                    key={`${item.id}-${idx}`}
+                    onClick={() => {
+                      if (item.website_url) {
+                        window.open(item.website_url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    className="px-6 py-4 rounded-2xl glass-panel glass-panel-interactive border border-white/10 flex items-center gap-4 shrink-0 group cursor-pointer"
+                  >
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="w-10 h-10 object-contain rounded-xl shrink-0 bg-white/5 p-1 border border-white/10 group-hover:scale-105 transition-transform"
+                      />
+                    ) : (
+                      <div className="p-2.5 rounded-xl border text-cyan-400 border-cyan-500/30 bg-cyan-500/10 shrink-0">
+                        <Globe2 className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold font-display text-sm text-white group-hover:text-cyan-300 transition-colors">
+                          {item.name}
+                        </span>
+                        {item.badge && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold border text-cyan-300 border-cyan-500/30 bg-cyan-500/10">
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-mono text-slate-400 mt-0.5">{item.role || 'Data Solution Partner'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

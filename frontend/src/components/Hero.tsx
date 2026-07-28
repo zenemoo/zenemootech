@@ -142,9 +142,9 @@ export const Hero: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <audio
                     ref={audioRef}
-                    src="/assets/sample-audio.mp3"
+                    src="/assets/wellcomeaudio.mp3"
                     onEnded={() => setIsPlaying(false)}
-                    onError={() => console.log('Audio file /assets/sample-audio.mp3 not found yet')}
+                    onError={() => console.log('Audio file /assets/wellcomeaudio.mp3 not found yet')}
                   />
                   <button
                     onClick={togglePlay}
@@ -153,7 +153,7 @@ export const Hero: React.FC = () => {
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                   </button>
                   <div>
-                    <div className="text-white font-bold text-sm">Hindi / Odia Speech Transcription Sample</div>
+                    <div className="text-white font-bold text-sm">English &amp; Odia Speech Transcription Sample</div>
                     <div className="text-[11px] text-slate-400">DesiCrew AI Dataset Pipeline • Speaker Diarization Active</div>
                   </div>
                 </div>
@@ -177,11 +177,11 @@ export const Hero: React.FC = () => {
               <div className="space-y-2 pt-2 border-t border-white/10">
                 <div className="flex items-start gap-3 p-2.5 rounded-lg bg-white/[0.02]">
                   <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px]">00:01.24 - 00:04.80</span>
-                  <span className="text-slate-200">Speaker 1 (Hindi): "नमस्कार, डेटा एनोटेशन और ऑडियो ट्रांसक्रिप्शन के लिए हमारी टीम पूरी तरह से तैयार है।"</span>
+                  <span className="text-slate-200">Speaker 1 (Indian English): "Hello, our specialized data annotation and audio transcription team is fully ready for your project."</span>
                 </div>
                 <div className="flex items-start gap-3 p-2.5 rounded-lg bg-white/[0.02]">
-                  <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">00:04.85 - 00:08.10</span>
-                  <span className="text-slate-200">Speaker 2 (Odia): "ଆମର ଟିମ୍ ପ୍ରତ୍ୟେକ ପ୍ରୋଜେକ୍ଟରେ ୯୯% ରୁ ଅଧିକ ସଠିକତା ପ୍ରଦାନ କରିଥାଏ। (DesiCrew Solutions Vendor)"</span>
+                  <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">00:01.24 - 00:04.80</span>
+                  <span className="text-slate-200">Speaker 1 (Odia Translation): "ନମସ୍କାର, ଆମର ବିଶେଷଜ୍ଞ ଡାଟା ଆନୋଟେସନ୍ ଏବଂ ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପ୍ସନ୍ ଟିମ୍ ଆପଣଙ୍କ ପ୍ରକଳ୍ପ ପାଇଁ ସମ୍ପୂର୍ଣ୍ଣ ଭାବେ ପ୍ରସ୍ତୁତ ଅଛି।"</span>
                 </div>
               </div>
             </div>
