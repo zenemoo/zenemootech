@@ -1,28 +1,39 @@
 import { supabaseService } from '../services/supabaseService.js';
 
-// Helper: Normalize team positions in database to guarantee 1..N sequential order with 0 gaps and 0 duplicates
-const normalizeAndSavePositions = async () => {
-  const list = await supabaseService.selectAll('team', 'position', true);
+// Helper: Normalize team positions in database using a 2-phase offset update to prevent PostgreSQL UNIQUE constraint violations
+const normalizeAndSavePositions = async (customList = null) => {
+  let list = customList;
+  if (!list) {
+    list = await supabaseService.selectAll('team', 'position', true);
+  }
   if (!Array.isArray(list) || list.length === 0) return [];
 
-  // Sort by position ASC (fallback to created_at)
-  const sorted = [...list].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
+  // 1. Phase One: Update all positions to temporary high offset values (10000 + index) to prevent UNIQUE key collisions
+  for (let index = 0; index < list.length; index++) {
+    const member = list[index];
+    try {
+      await supabaseService.update('team', member.id, {
+        position: 10000 + index,
+      });
+    } catch (e) {
+      console.warn('Phase 1 offset update warning:', e.message);
+    }
+  }
 
-  // Check if normalization is needed
+  // 2. Phase Two: Assign final sequential positions 1..N
   const updatedList = [];
-
-  for (let index = 0; index < sorted.length; index++) {
-    const member = sorted[index];
-    const expectedPosition = index + 1;
-
-    if (member.position !== expectedPosition) {
+  for (let index = 0; index < list.length; index++) {
+    const member = list[index];
+    const finalPos = index + 1;
+    try {
       const updated = await supabaseService.update('team', member.id, {
-        position: expectedPosition,
+        position: finalPos,
         updated_at: new Date().toISOString(),
       });
-      updatedList.push(updated || { ...member, position: expectedPosition });
-    } else {
-      updatedList.push(member);
+      updatedList.push(updated || { ...member, position: finalPos });
+    } catch (e) {
+      console.error('Phase 2 position update error:', e.message);
+      updatedList.push({ ...member, position: finalPos });
     }
   }
 
@@ -103,7 +114,7 @@ export const reorderTeam = async (req, res, next) => {
     }
 
     const currentList = await supabaseService.selectAll('team', 'position', true);
-    if (currentList.length === 0) {
+    if (!Array.isArray(currentList) || currentList.length === 0) {
       return res.status(404).json({ success: false, message: 'No team members found' });
     }
 
@@ -115,21 +126,12 @@ export const reorderTeam = async (req, res, next) => {
     // Clamp target position between 1 and count
     const clampedPos = Math.max(1, Math.min(Number(newPosition), currentList.length));
 
-    // Remove item from array and insert at clamped index
+    // Remove target item and re-insert at clamped position (0-indexed)
     const [targetMember] = currentList.splice(targetIndex, 1);
     currentList.splice(clampedPos - 1, 0, targetMember);
 
-    // Update position values in Supabase PostgreSQL
-    for (let index = 0; index < currentList.length; index++) {
-      const member = currentList[index];
-      const pos = index + 1;
-      await supabaseService.update('team', member.id, {
-        position: pos,
-        updated_at: new Date().toISOString(),
-      });
-    }
-
-    const freshTeam = await supabaseService.selectAll('team', 'position', true);
+    // Save positions via 2-phase offset update to prevent PostgreSQL UNIQUE constraint collision
+    const freshTeam = await normalizeAndSavePositions(currentList);
 
     res.json({
       success: true,
@@ -193,7 +195,7 @@ export const updateTeamMember = async (req, res, next) => {
 
     const updated = await supabaseService.update('team', id, cleanPayload);
 
-    // Re-normalize positions to guarantee no duplicates or gaps
+    // Re-normalize positions using 2-phase offset update
     const updatedTeam = await normalizeAndSavePositions();
 
     res.json({
