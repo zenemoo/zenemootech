@@ -97,12 +97,35 @@ CREATE TABLE opportunities (
   badge TEXT DEFAULT 'ACTIVE',
   status TEXT DEFAULT 'active', -- active, stopped, coming_soon
   description TEXT,
-  features TEXT[],
-  requirements TEXT[],
-  action_url TEXT DEFAULT '#desicrew-contributors',
+  company_logo TEXT,
   poster_url TEXT,
   public_id TEXT,
+  features TEXT[],
+  requirements TEXT[],
+  language_skills TEXT[],
+  eligibility_criteria TEXT[],
+  linkedin_post_url TEXT,
+  pdf_link TEXT,
+  contact_details JSONB DEFAULT '{}', -- { email, phone, contact_person }
+  custom_questions JSONB DEFAULT '[]', -- array of admin questions { id, label, type, required }
+  action_url TEXT DEFAULT '#desicrew-contributors',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Table 7: opportunity_applications
+CREATE TABLE opportunity_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  opportunity_id TEXT NOT NULL,
+  opportunity_title TEXT NOT NULL,
+  applicant_name TEXT NOT NULL,
+  applicant_email TEXT NOT NULL,
+  applicant_phone TEXT NOT NULL,
+  answers JSONB DEFAULT '{}',
+  status TEXT DEFAULT 'pending', -- pending, shortlisted, accepted, rejected
+  admin_notes TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 

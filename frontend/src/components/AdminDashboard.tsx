@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
-import { OpportunityProgram, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
+import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
+import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
@@ -29,12 +30,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [editingPartner, setEditingPartner] = useState<PartnerCompany | null>(null);
   const [isPartnerUploading, setIsPartnerUploading] = useState(false);
 
-  // Opportunities State
+  // Opportunities & Candidate Applications State
   const [opportunitiesList, setOpportunitiesList] = useState<OpportunityProgram[]>([]);
   const [editingOpportunity, setEditingOpportunity] = useState<OpportunityProgram | null>(null);
   const [featuresInput, setFeaturesInput] = useState('');
   const [requirementsInput, setRequirementsInput] = useState('');
+  const [languageSkillsInput, setLanguageSkillsInput] = useState('');
+  const [eligibilityInput, setEligibilityInput] = useState('');
+  const [linkedinPostUrl, setLinkedinPostUrl] = useState('');
+  const [pdfLink, setPdfLink] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+
+  // Custom Questions Builder State
+  const [customQuestionsList, setCustomQuestionsList] = useState<CustomQuestion[]>([]);
+  const [newQLabel, setNewQLabel] = useState('');
+  const [newQType, setNewQType] = useState<'text' | 'textarea' | 'select'>('text');
+  const [newQOptions, setNewQOptions] = useState('');
+  const [newQRequired, setNewQRequired] = useState(true);
+
+  // Candidate Applications Table Modal View State
+  const [allCandidateApps, setAllCandidateApps] = useState<CandidateApplication[]>([]);
+  const [selectedOppForApps, setSelectedOppForApps] = useState<OpportunityProgram | null>(null);
+  const [appStatusFilter, setAppStatusFilter] = useState<'all' | 'pending' | 'shortlisted' | 'accepted' | 'rejected'>('all');
   const [isOpportunityUploading, setIsOpportunityUploading] = useState(false);
+  const [isLogoUploading, setIsLogoUploading] = useState(false);
 
   // Search & Filter State for Team
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,6 +104,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const loadOpportunitiesData = async () => {
     const ops = await getStoredOpportunities();
     setOpportunitiesList(ops);
+    const apps = await getStoredCandidateApplications();
+    setAllCandidateApps(apps);
   };
 
   useEffect(() => {
@@ -97,7 +120,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     loadData();
   }, []);
 
-  // Opportunity CRUD & Cloudinary Poster Handlers
+  // Question Builder Handlers
+  const handleAddQuestion = () => {
+    if (!newQLabel.trim()) {
+      alert('Please enter a question prompt/label');
+      return;
+    }
+    const newQ: CustomQuestion = {
+      id: `q_${Date.now()}`,
+      label: newQLabel.trim(),
+      type: newQType,
+      options: newQType === 'select' ? newQOptions.split('\n').map((s) => s.trim()).filter((s) => s.length > 0) : undefined,
+      required: newQRequired,
+    };
+    setCustomQuestionsList([...customQuestionsList, newQ]);
+    setNewQLabel('');
+    setNewQOptions('');
+  };
+
+  const handleDeleteQuestion = (qId: string) => {
+    setCustomQuestionsList(customQuestionsList.filter((q) => q.id !== qId));
+  };
+
+  // Opportunity CRUD & Cloudinary Upload Handlers
   const handleCreateOpportunity = () => {
     setEditingOpportunity({
       id: `temp_${Date.now()}`,
@@ -107,14 +152,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       badge: 'ACTIVE',
       status: 'active',
       description: '',
-      features: ['1.5+ Years Verified Collaboration', 'Advanced Audio Transcription Tasks'],
-      requirements: ['Windows 10/11 or Mac PC', 'Aegisub / Subtitle Edit'],
-      action_url: '#desicrew-contributors',
+      company_logo: '',
       poster_url: '',
       public_id: '',
+      features: ['1.5+ Years Verified Collaboration', 'Advanced Audio Transcription Tasks'],
+      requirements: ['Windows 10/11 or Mac PC', 'Aegisub / Subtitle Edit'],
+      language_skills: ['Odia (Native)', 'Indian English', 'Aegisub', 'Subtitle Edit'],
+      eligibility_criteria: ['PC/Laptop Hardware Required', 'Fast Internet Connection', 'Native Listening & Typing Accuracy'],
+      linkedin_post_url: '',
+      pdf_link: '',
+      contact_details: { contact_person: 'Operations Lead', email: 'zenemootech@gmail.com', phone: '+91 98765 43210' },
+      custom_questions: [
+        { id: 'q1', label: 'What is your Odia typing speed (words per minute)?', type: 'text', required: true },
+        { id: 'q2', label: 'How many hours daily can you dedicate to transcription work?', type: 'select', options: ['2-3 Hours', '4-5 Hours (Recommended)', '6+ Hours (Full-Time)'], required: true },
+        { id: 'q3', label: 'Briefly mention any past speech annotation or audio editing experience:', type: 'textarea', required: false },
+      ],
+      action_url: '#desicrew-contributors',
     });
     setFeaturesInput('1.5+ Years Verified Collaboration\nAdvanced Audio Transcription Tasks\nEnterprise SLA Requirements');
     setRequirementsInput('Windows 10/11 or Mac PC\nAegisub / Subtitle Edit Software\nNative Odia Speaker Proficiency');
+    setLanguageSkillsInput('Odia (Native)\nIndian English\nAegisub Tool\nSubtitle Edit');
+    setEligibilityInput('PC/Laptop Hardware Required\nFast Internet Connection\nNative Listening & Typing Accuracy');
+    setLinkedinPostUrl('');
+    setPdfLink('');
+    setContactPerson('Operations Lead');
+    setContactEmail('zenemootech@gmail.com');
+    setContactPhone('+91 98765 43210');
+    setCustomQuestionsList([
+      { id: 'q1', label: 'What is your Odia typing speed (words per minute)?', type: 'text', required: true },
+      { id: 'q2', label: 'How many hours daily can you dedicate to transcription work?', type: 'select', options: ['2-3 Hours', '4-5 Hours (Recommended)', '6+ Hours (Full-Time)'], required: true },
+      { id: 'q3', label: 'Briefly mention any past speech annotation or audio editing experience:', type: 'textarea', required: false },
+    ]);
+  };
+
+  const handleEditOpportunityClick = (op: OpportunityProgram) => {
+    setEditingOpportunity(op);
+    setFeaturesInput(op.features?.join('\n') || '');
+    setRequirementsInput(op.requirements?.join('\n') || '');
+    setLanguageSkillsInput(op.language_skills?.join('\n') || '');
+    setEligibilityInput(op.eligibility_criteria?.join('\n') || '');
+    setLinkedinPostUrl(op.linkedin_post_url || '');
+    setPdfLink(op.pdf_link || '');
+    setContactPerson(op.contact_details?.contact_person || '');
+    setContactEmail(op.contact_details?.email || '');
+    setContactPhone(op.contact_details?.phone || '');
+    setCustomQuestionsList(op.custom_questions || []);
   };
 
   const handleSaveOpportunity = async (e: React.FormEvent) => {
@@ -123,17 +205,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     try {
       const parsedFeatures = featuresInput.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
       const parsedReqs = requirementsInput.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+      const parsedSkills = languageSkillsInput.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+      const parsedElig = eligibilityInput.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
 
-      const payload = {
+      const payload: OpportunityProgram = {
         ...editingOpportunity,
         features: parsedFeatures.length > 0 ? parsedFeatures : editingOpportunity.features,
         requirements: parsedReqs.length > 0 ? parsedReqs : editingOpportunity.requirements,
+        language_skills: parsedSkills,
+        eligibility_criteria: parsedElig,
+        linkedin_post_url: linkedinPostUrl,
+        pdf_link: pdfLink,
+        contact_details: {
+          contact_person: contactPerson,
+          email: contactEmail,
+          phone: contactPhone,
+        },
+        custom_questions: customQuestionsList,
       };
 
       const updated = await saveOpportunityToApi(payload);
       setOpportunitiesList(updated);
       setEditingOpportunity(null);
-      showStatus(`Saved program opportunity "${payload.title}"!`);
+      showStatus(`Saved program opportunity "${payload.title}" with custom form questions!`);
     } catch (err: any) {
       alert('Error saving opportunity: ' + (err.message || 'Server error'));
     }
@@ -172,11 +266,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         ...editingOpportunity,
         poster_url: uploadedUrl,
       });
-      showStatus('Poster image uploaded successfully via Cloudinary!');
+      showStatus('Poster banner uploaded successfully via Cloudinary!');
     } catch (err: any) {
-      alert('Image upload failed: ' + (err.message || 'Error'));
+      alert('Poster upload failed: ' + (err.message || 'Error'));
     } finally {
       setIsOpportunityUploading(false);
+    }
+  };
+
+  const handleOpportunityLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingOpportunity) return;
+    setIsLogoUploading(true);
+    try {
+      const uploadedUrl = await uploadImageToCloudinary(file, 'zenemoo/opportunities/logos');
+      setEditingOpportunity({
+        ...editingOpportunity,
+        company_logo: uploadedUrl,
+      });
+      showStatus('Company logo uploaded successfully via Cloudinary!');
+    } catch (err: any) {
+      alert('Logo upload failed: ' + (err.message || 'Error'));
+    } finally {
+      setIsLogoUploading(false);
     }
   };
 
@@ -1417,15 +1529,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                       )}
                     </div>
 
-                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-slate-400 truncate max-w-[180px]">{op.action_url}</span>
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setSelectedOppForApps(op)}
+                        className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono flex items-center gap-1.5 cursor-pointer font-bold"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" /> Applications (
+                        {allCandidateApps.filter((a) => a.opportunity_id === op.id).length})
+                      </button>
+
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            setEditingOpportunity(op);
-                            setFeaturesInput(op.features?.join('\n') || '');
-                            setRequirementsInput(op.requirements?.join('\n') || '');
-                          }}
+                          onClick={() => handleEditOpportunityClick(op)}
                           className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 text-xs font-mono flex items-center gap-1.5 cursor-pointer"
                         >
                           <Edit className="w-3.5 h-3.5" /> Edit
@@ -2045,28 +2160,126 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     />
                   </div>
 
-                  {/* Image Poster Upload via Cloudinary */}
-                  <div>
-                    <label className="block text-slate-300 mb-1">Program Poster / Image (Cloudinary CDN)</label>
-                    <div className="flex items-center gap-3">
+                  {/* Company Logo & Poster Banner Uploaders */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1">Company Logo (Cloudinary CDN)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Logo URL..."
+                          value={editingOpportunity.company_logo || ''}
+                          onChange={(e) => setEditingOpportunity({ ...editingOpportunity, company_logo: e.target.value })}
+                          className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white"
+                        />
+                        <label className="px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 cursor-pointer flex items-center gap-1 shrink-0 font-bold">
+                          <Upload className="w-3.5 h-3.5" />
+                          {isLogoUploading ? '...' : 'Logo'}
+                          <input type="file" accept="image/*" onChange={handleOpportunityLogoUpload} className="hidden" disabled={isLogoUploading} />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">Poster Banner (Cloudinary CDN)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Poster URL..."
+                          value={editingOpportunity.poster_url || ''}
+                          onChange={(e) => setEditingOpportunity({ ...editingOpportunity, poster_url: e.target.value })}
+                          className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white"
+                        />
+                        <label className="px-3 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 cursor-pointer flex items-center gap-1 shrink-0 font-bold">
+                          <Upload className="w-3.5 h-3.5" />
+                          {isOpportunityUploading ? '...' : 'Poster'}
+                          <input type="file" accept="image/*" onChange={handleOpportunityPosterUpload} className="hidden" disabled={isOpportunityUploading} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* LinkedIn & PDF Links */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1 flex items-center gap-1">
+                        <Linkedin className="w-3.5 h-3.5 text-blue-400" /> LinkedIn Post Link (Optional)
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://linkedin.com/posts/..."
+                        value={linkedinPostUrl}
+                        onChange={(e) => setLinkedinPostUrl(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1 flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5 text-emerald-400" /> PDF Guideline Document Link (Optional)
+                      </label>
                       <input
                         type="text"
-                        placeholder="Poster image URL..."
-                        value={editingOpportunity.poster_url || ''}
-                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, poster_url: e.target.value })}
-                        className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                        placeholder="https://.../guidelines.pdf"
+                        value={pdfLink}
+                        onChange={(e) => setPdfLink(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
                       />
-                      <label className="px-4 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 cursor-pointer flex items-center gap-1.5 shrink-0 font-bold">
-                        <Upload className="w-3.5 h-3.5" />
-                        {isOpportunityUploading ? 'Uploading...' : 'Upload Image'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleOpportunityPosterUpload}
-                          className="hidden"
-                          disabled={isOpportunityUploading}
-                        />
-                      </label>
+                    </div>
+                  </div>
+
+                  {/* Opportunity Contact Details */}
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
+                    <div className="text-cyan-400 font-bold flex items-center gap-1.5">
+                      <Mail className="w-4 h-4" /> Opportunity Direct Contact Info (For Inquiry)
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        placeholder="Contact Person (e.g. Viji M.P.)"
+                        value={contactPerson}
+                        onChange={(e) => setContactPerson(e.target.value)}
+                        className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white"
+                      />
+                      <input
+                        type="email"
+                        placeholder="Contact Email"
+                        value={contactEmail}
+                        onChange={(e) => setContactEmail(e.target.value)}
+                        className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white"
+                      />
+                      <input
+                        type="tel"
+                        placeholder="WhatsApp / Phone"
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.target.value)}
+                        className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Language Skills & Eligibility Lists */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1">Language &amp; Skills Requirements (1 per line)</label>
+                      <textarea
+                        rows={3}
+                        placeholder="Odia (Native)&#10;Indian English&#10;Aegisub Tool&#10;Subtitle Edit"
+                        value={languageSkillsInput}
+                        onChange={(e) => setLanguageSkillsInput(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">Eligibility Criteria (1 per line)</label>
+                      <textarea
+                        rows={3}
+                        placeholder="PC/Laptop Hardware Required&#10;Fast Internet Connection&#10;Native Listening &amp; Typing Accuracy"
+                        value={eligibilityInput}
+                        onChange={(e) => setEligibilityInput(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
                     </div>
                   </div>
 
@@ -2074,7 +2287,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   <div>
                     <label className="block text-slate-300 mb-1">Highlights &amp; Features (1 per line)</label>
                     <textarea
-                      rows={3}
+                      rows={2}
                       placeholder="1.5+ Years Verified Collaboration&#10;Advanced Audio Transcription Tasks&#10;Enterprise SLA Requirements"
                       value={featuresInput}
                       onChange={(e) => setFeaturesInput(e.target.value)}
@@ -2082,16 +2295,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     />
                   </div>
 
-                  {/* Requirements List (Line Separated) */}
-                  <div>
-                    <label className="block text-slate-300 mb-1">Eligibility &amp; Checklist (1 per line)</label>
-                    <textarea
-                      rows={3}
-                      placeholder="Windows 10/11 or Mac PC&#10;Aegisub / Subtitle Edit Software&#10;Native Odia Speaker Proficiency"
-                      value={requirementsInput}
-                      onChange={(e) => setRequirementsInput(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
-                    />
+                  {/* CUSTOM APPLICATION FORM QUESTION BUILDER */}
+                  <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-purple-300 flex items-center gap-1.5 text-sm">
+                        <HelpCircle className="w-4 h-4" /> Custom Application Form Question Builder
+                      </div>
+                      <span className="text-[10px] font-mono text-purple-400 font-bold">
+                        {customQuestionsList.length} Questions Defined
+                      </span>
+                    </div>
+
+                    {/* Question List */}
+                    {customQuestionsList.length > 0 && (
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        {customQuestionsList.map((q, idx) => (
+                          <div key={q.id} className="p-2.5 rounded-xl bg-slate-900/80 border border-white/10 flex items-center justify-between gap-3 text-xs">
+                            <div className="space-y-0.5">
+                              <div className="font-bold text-white flex items-center gap-2">
+                                <span className="text-cyan-400">Q{idx + 1}.</span> {q.label}
+                                {q.required && <span className="text-red-400 font-bold">*</span>}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                Type: <span className="text-purple-300 uppercase">{q.type}</span>
+                                {q.options && q.options.length > 0 && ` • Options: ${q.options.join(', ')}`}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteQuestion(q.id)}
+                              className="p-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/40 shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add Question Sub-form */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-3">
+                      <div className="text-xs font-bold text-slate-300">Add New Form Question:</div>
+                      <input
+                        type="text"
+                        placeholder="e.g. What is your Odia typing speed (words per minute)?"
+                        value={newQLabel}
+                        onChange={(e) => setNewQLabel(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white"
+                      />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <select
+                          value={newQType}
+                          onChange={(e) => setNewQType(e.target.value as any)}
+                          className="px-3 py-2 rounded-xl bg-[#0d0e15] border border-white/10 text-white"
+                        >
+                          <option value="text">Short Text Answer</option>
+                          <option value="textarea">Long Paragraph Answer</option>
+                          <option value="select">Dropdown Options Select</option>
+                        </select>
+
+                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newQRequired}
+                            onChange={(e) => setNewQRequired(e.target.checked)}
+                            className="rounded border-white/10"
+                          />
+                          <span>Required Question</span>
+                        </label>
+                      </div>
+
+                      {newQType === 'select' && (
+                        <textarea
+                          rows={2}
+                          placeholder="Options (1 per line)&#10;e.g. 2-3 Hours&#10;4-5 Hours&#10;6+ Hours"
+                          value={newQOptions}
+                          onChange={(e) => setNewQOptions(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white"
+                        />
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleAddQuestion}
+                        className="w-full py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <PlusCircle className="w-4 h-4" /> Add Question to Opportunity Form
+                      </button>
+                    </div>
                   </div>
 
                   <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
@@ -2110,6 +2402,158 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* CANDIDATE APPLICATIONS TABLE MODAL VIEW */}
+        <AnimatePresence>
+          {selectedOppForApps && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-5xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                      <FileSpreadsheet className="w-5 h-5 text-cyan-400" /> Candidate Applications Table
+                    </h3>
+                    <p className="text-xs font-mono text-cyan-300 mt-0.5">
+                      Program: <span className="text-white font-bold">{selectedOppForApps.title}</span> ({selectedOppForApps.partner_name})
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedOppForApps(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Filter Bar */}
+                <div className="flex items-center justify-between gap-4 font-mono text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Filter Status:</span>
+                    <select
+                      value={appStatusFilter}
+                      onChange={(e) => setAppStatusFilter(e.target.value as any)}
+                      className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-bold focus:outline-none"
+                    >
+                      <option value="all" className="bg-slate-900">ALL APPLICATIONS</option>
+                      <option value="pending" className="bg-slate-900">PENDING</option>
+                      <option value="shortlisted" className="bg-slate-900">SHORTLISTED</option>
+                      <option value="accepted" className="bg-slate-900">ACCEPTED</option>
+                      <option value="rejected" className="bg-slate-900">REJECTED</option>
+                    </select>
+                  </div>
+
+                  <span className="text-cyan-400 font-bold">
+                    Total: {allCandidateApps.filter((a) => a.opportunity_id === selectedOppForApps.id).length} Applicants
+                  </span>
+                </div>
+
+                {/* Table View */}
+                {allCandidateApps.filter((a) => a.opportunity_id === selectedOppForApps.id).length === 0 ? (
+                  <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                    <UserCheck className="w-10 h-10 text-slate-500 mx-auto" />
+                    <h4 className="text-base font-bold text-white">No Candidate Applications Submitted Yet</h4>
+                    <p className="text-xs font-mono text-slate-400">
+                      When candidates apply to this opportunity on <code className="text-cyan-300">/#opportunities</code>, their entries will populate in this table automatically.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.01]">
+                    <table className="w-full text-left font-mono text-xs">
+                      <thead className="bg-white/[0.03] text-slate-300 border-b border-white/10 uppercase text-[10px] tracking-wider font-bold">
+                        <tr>
+                          <th className="p-3.5">Applicant</th>
+                          <th className="p-3.5">Contact Info</th>
+                          <th className="p-3.5">Custom Form Answers</th>
+                          <th className="p-3.5">Status</th>
+                          <th className="p-3.5">Date</th>
+                          <th className="p-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-slate-200">
+                        {allCandidateApps
+                          .filter((a) => a.opportunity_id === selectedOppForApps.id)
+                          .filter((a) => appStatusFilter === 'all' || a.status === appStatusFilter)
+                          .map((app) => (
+                            <tr key={app.id} className="hover:bg-white/[0.02]">
+                              <td className="p-3.5 font-bold text-white font-sans">{app.applicant_name}</td>
+                              <td className="p-3.5 space-y-0.5 text-[11px]">
+                                <div className="text-cyan-300">{app.applicant_email}</div>
+                                <div className="text-slate-400">{app.applicant_phone}</div>
+                              </td>
+                              <td className="p-3.5 max-w-xs">
+                                <div className="space-y-1 text-[11px]">
+                                  {Object.entries(app.answers || {}).map(([key, val]) => (
+                                    <div key={key} className="bg-white/[0.03] p-1.5 rounded border border-white/5">
+                                      <span className="text-slate-400 font-bold">{key}:</span>{' '}
+                                      <span className="text-emerald-300">{String(val)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="p-3.5">
+                                <select
+                                  value={app.status}
+                                  onChange={async (e) => {
+                                    const newStatus = e.target.value as any;
+                                    const updatedList = await updateCandidateApplicationStatus(app.id, { status: newStatus });
+                                    setAllCandidateApps(updatedList);
+                                    showStatus(`Updated candidate "${app.applicant_name}" status to ${newStatus.toUpperCase()}`);
+                                  }}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase focus:outline-none cursor-pointer ${
+                                    app.status === 'accepted'
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      : app.status === 'shortlisted'
+                                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                                      : app.status === 'rejected'
+                                      ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                  }`}
+                                >
+                                  <option value="pending" className="bg-slate-900 text-amber-400">PENDING</option>
+                                  <option value="shortlisted" className="bg-slate-900 text-cyan-400">SHORTLISTED</option>
+                                  <option value="accepted" className="bg-slate-900 text-emerald-400">ACCEPTED</option>
+                                  <option value="rejected" className="bg-slate-900 text-red-400">REJECTED</option>
+                                </select>
+                              </td>
+                              <td className="p-3.5 text-[10px] text-slate-400">
+                                {app.created_at ? new Date(app.created_at).toLocaleDateString() : 'Today'}
+                              </td>
+                              <td className="p-3.5 text-right">
+                                <button
+                                  onClick={async () => {
+                                    if (confirm(`Delete application for ${app.applicant_name}?`)) {
+                                      const updated = await deleteCandidateApplication(app.id);
+                                      setAllCandidateApps(updated);
+                                      showStatus('Candidate application deleted');
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
+                                  title="Delete Application"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </motion.div>
             </motion.div>
           )}

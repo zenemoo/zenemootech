@@ -64,6 +64,14 @@ export const opportunityApi = {
   delete: (id: string) => api.delete(`/opportunities/${id}`),
 };
 
+// Candidate Opportunity Applications APIs
+export const opportunityApplicationApi = {
+  getAll: (opportunity_id?: string) => api.get('/opportunity-applications', { params: { opportunity_id } }),
+  submit: (data: any) => api.post('/opportunity-applications', data),
+  update: (id: string, data: any) => api.put(`/opportunity-applications/${id}`, data),
+  delete: (id: string) => api.delete(`/opportunity-applications/${id}`),
+};
+
 // Contact APIs
 export const contactApi = {
   getAll: () => api.get('/contact'),

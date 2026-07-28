@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Sparkles, CheckCircle2, Calendar, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase, Linkedin, FileText, Mail, Phone, X, Send } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
+import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
 
 interface OpportunitiesPageProps {
   onBack: () => void;
@@ -11,6 +12,15 @@ interface OpportunitiesPageProps {
 export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, onSelectProgram }) => {
   const [opportunities, setOpportunities] = useState<OpportunityProgram[]>([]);
   const [loading, setLoading] = useState(true);
+  const [applyingOpportunity, setApplyingOpportunity] = useState<OpportunityProgram | null>(null);
+
+  // Form State
+  const [applicantName, setApplicantName] = useState('');
+  const [applicantEmail, setApplicantEmail] = useState('');
+  const [applicantPhone, setApplicantPhone] = useState('');
+  const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittedRef, setSubmittedRef] = useState<string | null>(null);
 
   useEffect(() => {
     getStoredOpportunities().then((data) => {
@@ -19,14 +29,36 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     });
   }, []);
 
-  const handleCardClick = (op: OpportunityProgram) => {
+  const handleOpenApplicationModal = (op: OpportunityProgram) => {
     if (op.status === 'stopped') return;
-    if (op.action_url && op.action_url.startsWith('#')) {
-      window.location.hash = op.action_url.replace('#', '');
-    } else if (op.action_url && op.action_url.startsWith('http')) {
-      window.open(op.action_url, '_blank', 'noopener,noreferrer');
-    } else {
-      onSelectProgram('desicrew');
+    setApplyingOpportunity(op);
+    setApplicantName('');
+    setApplicantEmail('');
+    setApplicantPhone('');
+    setCustomAnswers({});
+    setSubmittedRef(null);
+  };
+
+  const handleSubmitApplicationForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!applyingOpportunity) return;
+    setIsSubmitting(true);
+
+    try {
+      const result = await submitCandidateApplication({
+        opportunity_id: applyingOpportunity.id,
+        opportunity_title: applyingOpportunity.title,
+        applicant_name: applicantName,
+        applicant_email: applicantEmail,
+        applicant_phone: applicantPhone,
+        answers: customAnswers,
+      });
+
+      setSubmittedRef(result.id);
+    } catch (err: any) {
+      alert('Application submission failed: ' + (err.message || 'Error'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -60,7 +92,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
 
       {/* Main Content */}
       <main className="flex-1 py-16 sm:py-20 relative z-10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           {/* Header section */}
           <div className="text-center max-w-2xl mx-auto space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono uppercase tracking-widest">
@@ -71,7 +103,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
             </h1>
             <div className="w-16 h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-500 rounded-full mx-auto"></div>
             <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base leading-relaxed font-sans">
-              Select a program below to explore and join our community-driven annotation and language collection collaborations.
+              Explore and apply to our verified enterprise data annotation, transcription, and language dataset collection programs.
             </p>
           </div>
 
@@ -90,7 +122,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
               {opportunities.map((op) => {
                 const isActive = op.status === 'active';
                 const isStopped = op.status === 'stopped';
@@ -108,7 +140,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     )}
 
                     <div className="space-y-6">
-                      {/* Badge Group */}
+                      {/* Badge & Unlock Icon Header */}
                       <div className="flex items-center justify-between">
                         <span
                           className={`px-3 py-1 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider ${
@@ -132,15 +164,26 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                         </div>
                       </div>
 
-                      {/* Program Title & Poster Thumbnail */}
+                      {/* Header with Company Logo & Poster Banner */}
                       <div className="flex items-start gap-4">
-                        {op.poster_url && (
+                        {op.company_logo ? (
+                          <img
+                            src={op.company_logo}
+                            alt={op.partner_name}
+                            className="w-14 h-14 object-contain bg-white p-1 rounded-2xl border border-white/10 shrink-0 shadow-md"
+                          />
+                        ) : op.poster_url ? (
                           <img
                             src={op.poster_url}
                             alt={op.title}
                             className="w-14 h-16 object-cover rounded-xl border border-white/10 shrink-0"
                           />
+                        ) : (
+                          <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+                            <Briefcase className="w-6 h-6" />
+                          </div>
                         )}
+
                         <div>
                           <h3 className="font-display font-extrabold text-2xl tracking-tight text-white light:text-slate-900">
                             {op.title}
@@ -149,23 +192,89 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                         </div>
                       </div>
 
+                      {/* Description */}
                       <p className="text-xs sm:text-sm text-slate-300 light:text-slate-600 font-sans leading-relaxed">
                         {op.description}
                       </p>
 
-                      {/* Features List */}
-                      {op.features && op.features.length > 0 && (
-                        <div className="space-y-2.5 pt-2 border-t border-white/10 font-mono text-xs text-slate-300 light:text-slate-700">
-                          {op.features.map((feat, idx) => (
-                            <div key={idx} className="flex items-center gap-2.5">
-                              {isActive ? (
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                              ) : (
-                                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
-                              )}
-                              <span>{feat}</span>
+                      {/* Language & Skills Badges */}
+                      {op.language_skills && op.language_skills.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-mono uppercase text-cyan-300 tracking-wider">
+                            Language &amp; Skills Required:
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {op.language_skills.map((skill, sIdx) => (
+                              <span
+                                key={sIdx}
+                                className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold"
+                              >
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Eligibility Criteria Checklist */}
+                      {op.eligibility_criteria && op.eligibility_criteria.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-white/10 font-mono text-xs text-slate-300 light:text-slate-700">
+                          <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider">
+                            Eligibility Checklist:
+                          </div>
+                          {op.eligibility_criteria.map((elig, eIdx) => (
+                            <div key={eIdx} className="flex items-center gap-2.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span>{elig}</span>
                             </div>
                           ))}
+                        </div>
+                      )}
+
+                      {/* External LinkedIn & PDF Links */}
+                      <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-white/10 font-mono text-xs">
+                        {op.linkedin_post_url && (
+                          <a
+                            href={op.linkedin_post_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 flex items-center gap-1.5 font-bold transition-all"
+                          >
+                            <Linkedin className="w-3.5 h-3.5 text-blue-400" /> LinkedIn Announcement
+                          </a>
+                        )}
+
+                        {op.pdf_link && (
+                          <a
+                            href={op.pdf_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 font-bold transition-all"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-emerald-400" /> Program PDF Guidelines
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Direct Contact Person Details */}
+                      {op.contact_details && (op.contact_details.email || op.contact_details.phone) && (
+                        <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/10 text-xs font-mono space-y-1">
+                          <div className="text-slate-400 text-[10px] uppercase">Direct Opportunity Contact:</div>
+                          {op.contact_details.contact_person && (
+                            <div className="font-bold text-white">{op.contact_details.contact_person}</div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-4 text-slate-300 text-[11px]">
+                            {op.contact_details.email && (
+                              <div className="flex items-center gap-1 text-cyan-300">
+                                <Mail className="w-3 h-3 text-cyan-400" /> {op.contact_details.email}
+                              </div>
+                            )}
+                            {op.contact_details.phone && (
+                              <div className="flex items-center gap-1 text-emerald-300">
+                                <Phone className="w-3 h-3 text-emerald-400" /> {op.contact_details.phone}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -173,7 +282,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     {/* Action Button */}
                     <button
                       disabled={isStopped}
-                      onClick={() => handleCardClick(op)}
+                      onClick={() => handleOpenApplicationModal(op)}
                       className={`mt-8 w-full py-3.5 px-6 rounded-xl font-bold text-xs sm:text-sm font-mono flex items-center justify-center gap-2 transition-all ${
                         isActive
                           ? 'bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black shadow-lg shadow-emerald-500/20 cursor-pointer'
@@ -182,7 +291,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     >
                       {isActive ? (
                         <>
-                          Explore &amp; Apply Now <ArrowRight className="w-4 h-4" />
+                          Apply Now &amp; Submit Details <ArrowRight className="w-4 h-4" />
                         </>
                       ) : (
                         <>
@@ -198,10 +307,176 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
         </div>
       </main>
 
+      {/* DYNAMIC CANDIDATE APPLICATION MODAL */}
+      <AnimatePresence>
+        {applyingOpportunity && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div>
+                  <div className="text-xs font-mono text-cyan-400 uppercase tracking-widest">Candidate Application</div>
+                  <h3 className="text-xl font-bold font-display text-white">{applyingOpportunity.title}</h3>
+                </div>
+                <button
+                  onClick={() => setApplyingOpportunity(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {submittedRef ? (
+                <div className="text-center py-8 space-y-4 font-mono text-xs">
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-xl font-bold">
+                    ✓
+                  </div>
+                  <h4 className="text-lg font-bold text-white">Application Submitted Successfully!</h4>
+                  <p className="text-slate-300 leading-relaxed">
+                    Thank you for applying to <span className="text-cyan-400 font-bold">{applyingOpportunity.title}</span>. Your application reference code is:
+                  </p>
+                  <div className="p-3 rounded-xl bg-white/[0.04] border border-cyan-500/30 text-cyan-300 text-sm font-bold font-mono">
+                    {submittedRef}
+                  </div>
+                  <p className="text-slate-400 text-[11px]">
+                    Our operations team will review your responses and reach out via email or phone regarding onboarding steps.
+                  </p>
+                  <button
+                    onClick={() => setApplyingOpportunity(null)}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-bold cursor-pointer"
+                  >
+                    Done / Close Application Window
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitApplicationForm} className="space-y-4 font-mono text-xs">
+                  {/* Basic Candidate Contact Fields */}
+                  <div>
+                    <label className="block text-slate-300 mb-1">Full Legal Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Rahul Sharma"
+                      value={applicantName}
+                      onChange={(e) => setApplicantName(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1">Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="you@domain.com"
+                        value={applicantEmail}
+                        onChange={(e) => setApplicantEmail(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">WhatsApp / Phone Number *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="+91 98765 43210"
+                        value={applicantPhone}
+                        onChange={(e) => setApplicantPhone(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* DYNAMIC CUSTOM QUESTIONS SET BY ADMIN */}
+                  {applyingOpportunity.custom_questions && applyingOpportunity.custom_questions.length > 0 && (
+                    <div className="pt-3 border-t border-white/10 space-y-4">
+                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider">
+                        Program Specific Questions (Required by Admin):
+                      </div>
+
+                      {applyingOpportunity.custom_questions.map((q) => (
+                        <div key={q.id} className="space-y-1">
+                          <label className="block text-slate-300 mb-1 font-bold">
+                            {q.label} {q.required && <span className="text-red-400">*</span>}
+                          </label>
+
+                          {q.type === 'textarea' ? (
+                            <textarea
+                              required={q.required}
+                              rows={3}
+                              placeholder="Enter your detailed answer..."
+                              value={customAnswers[q.label] || ''}
+                              onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                            />
+                          ) : q.type === 'select' ? (
+                            <select
+                              required={q.required}
+                              value={customAnswers[q.label] || ''}
+                              onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                              className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                            >
+                              <option value="">-- Select Option --</option>
+                              {q.options?.map((opt, optIdx) => (
+                                <option key={optIdx} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              required={q.required}
+                              placeholder="Your answer..."
+                              value={customAnswers[q.label] || ''}
+                              onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setApplyingOpportunity(null)}
+                      className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" /> {isSubmitting ? 'Submitting...' : 'Submit Application'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Footer */}
       <footer className="py-6 border-t border-white/10 light:border-slate-200 bg-[#050505]/60 light:bg-white/60 backdrop-blur-md text-center text-xs font-mono text-slate-400">
         <div className="max-w-7xl mx-auto px-4">
-          &copy; 2026 ZENEMOO Data Solutions. All Rights Reserved. Vendor Partner with DesiCrew Solutions.
+          &copy; 2026 ZENEMOO Data Solutions. All Rights Reserved. Enterprise Vendor Partner with DesiCrew Solutions.
         </div>
       </footer>
     </div>
