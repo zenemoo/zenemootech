@@ -17,11 +17,13 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { TeamDirectoryPage } from './components/TeamDirectoryPage';
 import { OpportunitiesPage } from './components/OpportunitiesPage';
 import { DesicrewContributorsPage } from './components/DesicrewContributorsPage';
+import { OpportunityDetailPage } from './components/OpportunityDetailPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'opportunities' | 'desicrew-contributors'
+    'home' | 'admin' | 'team-directory' | 'opportunities' | 'desicrew-contributors' | 'opportunity-detail'
   >('home');
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('op_desicrew');
 
   useEffect(() => {
     const checkRoute = () => {
@@ -34,6 +36,10 @@ export function App() {
         setCurrentRoute('opportunities');
       } else if (hash === '#desicrew-contributors' || hash === '#desicrew' || hash === '#language-contributors') {
         setCurrentRoute('desicrew-contributors');
+      } else if (hash.startsWith('#opportunity/') || hash.startsWith('#program/')) {
+        const oppId = hash.replace('#opportunity/', '').replace('#program/', '');
+        setSelectedOpportunityId(oppId || 'op_desicrew');
+        setCurrentRoute('opportunity-detail');
       } else {
         setCurrentRoute('home');
       }
@@ -56,10 +62,9 @@ export function App() {
   };
 
   const handleSelectProgram = (programId: string) => {
-    if (programId === 'desicrew') {
-      window.location.hash = 'desicrew-contributors';
-      setCurrentRoute('desicrew-contributors');
-    }
+    window.location.hash = `opportunity/${programId}`;
+    setSelectedOpportunityId(programId);
+    setCurrentRoute('opportunity-detail');
   };
 
   return (
@@ -70,6 +75,14 @@ export function App() {
         <TeamDirectoryPage onBack={handleBackToHome} />
       ) : currentRoute === 'opportunities' ? (
         <OpportunitiesPage onBack={handleBackToHome} onSelectProgram={handleSelectProgram} />
+      ) : currentRoute === 'opportunity-detail' ? (
+        <OpportunityDetailPage
+          opportunityId={selectedOpportunityId}
+          onBack={() => {
+            window.location.hash = 'opportunities';
+            setCurrentRoute('opportunities');
+          }}
+        />
       ) : currentRoute === 'desicrew-contributors' ? (
         <DesicrewContributorsPage
           onBack={handleBackToHome}

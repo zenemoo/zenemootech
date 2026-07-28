@@ -29,6 +29,11 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     });
   }, []);
 
+  const handleCardClick = (op: OpportunityProgram) => {
+    if (op.status === 'stopped') return;
+    onSelectProgram(op.id);
+  };
+
   const handleOpenApplicationModal = (op: OpportunityProgram) => {
     if (op.status === 'stopped') return;
     setApplyingOpportunity(op);
@@ -282,7 +287,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     {/* Action Button */}
                     <button
                       disabled={isStopped}
-                      onClick={() => handleOpenApplicationModal(op)}
+                      onClick={() => handleCardClick(op)}
                       className={`mt-8 w-full py-3.5 px-6 rounded-xl font-bold text-xs sm:text-sm font-mono flex items-center justify-center gap-2 transition-all ${
                         isActive
                           ? 'bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black shadow-lg shadow-emerald-500/20 cursor-pointer'
@@ -291,7 +296,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     >
                       {isActive ? (
                         <>
-                          Apply Now &amp; Submit Details <ArrowRight className="w-4 h-4" />
+                          View Full Details &amp; Apply <ArrowRight className="w-4 h-4" />
                         </>
                       ) : (
                         <>

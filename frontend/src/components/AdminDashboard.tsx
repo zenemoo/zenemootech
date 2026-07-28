@@ -2476,7 +2476,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     <table className="w-full text-left font-mono text-xs">
                       <thead className="bg-white/[0.03] text-slate-300 border-b border-white/10 uppercase text-[10px] tracking-wider font-bold">
                         <tr>
-                          <th className="p-3.5">Applicant</th>
+                          <th className="p-3.5">Applicant ID</th>
+                          <th className="p-3.5">Applicant Name</th>
                           <th className="p-3.5">Contact Info</th>
                           <th className="p-3.5">Custom Form Answers</th>
                           <th className="p-3.5">Status</th>
@@ -2490,6 +2491,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                           .filter((a) => appStatusFilter === 'all' || a.status === appStatusFilter)
                           .map((app) => (
                             <tr key={app.id} className="hover:bg-white/[0.02]">
+                              <td className="p-3.5 font-bold font-mono text-cyan-400 text-xs">
+                                {app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`}
+                              </td>
                               <td className="p-3.5 font-bold text-white font-sans">{app.applicant_name}</td>
                               <td className="p-3.5 space-y-0.5 text-[11px]">
                                 <div className="text-cyan-300">{app.applicant_email}</div>

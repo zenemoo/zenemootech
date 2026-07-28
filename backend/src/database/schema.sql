@@ -116,6 +116,7 @@ CREATE TABLE opportunities (
 -- Table 7: opportunity_applications
 CREATE TABLE opportunity_applications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  applicant_id TEXT UNIQUE,
   opportunity_id TEXT NOT NULL,
   opportunity_title TEXT NOT NULL,
   applicant_name TEXT NOT NULL,
@@ -127,5 +128,6 @@ CREATE TABLE opportunity_applications (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
 
 

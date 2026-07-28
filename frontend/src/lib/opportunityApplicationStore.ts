@@ -2,6 +2,7 @@ import { opportunityApplicationApi } from '../services/api';
 
 export interface CandidateApplication {
   id: string;
+  applicant_id?: string;
   opportunity_id: string;
   opportunity_title: string;
   applicant_name: string;
@@ -60,10 +61,12 @@ export const submitCandidateApplication = async (
   appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'>
 ): Promise<CandidateApplication> => {
   let localList = getLocalApplications();
+  const generatedId = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const newApp: CandidateApplication = {
     ...appData,
     id: `app_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    applicant_id: appData.applicant_id || generatedId,
     status: 'pending',
     admin_notes: '',
     created_at: new Date().toISOString(),

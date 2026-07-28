@@ -39,7 +39,10 @@ const submitApplication = async (req, res) => {
       return res.status(400).json({ error: 'Missing required applicant fields' });
     }
 
+    const generatedApplicantId = `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newRecord = {
+      applicant_id: generatedApplicantId,
       opportunity_id,
       opportunity_title: opportunity_title || 'General Opportunity',
       applicant_name,
