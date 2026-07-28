@@ -12,9 +12,17 @@ export const Partner: React.FC = () => {
     });
   }, []);
 
-  // Only duplicate for marquee scrolling when 5 or more partner companies exist
-  const isMarqueeActive = partnerList.length >= 5;
-  const marqueeItems = isMarqueeActive ? [...partnerList, ...partnerList] : partnerList;
+  // Generate repeated list for seamless infinite marquee scrolling (right to left)
+  const getMarqueeItems = (list: PartnerCompany[]) => {
+    if (list.length === 0) return [];
+    let items = [...list];
+    while (items.length < 8) {
+      items = [...items, ...list];
+    }
+    return [...items, ...items];
+  };
+
+  const marqueeItems = getMarqueeItems(partnerList);
 
   return (
     <section id="partner" className="py-24 relative z-10 bg-[#050507]">
@@ -135,15 +143,11 @@ export const Partner: React.FC = () => {
             {/* Marquee Container with Gradient Side Masks */}
             <div className="relative overflow-hidden py-4 rounded-2xl bg-white/[0.01] border border-white/5">
               {/* Left & Right Gradient Fade Overlays */}
-              {isMarqueeActive && (
-                <>
-                  <div className="absolute top-0 bottom-0 left-0 w-24 bg-gradient-to-r from-[#050507] to-transparent z-10 pointer-events-none"></div>
-                  <div className="absolute top-0 bottom-0 right-0 w-24 bg-gradient-to-l from-[#050507] to-transparent z-10 pointer-events-none"></div>
-                </>
-              )}
+              <div className="absolute top-0 bottom-0 left-0 w-24 bg-gradient-to-r from-[#050507] to-transparent z-10 pointer-events-none"></div>
+              <div className="absolute top-0 bottom-0 right-0 w-24 bg-gradient-to-l from-[#050507] to-transparent z-10 pointer-events-none"></div>
 
-              {/* Ticker Container */}
-              <div className={isMarqueeActive ? 'animate-marquee gap-4 px-4' : 'flex flex-wrap items-center justify-center gap-4 px-4'}>
+              {/* Ticker Container - Continuous Right to Left */}
+              <div className="animate-marquee gap-4 px-4">
                 {marqueeItems.map((item, idx) => (
                   <div
                     key={`${item.id}-${idx}`}
