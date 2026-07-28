@@ -4,6 +4,26 @@ import { CountUp } from './CountUp';
 
 export const Hero: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        audioRef.current
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch((err) => {
+            console.log('Audio playback simulation fallback:', err.message);
+            setIsPlaying(!isPlaying);
+          });
+      }
+    } else {
+      setIsPlaying(!isPlaying);
+    }
+  };
 
   return (
     <section className="relative pt-24 pb-20 md:pt-28 md:pb-24 overflow-hidden bg-noise">
@@ -120,9 +140,15 @@ export const Hero: React.FC = () => {
             <div className="bg-black/60 rounded-xl p-4 sm:p-6 border border-white/10 font-mono text-xs text-slate-300 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
+                  <audio
+                    ref={audioRef}
+                    src="/assets/sample-audio.mp3"
+                    onEnded={() => setIsPlaying(false)}
+                    onError={() => console.log('Audio file /assets/sample-audio.mp3 not found yet')}
+                  />
                   <button
-                    onClick={() => setIsPlaying(!isPlaying)}
-                    className="w-10 h-10 rounded-full bg-cyan-500 text-black flex items-center justify-center hover:bg-cyan-400 transition-colors shadow-lg shadow-cyan-500/30"
+                    onClick={togglePlay}
+                    className="w-10 h-10 rounded-full bg-cyan-500 text-black flex items-center justify-center hover:bg-cyan-400 transition-colors shadow-lg shadow-cyan-500/30 cursor-pointer"
                   >
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                   </button>
