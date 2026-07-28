@@ -290,10 +290,12 @@ export const Contact: React.FC = () => {
             {/* Primary Contact Card */}
             <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 p-[1px] shadow-lg">
-                  <div className="w-full h-full bg-[#0a0c14] rounded-[11px] flex items-center justify-center font-bold text-cyan-400">
-                    P
-                  </div>
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 p-[1.5px] shadow-lg shrink-0 overflow-hidden">
+                  <img
+                    src="https://res.cloudinary.com/rwoe0mm9/image/upload/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg"
+                    alt="Prem Prasad Pradhan - Founder & Vendor Manager"
+                    className="w-full h-full object-cover rounded-[14px]"
+                  />
                 </div>
                 <div>
                   <div className="text-white font-bold font-display text-base">Prem Prasad Pradhan</div>

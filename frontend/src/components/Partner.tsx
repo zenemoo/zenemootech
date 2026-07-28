@@ -46,9 +46,13 @@ export const Partner: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             {/* Left Info */}
             <div className="lg:col-span-5 text-center lg:text-left space-y-4">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 p-[1px] shadow-xl shadow-emerald-500/20">
-                <div className="w-full h-full bg-[#0a0c14] rounded-[15px] flex items-center justify-center">
-                  <Building className="w-10 h-10 text-emerald-400" />
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 p-[1px] shadow-xl shadow-emerald-500/20 overflow-hidden">
+                <div className="w-full h-full bg-[#0a0c14] rounded-[15px] flex items-center justify-center p-2">
+                  <img
+                    src="https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png"
+                    alt="DesiCrew Solutions Logo"
+                    className="w-full h-full object-contain rounded-xl"
+                  />
                 </div>
               </div>
               <h3 className="text-3xl font-extrabold font-display text-white">DesiCrew Solutions</h3>
