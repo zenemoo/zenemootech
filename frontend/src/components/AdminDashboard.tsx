@@ -676,60 +676,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                         m.status === 'inactive' ? 'border-amber-500/30 opacity-60' : 'border-white/10 hover:border-cyan-500/40'
                       }`}
                     >
-                      {/* Top Bar: Position Pill & Status Badge */}
+                      {/* Top Bar: Position Dropdown & Status Badge */}
                       <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3 font-mono text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold text-xs">
-                            Position #{m.position}
-                          </span>
-                          <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
+                          {/* Up / Down Arrow Quick Action Buttons */}
+                          <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
                             <button
                               onClick={() => handleMoveUp(m)}
                               disabled={m.position <= 1}
-                              className="p-1 rounded bg-white/5 hover:bg-cyan-500/20 text-slate-300 disabled:opacity-30 disabled:hover:bg-white/5"
+                              className="p-1 rounded-lg hover:bg-cyan-500/20 text-cyan-400 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
                               title="Move Up 1 Position"
                             >
-                              <ArrowUp className="w-3.5 h-3.5 text-cyan-400" />
+                              <ArrowUp className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleMoveDown(m)}
                               disabled={m.position >= teamList.length}
-                              className="p-1 rounded bg-white/5 hover:bg-cyan-500/20 text-slate-300 disabled:opacity-30 disabled:hover:bg-white/5"
+                              className="p-1 rounded-lg hover:bg-cyan-500/20 text-cyan-400 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
                               title="Move Down 1 Position"
                             >
-                              <ArrowDown className="w-3.5 h-3.5 text-cyan-400" />
+                              <ArrowDown className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
 
-                        {/* Editable Position Input */}
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-400">Pos:</span>
-                          <input
-                            key={`${m.id}-${m.position}`}
-                            type="number"
-                            min={1}
-                            max={teamList.length}
-                            defaultValue={m.position}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handlePositionChange(m, (e.target as HTMLInputElement).value);
-                              }
-                            }}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
-                              if (!isNaN(val) && val >= 1 && val <= teamList.length && val !== m.position) {
-                                handlePositionChange(m, e.target.value);
-                              }
-                            }}
-                            onBlur={(e) => {
-                              if (e.target.value !== String(m.position)) {
-                                handlePositionChange(m, e.target.value);
-                              }
-                            }}
-                            className="w-12 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-center font-bold text-cyan-300 text-xs focus:outline-none focus:border-cyan-400"
-                            title="Type new position number to reorder"
-                          />
+                        {/* Bulletproof Position Dropdown Selector */}
+                        <div className="flex items-center gap-1.5 bg-black/60 px-3 py-1.5 rounded-xl border border-cyan-500/30">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Pos:</span>
+                          <select
+                            value={m.position}
+                            onChange={(e) => handlePositionChange(m, e.target.value)}
+                            className="bg-transparent text-cyan-300 font-bold text-xs focus:outline-none cursor-pointer"
+                            title="Select target position to move member"
+                          >
+                            {teamList.map((_, idx) => (
+                              <option key={idx + 1} value={idx + 1} className="bg-[#0b0c14] text-white">
+                                #{idx + 1}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 
