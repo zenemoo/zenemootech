@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
+import { OpportunityProgram, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry } from '../lib/adminStore';
 import { contactApi, subscriberApi } from '../services/api';
 
@@ -15,7 +16,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'telemetry' | 'keys'>('team');
 
   // Team State
   const [teamList, setTeamList] = useState<TeamMember[]>([]);
@@ -27,6 +28,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [partnersList, setPartnersList] = useState<PartnerCompany[]>([]);
   const [editingPartner, setEditingPartner] = useState<PartnerCompany | null>(null);
   const [isPartnerUploading, setIsPartnerUploading] = useState(false);
+
+  // Opportunities State
+  const [opportunitiesList, setOpportunitiesList] = useState<OpportunityProgram[]>([]);
+  const [editingOpportunity, setEditingOpportunity] = useState<OpportunityProgram | null>(null);
+  const [featuresInput, setFeaturesInput] = useState('');
+  const [requirementsInput, setRequirementsInput] = useState('');
+  const [isOpportunityUploading, setIsOpportunityUploading] = useState(false);
 
   // Search & Filter State for Team
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,16 +80,105 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setPartnersList(partners);
   };
 
+  const loadOpportunitiesData = async () => {
+    const ops = await getStoredOpportunities();
+    setOpportunitiesList(ops);
+  };
+
   useEffect(() => {
     const loadData = async () => {
       await loadTeamData();
       await loadPartnersData();
+      await loadOpportunitiesData();
       const contactData = await getContactInquiries();
       setInquiries(contactData);
       await loadSubscribers();
     };
     loadData();
   }, []);
+
+  // Opportunity CRUD & Cloudinary Poster Handlers
+  const handleCreateOpportunity = () => {
+    setEditingOpportunity({
+      id: `temp_${Date.now()}`,
+      position: opportunitiesList.length + 1,
+      title: '',
+      partner_name: 'DesiCrew Solutions',
+      badge: 'ACTIVE',
+      status: 'active',
+      description: '',
+      features: ['1.5+ Years Verified Collaboration', 'Advanced Audio Transcription Tasks'],
+      requirements: ['Windows 10/11 or Mac PC', 'Aegisub / Subtitle Edit'],
+      action_url: '#desicrew-contributors',
+      poster_url: '',
+      public_id: '',
+    });
+    setFeaturesInput('1.5+ Years Verified Collaboration\nAdvanced Audio Transcription Tasks\nEnterprise SLA Requirements');
+    setRequirementsInput('Windows 10/11 or Mac PC\nAegisub / Subtitle Edit Software\nNative Odia Speaker Proficiency');
+  };
+
+  const handleSaveOpportunity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOpportunity) return;
+    try {
+      const parsedFeatures = featuresInput.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+      const parsedReqs = requirementsInput.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+
+      const payload = {
+        ...editingOpportunity,
+        features: parsedFeatures.length > 0 ? parsedFeatures : editingOpportunity.features,
+        requirements: parsedReqs.length > 0 ? parsedReqs : editingOpportunity.requirements,
+      };
+
+      const updated = await saveOpportunityToApi(payload);
+      setOpportunitiesList(updated);
+      setEditingOpportunity(null);
+      showStatus(`Saved program opportunity "${payload.title}"!`);
+    } catch (err: any) {
+      alert('Error saving opportunity: ' + (err.message || 'Server error'));
+    }
+  };
+
+  const handleDeleteOpportunity = async (id: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to delete opportunity "${title}"?`)) return;
+    try {
+      const updated = await deleteOpportunityFromApi(id);
+      setOpportunitiesList(updated);
+      showStatus(`Deleted opportunity program "${title}"!`);
+    } catch (err: any) {
+      alert('Error deleting opportunity: ' + (err.message || 'Server error'));
+    }
+  };
+
+  const handleOpportunityPositionChange = async (op: OpportunityProgram, newPosStr: string) => {
+    const newPos = parseInt(newPosStr, 10);
+    if (isNaN(newPos) || newPos < 1 || newPos > opportunitiesList.length) return;
+    try {
+      const updated = await reorderOpportunityInApi(op.id, newPos);
+      setOpportunitiesList(updated);
+      showStatus(`Reordered "${op.title}" to position #${newPos}`);
+    } catch (err: any) {
+      alert('Error reordering opportunity: ' + (err.message || 'Server error'));
+    }
+  };
+
+  const handleOpportunityPosterUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingOpportunity) return;
+    setIsOpportunityUploading(true);
+    try {
+      const uploadedUrl = await uploadImageToCloudinary(file, 'zenemoo/opportunities');
+      setEditingOpportunity({
+        ...editingOpportunity,
+        poster_url: uploadedUrl,
+      });
+      showStatus('Poster image uploaded successfully via Cloudinary!');
+    } catch (err: any) {
+      alert('Image upload failed: ' + (err.message || 'Error'));
+    } finally {
+      setIsOpportunityUploading(false);
+    }
+  };
 
   // Partner CRUD & Cloudinary Logo Handlers
   const handleCreatePartner = () => {
@@ -434,6 +531,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             }`}
           >
             <Handshake className="w-4 h-4" /> Enterprise Partners ({partnersList.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('opportunities')}
+            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
+              activeTab === 'opportunities'
+                ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
+                : 'bg-white/[0.03] text-slate-400 hover:text-white'
+            }`}
+          >
+            <Briefcase className="w-4 h-4" /> Program Opportunities ({opportunitiesList.length})
           </button>
 
           <button
@@ -1192,6 +1300,152 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
+        {/* TAB 1.5: PROGRAM OPPORTUNITIES MANAGEMENT */}
+        {activeTab === 'opportunities' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                  <Briefcase className="w-5 h-5 text-purple-400" /> Program Opportunities Portal Engine
+                </h3>
+                <p className="text-xs font-mono text-slate-400">
+                  Manage live project opportunities, status pills, Cloudinary posters, and eligibility checklists listed on <code className="text-cyan-300">/#opportunities</code>.
+                </p>
+              </div>
+
+              <button
+                onClick={handleCreateOpportunity}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-white font-mono font-bold text-xs shadow-lg shadow-purple-500/20 flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Add Program Opportunity
+              </button>
+            </div>
+
+            {/* Opportunities List Cards */}
+            {opportunitiesList.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                <Briefcase className="w-10 h-10 text-slate-500 mx-auto" />
+                <h4 className="text-base font-bold text-white">No Program Opportunities Created Yet</h4>
+                <p className="text-xs font-mono text-slate-400">
+                  Click "Add Program Opportunity" above to create program listings. They will appear live on the Opportunities Portal.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {opportunitiesList.map((op) => (
+                  <div
+                    key={op.id}
+                    className={`glass-panel p-6 rounded-2xl border transition-all space-y-4 flex flex-col justify-between ${
+                      op.status === 'stopped'
+                        ? 'border-red-500/30 opacity-75'
+                        : op.status === 'coming_soon'
+                        ? 'border-amber-500/30'
+                        : 'border-white/10 hover:border-purple-500/40'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      {/* Header Controls */}
+                      <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono text-slate-400">Position:</span>
+                          <select
+                            value={op.position}
+                            onChange={(e) => handleOpportunityPositionChange(op, e.target.value)}
+                            className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono font-bold text-xs focus:outline-none cursor-pointer"
+                          >
+                            {opportunitiesList.map((_, idx) => (
+                              <option key={idx + 1} value={idx + 1} className="bg-slate-900 text-white">
+                                #{idx + 1}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <span
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase ${
+                            op.status === 'active'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              : op.status === 'stopped'
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/30'
+                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                          }`}
+                        >
+                          {op.status}
+                        </span>
+                      </div>
+
+                      {/* Title & Partner */}
+                      <div className="flex items-start gap-3">
+                        {op.poster_url ? (
+                          <img
+                            src={op.poster_url}
+                            alt={op.title}
+                            className="w-12 h-14 object-cover rounded-lg border border-white/10 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-14 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-purple-400 shrink-0">
+                            <Briefcase className="w-6 h-6" />
+                          </div>
+                        )}
+                        <div>
+                          <h4 className="font-bold text-base text-white">{op.title}</h4>
+                          <div className="text-xs font-mono text-cyan-400 mt-0.5">{op.partner_name}</div>
+                          {op.badge && (
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                              {op.badge}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 leading-relaxed">
+                        {op.description}
+                      </p>
+
+                      {/* Features Highlights */}
+                      {op.features && op.features.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-mono uppercase text-slate-400">Highlights</div>
+                          <div className="flex flex-wrap gap-1">
+                            {op.features.map((f, idx) => (
+                              <span key={idx} className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-300 font-mono">
+                                • {f}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-slate-400 truncate max-w-[180px]">{op.action_url}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingOpportunity(op);
+                            setFeaturesInput(op.features?.join('\n') || '');
+                            setRequirementsInput(op.requirements?.join('\n') || '');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 text-xs font-mono flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Edit className="w-3.5 h-3.5" /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOpportunity(op.id, op.title)}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
+                          title="Delete Opportunity"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* TAB 2: CONTACT INQUIRIES FROM WEBSITE FORM */}
         {activeTab === 'inquiries' && (
           <div className="space-y-6">
@@ -1672,6 +1926,194 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             </form>
           </div>
         )}
+
+        {/* EDIT / CREATE OPPORTUNITY PROGRAM MODAL */}
+        <AnimatePresence>
+          {editingOpportunity && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-purple-400" />
+                    {editingOpportunity.id.startsWith('temp_') ? 'Add New Program Opportunity' : 'Edit Program Opportunity'}
+                  </h3>
+                  <button
+                    onClick={() => setEditingOpportunity(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveOpportunity} className="space-y-4 font-mono text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1">Program Title *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. ZENEMOO × DesiCrew"
+                        value={editingOpportunity.title}
+                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, title: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">Partner / Brand Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. DesiCrew Solutions"
+                        value={editingOpportunity.partner_name}
+                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, partner_name: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-slate-300 mb-1">Program Status</label>
+                      <select
+                        value={editingOpportunity.status}
+                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, status: e.target.value as any })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      >
+                        <option value="active">ACTIVE</option>
+                        <option value="stopped">STOPPED</option>
+                        <option value="coming_soon">COMING SOON</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">Badge Text</label>
+                      <input
+                        type="text"
+                        placeholder="ACTIVE, STOPPED, OPEN"
+                        value={editingOpportunity.badge || ''}
+                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, badge: e.target.value })}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 mb-1">Position Order</label>
+                      <select
+                        value={editingOpportunity.position}
+                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, position: parseInt(e.target.value, 10) })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      >
+                        {Array.from({ length: Math.max(opportunitiesList.length + 1, editingOpportunity.position) }).map((_, idx) => (
+                          <option key={idx + 1} value={idx + 1}>
+                            Position #{idx + 1}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-1">Short Program Description</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Professional enterprise transcription, annotation, and translation services..."
+                      value={editingOpportunity.description}
+                      onChange={(e) => setEditingOpportunity({ ...editingOpportunity, description: e.target.value })}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-1">Action Link Target (URL or Hash Route)</label>
+                    <input
+                      type="text"
+                      placeholder="#desicrew-contributors or https://..."
+                      value={editingOpportunity.action_url}
+                      onChange={(e) => setEditingOpportunity({ ...editingOpportunity, action_url: e.target.value })}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+
+                  {/* Image Poster Upload via Cloudinary */}
+                  <div>
+                    <label className="block text-slate-300 mb-1">Program Poster / Image (Cloudinary CDN)</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="text"
+                        placeholder="Poster image URL..."
+                        value={editingOpportunity.poster_url || ''}
+                        onChange={(e) => setEditingOpportunity({ ...editingOpportunity, poster_url: e.target.value })}
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                      />
+                      <label className="px-4 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 cursor-pointer flex items-center gap-1.5 shrink-0 font-bold">
+                        <Upload className="w-3.5 h-3.5" />
+                        {isOpportunityUploading ? 'Uploading...' : 'Upload Image'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleOpportunityPosterUpload}
+                          className="hidden"
+                          disabled={isOpportunityUploading}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Highlights Features (Line Separated) */}
+                  <div>
+                    <label className="block text-slate-300 mb-1">Highlights &amp; Features (1 per line)</label>
+                    <textarea
+                      rows={3}
+                      placeholder="1.5+ Years Verified Collaboration&#10;Advanced Audio Transcription Tasks&#10;Enterprise SLA Requirements"
+                      value={featuresInput}
+                      onChange={(e) => setFeaturesInput(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+
+                  {/* Requirements List (Line Separated) */}
+                  <div>
+                    <label className="block text-slate-300 mb-1">Eligibility &amp; Checklist (1 per line)</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Windows 10/11 or Mac PC&#10;Aegisub / Subtitle Edit Software&#10;Native Odia Speaker Proficiency"
+                      value={requirementsInput}
+                      onChange={(e) => setRequirementsInput(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+
+                  <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditingOpportunity(null)}
+                      className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-white font-bold shadow-lg shadow-purple-500/20 flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" /> Save Program Opportunity
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

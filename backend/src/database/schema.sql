@@ -87,3 +87,22 @@ CREATE TABLE partners (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Table 6: opportunities
+CREATE TABLE opportunities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position INTEGER DEFAULT 1,
+  title TEXT NOT NULL,
+  partner_name TEXT NOT NULL,
+  badge TEXT DEFAULT 'ACTIVE',
+  status TEXT DEFAULT 'active', -- active, stopped, coming_soon
+  description TEXT,
+  features TEXT[],
+  requirements TEXT[],
+  action_url TEXT DEFAULT '#desicrew-contributors',
+  poster_url TEXT,
+  public_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+

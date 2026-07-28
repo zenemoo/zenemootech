@@ -1,6 +1,7 @@
-import React from 'react';
-import { ArrowLeft, Sparkles, CheckCircle2, Calendar, Lock, Unlock, ArrowRight, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Sparkles, CheckCircle2, Calendar, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
 
 interface OpportunitiesPageProps {
   onBack: () => void;
@@ -8,6 +9,27 @@ interface OpportunitiesPageProps {
 }
 
 export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, onSelectProgram }) => {
+  const [opportunities, setOpportunities] = useState<OpportunityProgram[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getStoredOpportunities().then((data) => {
+      setOpportunities(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleCardClick = (op: OpportunityProgram) => {
+    if (op.status === 'stopped') return;
+    if (op.action_url && op.action_url.startsWith('#')) {
+      window.location.hash = op.action_url.replace('#', '');
+    } else if (op.action_url && op.action_url.startsWith('http')) {
+      window.open(op.action_url, '_blank', 'noopener,noreferrer');
+    } else {
+      onSelectProgram('desicrew');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Background ambient lighting */}
@@ -19,10 +41,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       {/* Header Bar */}
       <header className="sticky top-0 z-50 bg-[#050505]/80 light:bg-white/80 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-4 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-3 group cursor-pointer"
-          >
+          <button onClick={onBack} className="flex items-center gap-3 group cursor-pointer">
             <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
             <div className="flex flex-col text-left">
               <span className="font-display font-extrabold text-base text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
@@ -57,123 +76,125 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
           </div>
 
           {/* Opportunities Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {/* Card 1: Zenemoo x DesiCrew (Active) */}
-            <motion.div
-              whileHover={{ y: -6 }}
-              className="glass-panel p-8 rounded-3xl border border-emerald-500/30 flex flex-col justify-between relative overflow-hidden group shadow-2xl"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none"></div>
+          {loading ? (
+            <div className="text-center py-12 font-mono text-xs text-slate-400 space-y-2">
+              <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <div>Loading Live Opportunities...</div>
+            </div>
+          ) : opportunities.length === 0 ? (
+            <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3 max-w-xl mx-auto">
+              <Briefcase className="w-10 h-10 text-slate-500 mx-auto" />
+              <h4 className="text-base font-bold text-white">No Program Opportunities Available Right Now</h4>
+              <p className="text-xs font-mono text-slate-400">
+                Please check back soon! Opportunities created from the Admin Dashboard will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+              {opportunities.map((op) => {
+                const isActive = op.status === 'active';
+                const isStopped = op.status === 'stopped';
 
-              <div className="space-y-6">
-                {/* Badge Group */}
-                <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono font-bold uppercase tracking-wider">
-                    ACTIVE
-                  </span>
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20">
-                    <Unlock className="w-4 h-4" />
-                  </div>
-                </div>
+                return (
+                  <motion.div
+                    key={op.id}
+                    whileHover={{ y: -6 }}
+                    className={`glass-panel p-8 rounded-3xl border flex flex-col justify-between relative overflow-hidden group shadow-2xl ${
+                      isStopped ? 'border-red-500/30 opacity-80' : 'border-emerald-500/30'
+                    }`}
+                  >
+                    {isActive && (
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none"></div>
+                    )}
 
-                {/* Partner Logo Symbol */}
-                <div className="font-display font-extrabold text-2xl sm:text-3xl tracking-tight flex items-center gap-2">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">ZENEMOO</span>
-                  <span className="text-purple-400 text-xl font-sans">×</span>
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">DesiCrew</span>
-                </div>
+                    <div className="space-y-6">
+                      {/* Badge Group */}
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`px-3 py-1 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider ${
+                            isActive
+                              ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                              : isStopped
+                              ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                              : 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                          }`}
+                        >
+                          {op.badge || op.status}
+                        </span>
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center border ${
+                            isActive
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-red-500/10 text-red-400 border-red-500/20'
+                          }`}
+                        >
+                          {isActive ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                        </div>
+                      </div>
 
-                <p className="text-xs sm:text-sm text-slate-300 light:text-slate-600 font-sans leading-relaxed">
-                  Professional enterprise transcription, annotation, and translation services. Direct integration with verified corporate BPO deliverables.
-                </p>
+                      {/* Program Title & Poster Thumbnail */}
+                      <div className="flex items-start gap-4">
+                        {op.poster_url && (
+                          <img
+                            src={op.poster_url}
+                            alt={op.title}
+                            className="w-14 h-16 object-cover rounded-xl border border-white/10 shrink-0"
+                          />
+                        )}
+                        <div>
+                          <h3 className="font-display font-extrabold text-2xl tracking-tight text-white light:text-slate-900">
+                            {op.title}
+                          </h3>
+                          <div className="text-xs font-mono text-cyan-400 mt-0.5">{op.partner_name}</div>
+                        </div>
+                      </div>
 
-                {/* Features List */}
-                <div className="space-y-3 pt-2 border-t border-white/10 font-mono text-xs text-slate-300 light:text-slate-700">
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>1.5+ Years Verified Collaboration</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Advanced Audio Transcription Tasks</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Enterprise SLA Requirements</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-cyan-300 font-bold">
-                    <Calendar className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>Registration Open: Onboarding Active</span>
-                  </div>
-                </div>
-              </div>
+                      <p className="text-xs sm:text-sm text-slate-300 light:text-slate-600 font-sans leading-relaxed">
+                        {op.description}
+                      </p>
 
-              {/* Action Button */}
-              <button
-                onClick={() => onSelectProgram('desicrew')}
-                className="mt-8 w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-bold text-xs sm:text-sm font-mono shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                Explore &amp; Apply Now <ArrowRight className="w-4 h-4" />
-              </button>
-            </motion.div>
+                      {/* Features List */}
+                      {op.features && op.features.length > 0 && (
+                        <div className="space-y-2.5 pt-2 border-t border-white/10 font-mono text-xs text-slate-300 light:text-slate-700">
+                          {op.features.map((feat, idx) => (
+                            <div key={idx} className="flex items-center gap-2.5">
+                              {isActive ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              ) : (
+                                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                              )}
+                              <span>{feat}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-            {/* Card 2: Zenemoo x Karya (Stopped) */}
-            <motion.div
-              whileHover={{ y: -6 }}
-              className="glass-panel p-8 rounded-3xl border border-red-500/30 flex flex-col justify-between relative overflow-hidden group opacity-85"
-            >
-              <div className="space-y-6">
-                {/* Badge Group */}
-                <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-[11px] font-mono font-bold uppercase tracking-wider">
-                    STOPPED
-                  </span>
-                  <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 border border-red-500/20">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                </div>
-
-                {/* Partner Logo Symbol */}
-                <div className="font-display font-extrabold text-2xl sm:text-3xl tracking-tight flex items-center gap-2">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">ZENEMOO</span>
-                  <span className="text-purple-400 text-xl font-sans">×</span>
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-red-400">Karya</span>
-                </div>
-
-                <p className="text-xs sm:text-sm text-slate-300 light:text-slate-600 font-sans leading-relaxed">
-                  Regional AI training speech collection, transcription, and validation tasks designed directly for Indian regional languages and accents.
-                </p>
-
-                {/* Features List */}
-                <div className="space-y-3 pt-2 border-t border-white/10 font-mono text-xs text-slate-300 light:text-slate-700">
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0" />
-                    <span>Priority: Odia &amp; Regional Accents</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0" />
-                    <span>₹5 per Minute of Validated Speech</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0" />
-                    <span>Flexible Work From Home</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-red-400 font-bold">
-                    <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
-                    <span>Onboarding Temporarily Stopped</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <button
-                disabled
-                className="mt-8 w-full py-3.5 px-6 rounded-xl bg-white/[0.04] border border-white/10 text-slate-500 font-bold text-xs sm:text-sm font-mono flex items-center justify-center gap-2 cursor-not-allowed"
-              >
-                Onboarding Stopped <Lock className="w-3.5 h-3.5" />
-              </button>
-            </motion.div>
-          </div>
+                    {/* Action Button */}
+                    <button
+                      disabled={isStopped}
+                      onClick={() => handleCardClick(op)}
+                      className={`mt-8 w-full py-3.5 px-6 rounded-xl font-bold text-xs sm:text-sm font-mono flex items-center justify-center gap-2 transition-all ${
+                        isActive
+                          ? 'bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black shadow-lg shadow-emerald-500/20 cursor-pointer'
+                          : 'bg-white/[0.04] border border-white/10 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {isActive ? (
+                        <>
+                          Explore &amp; Apply Now <ArrowRight className="w-4 h-4" />
+                        </>
+                      ) : (
+                        <>
+                          Onboarding Stopped <Lock className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
 
