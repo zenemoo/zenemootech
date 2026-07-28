@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, ArrowLeft } from 'lucide-react';
+import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, ArrowLeft, Briefcase } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
@@ -24,7 +24,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
     { name: 'Services', href: '#services', icon: Mic },
     { name: 'Languages', href: '#languages', icon: Languages },
     { name: 'Studio', href: '#playground', icon: Sparkles },
-    { name: 'Capacity', href: '#telemetry', icon: Cpu },
+    { name: 'Opportunities', href: '#opportunities', icon: Briefcase },
     { name: 'DesiCrew Partner', href: '#partner', icon: Handshake },
     { name: 'Team', href: '#team', icon: Users },
     { name: 'Contact', href: '#contact', icon: Mail },

@@ -15,9 +15,13 @@ import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TeamDirectoryPage } from './components/TeamDirectoryPage';
+import { OpportunitiesPage } from './components/OpportunitiesPage';
+import { DesicrewContributorsPage } from './components/DesicrewContributorsPage';
 
 export function App() {
-  const [currentRoute, setCurrentRoute] = useState<'home' | 'admin' | 'team-directory'>('home');
+  const [currentRoute, setCurrentRoute] = useState<
+    'home' | 'admin' | 'team-directory' | 'opportunities' | 'desicrew-contributors'
+  >('home');
 
   useEffect(() => {
     const checkRoute = () => {
@@ -26,6 +30,10 @@ export function App() {
         setCurrentRoute('admin');
       } else if (hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
+      } else if (hash === '#opportunities' || hash === '#projects' || hash === '#programs') {
+        setCurrentRoute('opportunities');
+      } else if (hash === '#desicrew-contributors' || hash === '#desicrew' || hash === '#language-contributors') {
+        setCurrentRoute('desicrew-contributors');
       } else {
         setCurrentRoute('home');
       }
@@ -42,14 +50,16 @@ export function App() {
   };
 
   const handleBackToHome = () => {
-    window.location.hash = 'team';
+    window.location.hash = '';
     setCurrentRoute('home');
-    setTimeout(() => {
-      const el = document.getElementById('team');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 100);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSelectProgram = (programId: string) => {
+    if (programId === 'desicrew') {
+      window.location.hash = 'desicrew-contributors';
+      setCurrentRoute('desicrew-contributors');
+    }
   };
 
   return (
@@ -58,6 +68,16 @@ export function App() {
         <AdminDashboard onExit={handleExitAdmin} />
       ) : currentRoute === 'team-directory' ? (
         <TeamDirectoryPage onBack={handleBackToHome} />
+      ) : currentRoute === 'opportunities' ? (
+        <OpportunitiesPage onBack={handleBackToHome} onSelectProgram={handleSelectProgram} />
+      ) : currentRoute === 'desicrew-contributors' ? (
+        <DesicrewContributorsPage
+          onBack={handleBackToHome}
+          onBackToOpportunities={() => {
+            window.location.hash = 'opportunities';
+            setCurrentRoute('opportunities');
+          }}
+        />
       ) : (
         <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
           {/* Interactive Mouse Spotlight */}
