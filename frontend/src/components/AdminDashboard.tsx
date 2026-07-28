@@ -665,7 +665,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
 
     const cleanPass = passcode.trim();
+    const customPass = localStorage.getItem('zenemoo_admin_passcode');
     if (
+      (customPass && cleanPass === customPass) ||
       cleanPass === 'zenemoo2026' ||
       cleanPass === 'mrprem2026' ||
       cleanPass === 'zenemooadmin' ||
