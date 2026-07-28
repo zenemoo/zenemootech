@@ -1,7 +1,5 @@
 import { supabaseService } from '../services/supabaseService.js';
 
-let memorySubscribers = [];
-
 export const subscribeNewsletter = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -9,27 +7,31 @@ export const subscribeNewsletter = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Please provide a valid email address' });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check if email already exists in subscribers table
+    const existing = await supabaseService.selectAll('subscribers', 'subscribed_at', false);
+    const found = existing.find((s) => s.email === cleanEmail);
+    if (found) {
+      return res.status(200).json({
+        success: true,
+        message: 'You are already subscribed to Zenemoo Dispatch',
+        data: found,
+      });
+    }
+
     const payload = {
-      email: email.toLowerCase().trim(),
+      email: cleanEmail,
+      status: 'active',
       subscribed_at: new Date().toISOString(),
     };
 
-    let saved = null;
-    try {
-      saved = await supabaseService.insert('subscribers', payload);
-    } catch (e) {
-      console.warn('Supabase subscriber insert warning:', e.message);
-    }
-
-    const result = saved || { id: Date.now().toString(), ...payload };
-    if (!memorySubscribers.some((s) => s.email === result.email)) {
-      memorySubscribers.unshift(result);
-    }
+    const savedRecord = await supabaseService.insert('subscribers', payload);
 
     res.status(201).json({
       success: true,
       message: 'Successfully subscribed to Zenemoo Dispatch',
-      data: result,
+      data: savedRecord,
     });
   } catch (err) {
     next(err);
@@ -38,35 +40,41 @@ export const subscribeNewsletter = async (req, res, next) => {
 
 export const getSubscribers = async (req, res, next) => {
   try {
-    const data = await supabaseService.selectAll('subscribers');
-    if (data && Array.isArray(data)) {
-      return res.json({ success: true, count: data.length, data });
-    }
-    res.json({ success: true, count: memorySubscribers.length, data: memorySubscribers });
+    const data = await supabaseService.selectAll('subscribers', 'subscribed_at', false);
+    res.json({
+      success: true,
+      count: data.length,
+      data,
+    });
   } catch (err) {
-    res.json({ success: true, count: memorySubscribers.length, data: memorySubscribers });
+    next(err);
   }
 };
 
 export const updateSubscriber = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { email } = req.body;
+    const { email, status } = req.body;
 
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ success: false, message: 'Valid email is required' });
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Subscriber ID is required' });
     }
 
-    const updatedData = { email: email.toLowerCase().trim() };
-    let updated = null;
-    try {
-      updated = await supabaseService.update('subscribers', id, updatedData);
-    } catch (e) {}
+    const updatePayload = {};
+    if (email && email.includes('@')) {
+      updatePayload.email = email.toLowerCase().trim();
+    }
+    if (status) {
+      updatePayload.status = status;
+    }
 
-    const result = updated || { id, ...updatedData };
-    memorySubscribers = memorySubscribers.map((s) => (s.id === id ? { ...s, ...result } : s));
+    const updated = await supabaseService.update('subscribers', id, updatePayload);
 
-    res.json({ success: true, message: 'Subscriber email updated', data: result });
+    res.json({
+      success: true,
+      message: 'Subscriber updated successfully',
+      data: updated,
+    });
   } catch (err) {
     next(err);
   }
@@ -75,12 +83,14 @@ export const updateSubscriber = async (req, res, next) => {
 export const deleteSubscriber = async (req, res, next) => {
   try {
     const { id } = req.params;
-    try {
-      await supabaseService.delete('subscribers', id);
-    } catch (e) {}
-
-    memorySubscribers = memorySubscribers.filter((s) => s.id !== id);
-    res.json({ success: true, message: 'Subscriber deleted' });
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Subscriber ID is required' });
+    }
+    await supabaseService.delete('subscribers', id);
+    res.json({
+      success: true,
+      message: 'Subscriber deleted successfully',
+    });
   } catch (err) {
     next(err);
   }

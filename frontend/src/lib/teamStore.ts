@@ -5,56 +5,48 @@ export interface TeamMember {
   position: number;
   name: string;
   designation: string;
+  department?: string;
   role?: string;
   image_url: string;
   image?: string;
+  public_id?: string;
   fallback?: string;
   bio: string;
-  skills: string[];
-  badge: string;
+  skills?: string[];
+  badge?: string;
   email?: string;
   phone?: string;
   linkedin?: string;
   github?: string;
+  twitter?: string;
   status: 'active' | 'inactive';
-  category: string;
+  category?: string;
   created_at?: string;
   updated_at?: string;
 }
 
 export const INITIAL_TEAM_MEMBERS: TeamMember[] = [];
 
-const LOCAL_STORAGE_KEY = 'zenemoo_team_members_v7';
-
+// Fetch live team members directly from Backend API (Supabase database as source of truth)
 export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
       const liveMembers = (res.data.data as TeamMember[]).map((m, idx) => ({
         ...m,
-        position: m.position || idx + 1,
+        position: Number(m.position || idx + 1),
         designation: m.designation || m.role || 'Specialist',
         image_url: m.image_url || m.image || '/assets/executive.png',
         status: m.status || 'active',
-        category: m.category || 'Engineering',
+        department: m.department || m.category || 'Engineering',
+        category: m.department || m.category || 'Engineering',
       }));
       // Always sort by position ASC
-      liveMembers.sort((a, b) => a.position - b.position);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(liveMembers));
-      return liveMembers;
+      return liveMembers.sort((a, b) => a.position - b.position);
     }
   } catch (err) {
-    console.warn('Backend team fetch offline, using cache:', err);
+    console.error('Backend team fetch error:', err);
   }
-
-  const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached) as TeamMember[];
-      return parsed.sort((a, b) => (a.position || 1) - (b.position || 1));
-    } catch (e) {}
-  }
-
   return [];
 };
 
@@ -62,8 +54,9 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
   if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
     try {
       const res = await teamApi.update(member.id, member);
-      if (res.data && res.data.team) {
-        return res.data.team;
+      if (res.data && (res.data.team || res.data.data)) {
+        const team = res.data.team || res.data.data;
+        if (Array.isArray(team)) return team;
       }
     } catch (e) {
       console.warn('Update failed, creating new record:', e);
@@ -71,8 +64,9 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
   }
 
   const res = await teamApi.create(member);
-  if (res.data && res.data.team) {
-    return res.data.team;
+  if (res.data && (res.data.team || res.data.data)) {
+    const team = res.data.team || res.data.data;
+    if (Array.isArray(team)) return team;
   }
   return await getStoredTeamMembers();
 };
@@ -80,11 +74,12 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
 export const reorderTeamMemberInApi = async (id: string, newPosition: number): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.reorder(id, newPosition);
-    if (res.data && res.data.data) {
-      return res.data.data as TeamMember[];
+    if (res.data && (res.data.data || res.data.team)) {
+      const team = res.data.data || res.data.team;
+      if (Array.isArray(team)) return team as TeamMember[];
     }
   } catch (e) {
-    console.warn('Reorder API failed:', e);
+    console.error('Reorder API error:', e);
   }
   return await getStoredTeamMembers();
 };
@@ -92,11 +87,12 @@ export const reorderTeamMemberInApi = async (id: string, newPosition: number): P
 export const deleteTeamMemberFromApi = async (id: string): Promise<TeamMember[]> => {
   try {
     const res = await teamApi.delete(id);
-    if (res.data && res.data.team) {
-      return res.data.team;
+    if (res.data && (res.data.team || res.data.data)) {
+      const team = res.data.team || res.data.data;
+      if (Array.isArray(team)) return team;
     }
   } catch (e) {
-    console.warn('Team delete warning:', e);
+    console.error('Team delete error:', e);
   }
   return await getStoredTeamMembers();
 };

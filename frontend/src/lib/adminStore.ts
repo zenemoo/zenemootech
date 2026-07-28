@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
 import { mediaApi, contactApi } from '../services/api';
 
 export interface SiteConfig {
   supabaseUrl: string;
-  supabaseAnonKey: string;
+  supabaseAnonKey?: string;
   adminPasscode: string;
   cloudinaryCloudName?: string;
   cloudinaryUploadPreset?: string;
@@ -43,12 +42,8 @@ export interface MediaRecord {
   created_at?: string;
 }
 
-const CONFIG_STORAGE_KEY = 'zenemoo_admin_config_v3';
-const TELEMETRY_STORAGE_KEY = 'zenemoo_telemetry_config_v3';
-
 export const DEFAULT_CONFIG: SiteConfig = {
   supabaseUrl: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://wkbkomwjuywdeaxgchxw.supabase.co',
-  supabaseAnonKey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrYmtvbXdqdXl3ZGVheGdjaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNjk2OTIsImV4cCI6MjEwMDc0NTY5Mn0.A9O0I0nzdWLrsULZEdL6GxUp4Ok3Y_QRbqCMJesXbM4',
   adminPasscode: 'zenemoo2026',
 };
 
@@ -60,47 +55,22 @@ export const DEFAULT_TELEMETRY: TelemetryConfig = {
 };
 
 export const getSiteConfig = (): SiteConfig => {
-  const cached = localStorage.getItem(CONFIG_STORAGE_KEY);
-  if (cached) {
-    try {
-      return { ...DEFAULT_CONFIG, ...JSON.parse(cached) };
-    } catch (e) {}
-  }
   return DEFAULT_CONFIG;
 };
 
-export const saveSiteConfig = (config: SiteConfig): void => {
-  localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+export const saveSiteConfig = (_config: SiteConfig): void => {
+  // Config saved on server backend
 };
 
 export const getTelemetryConfig = (): TelemetryConfig => {
-  const cached = localStorage.getItem(TELEMETRY_STORAGE_KEY);
-  if (cached) {
-    try {
-      return { ...DEFAULT_TELEMETRY, ...JSON.parse(cached) };
-    } catch (e) {}
-  }
   return DEFAULT_TELEMETRY;
 };
 
-export const saveTelemetryConfig = (config: TelemetryConfig): void => {
-  localStorage.setItem(TELEMETRY_STORAGE_KEY, JSON.stringify(config));
+export const saveTelemetryConfig = (_config: TelemetryConfig): void => {
+  // Telemetry saved on server backend
 };
 
-// Dynamic Supabase Client based on VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY
-export const getSupabaseClient = () => {
-  const config = getSiteConfig();
-  if (config.supabaseUrl && config.supabaseAnonKey) {
-    try {
-      return createClient(config.supabaseUrl, config.supabaseAnonKey);
-    } catch (e) {
-      console.warn('Invalid Supabase configuration:', e);
-    }
-  }
-  return null;
-};
-
-// Fetch all contact inquiries from Backend API / Supabase DB
+// Fetch all contact inquiries directly from Backend API (Supabase DB)
 export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
   try {
     const res = await contactApi.getAll();
@@ -108,53 +78,28 @@ export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
       return res.data.data as ContactInquiry[];
     }
   } catch (err) {
-    console.warn('Backend contact fetch warning:', err);
-  }
-
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('contacts').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
-        return data as ContactInquiry[];
-      }
-    } catch (err) {}
+    console.error('Backend contact fetch error:', err);
   }
   return [];
 };
 
-// Submit a new contact inquiry to Backend API & Supabase DB
-export const saveContactInquiry = async (inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>): Promise<ContactInquiry> => {
+// Submit a new contact inquiry to Express Backend API -> Supabase DB
+export const saveContactInquiry = async (
+  inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>
+): Promise<ContactInquiry | null> => {
   try {
     const res = await contactApi.submit(inquiry);
     if (res.data && res.data.data) {
       return res.data.data as ContactInquiry;
     }
   } catch (err) {
-    console.warn('Backend contact submit warning:', err);
+    console.error('Backend contact submit error:', err);
+    throw err;
   }
-
-  const newInquiry: ContactInquiry = {
-    id: Date.now().toString(),
-    ...inquiry,
-    status: 'NEW',
-    created_at: new Date().toISOString(),
-  };
-
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('contacts').insert([inquiry]).select();
-      if (!error && data && data[0]) {
-        return data[0] as ContactInquiry;
-      }
-    } catch (err) {}
-  }
-
-  return newInquiry;
+  return null;
 };
 
-// Production Media Uploader: Streams ONLY through Backend API to Cloudinary + Supabase
+// Production Media Uploader: Streams through Backend API to Cloudinary + Supabase
 export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team'): Promise<string> => {
   const formData = new FormData();
   formData.append('file', file);
@@ -164,7 +109,7 @@ export const uploadImageToCloudinary = async (file: File, folder = 'zenemoo/team
   try {
     const res = await mediaApi.upload(formData);
     if (res.data && res.data.media && res.data.media.image_url) {
-      return res.data.media.image_url; // Always returns secure HTTPS Cloudinary URL from Supabase record
+      return res.data.media.image_url; // Returns secure HTTPS Cloudinary URL from Supabase record
     }
     throw new Error(res.data?.message || 'Backend upload failed to return a valid Cloudinary HTTPS URL');
   } catch (err: any) {

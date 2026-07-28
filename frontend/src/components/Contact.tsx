@@ -86,7 +86,6 @@ export const Contact: React.FC = () => {
 
     try {
       await saveContactInquiry(payload);
-      await contactApi.submit(payload);
     } catch (err) {
       console.warn('Contact submit warning:', err);
     } finally {

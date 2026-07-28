@@ -4,9 +4,10 @@ import { supabaseService } from '../services/supabaseService.js';
 const ALLOWED_FOLDERS = [
   'zenemoo/team',
   'zenemoo/services',
-  'zenemoo/portfolio',
   'zenemoo/gallery',
+  'zenemoo/portfolio',
   'zenemoo/blog',
+  'zenemoo/testimonials',
 ];
 
 export const uploadMedia = async (req, res, next) => {
@@ -15,7 +16,7 @@ export const uploadMedia = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'No file provided for upload' });
     }
 
-    // Validate Folder
+    // Validate Cloudinary Folder
     let folder = req.body.folder || 'zenemoo/team';
     if (!ALLOWED_FOLDERS.includes(folder)) {
       folder = 'zenemoo/team';
@@ -23,10 +24,10 @@ export const uploadMedia = async (req, res, next) => {
 
     const title = req.body.title || req.file.originalname;
 
-    // 1. Upload file to Cloudinary via SDK
+    // 1. Upload file buffer to Cloudinary SDK via stream
     const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder);
 
-    // 2. Insert metadata record into Supabase PostgreSQL media table
+    // 2. Insert image metadata record into Supabase PostgreSQL media table
     const mediaPayload = {
       title,
       folder,
@@ -37,17 +38,17 @@ export const uploadMedia = async (req, res, next) => {
       height: cloudinaryRes.height,
       format: cloudinaryRes.format,
       bytes: cloudinaryRes.bytes,
-      uploaded_by: 'admin',
+      created_at: new Date().toISOString(),
     };
 
     const dbRecord = await supabaseService.insert('media', mediaPayload);
-    const mediaResult = dbRecord || mediaPayload;
 
     // 3. Return Database Record JSON
     return res.status(201).json({
       success: true,
-      message: 'Image uploaded successfully',
-      media: mediaResult,
+      message: 'Image uploaded successfully to Cloudinary & Supabase',
+      media: dbRecord || mediaPayload,
+      data: dbRecord || mediaPayload,
     });
   } catch (err) {
     console.error('Upload Controller Error:', err.message);
@@ -60,11 +61,11 @@ export const uploadMedia = async (req, res, next) => {
 
 export const getMedia = async (req, res, next) => {
   try {
-    const data = await supabaseService.selectAll('media');
+    const data = await supabaseService.selectAll('media', 'created_at', false);
     res.json({
       success: true,
-      count: data ? data.length : 0,
-      data: data || [],
+      count: data.length,
+      data,
     });
   } catch (err) {
     next(err);
@@ -87,7 +88,7 @@ export const updateMedia = async (req, res, next) => {
     let updatedPayload = { ...existingMedia };
 
     if (req.file) {
-      // 2. Delete old image from Cloudinary
+      // 2. Delete old image from Cloudinary if public_id exists
       if (existingMedia.public_id) {
         try {
           await cloudinaryService.deleteMedia(existingMedia.public_id);
@@ -127,6 +128,7 @@ export const updateMedia = async (req, res, next) => {
       success: true,
       message: 'Media record updated successfully',
       media: updatedRecord || updatedPayload,
+      data: updatedRecord || updatedPayload,
     });
   } catch (err) {
     return res.status(500).json({
@@ -143,19 +145,19 @@ export const deleteMedia = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Media ID is required' });
     }
 
-    // 1. Read public_id from Supabase
-    let public_id = decodeURIComponent(id);
-    let recordId = id;
+    const decodedId = decodeURIComponent(id);
+    let public_id = decodedId;
+    let recordId = decodedId;
 
     try {
-      const existingMedia = await supabaseService.selectById('media', id);
+      const existingMedia = await supabaseService.selectById('media', decodedId);
       if (existingMedia && existingMedia.public_id) {
         public_id = existingMedia.public_id;
         recordId = existingMedia.id;
       }
     } catch (e) {}
 
-    // 2. Delete asset from Cloudinary
+    // 1. Delete asset from Cloudinary
     if (public_id) {
       try {
         await cloudinaryService.deleteMedia(public_id);
@@ -164,12 +166,11 @@ export const deleteMedia = async (req, res, next) => {
       }
     }
 
-    // 3. Delete row from Supabase
+    // 2. Delete row from Supabase
     try {
       await supabaseService.delete('media', recordId);
     } catch (e) {}
 
-    // 4. Return success response
     res.json({
       success: true,
       message: 'Media asset deleted successfully from Cloudinary and Supabase',

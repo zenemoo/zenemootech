@@ -1,60 +1,54 @@
 import { supabaseService } from '../services/supabaseService.js';
 
-let memoryTeam = [];
-
-// Helper: Normalize team positions to guarantee 1..N sequential order with 0 gaps and 0 duplicates
-const normalizeAndSavePositions = async (list) => {
+// Helper: Normalize team positions in database to guarantee 1..N sequential order with 0 gaps and 0 duplicates
+const normalizeAndSavePositions = async () => {
+  const list = await supabaseService.selectAll('team', 'position', true);
   if (!Array.isArray(list) || list.length === 0) return [];
 
-  // Sort by position ASC
+  // Sort by position ASC (fallback to created_at)
   const sorted = [...list].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
 
-  // Re-assign sequential position numbers 1..N
-  const normalized = sorted.map((member, index) => ({
-    ...member,
-    position: index + 1,
-    updated_at: new Date().toISOString(),
-  }));
+  // Check if normalization is needed
+  let needsUpdate = false;
+  const updatedList = [];
 
-  // Update records in Supabase PostgreSQL
-  try {
-    for (const member of normalized) {
-      if (member.id && !member.id.startsWith('temp_')) {
-        await supabaseService.update('team', member.id, {
-          position: member.position,
-          updated_at: member.updated_at,
-        });
-      }
+  for (let index = 0; index < sorted.length; index++) {
+    const member = sorted[index];
+    const expectedPosition = index + 1;
+
+    if (member.position !== expectedPosition) {
+      needsUpdate = true;
+      const updated = await supabaseService.update('team', member.id, {
+        position: expectedPosition,
+        updated_at: new Date().toISOString(),
+      });
+      updatedList.push(updated || { ...member, position: expectedPosition });
+    } else {
+      updatedList.push(member);
     }
-  } catch (e) {
-    console.warn('Supabase positions batch update warning:', e.message);
   }
 
-  memoryTeam = normalized;
-  return normalized;
+  return updatedList.sort((a, b) => Number(a.position) - Number(b.position));
 };
 
 // GET /api/team - Return members ordered by position ASC
 export const getTeam = async (req, res, next) => {
   try {
-    const data = await supabaseService.selectAll('team');
-    if (data && Array.isArray(data) && data.length > 0) {
-      // Sort by position ASC
-      const sortedData = data.sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
-      return res.json({ success: true, count: sortedData.length, data: sortedData });
-    }
-    const sortedMemory = [...memoryTeam].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
-    res.json({ success: true, count: sortedMemory.length, data: sortedMemory });
+    const data = await supabaseService.selectAll('team', 'position', true);
+    res.json({
+      success: true,
+      count: data.length,
+      data,
+    });
   } catch (err) {
-    const sortedMemory = [...memoryTeam].sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
-    res.json({ success: true, count: sortedMemory.length, data: sortedMemory });
+    next(err);
   }
 };
 
-// POST /api/team - Add new member automatically at end position
+// POST /api/team - Add new member automatically at end position (max + 1)
 export const createTeamMember = async (req, res, next) => {
   try {
-    const currentTeam = (await supabaseService.selectAll('team')) || memoryTeam || [];
+    const currentTeam = await supabaseService.selectAll('team', 'position', true);
     const maxPosition = currentTeam.reduce((max, m) => Math.max(max, Number(m.position || 0)), 0);
     const newPosition = maxPosition + 1;
 
@@ -65,41 +59,28 @@ export const createTeamMember = async (req, res, next) => {
       position: newPosition,
       name: req.body.name || 'New Team Member',
       designation,
-      role: designation,
+      department: req.body.department || req.body.category || 'Engineering',
       bio: req.body.bio || '',
       image_url: imageUrl,
-      image: imageUrl,
-      skills: req.body.skills || ['Specialist'],
-      badge: req.body.badge || 'Specialist',
-      email: req.body.email || '',
-      phone: req.body.phone || '',
+      public_id: req.body.public_id || '',
       linkedin: req.body.linkedin || '',
       github: req.body.github || '',
+      twitter: req.body.twitter || '',
+      email: req.body.email || '',
+      phone: req.body.phone || '',
       status: req.body.status || 'active',
-      category: req.body.category || 'Engineering',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    let saved = null;
-    try {
-      saved = await supabaseService.insert('team', newMemberPayload);
-    } catch (e) {
-      console.warn('Supabase insert warning:', e.message);
-    }
-
-    const createdMember = saved || { id: Date.now().toString(), ...newMemberPayload };
-    memoryTeam.push(createdMember);
-
-    // Normalize positions
-    const allMembers = (await supabaseService.selectAll('team')) || memoryTeam;
-    const normalized = await normalizeAndSavePositions(allMembers);
+    const createdMember = await supabaseService.insert('team', newMemberPayload);
+    const updatedTeam = await normalizeAndSavePositions();
 
     res.status(201).json({
       success: true,
-      message: 'Team member added at end position',
+      message: 'Team member added successfully',
       data: createdMember,
-      team: normalized,
+      team: updatedTeam,
     });
   } catch (err) {
     next(err);
@@ -114,7 +95,7 @@ export const reorderTeam = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Member ID and newPosition are required' });
     }
 
-    const currentList = (await supabaseService.selectAll('team')) || memoryTeam || [];
+    const currentList = await supabaseService.selectAll('team', 'position', true);
     if (currentList.length === 0) {
       return res.status(404).json({ success: false, message: 'No team members found' });
     }
@@ -124,22 +105,30 @@ export const reorderTeam = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Team member not found' });
     }
 
-    // Clamp new position between 1 and total count
+    // Clamp target position between 1 and count
     const clampedPos = Math.max(1, Math.min(Number(newPosition), currentList.length));
 
-    // Remove item from list
+    // Remove item from array and insert at clamped index
     const [targetMember] = currentList.splice(targetIndex, 1);
-    
-    // Insert item at new position (1-indexed to 0-indexed)
     currentList.splice(clampedPos - 1, 0, targetMember);
 
-    // Normalize sequential numbers 1..N
-    const updatedTeam = await normalizeAndSavePositions(currentList);
+    // Update position values in Supabase PostgreSQL
+    for (let index = 0; index < currentList.length; index++) {
+      const member = currentList[index];
+      const pos = index + 1;
+      await supabaseService.update('team', member.id, {
+        position: pos,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    const freshTeam = await supabaseService.selectAll('team', 'position', true);
 
     res.json({
       success: true,
       message: `Reordered member to position ${clampedPos}`,
-      data: updatedTeam,
+      data: freshTeam,
+      team: freshTeam,
     });
   } catch (err) {
     next(err);
@@ -152,55 +141,72 @@ export const updateTeamMember = async (req, res, next) => {
     const { id } = req.params;
     const updatePayload = { ...req.body, updated_at: new Date().toISOString() };
 
+    // Support legacy field names for smooth transition
     if (updatePayload.role && !updatePayload.designation) {
       updatePayload.designation = updatePayload.role;
     }
     if (updatePayload.image && !updatePayload.image_url) {
       updatePayload.image_url = updatePayload.image;
     }
-
-    let updated = null;
-    try {
-      updated = await supabaseService.update('team', id, updatePayload);
-    } catch (e) {}
-
-    const result = updated || { id, ...updatePayload };
-    memoryTeam = memoryTeam.map((m) => (m.id === id ? { ...m, ...result } : m));
-
-    // If position was modified in update payload, re-order
-    if (updatePayload.position !== undefined) {
-      const allMembers = (await supabaseService.selectAll('team')) || memoryTeam;
-      const normalized = await normalizeAndSavePositions(allMembers);
-      return res.json({ success: true, message: 'Member updated and positions reordered', data: result, team: normalized });
+    if (updatePayload.category && !updatePayload.department) {
+      updatePayload.department = updatePayload.category;
     }
 
-    const allMembers = (await supabaseService.selectAll('team')) || memoryTeam;
-    const sorted = allMembers.sort((a, b) => Number(a.position || 1) - Number(b.position || 1));
+    // Clean payload to match team table columns only
+    const cleanPayload = {};
+    const validColumns = [
+      'position',
+      'name',
+      'designation',
+      'department',
+      'bio',
+      'image_url',
+      'public_id',
+      'linkedin',
+      'github',
+      'twitter',
+      'email',
+      'phone',
+      'status',
+      'updated_at',
+    ];
 
-    res.json({ success: true, message: 'Member updated successfully', data: result, team: sorted });
+    for (const key of validColumns) {
+      if (updatePayload[key] !== undefined) {
+        cleanPayload[key] = updatePayload[key];
+      }
+    }
+
+    const updated = await supabaseService.update('team', id, cleanPayload);
+
+    // Re-normalize positions to guarantee no duplicates or gaps
+    const updatedTeam = await normalizeAndSavePositions();
+
+    res.json({
+      success: true,
+      message: 'Team member updated successfully',
+      data: updated,
+      team: updatedTeam,
+    });
   } catch (err) {
     next(err);
   }
 };
 
-// DELETE /api/team/:id - Delete member and decrement higher positions
+// DELETE /api/team/:id - Delete member and renumber remaining 1..N
 export const deleteTeamMember = async (req, res, next) => {
   try {
     const { id } = req.params;
-    try {
-      await supabaseService.delete('team', id);
-    } catch (e) {}
+    await supabaseService.delete('team', id);
 
-    memoryTeam = memoryTeam.filter((m) => m.id !== id);
-
-    // Re-normalize remaining members so no missing numbers
-    const remaining = (await supabaseService.selectAll('team')) || memoryTeam;
-    const normalized = await normalizeAndSavePositions(remaining);
+    // Renumber remaining members 1..N
+    const updatedTeam = await normalizeAndSavePositions();
 
     res.json({
       success: true,
-      message: 'Team member deleted and remaining positions renumbered 1..N',
-      team: normalized,
+      message: 'Team member deleted and positions renumbered 1..N',
+      team: updatedTeam,
+      data: updatedTeam,
     });
   } catch (err) {
     next(err);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Plus, Edit, Trash2, Upload, Database, Cloud, CheckCircle, ShieldAlert, Sparkles, Image, RefreshCw, Save, Key } from 'lucide-react';
+import { X, Plus, Edit, Trash2, Upload, Database, Cloud, CheckCircle, Sparkles, Image, RefreshCw, Save } from 'lucide-react';
 import { TeamMember } from '../lib/teamStore';
-import { uploadImageToCloudinary, getSupabaseClient } from '../lib/adminStore';
+import { uploadImageToCloudinary } from '../lib/adminStore';
 
 interface TeamAdminModalProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
 
   const handleCreateNew = () => {
     const newMember: TeamMember = {
-      id: Date.now().toString(),
+      id: '',
       position: members.length + 1,
       name: '',
       designation: 'Data Annotation Specialist',
@@ -43,7 +43,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
       category: 'Engineering',
     };
     setEditingMember(newMember);
-    setSkillsInput(newMember.skills.join(', '));
+    setSkillsInput(newMember.skills ? newMember.skills.join(', ') : '');
     setActiveTab('edit');
   };
 
@@ -54,7 +54,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this team member?')) {
+    if (confirm('Are you sure you want to delete this team member? Remaining members will be renumbered 1..N automatically.')) {
       const updated = members.filter((m) => m.id !== id);
       onSaveMembers(updated);
     }
@@ -65,10 +65,10 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
     if (!file || !editingMember) return;
     setIsUploading(true);
     try {
-      const url = await uploadImageToCloudinary(file);
-      setEditingMember({ ...editingMember, image: url });
-    } catch (err) {
-      alert('Failed to upload image. Please try entering an image URL.');
+      const url = await uploadImageToCloudinary(file, 'zenemoo/team');
+      setEditingMember({ ...editingMember, image_url: url, image: url });
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload image to Cloudinary.');
     } finally {
       setIsUploading(false);
     }
@@ -114,7 +114,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
             </div>
             <div>
               <h3 className="text-xl font-bold font-display text-white">Zenemoo Data Team Admin Panel</h3>
-              <p className="text-xs font-mono text-cyan-400">Manage Specialists, Supabase Database &amp; Cloudinary CDN</p>
+              <p className="text-xs font-mono text-cyan-400">Express Backend → Supabase PostgreSQL &amp; Cloudinary CDN</p>
             </div>
           </div>
 
@@ -161,7 +161,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
             }`}
           >
             <Database className="w-3.5 h-3.5" />
-            Database &amp; Storage
+            Database Architecture
           </button>
         </div>
 
@@ -172,13 +172,13 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-mono text-slate-400">
-                  Current active team members displayed in website directory.
+                  Live team members stored in Supabase PostgreSQL (ordered 1..N by position).
                 </p>
                 <button
                   onClick={onResetDefaults}
                   className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs font-mono transition-all flex items-center gap-1.5"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" /> Reset 12 Defaults
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh Live Database
                 </button>
               </div>
 
@@ -191,7 +191,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-900 border border-white/10 shrink-0">
                         <img
-                          src={member.image || member.fallback || '/assets/executive.png'}
+                          src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
                           }}
@@ -201,9 +201,9 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                       </div>
                       <div>
                         <div className="font-bold text-sm text-white">{member.name}</div>
-                        <div className="text-xs font-mono text-purple-400">{member.role}</div>
+                        <div className="text-xs font-mono text-purple-400">{member.designation || member.role}</div>
                         <span className="inline-block mt-1 px-2 py-0.5 rounded bg-white/[0.05] text-[10px] font-mono text-cyan-300">
-                          {member.badge}
+                          Pos #{member.position} • {member.badge || 'Specialist'}
                         </span>
                       </div>
                     </div>
@@ -234,7 +234,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
           {activeTab === 'edit' && editingMember && (
             <form onSubmit={handleFormSubmit} className="space-y-6 max-w-2xl mx-auto">
               <h4 className="text-lg font-bold font-display text-white">
-                {members.some((m) => m.id === editingMember.id) ? 'Edit Team Member' : 'Add New Team Member'}
+                {editingMember.id && members.some((m) => m.id === editingMember.id) ? 'Edit Team Member' : 'Add New Team Member'}
               </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -251,13 +251,13 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1.5">Role Title *</label>
+                  <label className="block text-xs font-mono text-slate-300 mb-1.5">Designation / Role *</label>
                   <input
                     type="text"
                     required
                     placeholder="Audio Transcription Specialist"
-                    value={editingMember.role}
-                    onChange={(e) => setEditingMember({ ...editingMember, role: e.target.value })}
+                    value={editingMember.designation || editingMember.role || ''}
+                    onChange={(e) => setEditingMember({ ...editingMember, designation: e.target.value, role: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
                   />
                 </div>
@@ -265,9 +265,9 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1.5">Badge Title</label>
+                  <label className="block text-xs font-mono text-slate-300 mb-1.5">Badge / Level</label>
                   <select
-                    value={editingMember.badge}
+                    value={editingMember.badge || 'Specialist'}
                     onChange={(e) => setEditingMember({ ...editingMember, badge: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"
                   >
@@ -299,8 +299,8 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
 
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
-                    {editingMember.image ? (
-                      <img src={editingMember.image} alt="Preview" className="w-full h-full object-cover" />
+                    {editingMember.image_url || editingMember.image ? (
+                      <img src={editingMember.image_url || editingMember.image} alt="Preview" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">No Image</div>
                     )}
@@ -310,14 +310,14 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                     <input
                       type="url"
                       placeholder="https://res.cloudinary.com/.../photo.jpg"
-                      value={editingMember.image}
-                      onChange={(e) => setEditingMember({ ...editingMember, image: e.target.value })}
+                      value={editingMember.image_url || editingMember.image || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, image_url: e.target.value, image: e.target.value })}
                       className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
                     />
 
                     <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-mono cursor-pointer hover:bg-purple-500/30 transition-all">
                       <Upload className="w-3.5 h-3.5" />
-                      {isUploading ? 'Uploading to Cloudinary...' : 'Upload Local Image File'}
+                      {isUploading ? 'Uploading to Cloudinary...' : 'Upload Local Image to Cloudinary'}
                       <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
                     </label>
                   </div>
@@ -325,10 +325,10 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1.5">Bio / Contribution Summary</label>
+                <label className="block text-xs font-mono text-slate-300 mb-1.5">Bio / Summary</label>
                 <textarea
                   rows={3}
-                  placeholder="Works on transcription, data annotation, and file processing tasks..."
+                  placeholder="Specializes in transcription and data annotation tasks..."
                   value={editingMember.bio}
                   onChange={(e) => setEditingMember({ ...editingMember, bio: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400 resize-none"
@@ -380,7 +380,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                   type="submit"
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 hover:opacity-95 flex items-center gap-1.5"
                 >
-                  <Save className="w-4 h-4" /> Save Team Member
+                  <Save className="w-4 h-4" /> Save Team Member to Supabase
                 </button>
               </div>
             </form>
@@ -390,49 +390,33 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
           {activeTab === 'config' && (
             <div className="space-y-6 max-w-2xl mx-auto font-mono text-xs">
               <h4 className="text-lg font-bold font-display text-white font-sans">
-                Supabase &amp; Cloudinary Database Settings
+                Production Backend Architecture
               </h4>
 
               {/* Status Box */}
               <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <span className="flex items-center gap-2 text-cyan-400 font-bold">
-                    <Database className="w-4 h-4" /> Supabase Database
+                    <Database className="w-4 h-4" /> Supabase PostgreSQL
                   </span>
-                  {getSupabaseClient() ? (
-                    <span className="text-emerald-400 flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4" /> Connected
-                    </span>
-                  ) : (
-                    <span className="text-amber-400 flex items-center gap-1">
-                      <ShieldAlert className="w-4 h-4" /> LocalStorage Mode Active
-                    </span>
-                  )}
+                  <span className="text-emerald-400 flex items-center gap-1">
+                    <CheckCircle className="w-4 h-4" /> Live Backend Single Source of Truth
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-purple-400 font-bold">
-                    <Cloud className="w-4 h-4" /> Cloudinary CDN Upload
+                    <Cloud className="w-4 h-4" /> Cloudinary CDN Uploads
                   </span>
                   <span className="text-emerald-400 flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" /> Enabled (Auto Data-URL &amp; CDN Fallback)
+                    <CheckCircle className="w-4 h-4" /> Folder Stream Active (zenemoo/*)
                   </span>
                 </div>
               </div>
 
-              {/* Environment Variable Setup Instructions */}
               <div className="p-5 rounded-2xl bg-black/60 border border-white/10 space-y-3 leading-relaxed">
-                <div className="text-slate-300 font-bold">// Add these variables to your .env or Vercel Environment Variables:</div>
-                <pre className="text-cyan-300">
-{`VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-VITE_CLOUDINARY_CLOUD_NAME=your-cloud-name
-VITE_CLOUDINARY_UPLOAD_PRESET=your-upload-preset`}
-                </pre>
-              </div>
-
-              <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-slate-300">
-                💡 <strong className="text-white font-sans">Zero Friction Guarantee:</strong> Any team member added or modified in this Admin Panel is saved instantly in your browser and automatically synchronized with Supabase whenever credentials are supplied!
+                <div className="text-slate-300 font-bold">// Data Flow:</div>
+                <div className="text-cyan-300">React Frontend → Express Backend API → Cloudinary &amp; Supabase PostgreSQL</div>
               </div>
             </div>
           )}

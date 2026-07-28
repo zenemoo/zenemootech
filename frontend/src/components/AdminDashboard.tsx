@@ -136,7 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       category: 'Engineering',
     };
     setEditingMember(newMember);
-    setSkillsInput(newMember.skills.join(', '));
+    setSkillsInput(newMember.skills ? newMember.skills.join(', ') : '');
   };
 
   const handleEditMember = (m: TeamMember) => {
