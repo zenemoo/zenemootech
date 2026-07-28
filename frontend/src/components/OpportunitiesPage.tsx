@@ -80,17 +80,16 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <button onClick={onBack} className="flex items-center gap-3 group cursor-pointer">
             <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
-            <div className="flex flex-col text-left">
-              <span className="font-display font-extrabold text-base text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
-              <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest -mt-0.5">Data Solutions</span>
-            </div>
+            <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
           </button>
 
           <button
             onClick={onBack}
-            className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] light:bg-slate-100 light:hover:bg-slate-200 border border-white/10 light:border-slate-300 text-xs font-mono font-bold text-slate-300 light:text-slate-700 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-3 sm:px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] light:bg-slate-100 light:hover:bg-slate-200 border border-white/10 light:border-slate-300 text-xs font-mono font-bold text-slate-300 light:text-slate-700 flex items-center gap-2 transition-all cursor-pointer"
+            title="Return to Main Site"
           >
-            <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" /> Return to Main Site
+            <ArrowLeft className="w-4 h-4 text-cyan-400" />
+            <span className="hidden sm:inline">Return to Main Site</span>
           </button>
         </div>
       </header>
