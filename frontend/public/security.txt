@@ -1,0 +1,7 @@
+# Zenemoo Vulnerability Disclosure Policy
+Contact: mailto:contact@zenemoo.in
+Contact: mailto:support@zenemoo.in
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://zenemoo.in/.well-known/security.txt
+Policy: https://zenemoo.in/#privacy

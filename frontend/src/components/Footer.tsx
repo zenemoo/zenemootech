@@ -153,8 +153,12 @@ export const Footer: React.FC = () => {
               <li><a href="#team" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li><a href="#telemetry" className="hover:text-cyan-400 transition-colors">Production Capacity</a></li>
-              <li><a href="#contact" className="hover:text-cyan-400 transition-colors">Berhampur, Odisha</a></li>
-              <li><a href="mailto:zenemootech@gmail.com" className="hover:text-cyan-400 transition-colors">Email Us</a></li>
+              <li className="pt-2 border-t border-white/5 space-y-1 font-mono text-[11px]">
+                <div className="text-slate-400 font-bold">Official Contact Emails:</div>
+                <div>Contact: <a href="mailto:contact@zenemoo.in" className="text-cyan-300 hover:underline">contact@zenemoo.in</a></div>
+                <div>Support: <a href="mailto:support@zenemoo.in" className="text-cyan-300 hover:underline">support@zenemoo.in</a></div>
+                <div>General: <a href="mailto:info@zenemoo.in" className="text-cyan-300 hover:underline">info@zenemoo.in</a></div>
+              </li>
             </ul>
           </div>
         </div>
@@ -163,6 +167,7 @@ export const Footer: React.FC = () => {
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-500">
           <div>
             Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
+            <span className="text-[11px] text-slate-500 block sm:inline sm:ml-2">(Formerly known as QuantumCoders Data Solution)</span>
           </div>
           <div className="flex items-center gap-3 text-slate-400 font-bold">
             <a

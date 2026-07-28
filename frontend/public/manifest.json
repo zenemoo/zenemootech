@@ -1,0 +1,26 @@
+{
+  "name": "Zenemoo — Enterprise AI Language & Data Solutions",
+  "short_name": "Zenemoo",
+  "description": "Zenemoo is an AI-powered language and data services company specializing in data annotation, multilingual transcription, translation, AI datasets, LLM evaluation, image annotation, audio annotation, video annotation, and enterprise AI data solutions.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/assets/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

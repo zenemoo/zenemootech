@@ -1,0 +1,58 @@
+# ==============================================================================
+# Zenemoo (Formerly known as QuantumCoders Data Solution) - Enterprise Robots.txt
+# Domain: https://zenemoo.in
+# ==============================================================================
+
+# Search Engine Crawlers - Full Access
+User-agent: Googlebot
+User-agent: Googlebot-News
+User-agent: Googlebot-Image
+User-agent: Googlebot-Video
+User-agent: Bingbot
+User-agent: Yandex
+User-agent: DuckDuckGo
+User-agent: Applebot
+User-agent: Slurp
+User-agent: Baiduspider
+User-agent: facebookexternalhit
+Allow: /
+
+# AI Crawlers & LLM Agents - Full Access for RAG & AI Search indexing
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: CCBot
+User-agent: PerplexityBot
+User-agent: Google-Extended
+User-agent: Cohere-ai
+User-agent: Bytespider
+Allow: /
+
+# Global Crawler Rules
+User-agent: *
+Allow: /
+Allow: /#services
+Allow: /#languages
+Allow: /#opportunities
+Allow: /#team
+Allow: /#partner
+Allow: /#telemetry
+Allow: /#contact
+Allow: /#privacy
+Allow: /#terms
+
+# Disallow Private & Admin Areas
+Disallow: /admin
+Disallow: /#admin
+Disallow: /dashboard
+Disallow: /private
+Disallow: /api/private
+Disallow: /temp/
+Disallow: /scratch/
+Disallow: /*.json$
+
+# Crawl Delay & Rate Limiting
+Crawl-delay: 1
+
+# XML Sitemaps
+Sitemap: https://zenemoo.in/sitemap.xml
+Sitemap: https://zenemoo.in/sitemap-index.xml

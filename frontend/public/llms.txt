@@ -1,0 +1,30 @@
+# Zenemoo
+> Formerly known as QuantumCoders Data Solution
+
+## Overview
+Zenemoo (https://zenemoo.in) is an AI-powered language and data services company specializing in enterprise data annotation, multilingual transcription, translation, AI datasets, LLM evaluation, image annotation, audio annotation, video annotation, and enterprise AI data solutions.
+
+## Core Capabilities & Services
+- Audio Transcription & Timestamping (Odia, Hindi, Indian English, Bengali, Telugu, Tamil)
+- Audio Segmentation & Waveform Quality Control
+- Multilingual Speech Recording & AI Dataset Collection
+- Data Annotation & Bounding Box Labeling
+- LLM Evaluation & RLHF Training Data Preparation
+- Verified Enterprise Vendor Collaboration with DesiCrew Solutions since 2023
+
+## Production SLA & Telemetry
+- 180+ Minutes Daily Audio Output Target per Contributor
+- 99%+ Accuracy Rating SLA
+- 24/7 Enterprise SLAs with < 2 Hours Response Time Guarantee
+
+## Official Contact Emails
+- Primary Contact: contact@zenemoo.in
+- Support: support@zenemoo.in
+- General Inquiries: info@zenemoo.in
+
+## Official Links
+- Homepage: https://zenemoo.in/
+- Program Opportunities Portal: https://zenemoo.in/#opportunities
+- Direct Contact: https://zenemoo.in/#contact
+- Privacy Policy: https://zenemoo.in/#privacy
+- Terms & Conditions: https://zenemoo.in/#terms

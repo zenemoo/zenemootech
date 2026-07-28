@@ -287,7 +287,7 @@ export const Contact: React.FC = () => {
 
           {/* Right Column: Direct Contact Info Cards */}
           <div className="lg:col-span-5 space-y-6">
-            {/* Primary Contact Card */}
+            {/* Founder & Primary Contact Card */}
             <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 p-[1.5px] shadow-lg shrink-0 overflow-hidden">
@@ -299,7 +299,7 @@ export const Contact: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-white font-bold font-display text-base">Prem Prasad Pradhan</div>
-                  <div className="text-xs font-mono text-cyan-400">Founder &amp; Vendor Manager (Primary Contact)</div>
+                  <div className="text-xs font-mono text-cyan-400">Founder &amp; Vendor Manager</div>
                   <a href="mailto:contact@mrprem.in" className="text-xs text-slate-300 hover:text-white hover:underline font-mono">
                     contact@mrprem.in
                   </a>
@@ -307,53 +307,80 @@ export const Contact: React.FC = () => {
               </div>
             </div>
 
-            {/* Team Email Addresses */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
-              <div className="flex items-center gap-2 text-purple-400 font-bold uppercase text-[11px] mb-1">
-                <Mail className="w-4 h-4" /> Team Email Addresses
+            {/* Official Contact Email Cards */}
+            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4 font-mono text-xs">
+              <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px] mb-2">
+                <Mail className="w-4 h-4" /> Official Enterprise Contact Emails
               </div>
-              <div className="text-slate-300">
-                <a href="mailto:zenemootech@gmail.com" className="hover:text-cyan-300 transition-colors">
-                  zenemootech@gmail.com
+
+              {/* Email 1: Primary Contact */}
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Primary Contact</div>
+                  <a href="mailto:contact@zenemoo.in" className="text-white font-bold text-sm hover:text-cyan-300">
+                    contact@zenemoo.in
+                  </a>
+                </div>
+                <a
+                  href="mailto:contact@zenemoo.in"
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold shrink-0"
+                >
+                  Mail
                 </a>
               </div>
-              <div className="text-slate-300">
-                <a href="mailto:contact@mrprem.in" className="hover:text-cyan-300 transition-colors">
-                  contact@mrprem.in
+
+              {/* Email 2: Support */}
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Client &amp; Contributor Support</div>
+                  <a href="mailto:support@zenemoo.in" className="text-white font-bold text-sm hover:text-cyan-300">
+                    support@zenemoo.in
+                  </a>
+                </div>
+                <a
+                  href="mailto:support@zenemoo.in"
+                  className="px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-bold shrink-0"
+                >
+                  Mail
+                </a>
+              </div>
+
+              {/* Email 3: General Inquiries */}
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">General Inquiries</div>
+                  <a href="mailto:info@zenemoo.in" className="text-white font-bold text-sm hover:text-cyan-300">
+                    info@zenemoo.in
+                  </a>
+                </div>
+                <a
+                  href="mailto:info@zenemoo.in"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shrink-0"
+                >
+                  Mail
                 </a>
               </div>
             </div>
 
-            {/* Phone & WhatsApp */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase text-[11px] mb-1">
-                <Phone className="w-4 h-4" /> Phone &amp; WhatsApp
+            {/* Business Hours & Response SLA Box */}
+            <div className="glass-panel rounded-3xl p-6 border border-cyan-500/30 space-y-3 font-mono text-xs bg-cyan-500/10">
+              <div className="text-cyan-300 font-bold uppercase text-[11px] flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-cyan-400" /> Guaranteed Response SLA &amp; Hours
               </div>
-              <div className="text-slate-200 font-bold text-sm">
-                <a href="mailto:zenemootech@gmail.com" className="hover:text-cyan-300 transition-colors">
-                  Contact via Email / WhatsApp
-                </a>
+              <div className="space-y-1.5 text-slate-200">
+                <div>⚡ Guaranteed Response Time: <strong className="text-emerald-400">&lt; 2 Hours Response SLA</strong></div>
+                <div>💼 Business Hours: <strong className="text-white">Mon–Sat 9:00 AM – 7:00 PM IST</strong></div>
+                <div>🌐 Enterprise Projects: <strong className="text-cyan-300">24/7 Dedicated Account Managers</strong></div>
               </div>
-              <div className="text-slate-400">Available Mon–Sat, 9 AM – 8 PM IST</div>
             </div>
 
             {/* Location */}
             <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
               <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px] mb-1">
-                <MapPin className="w-4 h-4" /> Location
+                <MapPin className="w-4 h-4" /> Global Delivery Hub
               </div>
               <div className="text-slate-200 font-bold">Berhampur, Odisha, India – 760001</div>
-              <div className="text-slate-400">Remote-first team, available nationwide</div>
-            </div>
-
-            {/* Response Time SLA Box */}
-            <div className="p-5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 font-mono text-xs text-slate-300 space-y-2">
-              <div className="text-cyan-300 font-bold uppercase text-[11px] flex items-center gap-1.5">
-                <Clock className="w-4 h-4" /> Guaranteed Response SLA
-              </div>
-              <div>📧 Email Inquiries: <strong className="text-white">Within 24 hours</strong></div>
-              <div>📱 WhatsApp: <strong className="text-white">Within 2–4 hours</strong></div>
-              <div>📞 Phone Calls: <strong className="text-white">Mon–Sat 9 AM – 8 PM IST</strong></div>
+              <div className="text-slate-400">Remote-first team, available nationwide &amp; globally</div>
             </div>
           </div>
         </div>

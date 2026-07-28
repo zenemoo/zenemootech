@@ -1,0 +1,15 @@
+/* TEAM */
+  Company: Zenemoo
+  Formerly Known As: QuantumCoders Data Solution
+  Website: https://zenemoo.in
+  Founder & Vendor Manager: Prem Prasad Pradhan
+  Primary Contact: contact@zenemoo.in
+  Support: support@zenemoo.in
+  General: info@zenemoo.in
+  Location: Berhampur, Odisha, India
+
+/* SITE */
+  Last Update: 2026/07/28
+  Language: English, Odia, Hindi
+  Standards: HTML5, CSS3, ES2024, Schema.org JSON-LD
+  Components: React 19, TypeScript, Three.js, Vite, TailwindCSS, Supabase, Cloudinary
