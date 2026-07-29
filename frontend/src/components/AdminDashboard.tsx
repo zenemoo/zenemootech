@@ -17,6 +17,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [adminEmail, setAdminEmail] = useState('mr.prem2006@gmail.com');
   const [passcode, setPasscode] = useState('');
   const [passError, setPassError] = useState('');
+  const [showPasscode, setShowPasscode] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
 
   // Authorized Admin Emails Management State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
@@ -655,14 +657,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   Forgot Password?
                 </button>
               </div>
-              <input
-                type="password"
-                required
-                placeholder="Enter admin passcode..."
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm"
-              />
+              <div className="relative">
+                <input
+                  type={showPasscode ? "text" : "password"}
+                  required
+                  placeholder="Enter admin passcode..."
+                  value={passcode}
+                  onChange={(e) => setPasscode(e.target.value)}
+                  className="w-full pl-4 pr-11 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasscode(!showPasscode)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  {showPasscode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               {passError && <div className="text-xs font-mono text-red-400 mt-1">{passError}</div>}
             </div>
 
