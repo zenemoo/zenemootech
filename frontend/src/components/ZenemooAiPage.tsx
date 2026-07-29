@@ -27,6 +27,14 @@ import { aiApi } from '../services/api';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 
+import {
+  AiLanguage,
+  LANGUAGE_LABEL_MAP,
+  getStoredAiLanguage,
+  saveAiLanguage,
+  detectLanguageSwitchIntent,
+} from '../lib/aiStore';
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -44,6 +52,8 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export const ZenemooAiPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+  const [currentLanguage, setCurrentLanguage] = useState<AiLanguage>(() => getStoredAiLanguage());
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome-1',
@@ -62,6 +72,12 @@ I can answer any questions regarding:
     },
   ]);
 
+  const handleSelectLanguage = (lang: AiLanguage) => {
+    setCurrentLanguage(lang);
+    saveAiLanguage(lang);
+    setIsLangDropdownOpen(false);
+  };
+
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -79,6 +95,21 @@ I can answer any questions regarding:
     const query = (textToSend || input).trim();
     if (!query || loading) return;
 
+    // Check language switch intent ("Switch to Hindi", "ଓଡ଼ିଆରେ କୁହ")
+    const switchCheck = detectLanguageSwitchIntent(query);
+    if (switchCheck.isSwitch && switchCheck.targetLang) {
+      handleSelectLanguage(switchCheck.targetLang);
+      const systemConfirmMsg: Message = {
+        id: `sys-lang-${Date.now()}`,
+        role: 'assistant',
+        content: switchCheck.confirmMessage || `✅ Language changed to ${LANGUAGE_LABEL_MAP[switchCheck.targetLang].name}.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, systemConfirmMsg]);
+      if (!textToSend) setInput('');
+      return;
+    }
+
     const userMsgId = `user-${Date.now()}`;
     const userMsg: Message = {
       id: userMsgId,
@@ -95,10 +126,13 @@ I can answer any questions regarding:
     try {
       // Prepare payload for backend Express API -> Groq RAG Engine
       const apiPayload = newMessages
-        .filter((m) => m.id !== 'welcome-1')
+        .filter((m) => m.id !== 'welcome-1' && !m.id.startsWith('sys-lang-'))
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const res = await aiApi.chat(apiPayload.length > 0 ? apiPayload : [{ role: 'user', content: query }]);
+      const res = await aiApi.chat(
+        apiPayload.length > 0 ? apiPayload : [{ role: 'user', content: query }],
+        currentLanguage
+      );
 
       const aiReply = res.data?.reply || "I don't currently have verified information about that. Please contact the Zenemoo team at contact@zenemoo.in.";
 
@@ -207,6 +241,38 @@ I can answer any questions regarding:
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Multilingual Selector Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/10 text-cyan-300 border border-white/10 flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+                >
+                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{LANGUAGE_LABEL_MAP[currentLanguage].flag} {LANGUAGE_LABEL_MAP[currentLanguage].nativeName}</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+
+                {isLangDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-40 rounded-2xl bg-[#0e1017] border border-white/10 shadow-2xl p-1.5 z-50 space-y-1">
+                    {(['en', 'hi', 'or'] as AiLanguage[]).map((langKey) => (
+                      <button
+                        key={langKey}
+                        onClick={() => handleSelectLanguage(langKey)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer ${
+                          currentLanguage === langKey ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-300 hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span>{LANGUAGE_LABEL_MAP[langKey].flag}</span>
+                          <span>{LANGUAGE_LABEL_MAP[langKey].nativeName}</span>
+                        </span>
+                        {currentLanguage === langKey && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={handleExportChat}
                 className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 transition-colors"

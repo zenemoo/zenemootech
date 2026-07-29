@@ -23,6 +23,7 @@ import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { VerifyOtpPage } from './components/VerifyOtpPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { ZenemooAiPage } from './components/ZenemooAiPage';
+import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
@@ -31,6 +32,7 @@ export function App() {
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [resetEmail, setResetEmail] = useState<string>('');
   const [verifiedOtp, setVerifiedOtp] = useState<string>('');
+  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
 
   useEffect(() => {
     const checkRoute = () => {
@@ -185,7 +187,7 @@ export function App() {
           <ThreeNeuralBackground />
 
           {/* Top Navbar */}
-          <Navbar />
+          <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
 
           {/* Main Content Sections */}
           <main className="relative z-10">
@@ -202,6 +204,12 @@ export function App() {
 
           {/* Mega Footer */}
           <Footer />
+
+          {/* Global Right-Side AI Drawer Panel */}
+          <ZenemooAiDrawer
+            isOpen={isAiDrawerOpen}
+            onClose={() => setIsAiDrawerOpen(false)}
+          />
         </div>
       )}
     </ThemeProvider>

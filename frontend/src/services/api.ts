@@ -197,6 +197,7 @@ export const uploadApi = mediaApi;
 
 // Zenemoo AI Assistant APIs
 export const aiApi = {
-  chat: (messages: { role: string; content: string }[]) => api.post('/ai/chat', { messages }),
+  chat: (messages: { role: string; content: string }[], language: 'en' | 'hi' | 'or' = 'en') =>
+    api.post('/ai/chat', { messages, language }),
   getAnalytics: () => api.get('/ai/analytics'),
 };

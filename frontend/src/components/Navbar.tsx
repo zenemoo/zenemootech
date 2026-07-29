@@ -5,9 +5,10 @@ import { useTheme } from '../context/ThemeContext';
 interface NavbarProps {
   onBack?: () => void;
   showBackButton?: boolean;
+  onOpenAiDrawer?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAiDrawer }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -21,7 +22,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
   }, []);
 
   const navLinks = [
-    { name: 'Zenemoo AI', href: '/zenemooai', icon: Sparkles },
     { name: 'Services', href: '#services', icon: Mic },
     { name: 'Languages', href: '#languages', icon: Languages },
     { name: 'Opportunities', href: '/opportunities', icon: Briefcase },
@@ -82,8 +82,23 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
             </nav>
           )}
 
-          {/* Theme Toggle & Mobile Menu Drawer Toggle Button */}
+          {/* Theme Toggle & Global Floating AI Icon Button */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Global Floating AI Icon Button (Always visible on Desktop, Tablet & Mobile) */}
+            <button
+              onClick={onOpenAiDrawer}
+              className="relative group flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
+              title="Ask Zenemoo AI"
+              aria-label="Ask Zenemoo AI"
+            >
+              <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse">
+                <img src="/assets/logo.png" alt="AI" className="w-full h-full object-cover rounded-full bg-white p-0.2" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
+              </div>
+              <span className="text-xs font-mono font-bold tracking-tight hidden xs:inline sm:inline">Zenemoo AI</span>
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform" />
+            </button>
+
             <button
               onClick={toggleTheme}
               aria-label="Toggle Dark/Light Mode"

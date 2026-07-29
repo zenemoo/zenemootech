@@ -98,17 +98,23 @@ export const buildDynamicRAGContext = async (userQuery = '') => {
 };
 
 /**
- * System Prompt with strict guardrails against hallucination
+ * System Prompt with strict guardrails against hallucination and language enforcement
  */
-export const buildSystemPrompt = (ragContext) => {
+export const buildSystemPrompt = (ragContext, language = 'en') => {
+  let langInstruction = 'Respond in clear, professional English.';
+  if (language === 'hi') {
+    langInstruction = 'MANDATORY LANGUAGE RULE: You MUST write your response entirely in Hindi (हिंदी). Translate all information accurately into Hindi script.';
+  } else if (language === 'or') {
+    langInstruction = 'MANDATORY LANGUAGE RULE: You MUST write your response entirely in Odia (ଓଡ଼ିଆ). Translate all information accurately into Odia script.';
+  }
+
   return `You are Zenemoo AI, the official enterprise AI assistant representing Zenemoo (https://www.zenemoo.in/).
 
 YOUR STRICT CORE INSTRUCTIONS:
 1. Grounding & Anti-Hallucination: Answer questions ONLY using the verified knowledge base and live database records provided below.
 2. Never Invent Information: Do NOT invent fake pricing, fake addresses, imaginary staff, unverified project numbers, or non-existent features.
-3. Fallback Response: If information is unavailable or unverified in your context, politely respond:
-   "I don't currently have verified information about that specific request. Please contact our team directly at contact@zenemoo.in or through our contact page (https://www.zenemoo.in/contact)."
-4. Multilingual Intelligence: Automatically detect the user's language (English, Hindi हिंदी, or Odia ଓଡ଼ିଆ) and respond naturally in that exact language.
+3. Fallback Response: If information is unavailable or unverified in your context, politely respond in the selected language that verified information is not available and to contact contact@zenemoo.in.
+4. ${langInstruction}
 5. Tone & Personality: Maintain a professional, executive, helpful, and concise tone appropriate for enterprise B2B clients and job applicants.
 6. Formatting: Use Markdown (bold text, bullet points, numbered lists, tables where relevant) for high readability.
 
@@ -118,7 +124,7 @@ ${ragContext}`;
 /**
  * Main AI Execution Routine calling Groq / xAI OpenAI-compatible API
  */
-export const processAiChat = async (messages = [], onStreamChunk = null) => {
+export const processAiChat = async (messages = [], language = 'en') => {
   const startTime = Date.now();
   const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
 
@@ -128,7 +134,7 @@ export const processAiChat = async (messages = [], onStreamChunk = null) => {
 
   const lastUserMsg = messages.length > 0 ? messages[messages.length - 1].content || '' : '';
   const ragContext = await buildDynamicRAGContext(lastUserMsg);
-  const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext) };
+  const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext, language) };
 
   const fullMessages = [systemMessage, ...messages.slice(-10)];
 
