@@ -118,3 +118,75 @@ html.light .text-slate-300 {
 html.light .text-slate-400 {
   color: #64748b !important;
 }
+
+/* Sidebar and Header Layout Styles */
+.glass-sidebar {
+  background: rgba(10, 11, 16, 0.85);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-header {
+  background: rgba(5, 5, 7, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Premium Card Designs */
+.modern-dashboard-card {
+  background: rgba(15, 17, 26, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+.modern-dashboard-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.3);
+  background: rgba(20, 22, 34, 0.75);
+  box-shadow: 0 10px 40px rgba(6, 182, 212, 0.08);
+}
+
+/* Custom inputs */
+.modern-input {
+  background: rgba(10, 11, 16, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #fff;
+  transition: all 0.2s ease;
+}
+
+.modern-input:focus {
+  border-color: rgba(6, 182, 212, 0.5);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+  background: rgba(13, 14, 21, 0.95);
+  outline: none;
+}
+
+/* Custom badges */
+.badge-status {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-status-active {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-status-inactive {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}

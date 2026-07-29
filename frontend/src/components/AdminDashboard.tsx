@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -23,6 +23,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [isCheckingSession, setIsCheckingSession] = useState(() => {
     return typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
   });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Authorized Admin Emails Management State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
@@ -913,155 +915,280 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     );
   }
 
+  const navItems = [
+    { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
+    { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
+    { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
+    { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
+    { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
+    { id: 'telemetry', name: 'Metrics & Capacity', icon: Activity },
+    { id: 'keys', name: 'API Credentials', icon: Key },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#050507] text-slate-200 p-4 sm:p-8 relative z-50 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Admin Header Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-panel p-6 rounded-3xl border border-white/10">
+    <div className="min-h-screen bg-[#030304] text-slate-200 flex relative z-50 font-sans overflow-hidden w-full">
+      {/* 1. LEFT SIDEBAR PANEL (Desktop Fixed) */}
+      <aside className={`hidden md:flex flex-col shrink-0 border-r border-white/5 glass-sidebar transition-all duration-300 relative ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
+        {/* Brand Header */}
+        <div className={`p-6 flex items-center justify-between border-b border-white/5 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+          {!isSidebarCollapsed ? (
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/10 shrink-0">
+                <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-xl bg-[#0a0b10] p-0.5" />
+              </div>
+              <div className="truncate">
+                <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider truncate">Zenemoo</h2>
+                <p className="text-[9px] font-mono text-cyan-400 truncate">Admin Center</p>
+              </div>
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px]">
+              <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-cover rounded-lg bg-[#0a0b10] p-0.5" />
+            </div>
+          )}
+          
+          {/* Collapse Button */}
+          {!isSidebarCollapsed && (
+            <button 
+              onClick={() => setIsSidebarCollapsed(true)}
+              className="p-1 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              title="Collapse Sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
+          {isSidebarCollapsed && (
+            <button 
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="absolute left-16 top-6 p-1 rounded-lg bg-[#0a0b10] border border-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer z-50 shadow-md"
+              title="Expand Sidebar"
+            >
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Sidebar Nav items */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id as any)}
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-mono text-xs transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-cyan-400 font-bold'
+                    : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'
+                }`}
+                title={isSidebarCollapsed ? item.name : undefined}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && (
+                  <span className="flex-1 text-left truncate">{item.name}</span>
+                )}
+                {!isSidebarCollapsed && item.count !== undefined && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Sidebar Admin Info footer */}
+        {!isSidebarCollapsed && (
+          <div className="p-4 border-t border-white/5 bg-black/[0.15]">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-mono text-slate-400 truncate" title={adminEmail}>{adminEmail}</p>
+                <p className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-bold">Active Session</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </aside>
+
+      {/* 2. MOBILE DRAWER SIDEBAR PANEL */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 z-[100] md:hidden bg-black/60 backdrop-blur-sm flex justify-start"
+          >
+            <motion.aside 
+              initial={{ translateX: '-100%' }}
+              animate={{ translateX: 0 }}
+              exit={{ translateX: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-64 h-full bg-[#0a0b10] border-r border-white/5 p-5 flex flex-col justify-between"
+            >
+              <div className="space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-cover rounded-xl bg-white p-0.5" />
+                    <div>
+                      <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider">Zenemoo</h2>
+                      <p className="text-[9px] font-mono text-cyan-400">Admin Control Center</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 text-slate-400 hover:text-white cursor-pointer">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <nav className="space-y-1">
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveTab(item.id as any);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-mono text-xs transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-cyan-400 font-bold'
+                            : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="flex-1 text-left truncate">{item.name}</span>
+                        {item.count !== undefined && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              <div className="p-4 border-t border-white/5 bg-black/[0.15] rounded-xl flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-mono text-slate-400 truncate">{adminEmail}</p>
+                  <p className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-bold">Active Session</p>
+                </div>
+              </div>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 3. RIGHT VIEWPORT MAIN VIEW */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-[#030304]">
+        {/* Sticky Header Bar */}
+        <header className="sticky top-0 z-40 glass-header px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold">
-              <Database className="w-6 h-6" />
+            {/* Mobile Hamburger menu toggle */}
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-1.5 rounded-lg border border-white/5 hover:bg-white/5 text-slate-400 hover:text-white md:hidden cursor-pointer"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="hidden md:flex w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 items-center justify-center text-cyan-400 font-bold shrink-0">
+              <Database className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold font-display text-white tracking-tight">
-                Zenemoo Admin Control Center
+              <h1 className="text-base font-bold font-display text-white tracking-tight flex items-center gap-2 capitalize">
+                {activeTab === 'keys' ? 'API Credentials' : activeTab === 'telemetry' ? 'Capacity Metrics' : activeTab === 'team' ? 'Team Roster' : activeTab.replace('-', ' ')}
               </h1>
-              <p className="text-xs font-mono text-slate-400">
-                Automatic Sequential Reordering Engine • Supabase &amp; Cloudinary Live Storage
+              <p className="text-[10px] font-mono text-slate-500 hidden sm:block">
+                Zenemoo Platform • Sequential Reordering Engine
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 animate-fade-in">
+          {/* Quick Search bar */}
+          <div className="relative hidden lg:block w-64">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Filter list records..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-white/5 bg-white/[0.02] focus:outline-none focus:border-cyan-500/50 text-white placeholder-slate-500 transition-all font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-2.5">
             {statusMessage && (
-              <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5" /> {statusMessage}
+              <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono flex items-center gap-1.5 animate-pulse">
+                <CheckCircle className="w-3 h-3" /> {statusMessage}
               </div>
             )}
+            
             <button
               onClick={handleLogoutClick}
-              className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-xs font-mono text-red-400 flex items-center gap-2 transition-colors cursor-pointer"
+              className="px-3.5 py-1.8 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-[11px] font-mono text-red-400 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Logout Session"
             >
-              <LogOut className="w-4 h-4" /> Logout Session
+              <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Logout</span>
             </button>
+            
             <button
               onClick={onExit}
-              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2 transition-colors cursor-pointer"
+              className="px-3.5 py-1.8 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-[11px] font-mono text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Exit Website"
             >
-              <ArrowLeft className="w-4 h-4" /> Exit to Website
+              <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Exit</span>
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/10 font-mono text-xs">
-          <button
-            onClick={() => setActiveTab('team')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'team'
-                ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Users className="w-4 h-4" /> Team Roster ({teamList.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('partners')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'partners'
-                ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Handshake className="w-4 h-4" /> Enterprise Partners ({partnersList.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('opportunities')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'opportunities'
-                ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Briefcase className="w-4 h-4" /> Program Opportunities ({opportunitiesList.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('inquiries')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'inquiries'
-                ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Mail className="w-4 h-4" /> Contact Inquiries ({inquiries.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('subscribers')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'subscribers'
-                ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" /> Newsletter Subscribers ({subscribers.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab('telemetry')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'telemetry'
-                ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Activity className="w-4 h-4" /> Metrics &amp; Capacity
-          </button>
-
-          <button
-            onClick={() => setActiveTab('keys')}
-            className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold transition-all shrink-0 ${
-              activeTab === 'keys'
-                ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
-                : 'bg-white/[0.03] text-slate-400 hover:text-white'
-            }`}
-          >
-            <Key className="w-4 h-4" /> API Keys &amp; Credentials
-          </button>
-        </div>
+        {/* 4. MAIN DYNAMIC DISPLAY PANEL */}
+        <main className="flex-1 p-6 space-y-8 max-w-7xl mx-auto w-full">
 
         {/* TAB 1: TEAM MEMBERS MANAGEMENT WITH AUTOMATIC REORDERING ENGINE */}
         {activeTab === 'team' && (
           <div className="space-y-8">
             {/* Top Bar: Stats Metrics & Add Team Member */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="glass-panel p-5 rounded-2xl border border-cyan-500/20 space-y-1">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Current Team Members</div>
-                <div className="text-3xl font-extrabold font-display text-cyan-300">{teamList.length}</div>
-                <div className="text-[11px] font-mono text-slate-500">Ordered 1..{teamList.length} (0 Gaps)</div>
-              </div>
-
-              <div className="glass-panel p-5 rounded-2xl border border-purple-500/20 space-y-1">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Next Available Position</div>
-                <div className="text-3xl font-extrabold font-display text-purple-300">#{teamList.length + 1}</div>
-                <div className="text-[11px] font-mono text-slate-500">Auto-assigned on new upload</div>
-              </div>
-
-              <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] font-mono text-slate-400 uppercase">Reordering Engine</div>
-                  <div className="text-sm font-bold text-emerald-400 font-mono">Sequential 1..N Active</div>
-                  <div className="text-[11px] font-mono text-slate-500">Auto-shifts &amp; auto-renumbers</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Current Team Members</span>
+                  <span className="text-3xl font-extrabold text-white block">{teamList.length}</span>
+                  <span className="text-[10px] font-mono text-cyan-400 block">Ordered 1..{teamList.length} (0 Gaps)</span>
                 </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <Users className="w-5 h-5" />
+                </div>
+              </div>
 
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Next Available Position</span>
+                  <span className="text-3xl font-extrabold text-white block">#{teamList.length + 1}</span>
+                  <span className="text-[10px] font-mono text-purple-400 block">Auto-assigned on new upload</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Sequential Engine</span>
+                  <span className="text-sm font-bold text-white block font-mono">1..N Auto-Shift Active</span>
+                  <span className="text-[10px] font-mono text-emerald-400 block">Positions reordered instantly</span>
+                </div>
                 <button
                   onClick={handleCreateMember}
-                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 shrink-0"
+                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
                 >
-                  <Plus className="w-4 h-4" /> Add Team Member
+                  <Plus className="w-4 h-4" /> Add Member
                 </button>
               </div>
             </div>
@@ -1314,14 +1441,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
             {/* Team Cards Grid with Framer Motion Animation */}
             {filteredTeam.length === 0 ? (
-              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
-                <Users className="w-10 h-10 text-slate-500 mx-auto" />
-                <h4 className="text-base font-bold text-white">No Team Members Found</h4>
-                <p className="text-xs font-mono text-slate-400">
-                  {searchQuery || statusFilter !== 'all' || categoryFilter !== 'all'
-                    ? 'No team members match your filter criteria.'
-                    : 'Click "Add Team Member" above to create your first team record.'}
-                </p>
+              <div className="modern-dashboard-card p-16 text-center space-y-4 max-w-lg mx-auto border-dashed border-2 border-white/5">
+                <div className="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mx-auto text-cyan-400">
+                  <Users className="w-6 h-6 animate-pulse" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-white">No Team Members Found</h4>
+                  <p className="text-xs font-mono text-slate-400">
+                    {searchQuery || statusFilter !== 'all' || categoryFilter !== 'all'
+                      ? 'No team members match your active filter criteria. Try resetting the filters.'
+                      : 'Click "Add Member" above to create your first executive team profile.'}
+                  </p>
+                </div>
               </div>
             ) : (
               <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1455,31 +1586,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         {activeTab === 'partners' && (
           <div className="space-y-8">
             {/* Stats Metrics & Add Partner Button */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20 space-y-1">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Enterprise Partners</div>
-                <div className="text-3xl font-extrabold font-display text-emerald-300">{partnersList.length}</div>
-                <div className="text-[11px] font-mono text-slate-500">Active Marquee Slider</div>
-              </div>
-
-              <div className="glass-panel p-5 rounded-2xl border border-cyan-500/20 space-y-1">
-                <div className="text-[10px] font-mono text-slate-400 uppercase">Next Position</div>
-                <div className="text-3xl font-extrabold font-display text-cyan-300">#{partnersList.length + 1}</div>
-                <div className="text-[11px] font-mono text-slate-500">Auto-assigned on creation</div>
-              </div>
-
-              <div className="glass-panel p-5 rounded-2xl border border-purple-500/20 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] font-mono text-slate-400 uppercase">Cloudinary CDN</div>
-                  <div className="text-sm font-bold text-purple-300 font-mono">zenemoo/partners</div>
-                  <div className="text-[11px] font-mono text-slate-500">Logo image uploads active</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Enterprise Partners</span>
+                  <span className="text-3xl font-extrabold text-white block">{partnersList.length}</span>
+                  <span className="text-[10px] font-mono text-emerald-400 block">Active Marquee Slider</span>
                 </div>
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Handshake className="w-5 h-5" />
+                </div>
+              </div>
 
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Next Available Position</span>
+                  <span className="text-3xl font-extrabold text-white block">#{partnersList.length + 1}</span>
+                  <span className="text-[10px] font-mono text-cyan-400 block">Auto-assigned on creation</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Cloudinary CDN Folder</span>
+                  <span className="text-sm font-bold text-white block font-mono">zenemoo/partners</span>
+                  <span className="text-[10px] font-mono text-purple-400 block">Logo image uploads active</span>
+                </div>
                 <button
                   onClick={handleCreatePartner}
-                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
                 >
-                  <Plus className="w-4 h-4" /> Add Partner Company
+                  <Plus className="w-4 h-4" /> Add Partner
                 </button>
               </div>
             </div>
@@ -1747,22 +1887,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         {/* TAB 1.5: PROGRAM OPPORTUNITIES MANAGEMENT */}
         {activeTab === 'opportunities' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-purple-400" /> Program Opportunities Portal Engine
-                </h3>
-                <p className="text-xs font-mono text-slate-400">
-                  Manage live project opportunities, status pills, Cloudinary posters, and eligibility checklists listed on <code className="text-cyan-300">/#opportunities</code>.
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Total Program Opportunities</span>
+                  <span className="text-3xl font-extrabold text-white block">{opportunitiesList.length}</span>
+                  <span className="text-[10px] font-mono text-cyan-400 block">Manage live listings</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <Briefcase className="w-5 h-5" />
+                </div>
               </div>
 
-              <button
-                onClick={handleCreateOpportunity}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-white font-mono font-bold text-xs shadow-lg shadow-purple-500/20 flex items-center gap-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Add Program Opportunity
-              </button>
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Active Open Programs</span>
+                  <span className="text-3xl font-extrabold text-white block">
+                    {opportunitiesList.filter(o => o.status === 'active').length}
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400 block">Accepting candidate applications</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <CheckSquare className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Next Position Assign</span>
+                  <span className="text-sm font-bold text-white block font-mono">#{opportunitiesList.length + 1}</span>
+                  <span className="text-[10px] font-mono text-purple-400 block">Sequential order auto-reordering</span>
+                </div>
+                <button
+                  onClick={handleCreateOpportunity}
+                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <Plus className="w-4 h-4" /> Add Program
+                </button>
+              </div>
             </div>
 
             {/* Opportunities List Cards */}
@@ -1896,22 +2058,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         {/* TAB 2: CONTACT INQUIRIES FROM WEBSITE FORM */}
         {activeTab === 'inquiries' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-blue-400" /> Website Contact Form Submissions
-                </h3>
-                <p className="text-xs font-mono text-slate-400">
-                  Submissions stored in Supabase PostgreSQL database <code className="text-cyan-300">contacts</code> table.
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Total Inquiries</span>
+                  <span className="text-3xl font-extrabold text-white block">{inquiries.length}</span>
+                  <span className="text-[10px] font-mono text-blue-400 block">Total from contact form</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <Mail className="w-5 h-5" />
+                </div>
               </div>
 
-              <button
-                onClick={handleRefreshInquiries}
-                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh Inquiries
-              </button>
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Unread Submissions</span>
+                  <span className="text-3xl font-extrabold text-white block">
+                    {inquiries.filter(i => i.status !== 'read').length}
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-400 block">Require review/responses</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Database Storage Status</span>
+                  <span className="text-sm font-bold text-white block font-mono">Supabase "contacts"</span>
+                  <span className="text-[10px] font-mono text-emerald-400 block">Connection Active</span>
+                </div>
+                <button
+                  onClick={handleRefreshInquiries}
+                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                </button>
+              </div>
             </div>
 
             {inquiries.length === 0 ? (
@@ -2114,22 +2298,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         {/* TAB 3: NEWSLETTER SUBSCRIBERS */}
         {activeTab === 'subscribers' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-cyan-400" /> Zenemoo Dispatch Newsletter Subscribers ({subscribers.length})
-                </h3>
-                <p className="text-xs font-mono text-slate-400">
-                  Subscribers registered via the website footer dispatch box. Stored in Supabase PostgreSQL <code className="text-cyan-300">subscribers</code> table.
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Total Subscribers</span>
+                  <span className="text-3xl font-extrabold text-white block">{subscribers.length}</span>
+                  <span className="text-[10px] font-mono text-cyan-400 block">Newsletter dispatch roster</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <Sparkles className="w-5 h-5" />
+                </div>
               </div>
 
-              <button
-                onClick={loadSubscribers}
-                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh Subscribers
-              </button>
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Database Storage Status</span>
+                  <span className="text-sm font-bold text-white block font-mono">Supabase "subscribers"</span>
+                  <span className="text-[10px] font-mono text-emerald-400 block">Real-time connection active</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Cloud className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Quick Refresh Actions</span>
+                  <span className="text-sm font-bold text-white block font-mono">Supabase Sync</span>
+                  <span className="text-[10px] font-mono text-purple-400 block">Pull live submissions</span>
+                </div>
+                <button
+                  onClick={loadSubscribers}
+                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                </button>
+              </div>
             </div>
 
             {/* Add New Subscriber Form */}
@@ -3020,6 +3224,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             </motion.div>
           )}
         </AnimatePresence>
+        </main>
+        
+        {/* 5. CORPORATE FOOTER LAYOUT */}
+        <footer className="border-t border-white/5 bg-[#08080b]/60 px-6 py-6 text-center md:flex md:items-center md:justify-between text-[11px] font-mono text-slate-500 shrink-0">
+          <div className="space-y-1 text-left">
+            <p className="font-bold text-slate-400">© 2026 Zenemoo AI Solutions Pvt. Ltd.</p>
+            <p className="text-[10px]">Powered by Zenemoo Enterprise AI Platform • Automatic Reordering Engine</p>
+          </div>
+          <div className="flex items-center gap-4 mt-4 md:mt-0 justify-center">
+            <a href="https://www.zenemoo.in" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Documentation</a>
+            <a href="https://www.zenemoo.in" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Support Portal</a>
+            <a href="https://www.zenemoo.in" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Privacy &amp; Terms</a>
+          </div>
+        </footer>
       </div>
     </div>
   );
