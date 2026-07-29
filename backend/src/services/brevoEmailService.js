@@ -79,6 +79,9 @@ export const sendOtpEmail = async (toEmail, otp) => {
 </html>
   `;
 
+  let restErrorDetails = null;
+  let smtpErrorDetails = null;
+
   // Method 1: Try Brevo HTTP REST API v3
   try {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -102,10 +105,28 @@ export const sendOtpEmail = async (toEmail, otp) => {
       console.log('✅ [BREVO REST SUCCESS] Dispatched to:', toEmail, '| Message ID:', resData.messageId);
       return { success: true, messageId: resData.messageId };
     } else {
-      console.warn(`⚠️ [BREVO REST REJECTED] Status: ${response.status} | Code: ${resData?.code} | Message: ${resData?.message}`);
+      restErrorDetails = {
+        status: response.status,
+        code: resData?.code || 'unknown_code',
+        message: resData?.message || 'No message provided',
+        body: resData
+      };
+      console.warn(`⚠️ [BREVO REST REJECTED]
+        - Status Code: ${restErrorDetails.status}
+        - Error Code: ${restErrorDetails.code}
+        - Error Message: ${restErrorDetails.message}
+        - Response Body: ${JSON.stringify(restErrorDetails.body, null, 2)}`);
     }
   } catch (restError) {
-    console.warn('⚠️ [BREVO REST ERROR]', restError?.message || restError);
+    restErrorDetails = {
+      status: 'EXCEPTION',
+      code: restError?.name || 'Exception',
+      message: restError?.message || String(restError),
+      stack: restError?.stack
+    };
+    console.warn(`⚠️ [BREVO REST EXCEPTION]
+      - Message: ${restErrorDetails.message}
+      - Stack trace: ${restErrorDetails.stack}`);
   }
 
   // Method 2: Try SMTP Transport Fallback (smtp-relay.brevo.com:587)
@@ -130,7 +151,21 @@ export const sendOtpEmail = async (toEmail, otp) => {
     console.log('✅ [BREVO SMTP SUCCESS] Dispatched to:', toEmail, '| Message ID:', info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (smtpError) {
-    console.error('❌ [BREVO SMTP ERROR]', smtpError?.message || smtpError);
-    return { success: false, error: smtpError?.message || 'Brevo authentication failed' };
+    smtpErrorDetails = {
+      name: smtpError?.name || 'Error',
+      message: smtpError?.message || String(smtpError),
+      code: smtpError?.code || 'unknown_code',
+      response: smtpError?.response
+    };
+    console.error(`❌ [BREVO SMTP ERROR]
+      - Error Name: ${smtpErrorDetails.name}
+      - Error Message: ${smtpErrorDetails.message}
+      - Error Code: ${smtpErrorDetails.code}
+      - Server Response: ${smtpErrorDetails.response || 'None'}`);
+    
+    return { 
+      success: false, 
+      error: `Brevo dispatch failed. REST error: ${restErrorDetails ? restErrorDetails.message : 'None'}. SMTP error: ${smtpErrorDetails.message}`
+    };
   }
 };

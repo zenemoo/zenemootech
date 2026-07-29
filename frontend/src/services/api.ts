@@ -54,6 +54,9 @@ export const authApi = {
     try {
       return await api.post('/auth/check-email', { email: cleanEmail });
     } catch (err: any) {
+      if (err.response && err.response.status !== 404) {
+        throw err;
+      }
       // Fallback to Supabase & local validation on connection refused or 404
       try {
         const { data } = await supabase
@@ -80,6 +83,9 @@ export const authApi = {
     try {
       return await api.post('/auth/forgot-password', { email: cleanEmail });
     } catch (err: any) {
+      if (err.response && err.response.status !== 404) {
+        throw err;
+      }
       // Generate 6-digit OTP
       const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
       const hashedOtp = await hashOtpClient(rawOtp);
@@ -120,6 +126,9 @@ export const authApi = {
     try {
       return await api.post('/auth/verify-otp', { email: cleanEmail, otp: cleanOtp });
     } catch (err: any) {
+      if (err.response && err.response.status !== 404) {
+        throw err;
+      }
       const hashedInput = await hashOtpClient(cleanOtp);
       const record = clientOtpStore.get(cleanEmail);
       const storedOtp = localStorage.getItem('zenemoo_active_otp');
@@ -152,6 +161,9 @@ export const authApi = {
     try {
       return await api.post('/auth/reset-password', { email: cleanEmail, otp, newPassword });
     } catch (err: any) {
+      if (err.response && err.response.status !== 404) {
+        throw err;
+      }
       localStorage.setItem('zenemoo_admin_pass', newPassword);
       localStorage.removeItem('zenemoo_active_otp');
       return { data: { success: true, message: 'Password updated successfully!' } };

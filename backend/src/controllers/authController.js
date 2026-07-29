@@ -87,38 +87,89 @@ const hashOtp = (otp) => {
 export const login = async (req, res, next) => {
   try {
     const { passcode, email } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
 
-    if (email) {
-      const isAuth = await checkAdminEmailAuthorized(email);
-      if (!isAuth) {
-        await writeAuditLog(req, 'LOGIN_FAILED_UNAUTHORIZED_EMAIL', email);
-        return res.status(403).json({ success: false, message: 'Access Denied: Email is not an authorized administrator.' });
+    console.log('-----------------------------------------------------');
+    console.log('🔑 ADMIN LOGIN ATTEMPT');
+    console.log('   - Email:', cleanEmail || '❌ NOT PROVIDED');
+    console.log('   - Passcode Provided:', passcode ? '***' : '❌ NOT PROVIDED');
+    console.log('-----------------------------------------------------');
+
+    if (!cleanEmail) {
+      console.warn('⚠️ Login failed: Email is missing.');
+      return res.status(400).json({ success: false, message: 'Email address is required.' });
+    }
+
+    const isAuth = await checkAdminEmailAuthorized(cleanEmail);
+    if (!isAuth) {
+      console.warn(`⚠️ Login unauthorized: ${cleanEmail} is not on the authorized list.`);
+      await writeAuditLog(req, 'LOGIN_FAILED_UNAUTHORIZED_EMAIL', cleanEmail);
+      return res.status(403).json({ success: false, message: 'Access Denied: Email is not an authorized administrator.' });
+    }
+
+    let dbUser = null;
+    let passwordHash = null;
+
+    if (supabase) {
+      try {
+        console.log(`🌐 Querying database for authorized admin email: ${cleanEmail}`);
+        const { data, error } = await supabase
+          .from('authorized_admin_emails')
+          .select('*')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ Supabase database query error on login:', error.message);
+        } else if (data) {
+          dbUser = data;
+          passwordHash = data.password_hash;
+          console.log(`✅ DB record found for ${cleanEmail}. Password hash present:`, passwordHash ? 'YES' : 'NO');
+        } else {
+          console.log(`ℹ️ No DB record found in authorized_admin_emails for ${cleanEmail} (using email rules fallback).`);
+        }
+      } catch (dbErr) {
+        console.error('❌ Database connection/query exception during login:', dbErr);
       }
     }
 
-    const storedCustomPass = process.env.CUSTOM_ADMIN_PASSCODE || ADMIN_PASSCODE;
-    const validPasscodes = [storedCustomPass, ADMIN_PASSCODE, 'zenemoo2026', 'admin2026', 'prem2026'];
+    let isPasswordValid = false;
 
-    if (!passcode || !validPasscodes.includes(passcode.trim())) {
-      await writeAuditLog(req, 'LOGIN_FAILED_BAD_PASSCODE', email);
+    if (passwordHash) {
+      console.log('🔐 Performing bcrypt hash comparison against database password...');
+      isPasswordValid = await bcrypt.compare(passcode, passwordHash);
+      console.log('🔒 Bcrypt verification result:', isPasswordValid ? '✅ MATCH' : '❌ MISMATCH');
+    } else {
+      console.log('ℹ️ No password hash in DB. Falling back to in-memory/environment passcode checks.');
+      const storedCustomPass = process.env.CUSTOM_ADMIN_PASSCODE || ADMIN_PASSCODE;
+      const validPasscodes = [storedCustomPass, ADMIN_PASSCODE, 'zenemoo2026', 'admin2026', 'prem2026'];
+      isPasswordValid = passcode && validPasscodes.includes(passcode.trim());
+      console.log('🔒 Fallback passcode verification result:', isPasswordValid ? '✅ MATCH' : '❌ MISMATCH');
+    }
+
+    if (!isPasswordValid) {
+      console.warn(`❌ Login failure: Invalid credentials for admin email: ${cleanEmail}`);
+      await writeAuditLog(req, 'LOGIN_FAILED_BAD_PASSCODE', cleanEmail);
       return res.status(401).json({ success: false, message: 'Invalid admin passcode.' });
     }
 
     const token = jwt.sign(
-      { role: 'admin', email: email || 'mr.prem2006@gmail.com' },
+      { role: 'admin', email: cleanEmail },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    await writeAuditLog(req, 'LOGIN_SUCCESS', email || 'mr.prem2006@gmail.com');
+    console.log(`🎉 LOGIN SUCCESS! Generated JWT token for ${cleanEmail}`);
+    await writeAuditLog(req, 'LOGIN_SUCCESS', cleanEmail);
 
     res.json({
       success: true,
       message: 'Admin authentication successful',
       token,
-      user: { role: 'admin', email: email || 'mr.prem2006@gmail.com' },
+      user: { role: 'admin', email: cleanEmail },
     });
   } catch (err) {
+    console.error('🔥 Login Exception:', err);
     next(err);
   }
 };
@@ -131,6 +182,8 @@ export const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
     const cleanEmail = (email || '').trim().toLowerCase();
+
+    console.log(`🔍 Live validating authorization for email: ${cleanEmail}`);
 
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
@@ -147,12 +200,14 @@ export const checkEmail = async (req, res) => {
       });
     }
 
+    console.log(`✅ Live validation success: ${cleanEmail} is authorized.`);
     return res.json({
       success: true,
       exists: true,
       message: '✅ Administrator account found.',
     });
   } catch (err) {
+    console.error('🔥 checkEmail Error:', err);
     return res.status(500).json({ success: false, message: 'Error checking email authorization.' });
   }
 };
@@ -166,12 +221,19 @@ export const forgotPassword = async (req, res) => {
     const { email } = req.body;
     const cleanEmail = (email || '').trim().toLowerCase();
 
+    console.log('-----------------------------------------------------');
+    console.log('🔑 OTP GENERATION & DISPATCH FLOW INITIATED');
+    console.log('   - Recipient:', cleanEmail);
+    console.log('-----------------------------------------------------');
+
     if (!cleanEmail) {
+      console.warn('⚠️ OTP request failed: Email is required.');
       return res.status(400).json({ success: false, message: 'Email address is required.' });
     }
 
     const isAuthorized = await checkAdminEmailAuthorized(cleanEmail);
     if (!isAuthorized) {
+      console.warn(`⚠️ OTP request unauthorized for email: ${cleanEmail}`);
       await writeAuditLog(req, 'UNAUTHORIZED_EMAIL_ATTEMPT', cleanEmail);
       return res.status(404).json({ success: false, message: '❌ You are not an authorized administrator.' });
     }
@@ -183,6 +245,7 @@ export const forgotPassword = async (req, res) => {
     const recentRequests = userLimits.filter((ts) => ts > oneHourAgo);
 
     if (recentRequests.length >= 3) {
+      console.warn(`⚠️ OTP request rate limited for ${cleanEmail}. Count: ${recentRequests.length}`);
       await writeAuditLog(req, 'OTP_RATE_LIMIT_EXCEEDED', cleanEmail);
       return res.status(429).json({
         success: false,
@@ -198,11 +261,18 @@ export const forgotPassword = async (req, res) => {
     const otpHashed = hashOtp(rawOtp);
     const expiresAt = new Date(now + 5 * 60 * 1000); // 5 minutes expiration
 
+    console.log(`🔐 Generated 6-digit OTP: ${rawOtp} (Hashed: ${otpHashed}), Expiry: ${expiresAt.toISOString()}`);
+
     // Delete Previous OTPs for this email in Supabase DB
     if (supabase) {
       try {
-        await supabase.from('admin_otps').delete().eq('email', cleanEmail);
-        await supabase.from('admin_otps').insert([
+        console.log(`🌐 Deleting old OTPs and saving new OTP for ${cleanEmail} in Supabase...`);
+        const { error: delError } = await supabase.from('admin_otps').delete().eq('email', cleanEmail);
+        if (delError) {
+          console.warn('⚠️ Supabase OTP deletion warning:', delError.message);
+        }
+        
+        const { error: insError } = await supabase.from('admin_otps').insert([
           {
             email: cleanEmail,
             otp_hash: otpHashed,
@@ -211,8 +281,13 @@ export const forgotPassword = async (req, res) => {
             used: false,
           },
         ]);
+        if (insError) {
+          console.warn('⚠️ Supabase OTP insert warning:', insError.message);
+        } else {
+          console.log(`✅ Stored OTP hash in Supabase admin_otps table for ${cleanEmail}`);
+        }
       } catch (dbErr) {
-        console.warn('[Supabase OTP Insert Note]', dbErr.message);
+        console.error('❌ Supabase OTP storage exception:', dbErr);
       }
     }
 
@@ -223,10 +298,21 @@ export const forgotPassword = async (req, res) => {
       attempts: 0,
       used: false,
     });
+    console.log(`✅ Updated in-memory backup cache with OTP hash for ${cleanEmail}`);
 
     // Send Brevo Transactional Email
-    await sendOtpEmail(cleanEmail, rawOtp);
+    console.log(`📧 Dispatching OTP email via Brevo to: ${cleanEmail}`);
+    const emailResult = await sendOtpEmail(cleanEmail, rawOtp);
 
+    if (!emailResult || !emailResult.success) {
+      console.error(`❌ Email delivery failed: ${emailResult?.error || 'Unknown Brevo dispatch error'}`);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to deliver OTP verification email. Details: ${emailResult?.error || 'Brevo rejection'}`
+      });
+    }
+
+    console.log(`✅ Email delivered successfully! Message ID: ${emailResult.messageId}`);
     await writeAuditLog(req, 'PASSWORD_RESET_EMAIL_SENT', cleanEmail);
 
     return res.json({
@@ -234,7 +320,7 @@ export const forgotPassword = async (req, res) => {
       message: `Verification OTP dispatched to ${cleanEmail}. Check your inbox.`,
     });
   } catch (err) {
-    console.error('forgotPassword Error:', err);
+    console.error('🔥 forgotPassword Error:', err);
     return res.status(500).json({ success: false, message: err.message || 'Failed to process password reset request.' });
   }
 };
@@ -249,7 +335,14 @@ export const verifyOtp = async (req, res) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanOtp = (otp || '').trim();
 
+    console.log('-----------------------------------------------------');
+    console.log('🔑 OTP VERIFICATION ATTEMPT');
+    console.log('   - Recipient:', cleanEmail);
+    console.log('   - Input OTP:', cleanOtp);
+    console.log('-----------------------------------------------------');
+
     if (!cleanEmail || !cleanOtp) {
+      console.warn('⚠️ OTP Verification failed: Email and OTP are required.');
       return res.status(400).json({ success: false, message: 'Email and 6-digit OTP code are required.' });
     }
 
@@ -257,11 +350,13 @@ export const verifyOtp = async (req, res) => {
     const now = Date.now();
 
     let record = null;
+    let dbLookupSucceeded = false;
 
     // Check Supabase DB
     if (supabase) {
       try {
-        const { data } = await supabase
+        console.log(`🌐 Querying Supabase admin_otps for: ${cleanEmail}`);
+        const { data, error } = await supabase
           .from('admin_otps')
           .select('*')
           .eq('email', cleanEmail)
@@ -270,7 +365,9 @@ export const verifyOtp = async (req, res) => {
           .limit(1)
           .maybeSingle();
 
-        if (data) {
+        if (error) {
+          console.error('❌ Supabase OTP lookup error:', error.message);
+        } else if (data) {
           record = {
             id: data.id,
             hash: data.otp_hash,
@@ -278,37 +375,55 @@ export const verifyOtp = async (req, res) => {
             attempts: data.attempts || 0,
             used: data.used,
           };
+          dbLookupSucceeded = true;
+          console.log(`✅ DB record found. Attempts: ${record.attempts}, Expires at: ${data.expires_at}`);
+        } else {
+          console.log('ℹ️ No unused DB record found for this email.');
         }
       } catch (err) {
-        console.warn('[Supabase OTP Query Note]', err.message);
+        console.error('❌ Supabase OTP Query exception:', err);
       }
     }
 
     // Fallback to Memory Cache if DB lookup produced no record
     if (!record) {
+      console.log('ℹ️ Checking in-memory fallback OTP backup cache...');
       record = otpStore.get(cleanEmail);
+      if (record) {
+        console.log(`✅ In-memory backup record found. Attempts: ${record.attempts}, Expires: ${new Date(record.expiresAt).toISOString()}`);
+      } else {
+        console.warn('⚠️ No backup memory record found.');
+      }
     }
 
     if (!record || record.used) {
+      console.warn(`❌ OTP verification failed: No active OTP record exists for ${cleanEmail}`);
       await writeAuditLog(req, 'OTP_VERIFICATION_FAILED_NO_RECORD', cleanEmail);
       return res.status(400).json({ success: false, message: 'No active OTP request found for this email. Please request a new code.' });
     }
 
     if (now > record.expiresAt) {
+      console.warn(`❌ OTP verification failed: OTP has expired. Current time: ${new Date(now).toISOString()}, Expiry: ${new Date(record.expiresAt).toISOString()}`);
       await writeAuditLog(req, 'OTP_EXPIRED', cleanEmail);
       return res.status(400).json({ success: false, message: 'OTP has expired (5-minute limit). Please click Resend OTP.' });
     }
 
     if (record.attempts >= 5) {
+      console.warn(`❌ OTP verification failed: Maximum attempts reached. Attempts count: ${record.attempts}`);
       await writeAuditLog(req, 'OTP_MAX_ATTEMPTS_EXCEEDED', cleanEmail);
       return res.status(400).json({ success: false, message: 'Maximum verification attempts (5) exceeded. Please request a new OTP.' });
     }
 
     if (record.hash !== hashedInput) {
-      // Increment attempt counter
       const newAttempts = record.attempts + 1;
+      console.warn(`❌ OTP verification mismatch: Input ${cleanOtp} (Hash: ${hashedInput}) does not match stored hash: ${record.hash}. Attempt ${newAttempts} of 5.`);
+      
       if (supabase && record.id) {
-        await supabase.from('admin_otps').update({ attempts: newAttempts }).eq('id', record.id);
+        try {
+          await supabase.from('admin_otps').update({ attempts: newAttempts }).eq('id', record.id);
+        } catch (dbUpdErr) {
+          console.error('❌ Failed to increment OTP attempts in database:', dbUpdErr.message);
+        }
       }
       otpStore.set(cleanEmail, { ...record, attempts: newAttempts });
 
@@ -319,6 +434,7 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
+    console.log(`🎉 SUCCESS! OTP verification succeeded for ${cleanEmail}`);
     await writeAuditLog(req, 'OTP_VERIFIED', cleanEmail);
 
     return res.json({
@@ -326,6 +442,7 @@ export const verifyOtp = async (req, res) => {
       message: 'OTP verified successfully.',
     });
   } catch (err) {
+    console.error('🔥 verifyOtp Error:', err);
     return res.status(500).json({ success: false, message: 'Error verifying OTP code.' });
   }
 };
@@ -340,7 +457,14 @@ export const resetPassword = async (req, res) => {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanOtp = (otp || '').trim();
 
+    console.log('-----------------------------------------------------');
+    console.log('🔒 PASSWORD RESET FLOW INITIATED');
+    console.log('   - Recipient:', cleanEmail);
+    console.log('   - Verify OTP:', cleanOtp);
+    console.log('-----------------------------------------------------');
+
     if (!cleanEmail || !cleanOtp || !newPassword) {
+      console.warn('⚠️ Password reset failed: Missing required fields.');
       return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required.' });
     }
 
@@ -369,6 +493,7 @@ export const resetPassword = async (req, res) => {
 
     if (supabase) {
       try {
+        console.log(`🌐 Double-checking OTP record in database for: ${cleanEmail}`);
         const { data } = await supabase
           .from('admin_otps')
           .select('*')
@@ -384,41 +509,58 @@ export const resetPassword = async (req, res) => {
             hash: data.otp_hash,
             expiresAt: new Date(data.expires_at).getTime(),
           };
+          console.log(`✅ DB record found for password reset.`);
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error('❌ Supabase OTP lookup exception during reset:', err.message);
+      }
     }
 
     if (!record) {
+      console.log('ℹ️ Checking fallback in-memory OTP cache during reset...');
       record = otpStore.get(cleanEmail);
     }
 
     if (!record || record.hash !== hashedInput || now > record.expiresAt) {
+      console.warn('❌ Security verification failed: OTP is invalid or expired.');
       return res.status(400).json({ success: false, message: 'Security verification failed or OTP expired.' });
     }
 
+    console.log('🔐 Hashing new password with bcrypt...');
     // Hash new password using bcrypt
     const passwordHash = await bcrypt.hash(newPassword, 10);
+    console.log('✅ Hashing successful.');
 
     // Update password_hash in Supabase authorized_admin_emails table
     if (supabase) {
       try {
-        await supabase
+        console.log(`🌐 Updating password_hash in DB for: ${cleanEmail}...`);
+        const { error } = await supabase
           .from('authorized_admin_emails')
           .update({ password_hash: passwordHash })
           .eq('email', cleanEmail);
 
+        if (error) {
+          console.error('❌ Supabase password_hash update error:', error.message);
+          throw error;
+        }
+        
+        console.log(`✅ Password hash successfully updated in database.`);
+
         // Delete used OTP
         if (record.id) {
+          console.log(`🌐 Deleting used OTP with ID ${record.id} from Supabase...`);
           await supabase.from('admin_otps').delete().eq('id', record.id);
         }
       } catch (dbErr) {
-        console.warn('[Supabase Password Update Note]', dbErr.message);
+        console.error('❌ Supabase database password update exception:', dbErr.message);
       }
     }
 
     // Save in process environment and clear OTP store
     process.env.CUSTOM_ADMIN_PASSCODE = newPassword;
     otpStore.delete(cleanEmail);
+    console.log('🧹 Cleared OTP store cache and updated custom admin passcode environment variable.');
 
     await writeAuditLog(req, 'PASSWORD_RESET_SUCCESS', cleanEmail);
 
@@ -427,7 +569,7 @@ export const resetPassword = async (req, res) => {
       message: 'Password updated successfully! Old session tokens invalidated. Please log in with your new password.',
     });
   } catch (err) {
-    console.error('resetPassword Error:', err);
+    console.error('🔥 resetPassword Error:', err);
     return res.status(500).json({ success: false, message: 'Error resetting admin password.' });
   }
 };
