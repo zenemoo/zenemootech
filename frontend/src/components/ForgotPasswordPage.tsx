@@ -75,7 +75,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
       await authApi.forgotPassword(email.trim());
       onNavigateVerify(email.trim());
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Failed to dispatch Brevo OTP. Please retry.';
+      const msg = err.response?.data?.message || err.message || 'Failed to dispatch Telegram OTP. Please retry.';
       setErrorMsg(msg);
     } finally {
       setIsSubmitting(false);
@@ -157,7 +157,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
           >
             {isSubmitting ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-black" /> Dispatching Brevo OTP...
+                <RefreshCw className="w-4 h-4 animate-spin text-black" /> Dispatching Telegram OTP...
               </>
             ) : (
               <>

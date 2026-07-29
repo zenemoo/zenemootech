@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabaseClient';
-import { sendBrevoOtpClient, hashOtpClient } from '../lib/brevoClient';
 
 let rawApiUrl = (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
 
@@ -19,7 +18,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 4000, // 4-second timeout to quickly fallback to Supabase / Client handlers
+  timeout: 6000, // 6-second timeout
 });
 
 // Request interceptor for JWT authentication header
@@ -30,9 +29,6 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
-
-// Memory fallback store for OTP verification when API backend server is offline or 404
-const clientOtpStore = new Map<string, { hash: string; rawOtp: string; expiresAt: number; attempts: number }>();
 
 // Core Allowed Emails Fallback List
 const DEFAULT_ALLOWED_EMAILS = [
@@ -80,96 +76,19 @@ export const authApi = {
 
   forgotPassword: async (email: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    try {
-      return await api.post('/auth/forgot-password', { email: cleanEmail });
-    } catch (err: any) {
-      if (err.response && err.response.status !== 404) {
-        throw err;
-      }
-      // Generate 6-digit OTP
-      const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      const hashedOtp = await hashOtpClient(rawOtp);
-      const expiresAt = Date.now() + 5 * 60 * 1000;
-
-      clientOtpStore.set(cleanEmail, { hash: hashedOtp, rawOtp, expiresAt, attempts: 0 });
-      localStorage.setItem('zenemoo_active_otp', rawOtp);
-      localStorage.setItem('zenemoo_active_otp_email', cleanEmail);
-
-      // Save in Supabase admin_otps table
-      try {
-        await supabase.from('admin_otps').delete().eq('email', cleanEmail);
-        await supabase.from('admin_otps').insert([
-          { email: cleanEmail, otp_hash: hashedOtp, expires_at: new Date(expiresAt).toISOString(), attempts: 0, used: false },
-        ]);
-      } catch (e) {}
-
-      // Try Brevo Email dispatch
-      const dispatched = await sendBrevoOtpClient(cleanEmail, rawOtp);
-
-      if (dispatched) {
-        return { data: { success: true, message: `Verification OTP dispatched to ${cleanEmail} via Brevo!` } };
-      } else {
-        console.info(`[ZENEMOO SECURITY NOTE] Brevo API Key require SMTP/v3 permissions. Your OTP Code for ${cleanEmail} is: ${rawOtp}`);
-        return {
-          data: {
-            success: true,
-            message: `Verification OTP generated for ${cleanEmail}. Check email inbox (OTP: ${rawOtp}).`,
-          },
-        };
-      }
-    }
+    return await api.post('/auth/forgot-password', { email: cleanEmail });
   },
 
   verifyOtp: async (email: string, otp: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otp.trim();
-    try {
-      return await api.post('/auth/verify-otp', { email: cleanEmail, otp: cleanOtp });
-    } catch (err: any) {
-      if (err.response && err.response.status !== 404) {
-        throw err;
-      }
-      const hashedInput = await hashOtpClient(cleanOtp);
-      const record = clientOtpStore.get(cleanEmail);
-      const storedOtp = localStorage.getItem('zenemoo_active_otp');
-
-      if (cleanOtp === storedOtp || (record && record.hash === hashedInput)) {
-        return { data: { success: true, message: 'OTP verified successfully.' } };
-      }
-
-      // Check Supabase admin_otps DB
-      try {
-        const { data } = await supabase
-          .from('admin_otps')
-          .select('*')
-          .eq('email', cleanEmail)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (data && data.otp_hash === hashedInput && !data.used) {
-          return { data: { success: true, message: 'OTP verified successfully.' } };
-        }
-      } catch (dbErr) {}
-
-      throw new Error('Invalid 6-digit OTP code. Please try again.');
-    }
+    return await api.post('/auth/verify-otp', { email: cleanEmail, otp: cleanOtp });
   },
 
   resetPassword: async (email: string, otp: string, newPassword: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    try {
-      return await api.post('/auth/reset-password', { email: cleanEmail, otp, newPassword });
-    } catch (err: any) {
-      if (err.response && err.response.status !== 404) {
-        throw err;
-      }
-      localStorage.setItem('zenemoo_admin_pass', newPassword);
-      localStorage.removeItem('zenemoo_active_otp');
-      return { data: { success: true, message: 'Password updated successfully!' } };
-    }
-  },
-};
+    return await api.post('/auth/reset-password', { email: cleanEmail, otp, newPassword });
+  },};
 
 // Team APIs
 export const teamApi = {

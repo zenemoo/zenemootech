@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
-import { sendOtpEmail } from '../services/brevoEmailService.js';
+import { sendTelegramOtp } from '../services/telegramService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'zenemoo2026';
@@ -222,8 +222,8 @@ export const forgotPassword = async (req, res) => {
     const cleanEmail = (email || '').trim().toLowerCase();
 
     console.log('-----------------------------------------------------');
-    console.log('🔑 OTP GENERATION & DISPATCH FLOW INITIATED');
-    console.log('   - Recipient:', cleanEmail);
+    console.log('🔑 TELEGRAM OTP GENERATION & DISPATCH FLOW INITIATED');
+    console.log('   - Recipient Email:', cleanEmail);
     console.log('-----------------------------------------------------');
 
     if (!cleanEmail) {
@@ -236,6 +236,37 @@ export const forgotPassword = async (req, res) => {
       console.warn(`⚠️ OTP request unauthorized for email: ${cleanEmail}`);
       await writeAuditLog(req, 'UNAUTHORIZED_EMAIL_ATTEMPT', cleanEmail);
       return res.status(404).json({ success: false, message: '❌ You are not an authorized administrator.' });
+    }
+
+    // Lookup linked Telegram Chat ID from database
+    let telegramChatId = null;
+    if (supabase) {
+      try {
+        console.log(`🌐 Querying database for authorized admin email: ${cleanEmail}`);
+        const { data, error } = await supabase
+          .from('authorized_admin_emails')
+          .select('telegram_chat_id')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ Supabase database query error on password recovery:', error.message);
+        } else if (data) {
+          telegramChatId = data.telegram_chat_id;
+          console.log(`✅ DB record found for ${cleanEmail}. Telegram Chat ID:`, telegramChatId || '❌ NONE');
+        }
+      } catch (dbErr) {
+        console.error('❌ Database connection/query exception during password recovery:', dbErr);
+      }
+    }
+
+    if (!telegramChatId) {
+      console.warn(`⚠️ Telegram account is not linked for admin email: ${cleanEmail}`);
+      await writeAuditLog(req, 'PASSWORD_RESET_FAILED_NO_TELEGRAM_LINKED', cleanEmail);
+      return res.status(400).json({
+        success: false,
+        message: 'Telegram account is not linked. Please contact the system administrator.'
+      });
     }
 
     // Rate Limiting Check: Max 3 OTP requests per hour per email
@@ -261,7 +292,7 @@ export const forgotPassword = async (req, res) => {
     const otpHashed = hashOtp(rawOtp);
     const expiresAt = new Date(now + 5 * 60 * 1000); // 5 minutes expiration
 
-    console.log(`🔐 Generated 6-digit OTP: ${rawOtp} (Hashed: ${otpHashed}), Expiry: ${expiresAt.toISOString()}`);
+    console.log(`🔐 Generated 6-digit OTP for Telegram. Expiry: ${expiresAt.toISOString()}`);
 
     // Delete Previous OTPs for this email in Supabase DB
     if (supabase) {
@@ -300,24 +331,24 @@ export const forgotPassword = async (req, res) => {
     });
     console.log(`✅ Updated in-memory backup cache with OTP hash for ${cleanEmail}`);
 
-    // Send Brevo Transactional Email
-    console.log(`📧 Dispatching OTP email via Brevo to: ${cleanEmail}`);
-    const emailResult = await sendOtpEmail(cleanEmail, rawOtp);
+    // Send Telegram OTP
+    console.log(`📧 Dispatching OTP via Telegram Bot to chat: ${telegramChatId}`);
+    const telegramResult = await sendTelegramOtp(telegramChatId, rawOtp);
 
-    if (!emailResult || !emailResult.success) {
-      console.error(`❌ Email delivery failed: ${emailResult?.error || 'Unknown Brevo dispatch error'}`);
+    if (!telegramResult || !telegramResult.success) {
+      console.error(`❌ Telegram delivery failed: ${telegramResult?.error || 'Unknown Telegram API error'}`);
       return res.status(500).json({
         success: false,
-        message: `Failed to deliver OTP verification email. Details: ${emailResult?.error || 'Brevo rejection'}`
+        message: `Failed to deliver Telegram OTP code. Details: ${telegramResult?.error || 'Telegram API failure'}`
       });
     }
 
-    console.log(`✅ Email delivered successfully! Message ID: ${emailResult.messageId}`);
-    await writeAuditLog(req, 'PASSWORD_RESET_EMAIL_SENT', cleanEmail);
+    console.log(`✅ Telegram OTP delivered successfully! Message ID: ${telegramResult.messageId}`);
+    await writeAuditLog(req, 'PASSWORD_RESET_TELEGRAM_OTP_SENT', cleanEmail);
 
     return res.json({
       success: true,
-      message: `Verification OTP dispatched to ${cleanEmail}. Check your inbox.`,
+      message: `A verification code has been sent to your linked Telegram account.`,
     });
   } catch (err) {
     console.error('🔥 forgotPassword Error:', err);
@@ -534,10 +565,13 @@ export const resetPassword = async (req, res) => {
     // Update password_hash in Supabase authorized_admin_emails table
     if (supabase) {
       try {
-        console.log(`🌐 Updating password_hash in DB for: ${cleanEmail}...`);
+        console.log(`🌐 Updating password_hash and last_password_reset in DB for: ${cleanEmail}...`);
         const { error } = await supabase
           .from('authorized_admin_emails')
-          .update({ password_hash: passwordHash })
+          .update({ 
+            password_hash: passwordHash,
+            last_password_reset: new Date().toISOString()
+          })
           .eq('email', cleanEmail);
 
         if (error) {
