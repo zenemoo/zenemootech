@@ -4364,24 +4364,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newAuthEmailInput) return;
+                  const cleanEmail = newAuthEmailInput.trim().toLowerCase();
                   setIsGlobalLoading(true);
-                  setGlobalLoadingText('Saving Administrator Account to Supabase...');
+                  setGlobalLoadingText('Saving Administrator Account...');
                   try {
-                    const updated = await saveAuthorizedEmailToSupabase({
-                      email: newAuthEmailInput.trim().toLowerCase(),
+                    const payload = {
+                      email: cleanEmail,
                       role: newAuthRole,
-                      name: newAuthNameInput || newAuthEmailInput.split('@')[0],
+                      name: newAuthNameInput || cleanEmail.split('@')[0],
                       profile_photo_url: newAuthAvatarUrl,
                       department: newAuthDeptInput,
                       phone: newAuthPhoneInput,
                       telegram_chat_id: newAuthTelegramInput,
                       notes: newAuthNotesInput,
-                      status: 'active',
+                      status: 'active' as const,
                       added_by: adminEmail,
-                    });
+                    };
+
+                    let updated: AuthorizedEmailAccount[];
+                    if (editingAuthAccount) {
+                      updated = await updateAuthorizedEmailInSupabase(editingAuthAccount.id || editingAuthAccount.email, payload);
+                    } else {
+                      updated = await saveAuthorizedEmailToSupabase(payload);
+                    }
+
                     setAuthorizedEmails(updated);
                     setIsAddAuthModalOpen(false);
-                    addToast('Access Granted', `Authorized ${newAuthEmailInput} with role ${newAuthRole}`, 'success');
+                    addToast('Account Saved', `Updated admin details & profile photo for ${cleanEmail}`, 'success');
                   } catch (err: any) {
                     addToast('Error', err.message || 'Failed to save admin', 'error');
                   } finally {

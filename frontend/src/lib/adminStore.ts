@@ -260,16 +260,26 @@ export const saveAuthorizedEmailToSupabase = async (
   if (account.status) insertPayload.status = account.status;
 
   try {
-    const { error } = await supabase.from('authorized_admin_emails').insert([insertPayload]);
+    const { error } = await supabase.from('authorized_admin_emails').upsert([insertPayload], { onConflict: 'email' });
     if (error) {
-      console.warn('Supabase insert authorized_admin_emails warning:', error.message);
+      console.warn('Supabase upsert authorized_admin_emails warning:', error.message);
     }
   } catch (err) {
-    console.warn('Supabase insert authorized_admin_emails error:', err);
+    console.warn('Supabase upsert authorized_admin_emails error:', err);
   }
 
   // Update local storage backup
-  const current = await getStoredAuthorizedEmails();
+  const local = localStorage.getItem('zenemoo_authorized_admin_emails');
+  let current: AuthorizedEmailAccount[] = [];
+  if (local) {
+    try {
+      current = JSON.parse(local);
+    } catch (e) {}
+  }
+  if (current.length === 0) {
+    current = DEFAULT_AUTHORIZED_EMAILS;
+  }
+
   const existingIdx = current.findIndex((a) => a.email.toLowerCase() === emailClean);
   const photo = account.profile_photo_url || getStoredAdminPhoto(emailClean) || (existingIdx >= 0 ? current[existingIdx].profile_photo_url : '');
   
@@ -322,7 +332,17 @@ export const updateAuthorizedEmailInSupabase = async (
     console.warn('Supabase update authorized_admin_emails error:', err);
   }
 
-  const current = await getStoredAuthorizedEmails();
+  const local = localStorage.getItem('zenemoo_authorized_admin_emails');
+  let current: AuthorizedEmailAccount[] = [];
+  if (local) {
+    try {
+      current = JSON.parse(local);
+    } catch (e) {}
+  }
+  if (current.length === 0) {
+    current = DEFAULT_AUTHORIZED_EMAILS;
+  }
+
   const updated = current.map((item) => {
     if (item.id === idOrEmail || item.email.toLowerCase() === cleanKey) {
       const mergedPhoto = updates.profile_photo_url !== undefined ? updates.profile_photo_url : (item.profile_photo_url || getStoredAdminPhoto(item.email));
