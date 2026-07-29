@@ -512,15 +512,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
   };
 
-  const handleDeleteOpportunity = async (id: string, title: string) => {
-    if (!window.confirm(`Are you sure you want to delete opportunity "${title}"?`)) return;
-    try {
-      const updated = await deleteOpportunityFromApi(id);
-      setOpportunitiesList(updated);
-      showStatus(`Deleted opportunity program "${title}"!`);
-    } catch (err: any) {
-      alert('Error deleting opportunity: ' + (err.message || 'Server error'));
-    }
+  const handleDeleteOpportunity = (id: string, title: string) => {
+    showConfirm(
+      'Delete Program Opportunity',
+      `Are you sure you want to delete opportunity "${title}"? Candidates will no longer be able to view or apply for this program.`,
+      async () => {
+        try {
+          const updated = await deleteOpportunityFromApi(id);
+          setOpportunitiesList(updated);
+          showStatus(`Deleted opportunity program "${title}"!`);
+        } catch (err: any) {
+          showStatus('Error deleting opportunity: ' + (err.message || 'Server error'));
+        }
+      },
+      { confirmText: 'Yes, Delete Opportunity', intent: 'danger' }
+    );
   };
 
   const handleOpportunityPositionChange = async (op: OpportunityProgram, newPosStr: string) => {
@@ -644,16 +650,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     }
   };
 
-  const handleDeletePartner = async (id: string, name: string) => {
-    if (confirm(`Delete partner company "${name}"?`)) {
-      try {
-        const updated = await deletePartnerFromApi(id);
-        setPartnersList(updated);
-        showStatus(`Deleted partner "${name}" from database`);
-      } catch (err) {
-        showStatus('Error deleting partner company');
-      }
-    }
+  const handleDeletePartner = (id: string, name: string) => {
+    showConfirm(
+      'Delete Enterprise Partner',
+      `Are you sure you want to delete partner company "${name}" from the database?`,
+      async () => {
+        try {
+          const updated = await deletePartnerFromApi(id);
+          setPartnersList(updated);
+          showStatus(`Deleted partner "${name}" from database`);
+        } catch (err) {
+          showStatus('Error deleting partner company');
+        }
+      },
+      { confirmText: 'Yes, Delete Partner', intent: 'danger' }
+    );
+  };
+
+  const handleDeleteMember = (id: string, name: string) => {
+    showConfirm(
+      'Delete Team Member',
+      `Are you sure you want to delete "${name}" from the Supabase database? Remaining team members will be renumbered 1..N automatically.`,
+      async () => {
+        const updated = await deleteTeamMemberFromApi(id);
+        setTeamList(updated);
+        showStatus('Team member deleted and remaining positions renumbered!');
+      },
+      { confirmText: 'Yes, Delete Member', intent: 'danger' }
+    );
   };
 
 
@@ -719,14 +743,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const handleEditMember = (m: TeamMember) => {
     setEditingMember({ ...m });
     setSkillsInput(m.skills ? m.skills.join(', ') : '');
-  };
-
-  const handleDeleteMember = async (id: string, name: string) => {
-    if (confirm(`Delete "${name}" from Supabase database? Remaining team members will be renumbered 1..N automatically.`)) {
-      const updated = await deleteTeamMemberFromApi(id);
-      setTeamList(updated);
-      showStatus('Team member deleted and remaining positions renumbered!');
-    }
   };
 
   const handleSaveMember = async (e: React.FormEvent) => {
@@ -2689,16 +2705,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                             </button>
 
                             <button
-                              onClick={async () => {
-                                if (confirm(`Delete contact inquiry #${code}?`)) {
-                                  setInquiries(inquiries.filter((i) => i.id !== inq.id));
-                                  try {
-                                    await contactApi.delete(inq.id);
-                                  } catch (e) {}
-                                  showStatus('Inquiry deleted from database!');
-                                }
+                              onClick={() => {
+                                showConfirm(
+                                  'Delete Contact Inquiry',
+                                  `Are you sure you want to delete contact inquiry #${code} from "${inq.name}"? This action cannot be undone.`,
+                                  async () => {
+                                    setInquiries((prev) => prev.filter((i) => i.id !== inq.id));
+                                    try {
+                                      await contactApi.delete(inq.id);
+                                    } catch (e) {}
+                                    showStatus('Inquiry deleted from database!');
+                                  },
+                                  { confirmText: 'Yes, Delete Inquiry', intent: 'danger' }
+                                );
                               }}
-                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
+                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all cursor-pointer"
                               title="Delete Inquiry"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -2970,16 +2991,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={async () => {
-                          if (confirm(`Delete subscriber ${sub.email}?`)) {
-                            setSubscribers(subscribers.filter((s) => s.id !== sub.id));
-                            try {
-                              await subscriberApi.delete(sub.id);
-                            } catch (e) {}
-                            showStatus('Subscriber deleted!');
-                          }
+                        onClick={() => {
+                          showConfirm(
+                            'Delete Newsletter Subscriber',
+                            `Are you sure you want to remove subscriber "${sub.email}"?`,
+                            async () => {
+                              setSubscribers((prev) => prev.filter((s) => s.id !== sub.id));
+                              try {
+                                await subscriberApi.delete(sub.id);
+                              } catch (e) {}
+                              showStatus('Subscriber deleted!');
+                            },
+                            { confirmText: 'Yes, Remove Subscriber', intent: 'danger' }
+                          );
                         }}
-                        className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
+                        className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
                         title="Delete Subscriber"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -3977,12 +4003,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                               </td>
                               <td className="p-3.5 text-right">
                                 <button
-                                  onClick={async () => {
-                                    if (confirm(`Delete application for ${app.applicant_name}?`)) {
-                                      const updated = await deleteCandidateApplication(app.id);
-                                      setAllCandidateApps(updated);
-                                      showStatus('Candidate application deleted');
-                                    }
+                                  onClick={() => {
+                                    showConfirm(
+                                      'Delete Candidate Application',
+                                      `Are you sure you want to delete the job application for candidate "${app.applicant_name}" (${app.applicant_id})?`,
+                                      async () => {
+                                        const updated = await deleteCandidateApplication(app.id);
+                                        setAllCandidateApps(updated);
+                                        showStatus('Candidate application deleted');
+                                      },
+                                      { confirmText: 'Yes, Delete Application', intent: 'danger' }
+                                    );
                                   }}
                                   className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
                                   title="Delete Application"

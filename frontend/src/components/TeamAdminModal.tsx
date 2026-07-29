@@ -53,10 +53,17 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
     setActiveTab('edit');
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
   const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this team member? Remaining members will be renumbered 1..N automatically.')) {
-      const updated = members.filter((m) => m.id !== id);
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDeleteMember = () => {
+    if (deleteConfirmId) {
+      const updated = members.filter((m) => m.id !== deleteConfirmId);
       onSaveMembers(updated);
+      setDeleteConfirmId(null);
     }
   };
 
@@ -421,6 +428,35 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Custom Dark Glass Confirmation Modal */}
+        {deleteConfirmId && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="glass-panel p-6 rounded-3xl border border-red-500/30 max-w-sm w-full space-y-5 text-center shadow-2xl shadow-red-500/10 font-sans">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h4 className="text-lg font-bold font-display text-white">Delete Team Member?</h4>
+              <p className="text-xs font-mono text-slate-300 leading-relaxed">
+                Are you sure you want to delete this team member? Remaining members will be reordered automatically.
+              </p>
+              <div className="flex items-center justify-center gap-3 font-mono text-xs pt-2">
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteMember}
+                  className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold cursor-pointer transition-colors shadow-lg shadow-red-500/20"
+                >
+                  Yes, Delete Member
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
