@@ -20,8 +20,31 @@ export interface AuthorizedEmailAccount {
   id: string;
   email: string;
   role: 'Super Admin' | 'Administrator' | 'Manager';
+  name?: string;
+  profile_photo_url?: string;
+  department?: string;
+  phone?: string;
+  telegram_chat_id?: string;
+  notes?: string;
+  status?: 'active' | 'disabled';
+  last_login?: string;
+  last_password_reset?: string;
   added_by: string;
   added_at: string;
+}
+
+export interface MessageHistoryRecord {
+  id: string;
+  message_id: string;
+  sender: string;
+  recipient: string;
+  subject: string;
+  snippet?: string;
+  body?: string;
+  sent_at: string;
+  status: 'sent' | 'delivered' | 'opened' | 'clicked' | 'failed';
+  delivery_time_ms?: number;
+  folder: 'inbox' | 'sent' | 'drafts' | 'templates';
 }
 
 export interface ContactInquiry {
@@ -68,12 +91,67 @@ export const DEFAULT_TELEMETRY: TelemetryConfig = {
 };
 
 export const DEFAULT_AUTHORIZED_EMAILS: AuthorizedEmailAccount[] = [
-  { id: 'auth_1', email: 'mr.prem2006@gmail.com', role: 'Super Admin', added_by: 'System Owner', added_at: '2026-07-28' },
-  { id: 'auth_2', email: 'contact@mrprem.in', role: 'Super Admin', added_by: 'System Owner', added_at: '2026-07-28' },
-  { id: 'auth_3', email: 'zenemootech@gmail.com', role: 'Administrator', added_by: 'Super Admin', added_at: '2026-07-28' },
-  { id: 'auth_4', email: 'contact@zenemoo.in', role: 'Administrator', added_by: 'Super Admin', added_at: '2026-07-28' },
-  { id: 'auth_5', email: 'support@zenemoo.in', role: 'Manager', added_by: 'Super Admin', added_at: '2026-07-28' },
-  { id: 'auth_6', email: 'info@zenemoo.in', role: 'Manager', added_by: 'Super Admin', added_at: '2026-07-28' },
+  { id: 'auth_1', email: 'mr.prem2006@gmail.com', name: 'Prem Prasad', role: 'Super Admin', department: 'Executive AI Engineering', phone: '+91 9827775230', status: 'active', added_by: 'System Owner', added_at: '2026-07-28' },
+  { id: 'auth_2', email: 'contact@mrprem.in', name: 'Prem Prasad', role: 'Super Admin', department: 'Enterprise Operations', phone: '+91 9827775230', status: 'active', added_by: 'System Owner', added_at: '2026-07-28' },
+  { id: 'auth_3', email: 'zenemootech@gmail.com', name: 'Zenemoo Tech Ops', role: 'Administrator', department: 'AI Speech & Data Ops', phone: '+91 9827775230', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },
+  { id: 'auth_4', email: 'contact@zenemoo.in', name: 'Client Support Lead', role: 'Administrator', department: 'Customer Success', phone: '+91 9827775230', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },
+  { id: 'auth_5', email: 'support@zenemoo.in', name: 'Technical Support', role: 'Manager', department: 'Quality Control (Super QC)', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },
+  { id: 'auth_6', email: 'info@zenemoo.in', name: 'General Inquiries', role: 'Manager', department: 'Partnerships & Growth', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },
+];
+
+export const DEFAULT_MESSAGE_HISTORY: MessageHistoryRecord[] = [
+  {
+    id: 'msg_1',
+    message_id: 'MSG-2026-8812',
+    sender: 'contact@zenemoo.in',
+    recipient: 'john.smith@enterprise.com',
+    subject: 'Zenemoo AI Data Annotation Services Proposal',
+    snippet: 'Thank you for reaching out regarding native Odia transcription & dataset annotation...',
+    body: 'Hi John,\n\nThank you for reaching out to Zenemoo AI Solutions. Our specialized dataset annotation teams are ready to handle your high-volume audio transcription project with 99%+ accuracy SLAs.\n\nBest regards,\nZenemoo Enterprise Team',
+    sent_at: '2026-07-29T11:20:00Z',
+    status: 'opened',
+    delivery_time_ms: 1240,
+    folder: 'sent',
+  },
+  {
+    id: 'msg_2',
+    message_id: 'MSG-2026-8813',
+    sender: 'support@zenemoo.in',
+    recipient: 'priya.sharma@techcorp.io',
+    subject: 'Opportunity Application Status Update - AI Data Annotator',
+    snippet: 'Your application for AI Data Annotator at DesiCrew Solutions has been shortlisted...',
+    body: 'Dear Priya,\n\nWe are pleased to inform you that your candidate application for the AI Data Annotator program has been shortlisted for the next evaluation round.\n\nRegards,\nZenemoo Recruitment Ops',
+    sent_at: '2026-07-29T10:45:00Z',
+    status: 'clicked',
+    delivery_time_ms: 980,
+    folder: 'sent',
+  },
+  {
+    id: 'msg_3',
+    message_id: 'MSG-2026-8814',
+    sender: 'info@zenemoo.in',
+    recipient: 'newsletter-subscribers@zenemoo.in',
+    subject: 'Zenemoo AI Monthly Intelligence Newsletter - July 2026',
+    snippet: 'Discover how multi-stage Super QC audits are scaling LLM training datasets...',
+    body: 'Hello Subscribers,\n\nWelcome to the July edition of the Zenemoo AI Platform update featuring full dataset reordering engine metrics and platform security protocols.',
+    sent_at: '2026-07-28T16:00:00Z',
+    status: 'delivered',
+    delivery_time_ms: 1540,
+    folder: 'sent',
+  },
+  {
+    id: 'msg_4',
+    message_id: 'MSG-2026-8815',
+    sender: 'zenemootech@gmail.com',
+    recipient: 'security-alerts@zenemoo.in',
+    subject: 'Security Alert: Administrator Login from New Device',
+    snippet: 'New login detected for mr.prem2006@gmail.com from Windows Chrome...',
+    body: 'Automated Security Alert:\nAn administrator login occurred for mr.prem2006@gmail.com at 2026-07-29 19:19 IST.',
+    sent_at: '2026-07-29T13:49:00Z',
+    status: 'opened',
+    delivery_time_ms: 450,
+    folder: 'sent',
+  },
 ];
 
 // Query Supabase directly for Authorized Admin Emails
@@ -88,7 +166,16 @@ export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccoun
       const formatted: AuthorizedEmailAccount[] = data.map((item: any) => ({
         id: item.id || `auth_${Date.now()}`,
         email: item.email,
+        name: item.name || item.email.split('@')[0],
         role: item.role || 'Administrator',
+        profile_photo_url: item.profile_photo_url || item.avatar_url || '',
+        department: item.department || 'Operations',
+        phone: item.phone || '',
+        telegram_chat_id: item.telegram_chat_id || '',
+        notes: item.notes || '',
+        status: item.status || 'active',
+        last_login: item.last_login || '',
+        last_password_reset: item.last_password_reset || '',
         added_by: item.added_by || 'Super Admin',
         added_at: item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : '2026-07-28',
       }));
@@ -108,20 +195,26 @@ export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccoun
   return DEFAULT_AUTHORIZED_EMAILS;
 };
 
-// Add new Authorized Email directly into Supabase PostgreSQL DB
+// Add or Update Authorized Email directly into Supabase PostgreSQL DB
 export const saveAuthorizedEmailToSupabase = async (
   account: Omit<AuthorizedEmailAccount, 'id' | 'added_at'>
 ): Promise<AuthorizedEmailAccount[]> => {
   const emailClean = account.email.trim().toLowerCase();
-  try {
-    const { error } = await supabase.from('authorized_admin_emails').insert([
-      {
-        email: emailClean,
-        role: account.role,
-        added_by: account.added_by,
-      },
-    ]);
+  const insertPayload: any = {
+    email: emailClean,
+    role: account.role,
+    added_by: account.added_by,
+  };
+  if (account.name) insertPayload.name = account.name;
+  if (account.profile_photo_url) insertPayload.profile_photo_url = account.profile_photo_url;
+  if (account.department) insertPayload.department = account.department;
+  if (account.phone) insertPayload.phone = account.phone;
+  if (account.telegram_chat_id) insertPayload.telegram_chat_id = account.telegram_chat_id;
+  if (account.notes) insertPayload.notes = account.notes;
+  if (account.status) insertPayload.status = account.status;
 
+  try {
+    const { error } = await supabase.from('authorized_admin_emails').insert([insertPayload]);
     if (error) {
       console.warn('Supabase insert authorized_admin_emails warning:', error.message);
     }
@@ -131,22 +224,73 @@ export const saveAuthorizedEmailToSupabase = async (
 
   // Update local storage backup
   const current = await getStoredAuthorizedEmails();
-  if (!current.some((a) => a.email.toLowerCase() === emailClean)) {
-    const updated = [
-      ...current,
-      {
-        id: `auth_${Date.now()}`,
-        email: emailClean,
-        role: account.role,
-        added_by: account.added_by,
-        added_at: new Date().toISOString().split('T')[0],
-      },
-    ];
-    localStorage.setItem('zenemoo_authorized_admin_emails', JSON.stringify(updated));
-    return updated;
+  const existingIdx = current.findIndex((a) => a.email.toLowerCase() === emailClean);
+  const newAccount: AuthorizedEmailAccount = {
+    id: existingIdx >= 0 ? current[existingIdx].id : `auth_${Date.now()}`,
+    email: emailClean,
+    role: account.role,
+    name: account.name || (existingIdx >= 0 ? current[existingIdx].name : emailClean.split('@')[0]),
+    profile_photo_url: account.profile_photo_url || (existingIdx >= 0 ? current[existingIdx].profile_photo_url : ''),
+    department: account.department || (existingIdx >= 0 ? current[existingIdx].department : 'Operations'),
+    phone: account.phone || (existingIdx >= 0 ? current[existingIdx].phone : ''),
+    telegram_chat_id: account.telegram_chat_id || (existingIdx >= 0 ? current[existingIdx].telegram_chat_id : ''),
+    notes: account.notes || (existingIdx >= 0 ? current[existingIdx].notes : ''),
+    status: account.status || (existingIdx >= 0 ? current[existingIdx].status : 'active'),
+    added_by: account.added_by,
+    added_at: existingIdx >= 0 ? current[existingIdx].added_at : new Date().toISOString().split('T')[0],
+  };
+
+  let updated: AuthorizedEmailAccount[];
+  if (existingIdx >= 0) {
+    updated = [...current];
+    updated[existingIdx] = newAccount;
+  } else {
+    updated = [...current, newAccount];
+  }
+  localStorage.setItem('zenemoo_authorized_admin_emails', JSON.stringify(updated));
+  return updated;
+};
+
+// Update an existing Authorized Email account fields in Supabase & LocalStorage
+export const updateAuthorizedEmailInSupabase = async (
+  idOrEmail: string,
+  updates: Partial<AuthorizedEmailAccount>
+): Promise<AuthorizedEmailAccount[]> => {
+  try {
+    const { error } = await supabase
+      .from('authorized_admin_emails')
+      .update(updates)
+      .or(`id.eq.${idOrEmail},email.eq.${idOrEmail}`);
+
+    if (error) {
+      console.warn('Supabase update authorized_admin_emails warning:', error.message);
+    }
+  } catch (err) {
+    console.warn('Supabase update authorized_admin_emails error:', err);
   }
 
-  return current;
+  const current = await getStoredAuthorizedEmails();
+  const updated = current.map((item) => {
+    if (item.id === idOrEmail || item.email.toLowerCase() === idOrEmail.toLowerCase()) {
+      return { ...item, ...updates };
+    }
+    return item;
+  });
+
+  localStorage.setItem('zenemoo_authorized_admin_emails', JSON.stringify(updated));
+  return updated;
+};
+
+// Helper for Message History Records
+export const getStoredMessageHistoryRecords = async (): Promise<MessageHistoryRecord[]> => {
+  const local = localStorage.getItem('zenemoo_message_history');
+  if (local) {
+    try {
+      return JSON.parse(local);
+    } catch (e) {}
+  }
+  localStorage.setItem('zenemoo_message_history', JSON.stringify(DEFAULT_MESSAGE_HISTORY));
+  return DEFAULT_MESSAGE_HISTORY;
 };
 
 // Delete Authorized Email directly from Supabase PostgreSQL DB
