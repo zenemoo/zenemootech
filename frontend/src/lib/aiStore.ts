@@ -226,55 +226,45 @@ export const parseActionButtons = (content: string): { cleanContent: string; but
 };
 
 /**
- * Detect language switch intent in user prompt — expanded flexible matching
+ * Detect language switch intent in user prompt — precise matching only.
+ * IMPORTANT: Only triggers when the user explicitly intends to switch language.
+ * Must NOT accidentally intercept normal Odia/Hindi sentences.
  */
 export const detectLanguageSwitchIntent = (
   prompt: string
 ): { isSwitch: boolean; targetLang?: AiLanguage; confirmMessage?: string } => {
   const p = prompt.toLowerCase().trim();
+  const pOriginal = prompt.trim();
 
-  // --- English triggers ---
-  const enTriggers = [
-    'english', 'english please', 'change to english', 'switch to english',
+  // --- English triggers (exact phrase or clear intent) ---
+  const enExact = ['english', 'english please', 'change to english', 'switch to english',
     'speak english', 'speak in english', 'use english', 'respond in english',
-    'answer in english', 'reply in english',
-  ];
-  if (enTriggers.some((t) => p === t || p.includes(t))) {
+    'answer in english', 'reply in english', 'language english'];
+  if (enExact.some((t) => p === t)) {
     return { isSwitch: true, targetLang: 'en', confirmMessage: '✅ Language changed to English.' };
   }
 
-  // --- Hindi triggers ---
-  const hiTriggers = [
-    'hindi', 'hindi please', 'change to hindi', 'switch to hindi',
+  // --- Hindi triggers (exact phrase or clear intent) ---
+  const hiExact = ['hindi', 'hindi please', 'change to hindi', 'switch to hindi',
     'speak hindi', 'speak in hindi', 'use hindi', 'respond in hindi',
-    'answer in hindi', 'reply in hindi', 'हिन्दी', 'हिंदी',
-    'हिंदी में बोलो', 'हिंदी में बात करो', 'हिन्दी में', 'भाषा बदलो',
-  ];
-  if (hiTriggers.some((t) => p === t || p.includes(t))) {
+    'answer in hindi', 'reply in hindi', 'language hindi', 'हिन्दी', 'हिंदी',
+    'हिंदी में बोलो', 'हिन्दी में बात करो', 'भाषा बदलो हिंदी'];
+  if (hiExact.some((t) => p === t || pOriginal === t)) {
     return { isSwitch: true, targetLang: 'hi', confirmMessage: '✅ भाषा हिन्दी में बदल दी गई है।' };
   }
 
-  // --- Odia triggers ---
-  const orTriggers = [
-    'odia', 'odia please', 'change to odia', 'switch to odia',
+  // --- Odia triggers (exact phrase only — NEVER use .includes() for Odia to avoid false positives) ---
+  // These are standalone commands, NOT substrings that might appear in normal Odia sentences.
+  const orExact = ['odia', 'odia please', 'change to odia', 'switch to odia',
     'speak odia', 'speak in odia', 'use odia', 'respond in odia',
-    'answer in odia', 'reply in odia', 'oriya', 'ଓଡ଼ିଆ',
-    'ଓଡ଼ିଆରେ କୁହ', 'ଭାଷା ଓଡ଼ିଆ', 'ଓଡ଼ିଆ ଭାଷା', 'ଓଡ଼ିଆ ମଧ୍ୟରେ',
-    'ହିନ୍ଦୀ', 'ଇଂଲିଶ',
-  ];
-  if (orTriggers.some((t) => p === t || p.includes(t))) {
-    // "ହିନ୍ଦୀ" is Odia script for "Hindi", "ଇଂଲିଶ" for "English" — check context
-    if ((p.includes('ହିନ୍ଦୀ') || p.includes('hindi')) && !p.includes('ଓଡ଼ିଆ') && !p.includes('odia')) {
-      return { isSwitch: true, targetLang: 'hi', confirmMessage: '✅ ଭାଷା ହିନ୍ଦୀକୁ ପରିବର୍ତ୍ତନ କରାଗଲା।' };
-    }
-    if ((p.includes('ଇଂଲିଶ') || p.includes('english')) && !p.includes('ଓଡ଼ିଆ') && !p.includes('odia')) {
-      return { isSwitch: true, targetLang: 'en', confirmMessage: '✅ ଭାଷା ଇଂଲିଶକୁ ପରିବର୍ତ୍ତନ କରାଗଲା।' };
-    }
+    'answer in odia', 'reply in odia', 'oriya', 'language odia',
+    'ଓଡ଼ିଆ', 'ଓଡ଼ିଆରେ କୁହ', 'ଓଡ଼ିଆ ଭାଷା', 'ଭାଷା ଓଡ଼ିଆ'];
+  if (orExact.some((t) => p === t || pOriginal === t)) {
     return { isSwitch: true, targetLang: 'or', confirmMessage: '✅ ଭାଷା ଓଡ଼ିଆକୁ ପରିବର୍ତ୍ତନ କରାଗଲା।' };
   }
 
-  // --- Generic "change language" / "switch language" ---
-  if (p.includes('change language') || p.includes('switch language') || p.includes('language change') || p === 'language') {
+  // --- Generic exact-match only ---
+  if (p === 'change language' || p === 'switch language' || p === 'language change' || p === 'language') {
     return { isSwitch: true, targetLang: 'en', confirmMessage: '✅ Language set to English. You can also say "Hindi please" or "Odia please".' };
   }
 
