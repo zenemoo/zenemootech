@@ -42,7 +42,6 @@ import {
   detectLanguageSwitchIntent,
 } from '../lib/aiStore';
 import { aiApi } from '../services/api';
-import { FormattedMarkdown } from './FormattedMarkdown';
 
 interface ZenemooAiDrawerProps {
   isOpen: boolean;
@@ -97,30 +96,6 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({
     } else {
       startNewChat(lang);
     }
-  }, []);
-
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown on click outside or ESC key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsLangDropdownOpen(false);
-        setIsHistoryOpen(false);
-      }
-    };
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsLangDropdownOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
   }, []);
 
   // Save to Local Storage when conversations change
@@ -424,11 +399,11 @@ How can I help you today? You can ask me about:
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Language Dropdown Selector with high z-index & outside click */}
-              <div className="relative" ref={dropdownRef}>
+              {/* Language Dropdown Selector */}
+              <div className="relative">
                 <button
                   onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
-                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/10 text-cyan-300 border border-white/10 flex items-center gap-1.5 transition-colors cursor-pointer text-xs font-mono font-bold"
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/10 text-cyan-300 border border-white/10 flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
                 >
                   <Globe className="w-3.5 h-3.5 text-cyan-400" />
                   <span>{LANGUAGE_LABEL_MAP[currentLanguage].flag} {LANGUAGE_LABEL_MAP[currentLanguage].nativeName}</span>
@@ -436,12 +411,12 @@ How can I help you today? You can ask me about:
                 </button>
 
                 {isLangDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-44 rounded-2xl bg-[#0e1017] border border-white/10 shadow-2xl p-1.5 z-[250] space-y-1 backdrop-blur-xl">
+                  <div className="absolute right-0 mt-2 w-40 rounded-2xl bg-[#0e1017] border border-white/10 shadow-2xl p-1.5 z-50 space-y-1">
                     {(['en', 'hi', 'or'] as AiLanguage[]).map((langKey) => (
                       <button
                         key={langKey}
                         onClick={() => handleSelectLanguage(langKey)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer font-mono ${
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer ${
                           currentLanguage === langKey ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-300 hover:bg-white/5'
                         }`}
                       >
@@ -628,18 +603,10 @@ How can I help you today? You can ask me about:
                         className={`p-4 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed relative ${
                           m.role === 'user'
                             ? 'bg-cyan-500 text-black font-medium shadow-lg shadow-cyan-500/20 rounded-tr-none font-sans'
-                            : 'bg-white/[0.04] text-slate-200 border border-white/10 rounded-tl-none font-sans'
+                            : 'bg-white/[0.04] text-slate-200 border border-white/10 rounded-tl-none font-mono whitespace-pre-wrap'
                         }`}
                       >
-                        {m.role === 'user' ? (
-                          m.content
-                        ) : (
-                          <FormattedMarkdown
-                            content={m.content}
-                            onNavigateContact={onNavigateContact}
-                            onNavigateOpportunities={onNavigateOpportunities}
-                          />
-                        )}
+                        {m.content}
                       </div>
 
                       {m.role === 'assistant' && (

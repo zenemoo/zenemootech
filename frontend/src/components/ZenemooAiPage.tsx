@@ -26,7 +26,6 @@ import {
 import { aiApi } from '../services/api';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
-import { FormattedMarkdown } from './FormattedMarkdown';
 
 import {
   AiLanguage,
@@ -328,10 +327,10 @@ I can answer any questions regarding:
                     className={`p-4 sm:p-5 rounded-2xl text-xs sm:text-sm font-sans leading-relaxed relative ${
                       m.role === 'user'
                         ? 'bg-cyan-500 text-black font-medium shadow-lg shadow-cyan-500/20 rounded-tr-none'
-                        : 'bg-white/[0.04] text-slate-200 border border-white/10 rounded-tl-none font-sans'
+                        : 'bg-white/[0.04] text-slate-200 border border-white/10 rounded-tl-none font-mono whitespace-pre-wrap'
                     }`}
                   >
-                    {m.role === 'user' ? m.content : <FormattedMarkdown content={m.content} />}
+                    {m.content}
                   </div>
 
                   {m.role === 'assistant' && (

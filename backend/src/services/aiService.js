@@ -35,9 +35,6 @@ const VERIFIED_COMPANY_KNOWLEDGE = `
 - Headquarters: Berhampur City, Odisha, India (760001)
 - Official Domain: https://www.zenemoo.in/
 - Enterprise Strategic Alliance: Certified output partner for DesiCrew Solutions since 2023. Delivering 100% verified language data output.
-- Key Leadership & Team Members:
-  - Founder & Operations Manager: Prem Prasad Pradhan (Email: contact@zenemoo.in / prem@zenemoo.in, Phone: +91 9827775230, Role: Founder, Operations Manager & Lead Engineering Coordinator).
-  - Specialized Team: 20+ trained data specialists handling Odia/Hindi audio transcription, speaker diarization, image bounding boxes, and LLM evaluation.
 - Core Services: 
   1. Multilingual Verbatim Audio Transcription (Timestamping, Speaker Diarization, Clean/Full Verbatim)
   2. Odia & Regional Speech Data Collection & Annotation
@@ -46,25 +43,16 @@ const VERIFIED_COMPANY_KNOWLEDGE = `
   5. LLM Evaluation & RLHF Dataset Annotation
   6. Computer Vision Image & Video Bounding Box Data Annotation
 - Key Languages Supported: Odia (ଓଡ଼ିଆ), Hindi (हिंदी), Indian English, Bengali, Telugu, Tamil.
-- Performance Metrics: 99%+ accuracy rating (Passes Super QC), 180+ daily audio minutes capacity (3,600+ mins/month).
-- Official Contact Emails:
-  - Sales & General Inquiries: contact@zenemoo.in
+- Performance Metrics: 99%+ accuracy rating (Passes Super QC), 180+ daily audio minutes capacity (3,600+ mins/month), 20+ trained specialists.
+- Founder & Operations Manager: Prem Prasad Pradhan
+- Official Contact Emails: 
+  - Sales & Inquiries: contact@zenemoo.in
   - Technical Support: support@zenemoo.in
-  - Info & Inquiries: info@zenemoo.in
+  - General Inquiries: info@zenemoo.in
 - Official Contact Phone: +91 9827775230
-- Office Operating Hours: Monday – Saturday, 09:00 AM – 07:00 PM IST.
-
-[OFFICIAL STEP-BY-STEP COMPANY WORKFLOWS]
-1. How to Apply for a Job / Opportunity:
-   Step 1: Open the Zenemoo Opportunities portal at https://www.zenemoo.in/opportunities
-   Step 2: Browse active positions (e.g. Audio Transcription Specialist, Speech Data Collector).
-   Step 3: Click "Apply Now", fill in your contact information, candidate ID, and resume link.
-   Step 4: Submit application. Our Lead HR team responds within 48 hours.
-
-2. How to Request a Quote for Enterprise Data / AI Annotation:
-   Step 1: Contact our lead engineering team at contact@zenemoo.in or fill the Contact Form at https://www.zenemoo.in/#contact
-   Step 2: Provide audio duration (in minutes/hours), target language (Odia/Hindi/English), turn-around time, and accuracy SLA requirements.
-   Step 3: Receive a customized enterprise quote within 2 business hours.
+- Office Operating Hours: Monday – Saturday, 09:00 AM – 07:00 PM IST (Response time under 2 hours).
+- Pricing Model: Custom enterprise quotes based on audio length, language complexity, turn-around time, and accuracy SLA requirements. No fixed generic price list.
+- Verification Guarantee: Every data batch undergoes multi-stage Quality Assurance (QC) before client delivery.
 `;
 
 /**
@@ -101,15 +89,6 @@ export const buildDynamicRAGContext = async (userQuery = '') => {
           liveContext += `- ${p.name}: ${p.role} [${p.badge || 'Partner'}]\n`;
         });
       }
-
-      // 4. Fetch Live Team Members
-      const { data: team } = await supabase.from('team').select('name, role, designation, email, skills, bio').limit(15);
-      if (Array.isArray(team) && team.length > 0) {
-        liveContext += `\n[LIVE VERIFIED TEAM MEMBERS FROM DATABASE]\n`;
-        team.forEach((t) => {
-          liveContext += `- Name: ${t.name} | Role: ${t.designation || t.role || 'Specialist'} | Email: ${t.email || 'contact@zenemoo.in'} | Bio: ${t.bio || 'Data Specialist'} | Skills: ${Array.isArray(t.skills) ? t.skills.join(', ') : t.skills || 'Transcription'}\n`;
-        });
-      }
     } catch (err) {
       console.warn('[RAG Context Fetch Note]', err.message || err);
     }
@@ -134,11 +113,10 @@ export const buildSystemPrompt = (ragContext, language = 'en') => {
 YOUR STRICT CORE INSTRUCTIONS:
 1. Grounding & Anti-Hallucination: Answer questions ONLY using the verified knowledge base and live database records provided below.
 2. Never Invent Information: Do NOT invent fake pricing, fake addresses, imaginary staff, unverified project numbers, or non-existent features.
-3. Clean Email Output Rule: When outputting email addresses, output them simply as plain email text (e.g. contact@zenemoo.in). NEVER wrap email addresses in raw markdown parens like [contact@zenemoo.in](mailto:contact@zenemoo.in).
-4. Fallback Response: If information is unavailable or unverified in your context, politely respond in the selected language that verified information is not available and to contact contact@zenemoo.in.
-5. ${langInstruction}
-6. Tone & Personality: Maintain a professional, executive, helpful, and concise tone appropriate for enterprise B2B clients and job applicants.
-7. Formatting: Use Markdown (bold text, bullet points, numbered lists, tables where relevant) for high readability.
+3. Fallback Response: If information is unavailable or unverified in your context, politely respond in the selected language that verified information is not available and to contact contact@zenemoo.in.
+4. ${langInstruction}
+5. Tone & Personality: Maintain a professional, executive, helpful, and concise tone appropriate for enterprise B2B clients and job applicants.
+6. Formatting: Use Markdown (bold text, bullet points, numbered lists, tables where relevant) for high readability.
 
 ${ragContext}`;
 };
