@@ -2,6 +2,10 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/zenemooai",
+      "destination": "/index.html"
+    },
+    {
       "source": "/opportunities",
       "destination": "/index.html"
     },

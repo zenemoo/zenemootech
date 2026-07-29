@@ -148,8 +148,8 @@ export const Footer: React.FC = () => {
               Organization
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
+              <li><a href="/zenemooai" className="hover:text-cyan-400 transition-colors text-cyan-400 font-bold flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Zenemoo AI Assistant</a></li>
               <li><a href="/opportunities" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Opportunities Portal</a></li>
-              <li><a href="/opportunities" className="hover:text-emerald-400 transition-colors text-emerald-400 font-bold">Live Program Opportunities</a></li>
               <li><a href="/team-directory" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li><a href="#telemetry" className="hover:text-cyan-400 transition-colors">Production Capacity</a></li>

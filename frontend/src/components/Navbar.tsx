@@ -21,9 +21,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
   }, []);
 
   const navLinks = [
+    { name: 'Zenemoo AI', href: '/zenemooai', icon: Sparkles },
     { name: 'Services', href: '#services', icon: Mic },
     { name: 'Languages', href: '#languages', icon: Languages },
-    { name: 'Studio', href: '#playground', icon: Sparkles },
     { name: 'Opportunities', href: '/opportunities', icon: Briefcase },
     { name: 'DesiCrew Partner', href: '#partner', icon: Handshake },
     { name: 'Team', href: '#team', icon: Users },

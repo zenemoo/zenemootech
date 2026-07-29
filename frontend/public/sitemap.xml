@@ -20,7 +20,15 @@
     </image:image>
   </url>
 
-  <!-- 2. Program Opportunities & Careers Portal -->
+  <!-- 2. Official Zenemoo AI Assistant -->
+  <url>
+    <loc>https://www.zenemoo.in/zenemooai</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.98</priority>
+  </url>
+
+  <!-- 3. Program Opportunities & Careers Portal -->
   <url>
     <loc>https://www.zenemoo.in/opportunities</loc>
     <lastmod>2026-07-29</lastmod>

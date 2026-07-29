@@ -22,10 +22,11 @@ import { TermsConditionsPage } from './components/TermsConditionsPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { VerifyOtpPage } from './components/VerifyOtpPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { ZenemooAiPage } from './components/ZenemooAiPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset'
+    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [resetEmail, setResetEmail] = useState<string>('');
@@ -58,6 +59,8 @@ export function App() {
         setCurrentRoute('forgot-password-verify');
       } else if (path === '/forgot-password/reset' || hash === '#forgot-password/reset' || hash === '#/forgot-password/reset') {
         setCurrentRoute('forgot-password-reset');
+      } else if (path === '/zenemooai' || path === '/ai' || hash === '#zenemooai' || hash === '#ai') {
+        setCurrentRoute('zenemooai');
       } else if (path === '/team-directory' || path === '/team' || hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
       } else if (path === '/privacy' || hash === '#privacy' || hash === '#privacy-policy') {
@@ -155,6 +158,8 @@ export function App() {
           otp={verifiedOtp}
           onSuccessRedirectLogin={handleReturnToAdminLogin}
         />
+      ) : currentRoute === 'zenemooai' ? (
+        <ZenemooAiPage onBack={handleBackToHome} />
       ) : currentRoute === 'team-directory' ? (
         <TeamDirectoryPage onBack={handleBackToHome} />
       ) : currentRoute === 'privacy' ? (

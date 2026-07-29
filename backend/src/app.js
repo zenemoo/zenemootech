@@ -15,6 +15,7 @@ import uploadRoutes from './routes/uploadRoutes.js';
 import partnerRoutes from './routes/partnerRoutes.js';
 import opportunityRoutes from './routes/opportunityRoutes.js';
 import opportunityApplicationRoutes from './routes/opportunityApplicationRoutes.js';
+import aiRoutes from './routes/aiRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/subscribe', subscriberRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/media', uploadRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
