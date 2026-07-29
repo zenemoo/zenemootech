@@ -410,6 +410,61 @@ export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
   return [];
 };
 
+// Direct browser Telegram fallback dispatcher
+export const sendDirectTelegramContactFallback = async (data: any) => {
+  try {
+    const date = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
+    const time = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const textMessage = `📩 ZENEMOO • NEW CONTACT INQUIRY
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+👤 Name
+${data.name || 'Anonymous Visitor'}
+
+📧 Email
+${data.email || 'Not Provided'}
+
+📞 Phone
+${data.phone || 'Not Provided'}
+
+🏢 Company
+${data.company || 'Not Specified'}
+
+📝 Subject
+${data.service || data.subject || 'General Inquiry'}
+
+💬 Message
+
+${data.message || 'No message content provided.'}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🕒 Received
+${date} • ${time} IST
+
+🌐 Dashboard
+https://www.zenemoo.in/#portal/9KqvA2Nz8
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+Zenemoo Admin Control Center`;
+
+    await fetch('https://api.telegram.org/bot8913778021:AAFl71eRgJjlkcfPC8MJ61L3guoar2phXyA/sendMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: '6141055184',
+        text: textMessage,
+        disable_web_page_preview: true,
+      }),
+    });
+  } catch (e) {
+    console.warn('[Direct Telegram Fallback Note]', e);
+  }
+};
+
 // Submit a new contact inquiry to Express Backend API -> Supabase DB
 export const saveContactInquiry = async (
   inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>
@@ -420,8 +475,34 @@ export const saveContactInquiry = async (
       return res.data.data as ContactInquiry;
     }
   } catch (err) {
-    console.error('Backend contact submit error:', err);
-    throw err;
+    console.warn('Backend contact submit fallback to direct Supabase insert:', err);
+    // Direct Supabase fallback insert
+    try {
+      const { data, error } = await supabase.from('contacts').insert([
+        {
+          name: inquiry.name,
+          email: inquiry.email,
+          phone: inquiry.phone || '',
+          company: inquiry.company || '',
+          service: inquiry.service || 'Data Solutions',
+          language: inquiry.language || 'Hindi',
+          inquiry_code: (inquiry as any).inquiry_id || `ZNM-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          notes: (inquiry as any).notes || '',
+          message: inquiry.message,
+          status: 'unread',
+          created_at: new Date().toISOString(),
+        }
+      ]).select().single();
+
+      // Trigger instant direct Telegram notification fallback
+      sendDirectTelegramContactFallback(inquiry);
+
+      if (!error && data) {
+        return data as ContactInquiry;
+      }
+    } catch (dbErr) {
+      console.error('Supabase direct insert fallback error:', dbErr);
+    }
   }
   return null;
 };

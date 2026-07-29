@@ -27,9 +27,10 @@ export const getFormattedDateTimeIST = () => {
 export const getActiveAdminChatIds = async () => {
   const chatIds = new Set();
 
-  // Primary ENV fallback chat ID
-  if (process.env.TELEGRAM_CHAT_ID && process.env.TELEGRAM_CHAT_ID.trim()) {
-    chatIds.add(process.env.TELEGRAM_CHAT_ID.trim());
+  // Primary ENV or default chat ID fallback (6141055184)
+  const primaryChatId = (process.env.TELEGRAM_CHAT_ID || '6141055184').trim();
+  if (primaryChatId) {
+    chatIds.add(primaryChatId);
   }
 
   // Fetch active admins from Supabase authorized_admin_emails table
