@@ -67,6 +67,7 @@ export const authApi = {
   login: (passcode: string, email?: string) => api.post('/auth/login', { passcode, email }),
   logout: () => api.post('/auth/logout'),
   getProfile: () => api.get('/auth/profile'),
+  getAuditLogs: () => api.get('/auth/audit-logs'),
 
   checkEmail: async (email: string) => {
     const cleanEmail = email.trim().toLowerCase();

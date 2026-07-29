@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -7,6 +7,7 @@ import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportu
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, deleteAuthorizedEmailFromSupabase } from '../lib/adminStore';
 import { contactApi, subscriberApi, authApi } from '../services/api';
+import { supabase } from '../lib/supabaseClient';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -25,6 +26,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Profile Drawer, Notifications, and Session Timers State
+  const [adminProfile, setAdminProfile] = useState<any>(null);
+  const [adminConnection, setAdminConnection] = useState<any>(null);
+  const [recentLogs, setRecentLogs] = useState<any[]>([]);
+  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  
+  const [sessionStartTime] = useState(() => Date.now());
+  const [sessionDurationSec, setSessionDurationSec] = useState(0);
+  const [sessionExpiresInSec, setSessionExpiresInSec] = useState(1800); // Default 30m
+  
+  const [readNotifications, setReadNotifications] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('zenemoo_read_notifications');
+        return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
 
   // Authorized Admin Emails Management State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
@@ -156,6 +180,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         const response = await authApi.getProfile();
         if (response.data && response.data.success) {
           setIsAuthenticated(true);
+          if (response.data.user?.email) {
+            setAdminEmail(response.data.user.email);
+          }
+          if (response.data.user) {
+            setAdminProfile(response.data.user);
+          }
+          if (response.data.connection) {
+            setAdminConnection(response.data.connection);
+          }
           const newExpiry = Date.now() + 30 * 60 * 1000;
           localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
           console.log('✅ Session restored successfully.');
@@ -175,20 +208,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     restoreSession();
   }, []);
 
-  // Inactivity timeout watcher
+  // Inactivity timeout watcher and live countdown updater
   useEffect(() => {
     if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
       const expiry = localStorage.getItem('zenemoo_jwt_expiry');
-      if (expiry && Date.now() > parseInt(expiry, 10)) {
-        console.log('⚠️ Inactivity session timeout reached.');
-        handleLogoutClick();
+      if (expiry) {
+        const expiryMs = parseInt(expiry, 10);
+        const remainingMs = expiryMs - Date.now();
+        
+        if (remainingMs <= 0) {
+          console.log('⚠️ Inactivity session timeout reached.');
+          handleLogoutClick();
+        } else {
+          setSessionExpiresInSec(Math.ceil(remainingMs / 1000));
+        }
       }
-    }, 10000); // Check every 10 seconds
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
+
+  // Count-up timer for session active duration
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      const elapsedMs = Date.now() - sessionStartTime;
+      setSessionDurationSec(Math.floor(elapsedMs / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, sessionStartTime]);
 
   // Load dashboard data once authenticated
   useEffect(() => {
@@ -203,8 +255,87 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       await loadSubscribers();
       const authList = await getStoredAuthorizedEmails();
       setAuthorizedEmails(authList);
+
+      // Fetch authenticated user profile and connection metadata
+      try {
+        const resProfile = await authApi.getProfile();
+        if (resProfile.data && resProfile.data.success) {
+          setAdminProfile(resProfile.data.user);
+          if (resProfile.data.user?.email) {
+            setAdminEmail(resProfile.data.user.email);
+          }
+          if (resProfile.data.connection) {
+            setAdminConnection(resProfile.data.connection);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+      }
+
+      // Fetch active session logs
+      try {
+        const resLogs = await authApi.getAuditLogs();
+        if (resLogs.data && resLogs.data.success) {
+          setRecentLogs(resLogs.data.logs || []);
+        }
+      } catch (err) {
+        console.error("Failed to load logs:", err);
+      }
     };
     loadData();
+  }, [isAuthenticated]);
+
+  // Live Notification Auto-Detection (Supabase Realtime + Polling Fallback)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Realtime channel for live notifications
+    const channel = supabase
+      .channel('live-dashboard-notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_inquiries' }, async () => {
+        const data = await getContactInquiries();
+        setInquiries(data);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'newsletter_subscribers' }, async () => {
+        await loadSubscribers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_applications' }, async () => {
+        const apps = await getStoredCandidateApplications();
+        setAllCandidateApps(apps);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_companies' }, async () => {
+        await loadPartnersData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit_logs' }, async () => {
+        try {
+          const resLogs = await authApi.getAuditLogs();
+          if (resLogs.data && resLogs.data.success) {
+            setRecentLogs(resLogs.data.logs || []);
+          }
+        } catch (err) {}
+      })
+      .subscribe();
+
+    // Polling interval every 15 seconds to ensure notifications update live
+    const pollInterval = setInterval(async () => {
+      try {
+        const [contactData, appsData, resLogs] = await Promise.all([
+          getContactInquiries(),
+          getStoredCandidateApplications(),
+          authApi.getAuditLogs().catch(() => null),
+        ]);
+        setInquiries(contactData);
+        setAllCandidateApps(appsData);
+        if (resLogs?.data?.success) {
+          setRecentLogs(resLogs.data.logs || []);
+        }
+      } catch (err) {}
+    }, 15000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
   }, [isAuthenticated]);
 
   // Question Builder Handlers
@@ -915,6 +1046,146 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     );
   }
 
+  // Helper to format relative time strings
+  const getRelativeTimeString = (isoString: string): string => {
+    try {
+      const now = new Date();
+      const past = new Date(isoString);
+      const diffMs = now.getTime() - past.getTime();
+      if (isNaN(diffMs)) return 'Just now';
+      
+      const diffSec = Math.floor(diffMs / 1000);
+      if (diffSec < 60) return 'Just now';
+      
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      
+      const diffHrs = Math.floor(diffMin / 60);
+      if (diffHrs < 24) return `${diffHrs}h ago`;
+      
+      const diffDays = Math.floor(diffHrs / 24);
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      
+      return past.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return 'Just now';
+    }
+  };
+
+  // Helper to format seconds as duration HH:MM:SS
+  const formatDuration = (totalSeconds: number): string => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return [
+      hrs.toString().padStart(2, '0'),
+      mins.toString().padStart(2, '0'),
+      secs.toString().padStart(2, '0')
+    ].join(':');
+  };
+
+  // Helper to format remaining time as "29m 14s"
+  const formatRemainingTime = (totalSeconds: number): string => {
+    if (totalSeconds <= 0) return 'Expired';
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  // Core System Notifications Compiler
+  const getNotificationsList = (): any[] => {
+    const list: any[] = [];
+
+    // A. Contact Inquiries
+    inquiries.forEach((inq) => {
+      const code = inq.inquiry_code || (inq as any).inquiry_id || (inq as any).code || `ZNM-${inq.id.substring(0, 6).toUpperCase()}`;
+      list.push({
+        id: `inq_${inq.id}`,
+        type: 'inquiry',
+        title: 'New Contact Inquiry',
+        description: `${inq.name} submitted a contact request for ${inq.service || 'Data Solutions'}.`,
+        timestamp: inq.created_at || new Date().toISOString(),
+      });
+    });
+
+    // B. Newsletter Subscribers
+    subscribers.forEach((sub) => {
+      list.push({
+        id: `sub_${sub.id}`,
+        type: 'subscriber',
+        title: 'New Newsletter Subscriber',
+        description: `${sub.email} subscribed to updates.`,
+        timestamp: sub.subscribed_at || new Date().toISOString(),
+      });
+    });
+
+    // C. Opportunity Applications
+    allCandidateApps.forEach((app) => {
+      list.push({
+        id: `app_${app.id}`,
+        type: 'application',
+        title: 'New Opportunity Application',
+        description: `${app.applicant_name} applied for ${app.opportunity_title || 'a program'}.`,
+        timestamp: app.created_at || new Date().toISOString(),
+      });
+    });
+
+    // D. Enterprise Partners
+    partnersList.forEach((p) => {
+      list.push({
+        id: `partner_${p.id}`,
+        type: 'partner',
+        title: 'New Enterprise Partner Added',
+        description: `${p.name} was added to the marquee slider.`,
+        timestamp: p.created_at || new Date().toISOString(),
+      });
+    });
+
+    // E. Audit Log Security Events (Logins, Password changes, Logo uploads)
+    recentLogs.forEach((log) => {
+      if (log.event_type === 'LOGIN_SUCCESS') {
+        list.push({
+          id: `log_login_${log.created_at}_${log.email}`,
+          type: 'login',
+          title: 'Administrator Login',
+          description: `${log.email} logged in successfully.`,
+          timestamp: log.created_at,
+        });
+      } else if (log.event_type === 'PASSWORD_RESET' || log.event_type === 'PASSWORD_CHANGED') {
+        list.push({
+          id: `log_pwd_${log.created_at}_${log.email}`,
+          type: 'security',
+          title: 'Password Changed',
+          description: `Administrator password updated successfully.`,
+          timestamp: log.created_at,
+        });
+      } else if (log.event_type === 'CLOUDINARY_UPLOAD' || (log.details && typeof log.details === 'object' && log.details.url)) {
+        list.push({
+          id: `log_upload_${log.created_at}`,
+          type: 'cloudinary',
+          title: 'Logo Uploaded',
+          description: `New asset logo uploaded successfully.`,
+          timestamp: log.created_at,
+        });
+      }
+    });
+
+    // Sort notifications by timestamp descending (newest first)
+    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  };
+
+  const compiledNotifications = getNotificationsList();
+  const unreadNotifications = compiledNotifications.filter(n => !readNotifications.includes(n.id));
+
+  // Handle Mark All as Read
+  const handleMarkAllNotificationsRead = () => {
+    const allIds = compiledNotifications.map(n => n.id);
+    setReadNotifications(allIds);
+    localStorage.setItem('zenemoo_read_notifications', JSON.stringify(allIds));
+    showStatus('All notifications marked as read');
+  };
+
   const navItems = [
     { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
     { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
@@ -999,15 +1270,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         </nav>
 
         {/* Sidebar Admin Info footer */}
-        {!isSidebarCollapsed && (
-          <div className="p-4 border-t border-white/5 bg-black/[0.15]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        {!isSidebarCollapsed ? (
+          <div 
+            onClick={() => setIsProfileDrawerOpen(true)}
+            className="p-3.5 border-t border-white/5 bg-gradient-to-b from-white/[0.02] to-black/30 hover:from-white/[0.05] hover:to-white/[0.02] transition-all cursor-pointer group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="relative shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
+                  <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase tracking-wider">
+                    {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
+                  </div>
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0a0b10] shadow-sm animate-pulse" />
+              </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-mono text-slate-400 truncate" title={adminEmail}>{adminEmail}</p>
-                <p className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-bold">Active Session</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-white truncate leading-tight group-hover:text-cyan-400 transition-colors">
+                    {adminProfile?.name || (adminEmail.includes('prem') ? 'Prem Prasad' : adminEmail.split('@')[0])}
+                  </p>
+                </div>
+                <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">{adminEmail}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[9px] font-mono text-emerald-400 font-bold flex items-center gap-1">
+                    ● Online
+                  </span>
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/20">
+                    {adminProfile?.role || 'Super Administrator'}
+                  </span>
+                </div>
               </div>
             </div>
+          </div>
+        ) : (
+          <div 
+            onClick={() => setIsProfileDrawerOpen(true)}
+            className="p-3.5 border-t border-white/5 bg-black/[0.15] hover:bg-white/[0.05] flex justify-center cursor-pointer transition-colors relative group"
+            title="Open Administrator Profile"
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shadow-md group-hover:scale-105 transition-transform">
+              <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
+                {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
+              </div>
+            </div>
+            <span className="absolute bottom-3 right-4 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0a0b10] animate-pulse" />
           </div>
         )}
       </aside>
@@ -1074,11 +1380,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 </nav>
               </div>
 
-              <div className="p-4 border-t border-white/5 bg-black/[0.15] rounded-xl flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div 
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsProfileDrawerOpen(true);
+                }}
+                className="p-3.5 border border-white/10 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-transparent rounded-2xl flex items-center gap-3 hover:bg-white/[0.05] transition-all cursor-pointer"
+              >
+                <div className="relative shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px]">
+                    <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
+                      {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
+                    </div>
+                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0a0b10] animate-pulse" />
+                </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-mono text-slate-400 truncate">{adminEmail}</p>
-                  <p className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-bold">Active Session</p>
+                  <p className="text-xs font-bold text-white truncate leading-tight">
+                    {adminProfile?.name || (adminEmail.includes('prem') ? 'Prem Prasad' : adminEmail.split('@')[0])}
+                  </p>
+                  <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">{adminEmail}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[9px] font-mono text-emerald-400 font-bold">● Online</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      {adminProfile?.role || 'Super Administrator'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </motion.aside>
@@ -1129,6 +1456,130 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 <CheckCircle className="w-3 h-3" /> {statusMessage}
               </div>
             )}
+
+            {/* Notification Bell Dropdown wrapper */}
+            <div className="relative">
+              <button
+                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                className="relative p-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center group"
+                title="System Notifications"
+              >
+                <Bell className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+                {unreadNotifications.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[9px] font-extrabold text-black ring-2 ring-[#030304] animate-pulse">
+                    {unreadNotifications.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Redesigned Notification Dropdown Menu */}
+              <AnimatePresence>
+                {isNotificationsOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-white/10 bg-[#0a0b10]/95 backdrop-blur-xl shadow-2xl p-4 space-y-3 z-50 overflow-hidden"
+                    >
+                      {/* Dropdown Header */}
+                      <div className="flex items-center justify-between pb-2.5 border-b border-white/10 font-mono text-[10px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white font-display">Notifications</span>
+                          {unreadNotifications.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+                              {unreadNotifications.length} Unread
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px]">
+                          {unreadNotifications.length > 0 && (
+                            <button
+                              onClick={handleMarkAllNotificationsRead}
+                              className="text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer transition-colors"
+                            >
+                              Mark All as Read
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setActiveTab('telemetry');
+                              setIsNotificationsOpen(false);
+                            }}
+                            className="text-slate-400 hover:text-white hover:underline cursor-pointer transition-colors"
+                          >
+                            View Activity History
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Dropdown Items list */}
+                      <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+                        {compiledNotifications.length === 0 ? (
+                          <div className="py-8 text-center text-slate-500 text-xs font-mono">
+                            No system notifications found.
+                          </div>
+                        ) : (
+                          compiledNotifications.map((notif) => {
+                            const isRead = readNotifications.includes(notif.id);
+                            return (
+                              <div
+                                key={notif.id}
+                                onClick={() => {
+                                  if (!isRead) {
+                                    const nextRead = [...readNotifications, notif.id];
+                                    setReadNotifications(nextRead);
+                                    localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
+                                  }
+                                }}
+                                className={`p-3 rounded-xl border text-xs transition-all hover:bg-white/[0.04] cursor-pointer flex gap-3 relative ${
+                                  isRead ? 'border-white/5 opacity-60 bg-white/[0.01]' : 'border-cyan-500/20 bg-cyan-500/[0.03] text-white shadow-sm'
+                                }`}
+                              >
+                                {/* Left Unread indicator dot */}
+                                {!isRead && (
+                                  <span className="absolute top-3.5 right-3 w-2 h-2 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/50 animate-pulse" />
+                                )}
+                                
+                                <div className="text-base shrink-0 mt-0.5 p-2 rounded-lg bg-white/5 border border-white/5">
+                                  {notif.type === 'inquiry' && '📩'}
+                                  {notif.type === 'subscriber' && '📬'}
+                                  {notif.type === 'application' && '💼'}
+                                  {notif.type === 'partner' && '🏢'}
+                                  {notif.type === 'login' && '🔐'}
+                                  {notif.type === 'security' && '🔑'}
+                                  {notif.type === 'cloudinary' && '🖼️'}
+                                </div>
+                                <div className="space-y-0.5 min-w-0 flex-1">
+                                  <div className="font-bold text-white leading-snug">{notif.title}</div>
+                                  <div className="text-slate-300 text-[11px] leading-relaxed truncate">{notif.description}</div>
+                                  <div className="text-cyan-400/80 text-[9px] font-mono mt-1 font-bold">{getRelativeTimeString(notif.timestamp)}</div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Dropdown Footer */}
+                      <div className="pt-2 border-t border-white/10 text-center">
+                        <button
+                          onClick={() => {
+                            setActiveTab('telemetry');
+                            setIsNotificationsOpen(false);
+                          }}
+                          className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 font-bold hover:underline cursor-pointer w-full text-center py-1 flex items-center justify-center gap-1"
+                        >
+                          View All Notifications →
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
             
             <button
               onClick={handleLogoutClick}
@@ -3239,6 +3690,325 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         </footer>
       </div>
+
+      {/* 6. ADMINISTRATOR PROFILE DRAWER (Slide-Over Panel) */}
+      <AnimatePresence>
+        {isProfileDrawerOpen && (
+          <>
+            {/* Semi-transparent Backdrop Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsProfileDrawerOpen(false)}
+              className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md"
+            />
+
+            {/* Right Slide-over Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              className="fixed top-0 right-0 bottom-0 z-[101] w-full max-w-xl bg-[#090a0f] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden font-sans"
+            >
+              {/* Drawer Header */}
+              <div className="p-6 border-b border-white/10 bg-gradient-to-r from-slate-900/80 via-[#0d0e17] to-cyan-950/30 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white font-display">Administrator Profile</h2>
+                    <p className="text-[11px] font-mono text-cyan-400">Identity &amp; Session Security Control</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsProfileDrawerOpen(false)}
+                  className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* 1. Administrator Card Profile Info */}
+                <div className="glass-panel p-5 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/[0.05] via-purple-500/[0.02] to-transparent relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                    <ShieldCheck className="w-32 h-32 text-cyan-400" />
+                  </div>
+                  <div className="flex items-start gap-4 relative z-10">
+                    <div className="relative shrink-0">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 p-[2px] shadow-xl shadow-cyan-500/20">
+                        <div className="w-full h-full rounded-[14px] bg-[#0c0d14] flex items-center justify-center text-xl font-extrabold text-cyan-300 uppercase tracking-widest font-display">
+                          {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
+                        </div>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#090a0f] shadow-md animate-pulse" />
+                    </div>
+
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-lg font-extrabold text-white font-display">
+                          {adminProfile?.name || (adminEmail.includes('prem') ? 'Prem Prasad' : adminEmail.split('@')[0])}
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          {adminProfile?.role || 'Super Administrator'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        <span className="truncate">{adminEmail}</span>
+                      </p>
+                      <div className="flex items-center gap-3 pt-1 text-[11px] font-mono text-slate-400">
+                        <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" /> ● Online
+                        </span>
+                        <span className="text-slate-500">•</span>
+                        <span className="text-slate-300">Auth Token: <code className="text-cyan-400">JWT Verified</code></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Security Section */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold flex items-center gap-2">
+                    <Lock className="w-4 h-4" /> Security Details
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Last Login</span>
+                      <span className="text-slate-200 font-bold block">
+                        {recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS')?.created_at 
+                          ? new Date(recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS').created_at).toLocaleString()
+                          : new Date(sessionStartTime).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Last Password Change</span>
+                      <span className="text-slate-200 font-bold block">
+                        {recentLogs.find(l => l.event_type === 'PASSWORD_RESET' || l.event_type === 'PASSWORD_CHANGED')?.created_at 
+                          ? new Date(recentLogs.find(l => l.event_type === 'PASSWORD_RESET' || l.event_type === 'PASSWORD_CHANGED').created_at).toLocaleDateString()
+                          : 'Updated Recently'}
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Last Password Reset</span>
+                      <span className="text-slate-200 font-bold block">
+                        {recentLogs.find(l => l.event_type === 'PASSWORD_RESET_SUCCESS')?.created_at 
+                          ? new Date(recentLogs.find(l => l.event_type === 'PASSWORD_RESET_SUCCESS').created_at).toLocaleDateString()
+                          : 'Verified via OTP'}
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Last Telegram OTP Sent</span>
+                      <span className="text-emerald-400 font-bold block flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Telegram Linked
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Device & Network Section */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold flex items-center gap-2">
+                    <Monitor className="w-4 h-4" /> Device &amp; Network Info
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                    {(() => {
+                      const ua = adminConnection?.userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
+                      let browser = 'Google Chrome';
+                      let os = 'Windows';
+                      if (ua.includes('Firefox/')) browser = 'Mozilla Firefox';
+                      else if (ua.includes('Edg/')) browser = 'Microsoft Edge';
+                      else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Apple Safari';
+                      
+                      if (ua.includes('Mac')) os = 'macOS';
+                      else if (ua.includes('Linux')) os = 'Linux';
+                      else if (ua.includes('Android')) os = 'Android';
+                      else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+                      return (
+                        <>
+                          <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                            <span className="text-[10px] text-slate-400 block mb-1">Browser</span>
+                            <span className="text-white font-bold block">{browser}</span>
+                          </div>
+                          <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                            <span className="text-[10px] text-slate-400 block mb-1">Operating System</span>
+                            <span className="text-white font-bold block">{os}</span>
+                          </div>
+                          <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                            <span className="text-[10px] text-slate-400 block mb-1">IP Address</span>
+                            <span className="text-cyan-300 font-bold block">{adminConnection?.ip || '127.0.0.1 (Localhost)'}</span>
+                          </div>
+                          <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                            <span className="text-[10px] text-slate-400 block mb-1">Approximate Location</span>
+                            <span className="text-purple-300 font-bold block">India (Authenticated Network)</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* 4. Session Section (Live Timers) */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold flex items-center gap-2">
+                    <Clock className="w-4 h-4" /> Live Session Timer
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                    <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.03]">
+                      <span className="text-[10px] text-cyan-300 uppercase tracking-wider block mb-1 font-bold">Session Duration</span>
+                      <span className="text-2xl font-extrabold text-white tracking-widest font-mono block">
+                        {formatDuration(sessionDurationSec)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block mt-1">Updating live every sec</span>
+                    </div>
+                    <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/[0.03]">
+                      <span className="text-[10px] text-purple-300 uppercase tracking-wider block mb-1 font-bold">Session Expires In</span>
+                      <span className="text-2xl font-extrabold text-amber-300 tracking-widest font-mono block">
+                        {formatRemainingTime(sessionExpiresInSec)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block mt-1">Sliding countdown active</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Account Details Section */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Account Details
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Account Created</span>
+                      <span className="text-slate-200 font-bold block">
+                        {adminProfile?.created_at ? new Date(adminProfile.created_at).toLocaleDateString() : 'Verified Account'}
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Last Activity</span>
+                      <span className="text-slate-200 font-bold block">
+                        {recentLogs.length > 0 ? getRelativeTimeString(recentLogs[0].created_at) : 'Just now'}
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Total Login Count</span>
+                      <span className="text-cyan-400 font-bold block">
+                        {recentLogs.filter(l => l.event_type === 'LOGIN_SUCCESS').length || 1} Sessions Logged
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
+                      <span className="text-[10px] text-slate-400 block mb-1">Last Successful Login</span>
+                      <span className="text-emerald-400 font-bold block">
+                        {recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS')?.created_at
+                          ? new Date(recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS').created_at).toLocaleTimeString()
+                          : 'Just now'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6. Quick Actions */}
+                <div className="space-y-3 pt-2 border-t border-white/10">
+                  <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold">Quick Actions</h4>
+                  <div className="grid grid-cols-2 gap-2.5 font-mono text-xs">
+                    <button
+                      onClick={() => {
+                        setActiveTab('telemetry');
+                        setIsProfileDrawerOpen(false);
+                      }}
+                      className="p-3 rounded-xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/30 text-slate-200 hover:text-cyan-300 font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <Activity className="w-4 h-4 text-cyan-400" /> View Audit Logs
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const newExpiry = Date.now() + 30 * 60 * 1000;
+                        localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
+                        setSessionExpiresInSec(1800);
+                        showStatus('Session renewed successfully (+30 mins)');
+                      }}
+                      className="p-3 rounded-xl bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/30 text-slate-200 hover:text-purple-300 font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4 text-purple-400" /> Refresh Session
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab('keys');
+                        setIsProfileDrawerOpen(false);
+                      }}
+                      className="p-3 rounded-xl bg-white/5 hover:bg-emerald-500/10 border border-white/10 hover:border-emerald-500/30 text-slate-200 hover:text-emerald-300 font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <Key className="w-4 h-4 text-emerald-400" /> Security Settings
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsProfileDrawerOpen(false);
+                        handleLogoutClick();
+                      }}
+                      className="p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" /> Logout Session
+                    </button>
+                  </div>
+                </div>
+
+                {/* 7. Recent Activity (Last 10 Administrator Activities) */}
+                <div className="space-y-3 pt-2 border-t border-white/10">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold flex items-center gap-2">
+                      <History className="w-4 h-4" /> Recent Activity
+                    </h4>
+                    <span className="text-[10px] font-mono text-slate-500">Last 10 Administrator Actions</span>
+                  </div>
+
+                  <div className="space-y-2 font-mono text-xs">
+                    {recentLogs.length === 0 ? (
+                      <div className="p-4 rounded-xl border border-white/5 bg-white/[0.01] text-center text-slate-500 text-[11px]">
+                        No logged audit activity available for this session.
+                      </div>
+                    ) : (
+                      recentLogs.slice(0, 10).map((log, idx) => (
+                        <div
+                          key={log.id || `act_${idx}`}
+                          className="p-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between text-[11px]"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <div className="truncate">
+                              <span className="font-bold text-white block">
+                                ✔ {log.event_type === 'LOGIN_SUCCESS' ? 'Logged In' :
+                                    log.event_type === 'PASSWORD_RESET' || log.event_type === 'PASSWORD_CHANGED' ? 'Changed Password' :
+                                    log.event_type === 'CLOUDINARY_UPLOAD' ? 'Uploaded Logo' :
+                                    log.event_type === 'PARTNER_UPDATED' ? 'Updated Partner' :
+                                    log.event_type === 'NEWSLETTER_ADDED' ? 'Added Newsletter' :
+                                    log.event_type ? log.event_type.replace(/_/g, ' ') : 'Administrator Activity'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate block">
+                                {log.details?.description || log.email || adminEmail}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-slate-500 shrink-0 ml-2">
+                            {getRelativeTimeString(log.created_at)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

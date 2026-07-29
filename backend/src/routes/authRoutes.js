@@ -7,6 +7,7 @@ import {
   forgotPassword,
   verifyOtp,
   resetPassword,
+  getAuditLogs,
 } from '../controllers/authController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -16,6 +17,7 @@ const router = Router();
 router.post('/login', login);
 router.post('/logout', authMiddleware, logout);
 router.get('/profile', authMiddleware, getProfile);
+router.get('/audit-logs', authMiddleware, getAuditLogs);
 
 // Password Recovery Workflows
 router.post('/check-email', checkEmail);

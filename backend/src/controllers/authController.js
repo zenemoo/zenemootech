@@ -706,5 +706,69 @@ export const logout = async (req, res) => {
 };
 
 export const getProfile = async (req, res) => {
-  res.json({ success: true, user: req.user });
+  const cleanEmail = req.user?.email || '';
+  let profile = { email: cleanEmail, role: req.user?.role || 'admin', name: cleanEmail.split('@')[0] };
+  
+  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+  const userAgent = req.headers['user-agent'] || '';
+  
+  if (supabase && cleanEmail) {
+    try {
+      const { data, error } = await supabase
+        .from('authorized_admin_emails')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+      if (!error && data) {
+        profile = {
+          ...profile,
+          ...data,
+        };
+      }
+    } catch (e) {
+      console.warn('Error fetching profile from db:', e.message);
+    }
+  }
+  
+  res.json({
+    success: true,
+    user: profile,
+    connection: {
+      ip: clientIp,
+      userAgent: userAgent,
+    }
+  });
+};
+
+export const getAuditLogs = async (req, res) => {
+  const cleanEmail = req.user?.email || '';
+  if (!cleanEmail) {
+    return res.status(400).json({ success: false, message: 'Invalid session' });
+  }
+
+  // Fetch last 10 audit logs from Supabase
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('admin_audit_logs')
+        .select('*')
+        .eq('email', cleanEmail)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (!error && data) {
+        return res.json({ success: true, logs: data });
+      }
+    } catch (err) {
+      console.warn('Error querying audit logs from Supabase:', err.message);
+    }
+  }
+
+  // Fallback to in-memory backup logs filtered by email
+  const fallbackLogs = auditLogsStore
+    .filter(log => log.email === cleanEmail)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 10);
+
+  res.json({ success: true, logs: fallbackLogs });
 };
