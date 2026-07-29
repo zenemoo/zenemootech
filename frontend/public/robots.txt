@@ -1,9 +1,10 @@
 # ==============================================================================
-# Zenemoo (Formerly known as QuantumCoders Data Solution) - Enterprise Robots.txt
-# Domain: https://zenemoo.in
+# Zenemoo (Enterprise AI Language & Data Solutions) - Production Robots.txt
+# Website: https://www.zenemoo.in/
+# Official Logo: https://www.zenemoo.in/assets/logo.png
 # ==============================================================================
 
-# Search Engine Crawlers - Full Access
+# Search Engine Crawlers - Full Crawling Access
 User-agent: Googlebot
 User-agent: Googlebot-News
 User-agent: Googlebot-Image
@@ -16,8 +17,10 @@ User-agent: Slurp
 User-agent: Baiduspider
 User-agent: facebookexternalhit
 Allow: /
+Allow: /assets/
+Allow: /favicon.png
 
-# AI Crawlers & LLM Agents - Full Access for RAG & AI Search indexing
+# AI Crawlers & LLM Agents - Full Access for AI Search & RAG Indexing
 User-agent: GPTBot
 User-agent: ClaudeBot
 User-agent: CCBot
@@ -40,19 +43,21 @@ Allow: /#contact
 Allow: /#privacy
 Allow: /#terms
 
-# Disallow Private & Admin Areas
+# Disallow Private & Admin Routes
 Disallow: /admin
 Disallow: /#admin
+Disallow: /#portal
 Disallow: /dashboard
 Disallow: /private
-Disallow: /api/private
+Disallow: /api/
 Disallow: /temp/
 Disallow: /scratch/
 Disallow: /*.json$
 
-# Crawl Delay & Rate Limiting
+# Crawl Delay & Optimization
 Crawl-delay: 1
 
-# XML Sitemaps
-Sitemap: https://zenemoo.in/sitemap.xml
-Sitemap: https://zenemoo.in/sitemap-index.xml
+# Production XML Sitemaps
+Sitemap: https://www.zenemoo.in/sitemap.xml
+Sitemap: https://www.zenemoo.in/image-sitemap.xml
+Sitemap: https://www.zenemoo.in/sitemap-index.xml

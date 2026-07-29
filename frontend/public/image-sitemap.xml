@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- 1. Zenemoo Homepage Images & Official Logo -->
+  <url>
+    <loc>https://www.zenemoo.in/</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>Zenemoo Official Logo — Enterprise AI Language &amp; Data Solutions</image:title>
+      <image:caption>Official Brand Logo for Zenemoo (Formerly known as QuantumCoders Data Solution)</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
+      <image:title>DesiCrew Enterprise Partner Logo</image:title>
+      <image:caption>Certified Enterprise Vendor Partner — DesiCrew Solutions</image:caption>
+    </image:image>
+  </url>
+
+  <!-- 2. Services Section Image Assets -->
+  <url>
+    <loc>https://www.zenemoo.in/#services</loc>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>AI Audio Transcription &amp; Speech Data Annotation</image:title>
+      <image:caption>Multilingual Audio Transcription, Odia Speech Data Collection, and AI Dataset Services</image:caption>
+    </image:image>
+  </url>
+
+  <!-- 3. Enterprise Partners Image Assets -->
+  <url>
+    <loc>https://www.zenemoo.in/#partner</loc>
+    <image:image>
+      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
+      <image:title>DesiCrew &amp; Zenemoo Enterprise Alliance Logo</image:title>
+      <image:caption>Language Data &amp; AI Partner Logo</image:caption>
+    </image:image>
+  </url>
+
+</urlset>
