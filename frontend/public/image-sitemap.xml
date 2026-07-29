@@ -17,23 +17,23 @@
     </image:image>
   </url>
 
-  <!-- 2. Services Section Image Assets -->
+  <!-- 2. Program Opportunities Portal -->
   <url>
-    <loc>https://www.zenemoo.in/#services</loc>
+    <loc>https://www.zenemoo.in/opportunities</loc>
     <image:image>
       <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
-      <image:title>AI Audio Transcription &amp; Speech Data Annotation</image:title>
-      <image:caption>Multilingual Audio Transcription, Odia Speech Data Collection, and AI Dataset Services</image:caption>
+      <image:title>Zenemoo Program Opportunities &amp; Careers Portal</image:title>
+      <image:caption>Language Data Annotation &amp; Speech Transcription Jobs</image:caption>
     </image:image>
   </url>
 
-  <!-- 3. Enterprise Partners Image Assets -->
+  <!-- 3. Data Team Directory -->
   <url>
-    <loc>https://www.zenemoo.in/#partner</loc>
+    <loc>https://www.zenemoo.in/team-directory</loc>
     <image:image>
       <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
-      <image:title>DesiCrew &amp; Zenemoo Enterprise Alliance Logo</image:title>
-      <image:caption>Language Data &amp; AI Partner Logo</image:caption>
+      <image:title>Zenemoo Specialized Language Data Team Roster</image:title>
+      <image:caption>Certified Multilingual Audio &amp; Data Specialists</image:caption>
     </image:image>
   </url>
 

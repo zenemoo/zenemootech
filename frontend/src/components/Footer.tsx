@@ -148,9 +148,9 @@ export const Footer: React.FC = () => {
               Organization
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
-              <li><a href="#opportunities" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Opportunities Portal</a></li>
-              <li><a href="#opportunities" className="hover:text-emerald-400 transition-colors text-emerald-400 font-bold">Live Program Opportunities</a></li>
-              <li><a href="#team" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
+              <li><a href="/opportunities" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Opportunities Portal</a></li>
+              <li><a href="/opportunities" className="hover:text-emerald-400 transition-colors text-emerald-400 font-bold">Live Program Opportunities</a></li>
+              <li><a href="/team-directory" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li><a href="#telemetry" className="hover:text-cyan-400 transition-colors">Production Capacity</a></li>
               <li className="pt-2 border-t border-white/5 space-y-1 font-mono text-[11px]">
@@ -170,18 +170,14 @@ export const Footer: React.FC = () => {
           </div>
           <div className="flex items-center gap-3 text-slate-400 font-bold">
             <a
-              href="#privacy"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/privacy"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
             >
               Privacy Policy
             </a>
             <span>·</span>
             <a
-              href="#terms"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/terms"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
             >
               Terms &amp; Conditions

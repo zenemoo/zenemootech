@@ -24,7 +24,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton }) => {
     { name: 'Services', href: '#services', icon: Mic },
     { name: 'Languages', href: '#languages', icon: Languages },
     { name: 'Studio', href: '#playground', icon: Sparkles },
-    { name: 'Opportunities', href: '#opportunities', icon: Briefcase },
+    { name: 'Opportunities', href: '/opportunities', icon: Briefcase },
     { name: 'DesiCrew Partner', href: '#partner', icon: Handshake },
     { name: 'Team', href: '#team', icon: Users },
     { name: 'Contact', href: '#contact', icon: Mail },

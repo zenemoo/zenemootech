@@ -33,11 +33,14 @@ export function App() {
 
   useEffect(() => {
     const checkRoute = () => {
+      const path = window.location.pathname.replace(/\/$/, '') || '/';
       const hash = window.location.hash;
       const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
 
-      // Check if hash matches secret private route or allowed secret aliases
+      // Check if path or hash matches secret private admin route
       const isSecretAdminRoute =
+        path === `/${secretEnvRoute}` ||
+        path === '/portal/9KqvA2Nz8' ||
         hash === `#${secretEnvRoute}` ||
         hash === '#portal/9KqvA2Nz8' ||
         hash === '#manage/portal/x93LmK/admin' ||
@@ -45,34 +48,41 @@ export function App() {
 
       if (isSecretAdminRoute) {
         setCurrentRoute('admin');
-      } else if (hash === '#admin') {
-        // Obfuscate standard #admin route: redirect to homepage
+      } else if (hash === '#admin' || path === '/admin') {
+        window.history.replaceState(null, '', '/');
         window.location.hash = '';
         setCurrentRoute('home');
-      } else if (hash === '#forgot-password' || hash === '#/forgot-password') {
+      } else if (path === '/forgot-password' || hash === '#forgot-password' || hash === '#/forgot-password') {
         setCurrentRoute('forgot-password');
-      } else if (hash === '#forgot-password/verify' || hash === '#/forgot-password/verify') {
+      } else if (path === '/forgot-password/verify' || hash === '#forgot-password/verify' || hash === '#/forgot-password/verify') {
         setCurrentRoute('forgot-password-verify');
-      } else if (hash === '#forgot-password/reset' || hash === '#/forgot-password/reset') {
+      } else if (path === '/forgot-password/reset' || hash === '#forgot-password/reset' || hash === '#/forgot-password/reset') {
         setCurrentRoute('forgot-password-reset');
-      } else if (hash === '#team-directory' || hash === '#full-team') {
+      } else if (path === '/team-directory' || path === '/team' || hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
-      } else if (hash === '#privacy' || hash === '#privacy-policy') {
+      } else if (path === '/privacy' || hash === '#privacy' || hash === '#privacy-policy') {
         setCurrentRoute('privacy');
-      } else if (hash === '#terms' || hash === '#terms-and-conditions' || hash === '#terms-conditions') {
+      } else if (path === '/terms' || hash === '#terms' || hash === '#terms-and-conditions' || hash === '#terms-conditions') {
         setCurrentRoute('terms');
       } else if (
+        path === '/opportunities' ||
+        path === '/projects' ||
+        path === '/programs' ||
+        path === '/desicrew-contributors' ||
+        path === '/desicrew' ||
         hash === '#opportunities' ||
         hash === '#projects' ||
         hash === '#programs' ||
         hash === '#desicrew-contributors' ||
-        hash === '#desicrew' ||
-        hash === '#language-contributors'
+        hash === '#desicrew'
       ) {
-        window.location.hash = 'opportunities';
         setCurrentRoute('opportunities');
-      } else if (hash.startsWith('#opportunity/') || hash.startsWith('#program/')) {
-        const oppId = hash.replace('#opportunity/', '').replace('#program/', '');
+      } else if (path.startsWith('/opportunity/') || path.startsWith('/program/') || hash.startsWith('#opportunity/') || hash.startsWith('#program/')) {
+        const oppId = path.startsWith('/opportunity/')
+          ? path.replace('/opportunity/', '')
+          : path.startsWith('/program/')
+          ? path.replace('/program/', '')
+          : hash.replace('#opportunity/', '').replace('#program/', '');
         setSelectedOpportunityId(oppId || '');
         setCurrentRoute('opportunity-detail');
       } else {
@@ -82,28 +92,34 @@ export function App() {
 
     checkRoute();
     window.addEventListener('hashchange', checkRoute);
-    return () => window.removeEventListener('hashchange', checkRoute);
+    window.addEventListener('popstate', checkRoute);
+    return () => {
+      window.removeEventListener('hashchange', checkRoute);
+      window.removeEventListener('popstate', checkRoute);
+    };
   }, []);
 
   const handleExitAdmin = () => {
+    window.history.pushState(null, '', '/');
     window.location.hash = '';
     setCurrentRoute('home');
   };
 
   const handleBackToHome = () => {
+    window.history.pushState(null, '', '/');
     window.location.hash = '';
     setCurrentRoute('home');
   };
 
   const handleReturnToAdminLogin = () => {
     const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
-    window.location.hash = secretEnvRoute;
+    window.history.pushState(null, '', `/${secretEnvRoute}`);
     setCurrentRoute('admin');
   };
 
   const handleSelectProgram = (id: string) => {
     setSelectedOpportunityId(id);
-    window.location.hash = `#opportunity/${id}`;
+    window.history.pushState(null, '', `/opportunity/${id}`);
     setCurrentRoute('opportunity-detail');
   };
 
