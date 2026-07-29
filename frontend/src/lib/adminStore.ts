@@ -154,8 +154,38 @@ export const DEFAULT_MESSAGE_HISTORY: MessageHistoryRecord[] = [
   },
 ];
 
+// Helper dictionary for persistent per-email profile photos
+export const getStoredPhotoMap = (): Record<string, string> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const local = localStorage.getItem('zenemoo_admin_photos_map');
+    return local ? JSON.parse(local) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const getStoredAdminPhoto = (email: string): string => {
+  if (!email) return '';
+  const map = getStoredPhotoMap();
+  return map[email.trim().toLowerCase()] || '';
+};
+
+export const setStoredAdminPhoto = (email: string, photoUrl: string) => {
+  if (!email) return;
+  const cleanEmail = email.trim().toLowerCase();
+  const map = getStoredPhotoMap();
+  if (photoUrl) {
+    map[cleanEmail] = photoUrl;
+  } else {
+    delete map[cleanEmail];
+  }
+  localStorage.setItem('zenemoo_admin_photos_map', JSON.stringify(map));
+};
+
 // Query Supabase directly for Authorized Admin Emails
 export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccount[]> => {
+  const photoMap = getStoredPhotoMap();
   try {
     const { data, error } = await supabase
       .from('authorized_admin_emails')
@@ -163,22 +193,28 @@ export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccoun
       .order('created_at', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      const formatted: AuthorizedEmailAccount[] = data.map((item: any) => ({
-        id: item.id || `auth_${Date.now()}`,
-        email: item.email,
-        name: item.name || item.email.split('@')[0],
-        role: item.role || 'Administrator',
-        profile_photo_url: item.profile_photo_url || item.avatar_url || '',
-        department: item.department || 'Operations',
-        phone: item.phone || '',
-        telegram_chat_id: item.telegram_chat_id || '',
-        notes: item.notes || '',
-        status: item.status || 'active',
-        last_login: item.last_login || '',
-        last_password_reset: item.last_password_reset || '',
-        added_by: item.added_by || 'Super Admin',
-        added_at: item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : '2026-07-28',
-      }));
+      const formatted: AuthorizedEmailAccount[] = data.map((item: any) => {
+        const cleanEmail = item.email.trim().toLowerCase();
+        const photo = photoMap[cleanEmail] || item.profile_photo_url || item.avatar_url || '';
+        if (photo) photoMap[cleanEmail] = photo;
+        return {
+          id: item.id || `auth_${Date.now()}`,
+          email: item.email,
+          name: item.name || item.email.split('@')[0],
+          role: item.role || 'Administrator',
+          profile_photo_url: photo,
+          department: item.department || 'Operations',
+          phone: item.phone || '',
+          telegram_chat_id: item.telegram_chat_id || '',
+          notes: item.notes || '',
+          status: item.status || 'active',
+          last_login: item.last_login || '',
+          last_password_reset: item.last_password_reset || '',
+          added_by: item.added_by || 'Super Admin',
+          added_at: item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : '2026-07-28',
+        };
+      });
+      localStorage.setItem('zenemoo_admin_photos_map', JSON.stringify(photoMap));
       localStorage.setItem('zenemoo_authorized_admin_emails', JSON.stringify(formatted));
       return formatted;
     }
@@ -189,10 +225,17 @@ export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccoun
   const local = localStorage.getItem('zenemoo_authorized_admin_emails');
   if (local) {
     try {
-      return JSON.parse(local);
+      const parsed: AuthorizedEmailAccount[] = JSON.parse(local);
+      return parsed.map(item => ({
+        ...item,
+        profile_photo_url: photoMap[item.email.trim().toLowerCase()] || item.profile_photo_url || ''
+      }));
     } catch (e) {}
   }
-  return DEFAULT_AUTHORIZED_EMAILS;
+  return DEFAULT_AUTHORIZED_EMAILS.map(item => ({
+    ...item,
+    profile_photo_url: photoMap[item.email.trim().toLowerCase()] || item.profile_photo_url || ''
+  }));
 };
 
 // Add or Update Authorized Email directly into Supabase PostgreSQL DB
@@ -200,6 +243,9 @@ export const saveAuthorizedEmailToSupabase = async (
   account: Omit<AuthorizedEmailAccount, 'id' | 'added_at'>
 ): Promise<AuthorizedEmailAccount[]> => {
   const emailClean = account.email.trim().toLowerCase();
+  if (account.profile_photo_url) {
+    setStoredAdminPhoto(emailClean, account.profile_photo_url);
+  }
   const insertPayload: any = {
     email: emailClean,
     role: account.role,
@@ -225,12 +271,14 @@ export const saveAuthorizedEmailToSupabase = async (
   // Update local storage backup
   const current = await getStoredAuthorizedEmails();
   const existingIdx = current.findIndex((a) => a.email.toLowerCase() === emailClean);
+  const photo = account.profile_photo_url || getStoredAdminPhoto(emailClean) || (existingIdx >= 0 ? current[existingIdx].profile_photo_url : '');
+  
   const newAccount: AuthorizedEmailAccount = {
     id: existingIdx >= 0 ? current[existingIdx].id : `auth_${Date.now()}`,
     email: emailClean,
     role: account.role,
     name: account.name || (existingIdx >= 0 ? current[existingIdx].name : emailClean.split('@')[0]),
-    profile_photo_url: account.profile_photo_url || (existingIdx >= 0 ? current[existingIdx].profile_photo_url : ''),
+    profile_photo_url: photo || '',
     department: account.department || (existingIdx >= 0 ? current[existingIdx].department : 'Operations'),
     phone: account.phone || (existingIdx >= 0 ? current[existingIdx].phone : ''),
     telegram_chat_id: account.telegram_chat_id || (existingIdx >= 0 ? current[existingIdx].telegram_chat_id : ''),
@@ -256,6 +304,11 @@ export const updateAuthorizedEmailInSupabase = async (
   idOrEmail: string,
   updates: Partial<AuthorizedEmailAccount>
 ): Promise<AuthorizedEmailAccount[]> => {
+  const cleanKey = idOrEmail.trim().toLowerCase();
+  if (updates.profile_photo_url !== undefined) {
+    setStoredAdminPhoto(cleanKey, updates.profile_photo_url || '');
+  }
+
   try {
     const { error } = await supabase
       .from('authorized_admin_emails')
@@ -271,8 +324,9 @@ export const updateAuthorizedEmailInSupabase = async (
 
   const current = await getStoredAuthorizedEmails();
   const updated = current.map((item) => {
-    if (item.id === idOrEmail || item.email.toLowerCase() === idOrEmail.toLowerCase()) {
-      return { ...item, ...updates };
+    if (item.id === idOrEmail || item.email.toLowerCase() === cleanKey) {
+      const mergedPhoto = updates.profile_photo_url !== undefined ? updates.profile_photo_url : (item.profile_photo_url || getStoredAdminPhoto(item.email));
+      return { ...item, ...updates, profile_photo_url: mergedPhoto || '' };
     }
     return item;
   });

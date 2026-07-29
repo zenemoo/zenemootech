@@ -5,7 +5,7 @@ import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMember
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
-import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords } from '../lib/adminStore';
+import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
 import { contactApi, subscriberApi, authApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
 
@@ -1248,7 +1248,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   };
 
   const activeAdminAccount = authorizedEmails.find(a => a.email.toLowerCase() === adminEmail.toLowerCase()) || null;
-  const activeAdminPhoto = adminProfile?.profile_photo_url || activeAdminAccount?.profile_photo_url || '';
+  const activeAdminPhoto = adminProfile?.profile_photo_url || activeAdminAccount?.profile_photo_url || getStoredAdminPhoto(adminEmail) || '';
 
   const navItems = [
     { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
@@ -1258,7 +1258,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
     { id: 'history', name: 'Message History', icon: Send, count: messageHistoryList.length },
     { id: 'telemetry', name: 'Metrics & Capacity', icon: Activity },
-    { id: 'keys', name: 'API Credentials & Admins', icon: Key, count: authorizedEmails.length },
+    { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
   ];
 
   return (
@@ -3421,13 +3421,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                           </button>
                         </td>
                         <td className="p-3.5 text-right space-x-1.5">
-                          <label className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 cursor-pointer inline-flex items-center" title="Upload Cloudinary Photo">
+                          <button
+                            onClick={() => {
+                              setEditingAuthAccount(acc);
+                              setNewAuthEmailInput(acc.email);
+                              setNewAuthNameInput(acc.name || '');
+                              setNewAuthRole(acc.role);
+                              setNewAuthDeptInput(acc.department || 'Operations');
+                              setNewAuthPhoneInput(acc.phone || '');
+                              setNewAuthTelegramInput(acc.telegram_chat_id || '');
+                              setNewAuthNotesInput(acc.notes || '');
+                              setNewAuthAvatarUrl(acc.profile_photo_url || getStoredAdminPhoto(acc.email) || '');
+                              setIsAddAuthModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 cursor-pointer"
+                            title="Edit Administrator Account"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <label className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 cursor-pointer inline-flex items-center" title="Upload Cloudinary Photo">
                             <Upload className="w-3.5 h-3.5" />
                             <input type="file" accept="image/*" onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
                               setIsGlobalLoading(true);
-                              setGlobalLoadingText('Uploading Cloudinary Profile Photo...');
+                              setGlobalLoadingText(`Uploading Cloudinary Photo for ${acc.email}...`);
                               uploadImageToCloudinary(file, 'zenemoo/admin-avatars').then(async (url) => {
                                 const updated = await updateAuthorizedEmailInSupabase(acc.id || acc.email, { profile_photo_url: url });
                                 setAuthorizedEmails(updated);
@@ -3457,38 +3475,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-
-            {/* Live Supabase & Cloudinary Credentials Card */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4 font-mono text-xs">
-              <div className="space-y-1">
-                <h4 className="text-sm font-bold font-display text-white">Live Supabase &amp; Cloudinary Credentials</h4>
-                <p className="text-[11px] text-slate-400">Connected production storage endpoints for Zenemoo ecosystem.</p>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-cyan-300 font-bold mb-1">Supabase Project URL</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value={config.supabaseUrl}
-                    className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-purple-300 font-bold mb-1">Cloudinary CDN Cloud Name</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value={config.cloudinaryCloudName || 'rwoe0mm9'}
-                    className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono"
-                  />
-                </div>
-                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] leading-relaxed">
-                  ✅ Live Supabase PostgreSQL &amp; Cloudinary CDN ecosystem are fully connected.
-                </div>
               </div>
             </div>
           </div>
@@ -4404,40 +4390,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 }}
                 className="space-y-4 font-mono text-xs"
               >
-                {/* Cloudinary Profile Photo Dropzone */}
-                <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] flex items-center gap-4">
-                  <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shrink-0 overflow-hidden">
-                    {newAuthAvatarUrl ? (
-                      <img src={newAuthAvatarUrl} alt="Avatar" className="w-full h-full object-cover rounded-[14px]" />
-                    ) : (
-                      <div className="w-full h-full rounded-[14px] bg-[#0d0e15] flex items-center justify-center text-sm font-bold text-cyan-300">
-                        {newAuthNameInput ? newAuthNameInput.substring(0, 2).toUpperCase() : 'AV'}
-                      </div>
-                    )}
+                {/* Cloudinary Profile Photo Dropzone & Direct URL Box */}
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.02] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="block font-bold text-white text-xs">Administrator Profile Picture (Dual Mode)</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">Upload file or paste link</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="block font-bold text-white mb-1">Profile Photo (Cloudinary CDN)</span>
-                    <label className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 cursor-pointer inline-flex items-center gap-1.5 font-bold text-[11px]">
-                      <Upload className="w-3.5 h-3.5" /> Upload Image
+
+                  <div className="flex items-center gap-3">
+                    {/* Live Preview Thumbnail */}
+                    <div className="relative w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shrink-0 overflow-hidden shadow-md">
+                      {newAuthAvatarUrl ? (
+                        <img src={newAuthAvatarUrl} alt="Avatar Preview" className="w-full h-full object-cover rounded-[10px]" />
+                      ) : (
+                        <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
+                          {newAuthNameInput ? newAuthNameInput.substring(0, 2).toUpperCase() : 'AV'}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* URL Input Box */}
+                    <div className="flex-1 relative">
                       <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          setIsGlobalLoading(true);
-                          setGlobalLoadingText('Uploading Cloudinary Image...');
-                          uploadImageToCloudinary(file, 'zenemoo/admin-avatars')
-                            .then((url) => {
-                              setNewAuthAvatarUrl(url);
-                              addToast('Photo Uploaded', 'Attached Cloudinary photo', 'success');
-                            })
-                            .catch((err) => addToast('Upload Error', err.message, 'error'))
-                            .finally(() => setIsGlobalLoading(false));
-                        }}
-                        className="hidden"
+                        type="text"
+                        placeholder="Cloudinary CDN or Direct Image URL..."
+                        value={newAuthAvatarUrl}
+                        onChange={(e) => setNewAuthAvatarUrl(e.target.value)}
+                        className="w-full pl-3 pr-24 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
                       />
-                    </label>
+
+                      {/* Device Upload Button inside/adjacent */}
+                      <label className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 cursor-pointer flex items-center gap-1 font-bold text-[10px] transition-all">
+                        <Upload className="w-3 h-3" /> Device
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setIsGlobalLoading(true);
+                            setGlobalLoadingText('Uploading Cloudinary Image...');
+                            uploadImageToCloudinary(file, 'zenemoo/admin-avatars')
+                              .then((url) => {
+                                setNewAuthAvatarUrl(url);
+                                addToast('Photo Uploaded', 'Cloudinary CDN link saved & previewed', 'success');
+                              })
+                              .catch((err) => addToast('Upload Error', err.message, 'error'))
+                              .finally(() => setIsGlobalLoading(false));
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
 
