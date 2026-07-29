@@ -30,6 +30,29 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor to parse renewed sliding tokens and handle automatic logouts
+api.interceptors.response.use(
+  (response) => {
+    const newToken = response.headers['x-new-token'] || response.headers['X-New-Token'];
+    if (newToken) {
+      localStorage.setItem('zenemoo_jwt_token', newToken);
+      const expiry = Date.now() + 30 * 60 * 1000;
+      localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
+    }
+    return response;
+  },
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('zenemoo_jwt_token');
+      localStorage.removeItem('zenemoo_jwt_expiry');
+      if (typeof window !== 'undefined' && window.location.hash.includes('portal')) {
+        window.location.reload();
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Core Allowed Emails Fallback List
 const DEFAULT_ALLOWED_EMAILS = [
   'mr.prem2006@gmail.com',

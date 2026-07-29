@@ -14,7 +14,7 @@ const router = Router();
 
 // Authentication Endpoints
 router.post('/login', login);
-router.post('/logout', logout);
+router.post('/logout', authMiddleware, logout);
 router.get('/profile', authMiddleware, getProfile);
 
 // Password Recovery Workflows

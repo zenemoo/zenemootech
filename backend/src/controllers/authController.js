@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
-import { sendTelegramAlert, getClientIp } from '../services/telegramService.js';
+import { sendTelegramAlert, getClientIp, parseUserAgent, getApproximateLocation } from '../services/telegramService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'zenemoo2026';
@@ -152,11 +152,66 @@ export const login = async (req, res, next) => {
     const token = jwt.sign(
       { role: 'admin', email: cleanEmail },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30m' }
     );
 
     console.log(`🎉 LOGIN SUCCESS! Generated JWT token for ${cleanEmail}`);
-    await writeAuditLog(req, 'LOGIN_SUCCESS', cleanEmail);
+
+    // Detect new device before writing the new audit log
+    let isNewDevice = false;
+    if (supabase) {
+      try {
+        const { data: lastLogin, error: lastLoginErr } = await supabase
+          .from('admin_audit_logs')
+          .select('user_agent')
+          .eq('email', cleanEmail)
+          .eq('event_type', 'LOGIN_SUCCESS')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lastLoginErr && lastLogin) {
+          const lastUA = lastLogin.user_agent;
+          const currentUA = req.headers['user-agent'] || '';
+          
+          const lastDetails = parseUserAgent(lastUA);
+          const currentDetails = parseUserAgent(currentUA);
+          
+          if (lastDetails.device !== currentDetails.device || lastDetails.browser !== currentDetails.browser) {
+            isNewDevice = true;
+            console.log(`⚠️ New Device/Browser Detected for ${cleanEmail}: ${currentDetails.device} / ${currentDetails.browser}`);
+          }
+        }
+      } catch (err) {
+        console.warn('Error checking last login user agent:', err.message);
+      }
+    }
+
+    await writeAuditLog(req, 'LOGIN_SUCCESS', cleanEmail, { isNewDevice });
+
+    // Send Telegram Alert if Chat ID is linked
+    const telegramChatId = dbUser?.telegram_chat_id;
+    if (telegramChatId) {
+      const clientIp = getClientIp(req);
+      const userAgent = req.headers['user-agent'] || '';
+      
+      // Execute alert asynchronously to minimize login latency
+      (async () => {
+        try {
+          const location = await getApproximateLocation(clientIp);
+          console.log(`📍 Resolved Location for ${cleanEmail}: ${location}`);
+          await sendTelegramAlert(telegramChatId, 'login', {
+            email: cleanEmail,
+            ip: clientIp,
+            userAgent: userAgent,
+            location: location,
+            isNewDevice: isNewDevice
+          });
+        } catch (e) {
+          console.error('Failed to send login Telegram alert:', e.message);
+        }
+      })();
+    }
 
     res.json({
       success: true,
@@ -330,13 +385,15 @@ export const forgotPassword = async (req, res) => {
     // Send Telegram OTP
     const clientIp = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
+    const location = await getApproximateLocation(clientIp);
 
     console.log(`📧 Dispatching OTP via Telegram Bot to chat: ${telegramChatId}`);
     const telegramResult = await sendTelegramAlert(telegramChatId, 'otp', {
       email: cleanEmail,
       otp: rawOtp,
       ip: clientIp,
-      userAgent: userAgent
+      userAgent: userAgent,
+      location: location
     });
 
     if (!telegramResult || !telegramResult.success) {
@@ -602,11 +659,13 @@ export const resetPassword = async (req, res) => {
         if (telegramChatId) {
           const clientIp = getClientIp(req);
           const userAgent = req.headers['user-agent'] || '';
+          const location = await getApproximateLocation(clientIp);
           console.log(`📧 Dispatching password changed confirmation via Telegram Bot to chat: ${telegramChatId}`);
           await sendTelegramAlert(telegramChatId, 'password_changed', {
             email: cleanEmail,
             ip: clientIp,
-            userAgent: userAgent
+            userAgent: userAgent,
+            location: location
           });
         }
 
@@ -641,6 +700,8 @@ export const resetPassword = async (req, res) => {
  * 6. Logout & Profile
  */
 export const logout = async (req, res) => {
+  const cleanEmail = req.user?.email || 'unknown';
+  await writeAuditLog(req, 'LOGOUT', cleanEmail);
   res.json({ success: true, message: 'Logged out successfully' });
 };
 

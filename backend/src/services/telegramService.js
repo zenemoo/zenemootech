@@ -52,6 +52,28 @@ export const getClientIp = (req) => {
   return ip.split(',')[0].trim();
 };
 
+/**
+ * Resolves the approximate location of an IP address using ip-api.com.
+ * Falls back to "Local Development" or "Unknown".
+ */
+export const getApproximateLocation = async (ip) => {
+  if (!ip || ip === '127.0.0.1' || ip === '::1' || ip === 'Unknown') {
+    return 'Local Development';
+  }
+  try {
+    const response = await fetch(`http://ip-api.com/json/${ip}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === 'success') {
+        return `${data.city}, ${data.regionName}, ${data.country}`;
+      }
+    }
+  } catch (e) {
+    console.error('GeoIP lookup error:', e.message);
+  }
+  return 'Unknown';
+};
+
 // Separate templates from execution logic
 const TEMPLATES = {
   otp: (data) => `🔐 Zenemoo Security Alert
@@ -62,6 +84,7 @@ A password reset request has been initiated for your administrator account.
 📧 Email: ${data.email}
 🕒 Time: ${data.time}
 🌐 IP Address: ${data.ip}
+📍 Location: ${data.location}
 🖥️ Device: ${data.device} / ${data.browser}
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -87,12 +110,41 @@ Your administrator account password has been changed successfully.
 📧 Email: ${data.email}
 🕒 Time: ${data.time}
 🌐 IP Address: ${data.ip}
+📍 Location: ${data.location}
 🖥️ Device: ${data.device} / ${data.browser}
 ━━━━━━━━━━━━━━━━━━━━
 
 If you made this change, no further action is required.
 
 ⚠️ If you did NOT make this change, secure your account immediately and contact the system administrator.
+
+━━━━━━━━━━━━━━━━━━━━
+
+Zenemoo Security System
+
+https://www.zenemoo.in/#portal/9KqvA2Nz8`,
+
+  login: (data) => `🔓 Zenemoo Security Alert
+
+A successful administrator login has been detected.
+
+━━━━━━━━━━━━━━━━━━━━
+📧 Email: ${data.email}
+🕒 Time: ${data.time}
+🌐 IP Address: ${data.ip}
+📍 Location: ${data.location}
+🖥️ Device: ${data.device} / ${data.browser}
+━━━━━━━━━━━━━━━━━━━━
+${data.isNewDevice ? `
+⚠️ New Device Detected
+
+This login appears to be from a device or browser that has not been used previously for this account.
+
+━━━━━━━━━━━━━━━━━━━━
+` : ''}
+If this was you, no further action is required.
+
+⚠️ If you did NOT perform this login, change your password immediately.
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -141,6 +193,8 @@ export const sendTelegramAlert = async (chatId, templateName, rawData) => {
     email: rawData.email,
     otp: rawData.otp,
     ip: rawData.ip || 'Unknown',
+    location: rawData.location || 'Unknown',
+    isNewDevice: !!rawData.isNewDevice,
     device,
     browser,
     time

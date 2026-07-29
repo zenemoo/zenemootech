@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -20,6 +20,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [showPasscode, setShowPasscode] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(() => {
+    return typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
+  });
 
   // Authorized Admin Emails Management State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
@@ -127,7 +130,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     setAllCandidateApps(apps);
   };
 
+  // Session validation and restoration hook on mount
   useEffect(() => {
+    const restoreSession = async () => {
+      const token = localStorage.getItem('zenemoo_jwt_token');
+      const expiry = localStorage.getItem('zenemoo_jwt_expiry');
+      
+      if (!token) {
+        setIsCheckingSession(false);
+        return;
+      }
+
+      if (expiry && Date.now() > parseInt(expiry, 10)) {
+        localStorage.removeItem('zenemoo_jwt_token');
+        localStorage.removeItem('zenemoo_jwt_expiry');
+        setPassError('Session expired. Please log in again.');
+        setIsCheckingSession(false);
+        return;
+      }
+
+      try {
+        console.log('🔄 Restoring active administrator session...');
+        const response = await authApi.getProfile();
+        if (response.data && response.data.success) {
+          setIsAuthenticated(true);
+          const newExpiry = Date.now() + 30 * 60 * 1000;
+          localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
+          console.log('✅ Session restored successfully.');
+        } else {
+          localStorage.removeItem('zenemoo_jwt_token');
+          localStorage.removeItem('zenemoo_jwt_expiry');
+        }
+      } catch (err) {
+        console.warn('Session verification failed on mount:', err);
+        localStorage.removeItem('zenemoo_jwt_token');
+        localStorage.removeItem('zenemoo_jwt_expiry');
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+
+    restoreSession();
+  }, []);
+
+  // Inactivity timeout watcher
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      const expiry = localStorage.getItem('zenemoo_jwt_expiry');
+      if (expiry && Date.now() > parseInt(expiry, 10)) {
+        console.log('⚠️ Inactivity session timeout reached.');
+        handleLogoutClick();
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
+  // Load dashboard data once authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     const loadData = async () => {
       await loadTeamData();
       await loadPartnersData();
@@ -139,7 +203,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       setAuthorizedEmails(authList);
     };
     loadData();
-  }, []);
+  }, [isAuthenticated]);
 
   // Question Builder Handlers
   const handleAddQuestion = () => {
@@ -570,6 +634,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       const response = await authApi.login(cleanPass, cleanEmail);
       if (response.data && response.data.success && response.data.token) {
         localStorage.setItem('zenemoo_jwt_token', response.data.token);
+        const expiry = Date.now() + 30 * 60 * 1000;
+        localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
         setIsAuthenticated(true);
         setPassError('');
       } else {
@@ -582,6 +648,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleLogoutClick = async () => {
+    try {
+      await authApi.logout();
+    } catch (e) {
+      console.warn('Logout API warning:', e);
+    }
+    localStorage.removeItem('zenemoo_jwt_token');
+    localStorage.removeItem('zenemoo_jwt_expiry');
+    setIsAuthenticated(false);
+    setShowPasscode(false);
+    setPasscode('');
   };
 
   const handleSendResetCode = (e: React.FormEvent) => {
@@ -614,10 +693,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       return;
     }
 
-    localStorage.setItem('zenemoo_admin_pass', newPass.trim());
     setResetStep('success');
     setForgotSuccess('Admin security password reset successfully!');
   };
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-[#050507] flex flex-col items-center justify-center p-4 relative z-50 font-sans">
+        <div className="glass-panel p-8 rounded-3xl border border-cyan-500/20 max-w-md w-full text-center space-y-4">
+          <div className="w-12 h-12 rounded-full border-t-2 border-cyan-400 border-r-2 border-transparent animate-spin mx-auto" />
+          <h3 className="text-sm font-bold text-white font-display">Checking Secure Session...</h3>
+          <p className="text-[11px] font-mono text-slate-400">Verifying JWT authentication token with backend</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -842,15 +932,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 animate-fade-in">
             {statusMessage && (
-              <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono animate-fade-in flex items-center gap-1.5">
+              <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono flex items-center gap-1.5">
                 <CheckCircle className="w-3.5 h-3.5" /> {statusMessage}
               </div>
             )}
             <button
+              onClick={handleLogoutClick}
+              className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-xs font-mono text-red-400 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" /> Logout Session
+            </button>
+            <button
               onClick={onExit}
-              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2 transition-colors"
+              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-2 transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" /> Exit to Website
             </button>
