@@ -5,11 +5,12 @@ import {
   updateApplication,
   deleteApplication,
 } from '../controllers/opportunityApplicationController.js';
+import { applicationRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 router.get('/', getApplications);
-router.post('/', submitApplication);
+router.post('/', applicationRateLimiter, submitApplication);
 router.put('/:id', updateApplication);
 router.delete('/:id', deleteApplication);
 

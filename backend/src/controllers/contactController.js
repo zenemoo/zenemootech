@@ -5,8 +5,20 @@ export const submitContact = async (req, res, next) => {
   try {
     const { name, email, phone, company, service, language, lang, inquiry_code, inquiry_id, notes, message } = req.body;
     if (!name || !email || !message) {
-      return res.status(400).json({ success: false, message: 'Name, email, and message are required' });
+      return res.status(400).json({ success: false, message: 'Name, email, and message are required fields.' });
     }
+
+    // Input Validation & XSS/HTML Sanitization
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+    }
+
+    const cleanName = (name || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    const cleanMessage = (message || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 3000);
+    const cleanPhone = (phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
+    const cleanCompany = (company || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    const cleanService = (service || 'Data Solutions').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
     const year = new Date().getFullYear();
     const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -14,15 +26,15 @@ export const submitContact = async (req, res, next) => {
     const selectedLanguage = language || lang || req.body.languages || 'Hindi';
 
     const contactPayload = {
-      name,
-      email: email.toLowerCase().trim(),
-      phone: phone || '',
-      company: company || '',
-      service: service || 'Data Solutions',
+      name: cleanName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      company: cleanCompany,
+      service: cleanService,
       language: selectedLanguage,
       inquiry_code: generatedCode,
       notes: notes || '',
-      message,
+      message: cleanMessage,
       status: 'unread',
       created_at: new Date().toISOString(),
     };

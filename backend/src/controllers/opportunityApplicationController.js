@@ -40,15 +40,25 @@ export const submitApplication = async (req, res) => {
       return res.status(400).json({ error: 'Missing required applicant fields' });
     }
 
+    // Input Validation & XSS/HTML Sanitization
+    const cleanEmail = (applicant_email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid applicant email address.' });
+    }
+
+    const cleanName = (applicant_name || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    const cleanPhone = (applicant_phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
+    const cleanTitle = (opportunity_title || 'General Opportunity').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+
     const generatedApplicantId = `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newRecord = {
       applicant_id: generatedApplicantId,
       opportunity_id,
-      opportunity_title: opportunity_title || 'General Opportunity',
-      applicant_name,
-      applicant_email,
-      applicant_phone,
+      opportunity_title: cleanTitle,
+      applicant_name: cleanName,
+      applicant_email: cleanEmail,
+      applicant_phone: cleanPhone,
       answers: answers || {},
       status: 'pending',
       admin_notes: '',

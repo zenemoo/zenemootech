@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { saveContactInquiry, sendDirectTelegramContactFallback } from '../lib/adminStore';
+import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
 
 const COUNTRY_CODES = [
@@ -86,8 +86,6 @@ export const Contact: React.FC = () => {
 
     try {
       await saveContactInquiry(payload);
-      // Direct instant Telegram dispatch
-      sendDirectTelegramContactFallback(payload);
     } catch (err) {
       console.warn('Contact submit warning:', err);
     } finally {

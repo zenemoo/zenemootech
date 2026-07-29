@@ -62,14 +62,20 @@ export const createPartner = async (req, res, next) => {
     const maxPos = currentList.reduce((max, p) => Math.max(max, Number(p.position || 0)), 0);
     const newPosition = maxPos + 1;
 
+    // Input Validation & XSS/HTML Sanitization
+    const cleanName = (req.body.name || 'New Partner Company').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    const cleanRole = (req.body.role || 'Language Data & AI Partner').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    const cleanBadge = (req.body.badge || 'AI Partner').replace(/<[^>]*>?/gm, '').trim().substring(0, 50);
+    const cleanWebsite = (req.body.website_url || req.body.url || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 200);
+
     const payload = {
       position: newPosition,
-      name: req.body.name || 'New Partner Company',
-      role: req.body.role || 'Language Data & AI Partner',
-      badge: req.body.badge || 'AI Partner',
+      name: cleanName,
+      role: cleanRole,
+      badge: cleanBadge,
       image_url: req.body.image_url || req.body.image || '',
       public_id: req.body.public_id || '',
-      website_url: req.body.website_url || req.body.url || '',
+      website_url: cleanWebsite,
       status: req.body.status || 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

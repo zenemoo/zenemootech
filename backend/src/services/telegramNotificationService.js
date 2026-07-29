@@ -27,8 +27,8 @@ export const getFormattedDateTimeIST = () => {
 export const getActiveAdminChatIds = async () => {
   const chatIds = new Set();
 
-  // Primary ENV or default chat ID fallback (6141055184)
-  const primaryChatId = (process.env.TELEGRAM_CHAT_ID || '6141055184').trim();
+  // Primary ENV fallback chat ID (loaded exclusively from backend environment variables)
+  const primaryChatId = (process.env.DEFAULT_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
   if (primaryChatId) {
     chatIds.add(primaryChatId);
   }
@@ -67,6 +67,8 @@ export const sendTelegramMessageToChat = async (chatId, textMessage, retries = 2
     return false;
   }
 
+  const maskedChatId = chatId.length > 4 ? `***${chatId.substring(chatId.length - 4)}` : '***';
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -81,13 +83,13 @@ export const sendTelegramMessageToChat = async (chatId, textMessage, retries = 2
 
       const resData = await response.json();
       if (response.ok && resData.ok) {
-        console.log(`✅ [Telegram Notification Delivered] Chat ID: ${chatId} | MSG ID: ${resData.result?.message_id}`);
+        console.log(`✅ [Telegram Notification Delivered] Target: ${maskedChatId} | MSG ID: ${resData.result?.message_id}`);
         return true;
       }
 
-      console.warn(`⚠️ [Telegram API Retry ${attempt + 1}/${retries + 1}] Chat ID: ${chatId} | Status: ${response.status} | ${resData?.description}`);
+      console.warn(`⚠️ [Telegram API Retry ${attempt + 1}/${retries + 1}] Target: ${maskedChatId} | Status: ${response.status} | ${resData?.description}`);
     } catch (err) {
-      console.error(`❌ [Telegram Network Exception ${attempt + 1}/${retries + 1}] Chat ID: ${chatId} | ${err.message}`);
+      console.error(`❌ [Telegram Network Exception ${attempt + 1}/${retries + 1}] Target: ${maskedChatId} | ${err.message}`);
     }
 
     if (attempt < retries) {
