@@ -28,7 +28,7 @@ export const getActiveAdminChatIds = async () => {
   const chatIds = new Set();
 
   // Primary ENV fallback chat ID (loaded exclusively from backend environment variables)
-  const primaryChatId = (process.env.DEFAULT_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+  const primaryChatId = (process.env.DEFAULT_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '6141055184').trim();
   if (primaryChatId) {
     chatIds.add(primaryChatId);
   }
