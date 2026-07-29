@@ -6,7 +6,7 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, deleteAuthorizedEmailFromSupabase } from '../lib/adminStore';
-import { contactApi, subscriberApi } from '../services/api';
+import { contactApi, subscriberApi, authApi } from '../services/api';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -19,6 +19,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [passError, setPassError] = useState('');
   const [showPasscode, setShowPasscode] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Authorized Admin Emails Management State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
@@ -557,23 +558,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     );
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setPassError('');
+    setIsLoggingIn(true);
 
-    if (!adminEmail.trim() || !isAuthorizedEmail(adminEmail)) {
-      setPassError('Access Denied: Email is not authorized for Zenemoo Admin Control Center.');
-      return;
-    }
+    try {
+      const cleanEmail = adminEmail.trim().toLowerCase();
+      const cleanPass = passcode.trim();
 
-    const storedPass = localStorage.getItem('zenemoo_admin_pass') || 'zenemoo2026';
-    const validPasscodes = [storedPass, 'zenemoo2026', 'admin2026', 'prem2026'];
-
-    if (validPasscodes.includes(passcode.trim())) {
-      setIsAuthenticated(true);
-      setPassError('');
-    } else {
-      setPassError('Invalid security passcode. Click "Forgot Password?" below to reset via Gmail verification.');
+      const response = await authApi.login(cleanPass, cleanEmail);
+      if (response.data && response.data.success && response.data.token) {
+        localStorage.setItem('zenemoo_jwt_token', response.data.token);
+        setIsAuthenticated(true);
+        setPassError('');
+      } else {
+        setPassError(response.data?.message || 'Login failed. Please check your credentials.');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      const msg = err.response?.data?.message || err.message || 'Invalid admin passcode.';
+      setPassError(msg);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -679,9 +686,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer"
+              disabled={isLoggingIn}
+              className={`w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              Authenticate &amp; Access Admin <ArrowLeft className="w-4 h-4 rotate-180 text-black" />
+              {isLoggingIn ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-black" /> Authenticating...
+                </>
+              ) : (
+                <>
+                  Authenticate &amp; Access Admin <ArrowLeft className="w-4 h-4 rotate-180 text-black" />
+                </>
+              )}
             </button>
           </form>
 

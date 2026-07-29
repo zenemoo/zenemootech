@@ -140,11 +140,7 @@ export const login = async (req, res, next) => {
       isPasswordValid = await bcrypt.compare(passcode, passwordHash);
       console.log('🔒 Bcrypt verification result:', isPasswordValid ? '✅ MATCH' : '❌ MISMATCH');
     } else {
-      console.log('ℹ️ No password hash in DB. Falling back to in-memory/environment passcode checks.');
-      const storedCustomPass = process.env.CUSTOM_ADMIN_PASSCODE || ADMIN_PASSCODE;
-      const validPasscodes = [storedCustomPass, ADMIN_PASSCODE, 'zenemoo2026', 'admin2026', 'prem2026'];
-      isPasswordValid = passcode && validPasscodes.includes(passcode.trim());
-      console.log('🔒 Fallback passcode verification result:', isPasswordValid ? '✅ MATCH' : '❌ MISMATCH');
+      console.warn(`⚠️ Login failed: No password hash configured in database for ${cleanEmail}.`);
     }
 
     if (!isPasswordValid) {
