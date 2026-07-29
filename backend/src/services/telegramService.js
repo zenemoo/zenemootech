@@ -1,36 +1,150 @@
 /**
- * Telegram Bot Transactional Notification Service
+ * Reusable User-Agent parsing helper.
+ * Resolves OS and Browser names.
  */
-export const sendTelegramOtp = async (chatId, otp) => {
+export const parseUserAgent = (ua) => {
+  if (!ua) return { device: 'Unknown OS', browser: 'Unknown Browser' };
+  let os = 'Unknown OS';
+  let browser = 'Unknown Browser';
+
+  if (ua.includes('Windows')) os = 'Windows';
+  else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS';
+  else if (ua.includes('Linux')) os = 'Linux';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+  if (ua.includes('Chrome')) browser = 'Chrome';
+  else if (ua.includes('Safari')) browser = 'Safari';
+  else if (ua.includes('Firefox')) browser = 'Firefox';
+  else if (ua.includes('Edg')) browser = 'Edge';
+  else if (ua.includes('OPR') || ua.includes('Opera')) browser = 'Opera';
+
+  return { device: os, browser };
+};
+
+/**
+ * Reusable formatted timezone timestamp generator.
+ * Format: 29 Jul 2026, 02:45 PM IST
+ */
+export const getFormattedTime = () => {
+  const date = new Date();
+  const options = { timeZone: 'Asia/Kolkata' };
+  
+  const day = date.toLocaleDateString('en-GB', { ...options, day: '2-digit' });
+  const month = date.toLocaleDateString('en-GB', { ...options, month: 'short' });
+  const year = date.toLocaleDateString('en-GB', { ...options, year: 'numeric' });
+  const timeStr = date.toLocaleTimeString('en-US', { ...options, hour: '2-digit', minute: '2-digit', hour12: true });
+  
+  return `${day} ${month} ${year}, ${timeStr} IST`;
+};
+
+/**
+ * Reusable client IP address extractor.
+ * Handles reverse proxies (Render), standard Express ip, and sockets.
+ */
+export const getClientIp = (req) => {
+  if (!req) return 'Unknown';
+  const ip = req.headers['x-forwarded-for'] || 
+             req.headers['x-real-ip'] || 
+             req.ip || 
+             req.socket?.remoteAddress || 
+             'Unknown';
+  return ip.split(',')[0].trim();
+};
+
+// Separate templates from execution logic
+const TEMPLATES = {
+  otp: (data) => `🔐 Zenemoo Security Alert
+
+A password reset request has been initiated for your administrator account.
+
+━━━━━━━━━━━━━━━━━━━━
+📧 Email: ${data.email}
+🕒 Time: ${data.time}
+🌐 IP Address: ${data.ip}
+🖥️ Device: ${data.device} / ${data.browser}
+━━━━━━━━━━━━━━━━━━━━
+
+🔑 One-Time Password (OTP)
+
+OTP: ${data.otp}
+
+This OTP is valid for 5 minutes and can only be used once.
+
+⚠️ If you did not request this password reset, do NOT share this OTP with anyone. Please secure your administrator account immediately.
+
+━━━━━━━━━━━━━━━━━━━━
+
+Zenemoo Security System
+
+https://www.zenemoo.in/#portal/9KqvA2Nz8`,
+
+  password_changed: (data) => `✅ Zenemoo Security Alert
+
+Your administrator account password has been changed successfully.
+
+━━━━━━━━━━━━━━━━━━━━
+📧 Email: ${data.email}
+🕒 Time: ${data.time}
+🌐 IP Address: ${data.ip}
+🖥️ Device: ${data.device} / ${data.browser}
+━━━━━━━━━━━━━━━━━━━━
+
+If you made this change, no further action is required.
+
+⚠️ If you did NOT make this change, secure your account immediately and contact the system administrator.
+
+━━━━━━━━━━━━━━━━━━━━
+
+Zenemoo Security System
+
+https://www.zenemoo.in/#portal/9KqvA2Nz8`
+};
+
+/**
+ * Send professional, enterprise-grade Telegram security alerts
+ */
+export const sendTelegramAlert = async (chatId, templateName, rawData) => {
   const botToken = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 
   console.log('-----------------------------------------------------');
-  console.log('📬 TELEGRAM OTP DISPATCH INITIATED');
+  console.log('📬 TELEGRAM NOTIFICATION DISPATCH INITIATED');
+  console.log('   - Template:', templateName);
   console.log('   - Target Chat ID:', chatId);
   console.log('   - Bot Token Prefix:', botToken ? `${botToken.substring(0, 10)}...` : '❌ MISSING');
   console.log('-----------------------------------------------------');
 
   if (!botToken) {
-    console.warn('[TELEGRAM ERROR] TELEGRAM_BOT_TOKEN is missing. Cannot dispatch message.');
+    console.warn('[TELEGRAM ERROR] TELEGRAM_BOT_TOKEN is missing. Cannot dispatch alert.');
     return { success: false, error: 'TELEGRAM_BOT_TOKEN is missing in environment variables.' };
   }
 
   if (!chatId) {
-    console.warn('[TELEGRAM ERROR] Target Chat ID is missing. Cannot dispatch message.');
+    console.warn('[TELEGRAM ERROR] Target Chat ID is missing. Cannot dispatch alert.');
     return { success: false, error: 'Target Chat ID is missing.' };
   }
 
-  // Format exactly as requested:
-  // 🔐 Zenemoo Security
-  //
-  // Your password reset code is:
-  //
-  // 482913
-  //
-  // Valid for 5 minutes.
-  //
-  // If you did not request this reset, ignore this message.
-  const textMessage = `🔐 Zenemoo Security\n\nYour password reset code is:\n\n${otp}\n\nValid for 5 minutes.\n\nIf you did not request this reset, ignore this message.`;
+  const templateFn = TEMPLATES[templateName];
+  if (!templateFn) {
+    console.warn(`[TELEGRAM ERROR] Unknown template name: ${templateName}`);
+    return { success: false, error: `Unknown template: ${templateName}` };
+  }
+
+  // Resolve user agent details
+  const { device, browser } = parseUserAgent(rawData.userAgent);
+
+  // Format time
+  const time = getFormattedTime();
+
+  // Populate dynamic payload
+  const textMessage = templateFn({
+    email: rawData.email,
+    otp: rawData.otp,
+    ip: rawData.ip || 'Unknown',
+    device,
+    browser,
+    time
+  });
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -47,7 +161,7 @@ export const sendTelegramOtp = async (chatId, otp) => {
     const resData = await response.json();
 
     if (response.ok && resData.ok) {
-      console.log('✅ [TELEGRAM SUCCESS] Dispatched to chat:', chatId);
+      console.log(`✅ [TELEGRAM SUCCESS] Alert [${templateName}] sent to chat: ${chatId}`);
       return { success: true, messageId: resData.result?.message_id };
     } else {
       console.warn(`⚠️ [TELEGRAM REJECTED] Status: ${response.status} | Description: ${resData?.description}`);

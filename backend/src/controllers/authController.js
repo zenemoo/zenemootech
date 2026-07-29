@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
-import { sendTelegramOtp } from '../services/telegramService.js';
+import { sendTelegramAlert, getClientIp } from '../services/telegramService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'zenemoo2026';
@@ -328,8 +328,16 @@ export const forgotPassword = async (req, res) => {
     console.log(`✅ Updated in-memory backup cache with OTP hash for ${cleanEmail}`);
 
     // Send Telegram OTP
+    const clientIp = getClientIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+
     console.log(`📧 Dispatching OTP via Telegram Bot to chat: ${telegramChatId}`);
-    const telegramResult = await sendTelegramOtp(telegramChatId, rawOtp);
+    const telegramResult = await sendTelegramAlert(telegramChatId, 'otp', {
+      email: cleanEmail,
+      otp: rawOtp,
+      ip: clientIp,
+      userAgent: userAgent
+    });
 
     if (!telegramResult || !telegramResult.success) {
       console.error(`❌ Telegram delivery failed: ${telegramResult?.error || 'Unknown Telegram API error'}`);
@@ -561,6 +569,19 @@ export const resetPassword = async (req, res) => {
     // Update password_hash in Supabase authorized_admin_emails table
     if (supabase) {
       try {
+        console.log(`🌐 Fetching user details to retrieve telegram_chat_id for: ${cleanEmail}...`);
+        
+        let telegramChatId = null;
+        const { data: userData, error: userError } = await supabase
+          .from('authorized_admin_emails')
+          .select('telegram_chat_id')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (!userError && userData) {
+          telegramChatId = userData.telegram_chat_id;
+        }
+
         console.log(`🌐 Updating password_hash and last_password_reset in DB for: ${cleanEmail}...`);
         const { error } = await supabase
           .from('authorized_admin_emails')
@@ -576,6 +597,18 @@ export const resetPassword = async (req, res) => {
         }
         
         console.log(`✅ Password hash successfully updated in database.`);
+
+        // If a telegram chat ID is linked, send a password change success confirmation alert!
+        if (telegramChatId) {
+          const clientIp = getClientIp(req);
+          const userAgent = req.headers['user-agent'] || '';
+          console.log(`📧 Dispatching password changed confirmation via Telegram Bot to chat: ${telegramChatId}`);
+          await sendTelegramAlert(telegramChatId, 'password_changed', {
+            email: cleanEmail,
+            ip: clientIp,
+            userAgent: userAgent
+          });
+        }
 
         // Delete used OTP
         if (record.id) {
