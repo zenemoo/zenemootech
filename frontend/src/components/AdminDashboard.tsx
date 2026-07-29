@@ -4065,10 +4065,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   </div>
                   <div className="flex items-start gap-4 relative z-10">
                     <div className="relative shrink-0">
-                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 p-[2px] shadow-xl shadow-cyan-500/20">
-                        <div className="w-full h-full rounded-[14px] bg-[#0c0d14] flex items-center justify-center text-xl font-extrabold text-cyan-300 uppercase tracking-widest font-display">
-                          {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
-                        </div>
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 p-[2px] shadow-xl shadow-cyan-500/20 overflow-hidden">
+                        {activeAdminPhoto ? (
+                          <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[14px]" />
+                        ) : (
+                          <div className="w-full h-full rounded-[14px] bg-[#0c0d14] flex items-center justify-center text-xl font-extrabold text-cyan-300 uppercase tracking-widest font-display">
+                            {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
+                          </div>
+                        )}
                       </div>
                       <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#090a0f] shadow-md animate-pulse" />
                     </div>
