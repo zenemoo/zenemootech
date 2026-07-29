@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase.js';
+import { sendApplicationNotification } from '../services/telegramNotificationService.js';
 
 // 1. GET ALL APPLICATIONS (Filtered by opportunity_id if provided)
 export const getApplications = async (req, res) => {
@@ -59,6 +60,15 @@ export const submitApplication = async (req, res) => {
       console.error('Supabase insert application error:', error.message);
       return res.status(500).json({ error: error.message });
     }
+
+    // Asynchronously dispatch Telegram notification to all active administrators (non-blocking)
+    sendApplicationNotification({
+      applicant_name,
+      applicant_email,
+      applicant_phone,
+      opportunity_title: opportunity_title || 'Program Opportunity',
+      qualification: answers?.qualification || answers?.degree || 'Relevant Qualification Uploaded',
+    }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
 
     return res.status(201).json({ status: 'success', data: data[0] });
   } catch (err) {

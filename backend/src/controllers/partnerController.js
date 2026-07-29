@@ -1,4 +1,5 @@
 import { supabaseService } from '../services/supabaseService.js';
+import { sendPartnerNotification } from '../services/telegramNotificationService.js';
 
 // Helper: Normalize partner positions using 2-phase offset update to prevent PostgreSQL UNIQUE key collisions
 const normalizeAndSavePositions = async (customList = null) => {
@@ -76,6 +77,15 @@ export const createPartner = async (req, res, next) => {
 
     const created = await supabaseService.insert('partners', payload);
     const updatedList = await normalizeAndSavePositions();
+
+    // Asynchronously dispatch Telegram notification to all active administrators (non-blocking)
+    sendPartnerNotification({
+      company: req.body.name || 'New Enterprise Partner',
+      contact: req.body.contact_person || req.body.contact || 'Executive Representative',
+      email: req.body.email || 'partner@enterprise.com',
+      phone: req.body.phone || 'N/A',
+      website: req.body.website_url || req.body.url || 'https://zenemoo.in',
+    }).catch((err) => console.warn('[Telegram Partner Notification Note]', err.message));
 
     res.status(201).json({
       success: true,

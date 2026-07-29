@@ -1,4 +1,5 @@
 import { supabaseService } from '../services/supabaseService.js';
+import { sendContactNotification } from '../services/telegramNotificationService.js';
 
 export const submitContact = async (req, res, next) => {
   try {
@@ -27,6 +28,16 @@ export const submitContact = async (req, res, next) => {
     };
 
     const savedRecord = await supabaseService.insert('contacts', contactPayload);
+
+    // Asynchronously dispatch Telegram notification to all active administrators (non-blocking)
+    sendContactNotification({
+      name,
+      email,
+      phone,
+      company,
+      subject: service || 'Data Solutions Inquiry',
+      message,
+    }).catch((err) => console.warn('[Telegram Contact Notification Note]', err.message));
 
     res.status(201).json({
       success: true,
