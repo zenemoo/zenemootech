@@ -1247,10 +1247,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     showStatus('All notifications marked as read');
   };
 
-  const activeAdminAccount = useMemo(() => {
-    return authorizedEmails.find(a => a.email.toLowerCase() === adminEmail.toLowerCase()) || null;
-  }, [authorizedEmails, adminEmail]);
-
+  const activeAdminAccount = authorizedEmails.find(a => a.email.toLowerCase() === adminEmail.toLowerCase()) || null;
   const activeAdminPhoto = adminProfile?.profile_photo_url || activeAdminAccount?.profile_photo_url || '';
 
   const navItems = [
