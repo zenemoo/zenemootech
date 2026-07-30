@@ -1,6 +1,19 @@
 import nodemailer from 'nodemailer';
 
 /**
+ * Clean & Normalize Brevo API Key
+ * Ensures missing 'xsmtpsib-' prefix is automatically restored
+ */
+const getNormalizedApiKey = (rawKey) => {
+  let key = (rawKey || '').trim();
+  if (!key) return '';
+  if (!key.startsWith('xsmtpsib-') && !key.startsWith('xkeysib-')) {
+    return `xsmtpsib-${key}`;
+  }
+  return key;
+};
+
+/**
  * Parse recipient inputs into cleaned array of email strings
  */
 export const parseRecipients = (input) => {
@@ -35,7 +48,6 @@ export const sanitizeHtml = (html) => {
 
 /**
  * Extract Attachment Metadata for Supabase Storage (NO binary / base64 content saved)
- * Outputs metadata indicators: image: "yes" | "no", pdf: "yes" | "no"
  */
 export const extractAttachmentMetadata = (attachments = []) => {
   if (!Array.isArray(attachments)) return [];
@@ -61,7 +73,7 @@ export const extractAttachmentMetadata = (attachments = []) => {
 };
 
 /**
- * Normalize attachments for Nodemailer execution
+ * Normalize attachments for Nodemailer & Brevo REST API
  */
 export const normalizeAttachments = (attachments = []) => {
   if (!Array.isArray(attachments)) return [];
@@ -91,10 +103,12 @@ export const normalizeAttachments = (attachments = []) => {
 };
 
 /**
- * 1. Primary Dispatcher: Brevo HTTPS REST API v3 (Port 443 - Bypasses Cloud Provider SMTP Blocks)
+ * 1. Primary Dispatcher: Brevo HTTPS REST API v3 (Port 443 - Works on Render, Vercel & All Cloud Hosts)
  */
 const sendViaBrevoRestApi = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
-  const apiKey = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY || '';
+  const envKey = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY;
+  const apiKey = getNormalizedApiKey(envKey);
+
   if (!apiKey) {
     throw new Error('BREVO_API_KEY / BREVO_SMTP_KEY environment variable is not configured');
   }
@@ -151,7 +165,7 @@ const sendViaBrevoRestApi = async ({ sender, recipients, cc, bcc, subject, html,
   const resData = await response.json();
 
   if (!response.ok) {
-    throw new Error(resData?.message || `Brevo REST API error (Status ${response.status})`);
+    throw new Error(resData?.message || `Brevo REST API Error ${response.status}`);
   }
 
   return {
@@ -165,23 +179,12 @@ const sendViaBrevoRestApi = async ({ sender, recipients, cc, bcc, subject, html,
 };
 
 /**
- * 2. Fallback Dispatcher: Nodemailer SMTP
+ * 2. Fallback Dispatcher: Nodemailer SMTP (Tries Port 465 SSL first, then Port 587 TLS)
  */
 const sendViaNodemailerSmtp = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
   const host = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
-  const port = Number(process.env.BREVO_SMTP_PORT || 587);
   const user = process.env.BREVO_SMTP_LOGIN || 'b39046001@smtp-brevo.com';
-  const pass = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY || '';
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 10000,
-  });
+  const pass = getNormalizedApiKey(process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY);
 
   const parsedTo = parseRecipients(recipients);
   const parsedCc = parseRecipients(cc);
@@ -190,37 +193,59 @@ const sendViaNodemailerSmtp = async ({ sender, recipients, cc, bcc, subject, htm
   const safeHtml = sanitizeHtml(html);
   const normalizedAttachments = normalizeAttachments(attachments);
 
-  const info = await transporter.sendMail({
-    from: sender || 'contact@zenemoo.in',
-    to: parsedTo,
-    cc: parsedCc.length > 0 ? parsedCc : undefined,
-    bcc: parsedBcc.length > 0 ? parsedBcc : undefined,
-    subject: subject || '(No Subject)',
-    html: safeHtml,
-    attachments: normalizedAttachments,
-  });
+  // Attempt Port 465 (SSL) first, then Port 587 (TLS)
+  const portsToTry = [465, 587];
+  let lastError = null;
 
-  return {
-    messageId: info.messageId,
-    parsedTo,
-    parsedCc,
-    parsedBcc,
-    safeHtml,
-    attachmentsMeta: extractAttachmentMetadata(attachments),
-  };
+  for (const port of portsToTry) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+        connectionTimeout: 6000,
+        greetingTimeout: 6000,
+        socketTimeout: 8000,
+      });
+
+      const info = await transporter.sendMail({
+        from: sender || 'contact@zenemoo.in',
+        to: parsedTo,
+        cc: parsedCc.length > 0 ? parsedCc : undefined,
+        bcc: parsedBcc.length > 0 ? parsedBcc : undefined,
+        subject: subject || '(No Subject)',
+        html: safeHtml,
+        attachments: normalizedAttachments,
+      });
+
+      return {
+        messageId: info.messageId,
+        parsedTo,
+        parsedCc,
+        parsedBcc,
+        safeHtml,
+        attachmentsMeta: extractAttachmentMetadata(attachments),
+      };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Nodemailer SMTP connections failed');
 };
 
 /**
  * Master Hybrid Email Dispatcher
  */
 export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
-  // First attempt: Brevo HTTPS REST API v3 (Fast & Port 443 guaranteed on Render / Vercel)
+  // 1. Primary: Brevo HTTPS REST API v3 (Port 443)
   try {
     return await sendViaBrevoRestApi({ sender, recipients, cc, bcc, subject, html, attachments });
   } catch (apiError) {
     console.warn('⚠️ Brevo HTTPS REST API delivery failed/fallback triggered:', apiError.message);
-    
-    // Second attempt: Nodemailer SMTP fallback
+
+    // 2. Secondary Fallback: Nodemailer SMTP
     return await sendViaNodemailerSmtp({ sender, recipients, cc, bcc, subject, html, attachments });
   }
 };
