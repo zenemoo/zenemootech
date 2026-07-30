@@ -75,7 +75,7 @@ export const Hero: React.FC = () => {
             </a>
 
             <a
-              href="mailto:quantumcoderstechlab@gmail.com"
+              href="mailto:contact@zenemoo.in"
               className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-white/20 text-slate-200 hover:text-white font-medium text-sm backdrop-blur-xl hover:bg-white/[0.08] transition-all duration-200"
             >
               <Mail className="w-4 h-4 text-purple-400" />

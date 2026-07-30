@@ -185,12 +185,12 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onBack }) 
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-cyan-400" />
                   <span>Team Email:</span>
-                  <a href="mailto:zenemootech@gmail.com" className="text-white font-bold hover:underline">zenemootech@gmail.com</a>
+                  <a href="mailto:contact@zenemoo.in" className="text-white font-bold hover:underline">contact@zenemoo.in</a>
                 </div>
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-cyan-400" />
                   <span>Founder Email:</span>
-                  <a href="mailto:contact@mrprem.in" className="text-white font-bold hover:underline">contact@mrprem.in</a>
+                  <a href="mailto:prem@zenemoo.in" className="text-white font-bold hover:underline">prem@zenemoo.in</a>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-cyan-400" />

@@ -2663,7 +2663,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                   const serviceName = inq.service || 'Data Solutions';
 
                   const replySubject = `[Zenemoo Inquiry #${code}] Response regarding ${serviceName}`;
-                  const replyBody = `Dear ${inq.name},\n\nThank you for contacting Zenemoo Data Solutions regarding your project inquiry.\n\n- Inquiry Reference Code: ${code}\n- Requested Service: ${serviceName}\n- Target Language(s): ${lang}\n- Your Message: "${inq.message}"\n\nOur operations and lead engineering team has reviewed your specifications. We are pleased to confirm team capacity for your project.\n\nPlease let us know if you have additional audio/data files or benchmark instructions.\n\nBest regards,\nPrem Prasad Pradhan\nFounder & Vendor Manager | Zenemoo Tech Team\nEmail: contact@mrprem.in | zenemootech@gmail.com\nWebsite: https://zenemoo.com`;
+                  const replyBody = `Dear ${inq.name},\n\nThank you for contacting Zenemoo Data Solutions regarding your project inquiry.\n\n- Inquiry Reference Code: ${code}\n- Requested Service: ${serviceName}\n- Target Language(s): ${lang}\n- Your Message: "${inq.message}"\n\nOur operations and lead engineering team has reviewed your specifications. We are pleased to confirm team capacity for your project.\n\nPlease let us know if you have additional audio/data files or benchmark instructions.\n\nBest regards,\nPrem Prasad Pradhan\nFounder & Vendor Manager | Zenemoo Tech Team\nEmail: prem@zenemoo.in | contact@zenemoo.in\nWebsite: https://www.zenemoo.in`;
 
                   return (
                     <div

@@ -1,5 +1,19 @@
 import { teamApi } from '../services/api';
 
+export interface TimelineItem {
+  year?: string;
+  date?: string;
+  title: string;
+  description: string;
+}
+
+export interface AchievementItem {
+  title: string;
+  category?: string;
+  description?: string;
+  badge?: string;
+}
+
 export interface TeamMember {
   id: string;
   position: number;
@@ -21,9 +35,37 @@ export interface TeamMember {
   twitter?: string;
   status: 'active' | 'inactive';
   category?: string;
+  slug?: string;
+  employee_id?: string;
+  joining_date?: string;
+  experience?: string;
+  location?: string;
+  languages?: string[];
+  availability?: string;
+  portfolio?: string;
+  long_bio?: string;
+  ai_summary?: string;
+  projects_completed?: string | number;
+  accuracy?: string;
+  datasets_processed?: string | number;
+  hours_worked?: string | number;
+  completion_rate?: string;
+  quality_score?: string;
+  timeline?: TimelineItem[];
+  achievements?: (string | AchievementItem)[];
   created_at?: string;
   updated_at?: string;
 }
+
+export const getSlugFromName = (name: string): string => {
+  if (!name) return 'team-member';
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+};
 
 export const INITIAL_TEAM_MEMBERS: TeamMember[] = [];
 
@@ -44,12 +86,37 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
           }
         }
 
+        let parsedLanguages: string[] = [];
+        if (Array.isArray(m.languages)) {
+          parsedLanguages = m.languages;
+        } else if (typeof m.languages === 'string') {
+          try {
+            parsedLanguages = JSON.parse(m.languages);
+          } catch (e) {
+            parsedLanguages = m.languages.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          }
+        }
+
+        let parsedTimeline: TimelineItem[] = [];
+        if (Array.isArray(m.timeline)) {
+          parsedTimeline = m.timeline;
+        } else if (typeof m.timeline === 'string') {
+          try {
+            parsedTimeline = JSON.parse(m.timeline);
+          } catch (e) {}
+        }
+
+        const generatedSlug = m.slug || getSlugFromName(m.name);
+
         return {
           ...m,
+          slug: generatedSlug,
           position: Number(m.position || idx + 1),
           designation: m.designation || m.role || 'Specialist',
           badge: m.badge || 'Specialist',
           skills: parsedSkills,
+          languages: parsedLanguages,
+          timeline: parsedTimeline,
           image_url: m.image_url || m.image || '/assets/executive.png',
           status: m.status || 'active',
           department: m.department || m.category || 'Engineering',
@@ -64,6 +131,7 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
   }
   return [];
 };
+
 
 export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<TeamMember[]> => {
   if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {

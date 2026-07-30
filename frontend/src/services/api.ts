@@ -55,12 +55,13 @@ api.interceptors.response.use(
 
 // Core Allowed Emails Fallback List
 const DEFAULT_ALLOWED_EMAILS = [
-  'mr.prem2006@gmail.com',
-  'contact@mrprem.in',
-  'zenemootech@gmail.com',
+  'prem@zenemoo.in',
   'contact@zenemoo.in',
   'support@zenemoo.in',
   'info@zenemoo.in',
+  'noreply@zenemoo.in',
+  'zenemootech@gmail.com',
+  'mr.prem2006@gmail.com',
 ];
 
 export const authApi = {
@@ -119,9 +120,11 @@ export const teamApi = {
   getAll: () => api.get('/team'),
   create: (data: any) => api.post('/team', data),
   reorder: (id: string, newPosition: number) => api.put('/team/reorder', { id, newPosition }),
+  generateSummary: (id: string) => api.post(`/team/${id}/generate-summary`),
   update: (id: string, data: any) => api.put(`/team/${id}`, data),
   delete: (id: string) => api.delete(`/team/${id}`),
 };
+
 
 // Services APIs
 export const serviceApi = {

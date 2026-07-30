@@ -14,12 +14,13 @@ const auditLogsStore = [];
 
 // Core Executive Allowed Email List Backup
 const DEFAULT_ALLOWED_EMAILS = [
-  'mr.prem2006@gmail.com',
-  'contact@mrprem.in',
-  'zenemootech@gmail.com',
+  'prem@zenemoo.in',
   'contact@zenemoo.in',
   'support@zenemoo.in',
   'info@zenemoo.in',
+  'noreply@zenemoo.in',
+  'zenemootech@gmail.com',
+  'mr.prem2006@gmail.com',
 ];
 
 /**

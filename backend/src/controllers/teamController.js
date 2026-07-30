@@ -1,4 +1,5 @@
 import { supabaseService } from '../services/supabaseService.js';
+import { generateTeamMemberSummary } from '../services/aiService.js';
 
 // Helper: Normalize team positions in database using a 2-phase offset update to prevent PostgreSQL UNIQUE constraint violations
 const normalizeAndSavePositions = async (customList = null) => {
@@ -87,9 +88,32 @@ export const createTeamMember = async (req, res, next) => {
       email: req.body.email || '',
       phone: req.body.phone || '',
       status: req.body.status || 'active',
+      slug: req.body.slug || '',
+      employee_id: req.body.employee_id || '',
+      joining_date: req.body.joining_date || '',
+      experience: req.body.experience || '',
+      location: req.body.location || '',
+      languages: req.body.languages || [],
+      availability: req.body.availability || 'Available for Projects',
+      portfolio: req.body.portfolio || '',
+      long_bio: req.body.long_bio || '',
+      ai_summary: req.body.ai_summary || '',
+      projects_completed: req.body.projects_completed || '',
+      accuracy: req.body.accuracy || '',
+      datasets_processed: req.body.datasets_processed || '',
+      hours_worked: req.body.hours_worked || '',
+      completion_rate: req.body.completion_rate || '',
+      quality_score: req.body.quality_score || '',
+      timeline: req.body.timeline || [],
+      achievements: req.body.achievements || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    // Auto generate AI summary on creation if not provided
+    if (!newMemberPayload.ai_summary) {
+      newMemberPayload.ai_summary = await generateTeamMemberSummary(newMemberPayload);
+    }
 
     const createdMember = await supabaseService.insert('team', newMemberPayload);
     const updatedTeam = await normalizeAndSavePositions();
@@ -184,6 +208,24 @@ export const updateTeamMember = async (req, res, next) => {
       'email',
       'phone',
       'status',
+      'slug',
+      'employee_id',
+      'joining_date',
+      'experience',
+      'location',
+      'languages',
+      'availability',
+      'portfolio',
+      'long_bio',
+      'ai_summary',
+      'projects_completed',
+      'accuracy',
+      'datasets_processed',
+      'hours_worked',
+      'completion_rate',
+      'quality_score',
+      'timeline',
+      'achievements',
       'updated_at',
     ];
 
@@ -209,6 +251,32 @@ export const updateTeamMember = async (req, res, next) => {
   }
 };
 
+// POST /api/team/:id/generate-summary - Explicit Admin trigger to generate AI summary via Groq
+export const generateMemberSummary = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const member = await supabaseService.selectById('team', id);
+    if (!member) {
+      return res.status(404).json({ success: false, message: 'Team member not found' });
+    }
+
+    const aiSummary = await generateTeamMemberSummary(member);
+    const updated = await supabaseService.update('team', id, {
+      ai_summary: aiSummary,
+      updated_at: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: 'AI summary generated successfully',
+      ai_summary: aiSummary,
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // DELETE /api/team/:id - Delete member and renumber remaining 1..N
 export const deleteTeamMember = async (req, res, next) => {
   try {
@@ -228,3 +296,4 @@ export const deleteTeamMember = async (req, res, next) => {
     next(err);
   }
 };
+

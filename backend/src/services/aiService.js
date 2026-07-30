@@ -367,3 +367,59 @@ export const getAiAnalyticsMetrics = async () => {
     lastSyncAt: new Date().toISOString(),
   };
 };
+
+// ─────────────────────────────────────────────────────────────
+//  AI Team Member Executive Summary Generator (Groq Llama 3.3 70B)
+// ─────────────────────────────────────────────────────────────
+export const generateTeamMemberSummary = async (member = {}) => {
+  const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
+  const fallbackSummary = `${member.name || 'Team Member'} is a dedicated ${member.designation || member.role || 'Data & AI Specialist'} at Zenemoo specializing in ${
+    Array.isArray(member.skills) ? member.skills.join(', ') : member.skills || 'AI data quality & annotation'
+  }. ${member.bio || 'Delivering enterprise-grade precision for global AI data workflows.'}`;
+
+  if (!apiKey) {
+    console.warn('Groq API key missing on server, returning bio fallback for summary');
+    return fallbackSummary;
+  }
+
+  try {
+    const prompt = `Write a professional, impressive, 2-3 sentence executive summary highlighting key strengths for this Zenemoo AI team member.
+
+Member Name: ${member.name || 'Specialist'}
+Designation: ${member.designation || member.role || 'Specialist'}
+Department: ${member.department || member.category || 'Engineering'}
+Key Skills: ${Array.isArray(member.skills) ? member.skills.join(', ') : member.skills || 'AI Annotation, Quality Assurance'}
+Bio: ${member.bio || 'Experienced AI data & audio transcription lead'}
+Experience: ${member.experience || 'Experienced professional'}
+
+Rule: Output ONLY the concise 2-3 sentence summary paragraph. Do not include titles, quotes, or markdown formatting.`;
+
+    const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 250,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn('Groq API response error for team summary:', response.status);
+      return fallbackSummary;
+    }
+
+    const data = await response.json();
+    const summary = data.choices?.[0]?.message?.content?.trim();
+    return summary || fallbackSummary;
+  } catch (err) {
+    console.error('Error generating AI summary via Groq:', err.message);
+    return fallbackSummary;
+  }
+};
+

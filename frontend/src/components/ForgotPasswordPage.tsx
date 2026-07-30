@@ -42,12 +42,13 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
       } catch (err: any) {
         // Fallback authorization check
         const allowed = [
-          'mr.prem2006@gmail.com',
-          'contact@mrprem.in',
-          'zenemootech@gmail.com',
+          'prem@zenemoo.in',
           'contact@zenemoo.in',
           'support@zenemoo.in',
           'info@zenemoo.in',
+          'noreply@zenemoo.in',
+          'zenemootech@gmail.com',
+          'mr.prem2006@gmail.com',
         ];
         if (allowed.includes(trimmed) || trimmed.endsWith('@zenemoo.in')) {
           setIsAuthorized(true);

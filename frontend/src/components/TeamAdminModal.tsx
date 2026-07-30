@@ -347,7 +347,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                   <label className="block text-xs font-mono text-slate-300 mb-1">Email</label>
                   <input
                     type="email"
-                    placeholder="specialist@zenemoo.com"
+                    placeholder="contact@zenemoo.in"
                     value={editingMember.email || ''}
                     onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
@@ -375,6 +375,110 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                 </div>
               </div>
 
+              {/* Extended Digital Staff ID Profile Metadata */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
+                <div className="text-xs font-mono text-cyan-300 font-bold uppercase tracking-wider flex items-center gap-2">
+                  <Database className="w-4 h-4" /> Extended Digital Staff ID Metadata
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Employee ID</label>
+                    <input
+                      type="text"
+                      placeholder="ZNM-2024-001"
+                      value={editingMember.employee_id || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, employee_id: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Joining Date</label>
+                    <input
+                      type="text"
+                      placeholder="2023"
+                      value={editingMember.joining_date || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, joining_date: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Experience</label>
+                    <input
+                      type="text"
+                      placeholder="3+ Years"
+                      value={editingMember.experience || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, experience: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Location</label>
+                    <input
+                      type="text"
+                      placeholder="Bhubaneswar, Odisha"
+                      value={editingMember.location || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, location: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Projects Done</label>
+                    <input
+                      type="text"
+                      placeholder="48"
+                      value={editingMember.projects_completed || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, projects_completed: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Accuracy Standard</label>
+                    <input
+                      type="text"
+                      placeholder="99.4%"
+                      value={editingMember.accuracy || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, accuracy: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Datasets Processed</label>
+                    <input
+                      type="text"
+                      placeholder="120+"
+                      value={editingMember.datasets_processed || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, datasets_processed: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono text-slate-400 mb-1">Quality Score</label>
+                    <input
+                      type="text"
+                      placeholder="9.9/10"
+                      value={editingMember.quality_score || ''}
+                      onChange={(e) => setEditingMember({ ...editingMember, quality_score: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono text-slate-400 mb-1">Groq AI Executive Summary</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Auto-generated or custom executive summary stored in Supabase..."
+                    value={editingMember.ai_summary || ''}
+                    onChange={(e) => setEditingMember({ ...editingMember, ai_summary: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white text-xs font-mono resize-none"
+                  />
+                </div>
+              </div>
+
               <div className="pt-4 border-t border-white/10 flex justify-end gap-3">
                 <button
                   type="button"
@@ -392,6 +496,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
               </div>
             </form>
           )}
+
 
           {/* TAB 3: SUPABASE & CLOUDINARY CONFIG */}
           {activeTab === 'config' && (

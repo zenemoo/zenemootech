@@ -7,7 +7,7 @@ let memorySettings = {
   monthly_output: 3600,
   accuracy_rate: 99,
   active_specialists: 20,
-  contact_email: 'quantumcoderstechlab@gmail.com',
+  contact_email: 'contact@zenemoo.in',
   contact_phone: '+91 9827775230',
   location: 'Berhampur, Odisha, India – 760001',
 };

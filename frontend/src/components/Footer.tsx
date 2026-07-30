@@ -315,8 +315,8 @@ export const Footer: React.FC = () => {
                     <h3 className="font-bold text-cyan-300 text-sm">8. Contact Us Regarding Privacy</h3>
                     <p className="text-slate-300">If you have any questions or data requests regarding this Privacy Policy, contact us directly:</p>
                     <div className="space-y-1 text-cyan-400 pt-1">
-                      <div>📧 Direct Email: <a href="mailto:mr.prem2006@gmail.com" className="hover:underline text-white font-bold">mr.prem2006@gmail.com</a></div>
-                      <div>📧 Team Email: <a href="mailto:quantumcoderstechlab@gmail.com" className="hover:underline text-white font-bold">quantumcoderstechlab@gmail.com</a></div>
+                      <div>📧 Direct Email: <a href="mailto:prem@zenemoo.in" className="hover:underline text-white font-bold">prem@zenemoo.in</a></div>
+                      <div>📧 Team Email: <a href="mailto:contact@zenemoo.in" className="hover:underline text-white font-bold">contact@zenemoo.in</a></div>
                       <div>📍 Location: Berhampur, Odisha, India</div>
                     </div>
                   </section>
@@ -373,8 +373,8 @@ export const Footer: React.FC = () => {
                     <h3 className="font-bold text-purple-300 text-sm">6. Contact Information</h3>
                     <p className="text-slate-300">For any inquiries regarding these Terms &amp; Conditions, reach out to our legal team:</p>
                     <div className="space-y-1 text-purple-300 pt-1">
-                      <div>📧 Direct Email: <a href="mailto:mr.prem2006@gmail.com" className="hover:underline text-white font-bold">mr.prem2006@gmail.com</a></div>
-                      <div>📧 Team Email: <a href="mailto:quantumcoderstechlab@gmail.com" className="hover:underline text-white font-bold">quantumcoderstechlab@gmail.com</a></div>
+                      <div>📧 Direct Email: <a href="mailto:prem@zenemoo.in" className="hover:underline text-white font-bold">prem@zenemoo.in</a></div>
+                      <div>📧 Team Email: <a href="mailto:contact@zenemoo.in" className="hover:underline text-white font-bold">contact@zenemoo.in</a></div>
                       <div>📍 Location: Berhampur, Odisha, India</div>
                     </div>
                   </section>

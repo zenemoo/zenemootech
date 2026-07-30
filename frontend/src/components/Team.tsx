@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Star, UserCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
-import { TeamMember, getStoredTeamMembers } from '../lib/teamStore';
+import { TeamMember, getStoredTeamMembers, getSlugFromName } from '../lib/teamStore';
 
 export const Team: React.FC = () => {
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -37,7 +37,14 @@ export const Team: React.FC = () => {
   const initialMembers = members.slice(0, displayLimit);
 
   const handleOpenFullDirectory = () => {
-    window.location.hash = '#team-directory';
+    window.history.pushState(null, '', '/team-directory');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
+  const handleMemberClick = (member: TeamMember) => {
+    const slug = member.slug || getSlugFromName(member.name);
+    window.history.pushState(null, '', `/team/${slug}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
   return (
@@ -79,7 +86,8 @@ export const Team: React.FC = () => {
               {initialMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="glass-panel glass-panel-interactive rounded-3xl p-6 border border-white/10 relative group overflow-hidden flex flex-col justify-between"
+                  onClick={() => handleMemberClick(member)}
+                  className="glass-panel glass-panel-interactive rounded-3xl p-6 border border-white/10 relative group overflow-hidden flex flex-col justify-between cursor-pointer hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-500/10 transition-all duration-300"
                 >
                   <div>
                     {/* Profile Image */}
@@ -104,8 +112,9 @@ export const Team: React.FC = () => {
                     </div>
 
                     {/* Name & Designation */}
-                    <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors">
-                      {member.name}
+                    <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors flex items-center justify-between">
+                      <span>{member.name}</span>
+                      <ArrowRight className="w-4 h-4 text-cyan-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                     </h3>
                     <div className="text-xs font-mono text-purple-400 mb-3">{member.designation || member.role}</div>
 
@@ -131,10 +140,11 @@ export const Team: React.FC = () => {
 
                   {/* Footer status */}
                   <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono text-slate-400">
-                    <span className="text-[10px]">{member.department || member.category || 'Specialist'}</span>
+                    <span className="text-[10px] text-cyan-400/80 group-hover:text-cyan-300 font-bold">View Staff Profile →</span>
                     {member.email ? (
                       <a
                         href={`mailto:${member.email}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 transition-all flex items-center justify-center group/mail"
                         title={`Send email to ${member.name} (${member.email})`}
                       >
@@ -146,7 +156,7 @@ export const Team: React.FC = () => {
               ))}
             </div>
 
-            {/* View All Team Members Action Button (Navigates to dedicated page route #team-directory) */}
+            {/* View All Team Members Action Button (Navigates to dedicated page route /team-directory) */}
             {members.length > 0 && (
               <div className="text-center pt-6">
                 <button
@@ -165,3 +175,4 @@ export const Team: React.FC = () => {
     </section>
   );
 };
+

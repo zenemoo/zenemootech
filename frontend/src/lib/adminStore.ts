@@ -92,7 +92,7 @@ export const DEFAULT_TELEMETRY: TelemetryConfig = {
 
 export const DEFAULT_AUTHORIZED_EMAILS: AuthorizedEmailAccount[] = [
   { id: 'auth_1', email: 'mr.prem2006@gmail.com', name: 'Prem Prasad', role: 'Super Admin', department: 'Executive AI Engineering', phone: '+91 9827775230', status: 'active', added_by: 'System Owner', added_at: '2026-07-28' },
-  { id: 'auth_2', email: 'contact@mrprem.in', name: 'Prem Prasad', role: 'Super Admin', department: 'Enterprise Operations', phone: '+91 9827775230', status: 'active', added_by: 'System Owner', added_at: '2026-07-28' },
+  { id: 'auth_2', email: 'prem@zenemoo.in', name: 'Prem Prasad', role: 'Super Admin', department: 'Enterprise Operations', phone: '+91 9827775230', status: 'active', added_by: 'System Owner', added_at: '2026-07-28' },
   { id: 'auth_3', email: 'zenemootech@gmail.com', name: 'Zenemoo Tech Ops', role: 'Administrator', department: 'AI Speech & Data Ops', phone: '+91 9827775230', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },
   { id: 'auth_4', email: 'contact@zenemoo.in', name: 'Client Support Lead', role: 'Administrator', department: 'Customer Success', phone: '+91 9827775230', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },
   { id: 'auth_5', email: 'support@zenemoo.in', name: 'Technical Support', role: 'Manager', department: 'Quality Control (Super QC)', status: 'active', added_by: 'Super Admin', added_at: '2026-07-28' },

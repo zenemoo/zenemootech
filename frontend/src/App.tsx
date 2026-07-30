@@ -15,6 +15,7 @@ import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TeamDirectoryPage } from './components/TeamDirectoryPage';
+import { TeamMemberProfilePage } from './components/TeamMemberProfilePage';
 import { OpportunitiesPage } from './components/OpportunitiesPage';
 import { OpportunityDetailPage } from './components/OpportunityDetailPage';
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
@@ -27,9 +28,10 @@ import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
+    'home' | 'admin' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
+  const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
   const [resetEmail, setResetEmail] = useState<string>('');
   const [verifiedOtp, setVerifiedOtp] = useState<string>('');
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
@@ -65,6 +67,12 @@ export function App() {
         setCurrentRoute('zenemooai');
       } else if (path === '/team-directory' || path === '/team' || hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
+      } else if (path.startsWith('/team/') || hash.startsWith('#team/')) {
+        const slug = path.startsWith('/team/')
+          ? path.replace('/team/', '').replace(/^\//, '')
+          : hash.replace('#team/', '').replace(/^\//, '');
+        setSelectedTeamSlug(slug || '');
+        setCurrentRoute('team-profile');
       } else if (path === '/privacy' || hash === '#privacy' || hash === '#privacy-policy') {
         setCurrentRoute('privacy');
       } else if (path === '/terms' || hash === '#terms' || hash === '#terms-and-conditions' || hash === '#terms-conditions') {
@@ -163,7 +171,9 @@ export function App() {
       ) : currentRoute === 'zenemooai' ? (
         <ZenemooAiPage onBack={handleBackToHome} />
       ) : currentRoute === 'team-directory' ? (
-        <TeamDirectoryPage onBack={handleBackToHome} />
+        <TeamDirectoryPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+      ) : currentRoute === 'team-profile' ? (
+        <TeamMemberProfilePage slug={selectedTeamSlug} onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'privacy' ? (
         <PrivacyPolicyPage onBack={handleBackToHome} />
       ) : currentRoute === 'terms' ? (
@@ -204,16 +214,19 @@ export function App() {
 
           {/* Mega Footer */}
           <Footer />
-
-          {/* Global Right-Side AI Drawer Panel */}
-          <ZenemooAiDrawer
-            isOpen={isAiDrawerOpen}
-            onClose={() => setIsAiDrawerOpen(false)}
-          />
         </div>
+      )}
+
+      {/* Global Right-Side AI Drawer Panel (Active on all non-admin pages) */}
+      {currentRoute !== 'admin' && (
+        <ZenemooAiDrawer
+          isOpen={isAiDrawerOpen}
+          onClose={() => setIsAiDrawerOpen(false)}
+        />
       )}
     </ThemeProvider>
   );
 }
 
 export default App;
+

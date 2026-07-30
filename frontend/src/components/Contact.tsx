@@ -300,8 +300,8 @@ export const Contact: React.FC = () => {
                 <div>
                   <div className="text-white font-bold font-display text-base">Prem Prasad Pradhan</div>
                   <div className="text-xs font-mono text-cyan-400">Founder &amp; Vendor Manager</div>
-                  <a href="mailto:contact@mrprem.in" className="text-xs text-slate-300 hover:text-white hover:underline font-mono">
-                    contact@mrprem.in
+                  <a href="mailto:prem@zenemoo.in" className="text-xs text-slate-300 hover:text-white hover:underline font-mono">
+                    prem@zenemoo.in
                   </a>
                 </div>
               </div>

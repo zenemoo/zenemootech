@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Star, Mail, Search, Sparkles, UserCheck } from 'lucide-react';
-import { TeamMember, getStoredTeamMembers } from '../lib/teamStore';
+import { Star, Mail, Search, Sparkles, UserCheck, ArrowRight } from 'lucide-react';
+import { TeamMember, getStoredTeamMembers, getSlugFromName } from '../lib/teamStore';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { CursorSpotlight } from './CursorSpotlight';
@@ -8,9 +8,10 @@ import { ThreeNeuralBackground } from './ThreeNeuralBackground';
 
 interface TeamDirectoryPageProps {
   onBack: () => void;
+  onOpenAiDrawer?: () => void;
 }
 
-export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) => {
+export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack, onOpenAiDrawer }) => {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,6 +33,12 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
     };
     loadTeam();
   }, []);
+
+  const handleMemberClick = (member: TeamMember) => {
+    const slug = member.slug || getSlugFromName(member.name);
+    window.history.pushState(null, '', `/team/${slug}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
 
   // Filtered members by search query and category
   const filteredMembers = members.filter((m) => {
@@ -58,7 +65,7 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
       <ThreeNeuralBackground />
 
       {/* Top Navbar with Back Button for this page only */}
-      <Navbar showBackButton={true} onBack={onBack} />
+      <Navbar showBackButton={true} onBack={onBack} onOpenAiDrawer={onOpenAiDrawer} />
 
       <main className="relative z-10 pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -129,7 +136,8 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
               {filteredMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="glass-panel glass-panel-interactive rounded-3xl p-6 border border-white/10 relative group overflow-hidden flex flex-col justify-between"
+                  onClick={() => handleMemberClick(member)}
+                  className="glass-panel glass-panel-interactive rounded-3xl p-6 border border-white/10 relative group overflow-hidden flex flex-col justify-between cursor-pointer hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-500/10 transition-all duration-300"
                 >
                   <div>
                     {/* Profile Image */}
@@ -154,8 +162,9 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
                     </div>
 
                     {/* Name & Designation */}
-                    <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors">
-                      {member.name}
+                    <h3 className="text-lg font-bold font-display text-white mb-0.5 group-hover:text-cyan-300 transition-colors flex items-center justify-between">
+                      <span>{member.name}</span>
+                      <ArrowRight className="w-4 h-4 text-cyan-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                     </h3>
                     <div className="text-xs font-mono text-purple-400 mb-3">{member.designation || member.role}</div>
 
@@ -181,10 +190,11 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
 
                   {/* Footer status */}
                   <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono text-slate-400">
-                    <span className="text-[10px]">{member.department || member.category || 'Specialist'}</span>
+                    <span className="text-[10px] text-cyan-400/80 group-hover:text-cyan-300 font-bold">View Staff Profile →</span>
                     {member.email ? (
                       <a
                         href={`mailto:${member.email}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 transition-all flex items-center justify-center group/mail"
                         title={`Send email to ${member.name} (${member.email})`}
                       >
@@ -204,3 +214,4 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack }) 
     </div>
   );
 };
+
