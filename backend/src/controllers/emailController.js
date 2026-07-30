@@ -5,6 +5,7 @@ import {
   validateEmail,
   sanitizeHtml,
   extractAttachmentMetadata,
+  runFullEmailDiagnostics,
 } from '../services/emailService.js';
 import { encrypt, decrypt } from '../services/encryptionService.js';
 
@@ -311,6 +312,19 @@ export const deleteEmailDraft = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Draft deleted successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/email/diagnose - Production Live Diagnostic Suite
+export const runEmailDiagnostics = async (req, res, next) => {
+  try {
+    const results = await runFullEmailDiagnostics();
+    res.json({
+      success: true,
+      diagnostics: results,
     });
   } catch (err) {
     next(err);

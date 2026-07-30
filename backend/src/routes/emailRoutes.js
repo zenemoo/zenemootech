@@ -6,9 +6,13 @@ import {
   getEmailDrafts,
   saveEmailDraft,
   deleteEmailDraft,
+  runEmailDiagnostics,
 } from '../controllers/emailController.js';
 
 const router = Router();
+
+router.get('/diagnose', runEmailDiagnostics);
+router.post('/diagnose', runEmailDiagnostics);
 
 router.post('/send', sendEmail);
 router.get('/history', getEmailHistory);
