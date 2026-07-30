@@ -1,23 +1,5 @@
 import nodemailer from 'nodemailer';
 
-// Brevo SMTP Transporter Initialization
-const getTransporter = () => {
-  const host = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
-  const port = Number(process.env.BREVO_SMTP_PORT || 587);
-  const user = process.env.BREVO_SMTP_LOGIN || 'b39046001@smtp-brevo.com';
-  const pass = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY || '';
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: false,
-    auth: { user, pass },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
-};
-
 /**
  * Parse recipient inputs into cleaned array of email strings
  */
@@ -52,6 +34,33 @@ export const sanitizeHtml = (html) => {
 };
 
 /**
+ * Extract Attachment Metadata for Supabase Storage (NO binary / base64 content saved)
+ * Outputs metadata indicators: image: "yes" | "no", pdf: "yes" | "no"
+ */
+export const extractAttachmentMetadata = (attachments = []) => {
+  if (!Array.isArray(attachments)) return [];
+
+  return attachments.map((attachment) => {
+    const filename = attachment.filename || attachment.name || 'attachment';
+    const contentType = attachment.contentType || 'application/octet-stream';
+
+    const isImage =
+      (contentType && contentType.toLowerCase().includes('image')) ||
+      /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
+    const isPdf =
+      (contentType && contentType.toLowerCase().includes('pdf')) ||
+      /\.pdf$/i.test(filename);
+
+    return {
+      filename,
+      contentType,
+      image: isImage ? 'yes' : 'no',
+      pdf: isPdf ? 'yes' : 'no',
+    };
+  });
+};
+
+/**
  * Normalize attachments for Nodemailer execution
  */
 export const normalizeAttachments = (attachments = []) => {
@@ -82,37 +91,98 @@ export const normalizeAttachments = (attachments = []) => {
 };
 
 /**
- * Extract Attachment Metadata for Supabase Storage (NO binary / base64 content saved)
- * Outputs metadata indicators: image: "yes" | "no", pdf: "yes" | "no"
+ * 1. Primary Dispatcher: Brevo HTTPS REST API v3 (Port 443 - Bypasses Cloud Provider SMTP Blocks)
  */
-export const extractAttachmentMetadata = (attachments = []) => {
-  if (!Array.isArray(attachments)) return [];
+const sendViaBrevoRestApi = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
+  const apiKey = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY || '';
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY / BREVO_SMTP_KEY environment variable is not configured');
+  }
 
-  return attachments.map((attachment) => {
-    const filename = attachment.filename || attachment.name || 'attachment';
-    const contentType = attachment.contentType || 'application/octet-stream';
+  const parsedTo = parseRecipients(recipients);
+  const parsedCc = parseRecipients(cc);
+  const parsedBcc = parseRecipients(bcc);
 
-    const isImage =
-      (contentType && contentType.toLowerCase().includes('image')) ||
-      /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
-    const isPdf =
-      (contentType && contentType.toLowerCase().includes('pdf')) ||
-      /\.pdf$/i.test(filename);
+  if (parsedTo.length === 0) {
+    throw new Error('No valid recipient email address specified');
+  }
 
-    return {
-      filename,
-      contentType,
-      image: isImage ? 'yes' : 'no',
-      pdf: isPdf ? 'yes' : 'no',
-    };
+  const safeHtml = sanitizeHtml(html);
+
+  const payload = {
+    sender: { email: sender || 'contact@zenemoo.in', name: 'Zenemoo Tech' },
+    to: parsedTo.map((email) => ({ email })),
+    subject: subject || '(No Subject)',
+    htmlContent: safeHtml || '<p>Zenemoo System Message</p>',
+  };
+
+  if (parsedCc.length > 0) {
+    payload.cc = parsedCc.map((email) => ({ email }));
+  }
+  if (parsedBcc.length > 0) {
+    payload.bcc = parsedBcc.map((email) => ({ email }));
+  }
+
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    payload.attachment = attachments.map((att) => {
+      let contentBase64 = '';
+      if (typeof att.content === 'string') {
+        contentBase64 = att.content.replace(/^data:.+;base64,/, '');
+      } else if (Buffer.isBuffer(att.content)) {
+        contentBase64 = att.content.toString('base64');
+      }
+      return {
+        name: att.filename || att.name || 'attachment',
+        content: contentBase64,
+      };
+    }).filter((a) => a.content);
+  }
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': apiKey,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
   });
+
+  const resData = await response.json();
+
+  if (!response.ok) {
+    throw new Error(resData?.message || `Brevo REST API error (Status ${response.status})`);
+  }
+
+  return {
+    messageId: resData?.messageId || `<brevo-api-${Date.now()}@zenemoo.in>`,
+    parsedTo,
+    parsedCc,
+    parsedBcc,
+    safeHtml,
+    attachmentsMeta: extractAttachmentMetadata(attachments),
+  };
 };
 
 /**
- * Main Nodemailer Email Sending Helper via Brevo SMTP
+ * 2. Fallback Dispatcher: Nodemailer SMTP
  */
-export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
-  const transporter = getTransporter();
+const sendViaNodemailerSmtp = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
+  const host = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
+  const port = Number(process.env.BREVO_SMTP_PORT || 587);
+  const user = process.env.BREVO_SMTP_LOGIN || 'b39046001@smtp-brevo.com';
+  const pass = process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY || '';
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+  });
+
   const parsedTo = parseRecipients(recipients);
   const parsedCc = parseRecipients(cc);
   const parsedBcc = parseRecipients(bcc);
@@ -138,4 +208,19 @@ export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, h
     safeHtml,
     attachmentsMeta: extractAttachmentMetadata(attachments),
   };
+};
+
+/**
+ * Master Hybrid Email Dispatcher
+ */
+export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
+  // First attempt: Brevo HTTPS REST API v3 (Fast & Port 443 guaranteed on Render / Vercel)
+  try {
+    return await sendViaBrevoRestApi({ sender, recipients, cc, bcc, subject, html, attachments });
+  } catch (apiError) {
+    console.warn('⚠️ Brevo HTTPS REST API delivery failed/fallback triggered:', apiError.message);
+    
+    // Second attempt: Nodemailer SMTP fallback
+    return await sendViaNodemailerSmtp({ sender, recipients, cc, bcc, subject, html, attachments });
+  }
 };
