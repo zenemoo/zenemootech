@@ -58,11 +58,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
           {showBackButton && onBack ? (
             <button
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer group shadow-lg shadow-cyan-500/10"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer group shadow-lg shadow-cyan-500/10"
             >
               <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-              <span className="hidden sm:inline">Return to Zenemoo Home</span>
-              <span className="sm:hidden font-bold">Home</span>
+              <span>Return to Zenemoo Home</span>
             </button>
           ) : (
             <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] light:bg-black/[0.04] p-1.5 rounded-full border border-white/10 light:border-black/10 backdrop-blur-md">
@@ -84,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
 
           {/* Theme Toggle & Global Floating AI Icon Button */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Global Floating AI Icon Button (Always visible on Desktop, Tablet & Mobile) */}
+            {/* Global Floating AI Icon Button */}
             <button
               onClick={onOpenAiDrawer}
               className="relative group flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
@@ -95,14 +94,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                 <img src="/assets/logo.png" alt="AI" className="w-full h-full object-cover rounded-full bg-white p-0.2" />
                 <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
               </div>
-              <span className="text-xs font-mono font-bold tracking-tight hidden xs:inline sm:inline">Zenemoo AI</span>
+              <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">Zenemoo AI</span>
               <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform" />
             </button>
 
+            {/* Theme Toggle Button (On mobile/tablet when showBackButton is true, hide from top bar so it sits inside menu drawer) */}
             <button
               onClick={toggleTheme}
               aria-label="Toggle Dark/Light Mode"
-              className="flex items-center gap-2 px-3 py-2 sm:px-3.5 rounded-xl bg-white/[0.05] light:bg-slate-200/80 border border-white/10 light:border-slate-300/80 text-slate-300 light:text-slate-800 hover:bg-white/10 light:hover:bg-slate-300/80 transition-all duration-200 shadow-md"
+              className={`${showBackButton ? 'hidden md:flex' : 'flex'} items-center gap-2 px-3 py-2 sm:px-3.5 rounded-xl bg-white/[0.05] light:bg-slate-200/80 border border-white/10 light:border-slate-300/80 text-slate-300 light:text-slate-800 hover:bg-white/10 light:hover:bg-slate-300/80 transition-all duration-200 shadow-md`}
             >
               {theme === 'dark' ? (
                 <>
@@ -131,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
 
       {/* Mobile Menu Drawer */}
       {mobileOpen && (
-        <div className="xl:hidden mt-3 px-4 pt-2 pb-6 bg-[#090a0f]/95 light:bg-white/95 border-b border-white/10 light:border-black/10 backdrop-blur-2xl shadow-2xl">
+        <div className="xl:hidden mt-3 px-4 pt-2 pb-6 bg-[#090a0f]/95 light:bg-white/95 border-b border-white/10 light:border-black/10 backdrop-blur-2xl shadow-2xl rounded-b-2xl">
           <div className="flex flex-col gap-2">
             {/* Top Back Button inside Drawer if on dedicated page */}
             {showBackButton && onBack && (
@@ -140,12 +140,28 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                   setMobileOpen(false);
                   onBack();
                 }}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/30 mb-2 transition-all hover:bg-cyan-500/30"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/30 mb-1 transition-all hover:bg-cyan-500/30"
               >
                 <ArrowLeft className="w-4 h-4 text-cyan-400" />
                 Return to Zenemoo Home
               </button>
             )}
+
+            {/* Theme Toggle Button inside Drawer */}
+            <button
+              onClick={() => {
+                toggleTheme();
+              }}
+              className="flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-slate-200 light:text-slate-800 bg-white/5 light:bg-black/5 border border-white/10 light:border-black/10 transition-all mb-2"
+            >
+              <span className="flex items-center gap-2 font-mono text-xs font-semibold">
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+                Switch to {theme === 'dark' ? 'Light' : 'Dark'} Mode
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold uppercase">
+                {theme}
+              </span>
+            </button>
 
             {navLinks.map((link) => {
               const Icon = link.icon;
@@ -169,6 +185,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
           </div>
         </div>
       )}
+
     </header>
   );
 };
