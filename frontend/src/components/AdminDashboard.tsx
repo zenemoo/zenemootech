@@ -151,18 +151,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const richEditorRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (richEditorRef.current && document.activeElement !== richEditorRef.current) {
-      if (richEditorRef.current.innerHTML !== emailComposer.html) {
+    if (richEditorRef.current) {
+      if (richEditorRef.current.innerHTML !== (emailComposer.html || '')) {
         richEditorRef.current.innerHTML = emailComposer.html || '';
       }
     }
-  }, [emailComposer.html]);
+  }, [composerViewMode, emailComposer.html]);
 
-  const executeRichCommand = (command: string, value: string | undefined = undefined) => {
+  const executeRichCommand = (e: React.MouseEvent, command: string, value: string | undefined = undefined) => {
+    e.preventDefault();
     if (richEditorRef.current) {
       richEditorRef.current.focus();
-      document.execCommand(command, false, value);
-      setEmailComposer((prev) => ({ ...prev, html: richEditorRef.current?.innerHTML || '' }));
+      if (command === 'formatBlock') {
+        const blockTag = (value || 'p').replace(/[<>]/g, '').toLowerCase();
+        document.execCommand('formatBlock', false, blockTag);
+      } else {
+        document.execCommand(command, false, value);
+      }
+      const updatedHtml = richEditorRef.current.innerHTML;
+      setEmailComposer((prev) => ({ ...prev, html: updatedHtml }));
     }
   };
 
@@ -178,7 +185,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       sigHtml = '<br/><br/><div style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Sincerely,<br/><strong style="color: #f8fafc;">Zenemoo Enterprise Solutions Team</strong><br/>📧 contact@zenemoo.in | 🌐 www.zenemoo.in</div>';
     }
     document.execCommand('insertHTML', false, sigHtml);
-    setEmailComposer((prev) => ({ ...prev, html: richEditorRef.current?.innerHTML || '' }));
+    const updatedHtml = richEditorRef.current.innerHTML;
+    setEmailComposer((prev) => ({ ...prev, html: updatedHtml }));
   };
 
   // Forgot Password / Gmail Verification Authenticator State
@@ -3397,7 +3405,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <div className="p-2 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center gap-1.5 font-mono text-xs">
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('bold')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'bold')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-white font-bold cursor-pointer transition-colors"
                           title="Bold (Selection)"
                         >
@@ -3405,7 +3414,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('italic')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'italic')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 italic cursor-pointer transition-colors"
                           title="Italic (Selection)"
                         >
@@ -3413,7 +3423,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('underline')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'underline')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 underline cursor-pointer transition-colors"
                           title="Underline (Selection)"
                         >
@@ -3421,7 +3432,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('strikeThrough')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'strikeThrough')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 line-through cursor-pointer transition-colors"
                           title="Strikethrough"
                         >
@@ -3432,7 +3444,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('formatBlock', '<h2>')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'formatBlock', 'h2')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer transition-colors"
                           title="Heading 2"
                         >
@@ -3440,7 +3453,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('formatBlock', '<h3>')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'formatBlock', 'h3')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer transition-colors"
                           title="Heading 3"
                         >
@@ -3448,7 +3462,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('formatBlock', '<p>')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'formatBlock', 'p')}
                           className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-slate-500/20 text-slate-300 text-[11px] cursor-pointer transition-colors"
                           title="Normal Text"
                         >
@@ -3459,7 +3474,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('insertUnorderedList')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'insertUnorderedList')}
                           className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer transition-colors"
                           title="Bullet List"
                         >
@@ -3467,7 +3483,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('insertOrderedList')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'insertOrderedList')}
                           className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer transition-colors"
                           title="Numbered List"
                         >
@@ -3478,7 +3495,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('justifyLeft')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'justifyLeft')}
                           className="px-2 py-1 rounded-lg bg-white/5 hover:bg-slate-500/20 text-slate-300 cursor-pointer"
                           title="Align Left"
                         >
@@ -3486,7 +3504,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('justifyCenter')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'justifyCenter')}
                           className="px-2 py-1 rounded-lg bg-white/5 hover:bg-slate-500/20 text-slate-300 cursor-pointer"
                           title="Align Center"
                         >
@@ -3494,7 +3513,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         </button>
                         <button
                           type="button"
-                          onClick={() => executeRichCommand('removeFormat')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => executeRichCommand(e, 'removeFormat')}
                           className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 cursor-pointer"
                           title="Clear Formatting"
                         >
