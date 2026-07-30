@@ -128,7 +128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   // Helper to ensure multi-paragraph text is converted into clean HTML paragraphs & line breaks
   const formatContentToHtml = (content: string) => {
     if (!content) return '';
-    if (/<(p|div|br|h[1-6]|ul|ol|li|blockquote|table)\b/i.test(content)) {
+    if (/<(p|div|br|h[1-6]|ul|ol|li|blockquote|table|b|i|u|s|strong|em|span|a)\b/i.test(content)) {
       return content;
     }
     return content
@@ -147,6 +147,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     html: '',
     attachments: [] as { filename: string; contentType: string; content: string }[],
   });
+
+  const richEditorRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (richEditorRef.current && document.activeElement !== richEditorRef.current) {
+      if (richEditorRef.current.innerHTML !== emailComposer.html) {
+        richEditorRef.current.innerHTML = emailComposer.html || '';
+      }
+    }
+  }, [emailComposer.html]);
+
+  const executeRichCommand = (command: string, value: string | undefined = undefined) => {
+    if (richEditorRef.current) {
+      richEditorRef.current.focus();
+      document.execCommand(command, false, value);
+      setEmailComposer((prev) => ({ ...prev, html: richEditorRef.current?.innerHTML || '' }));
+    }
+  };
+
+  const insertVisualSignature = (sigKey: string) => {
+    if (!sigKey || !richEditorRef.current) return;
+    richEditorRef.current.focus();
+    let sigHtml = '';
+    if (sigKey === 'prem') {
+      sigHtml = '<br/><br/><div style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Kind Regards,<br/><strong style="color: #f8fafc;">Prem Prasad Pradhan</strong><br/><span style="color: #06b6d4; font-weight: bold;">Founder &amp; CEO</span> | Zenemoo Tech<br/>📧 prem@zenemoo.in | 🌐 www.zenemoo.in</div>';
+    } else if (sigKey === 'support') {
+      sigHtml = '<br/><br/><div style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Best regards,<br/><strong style="color: #f8fafc;">Zenemoo Technical Support Team</strong><br/>📧 support@zenemoo.in | 🌐 www.zenemoo.in</div>';
+    } else if (sigKey === 'sales') {
+      sigHtml = '<br/><br/><div style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Sincerely,<br/><strong style="color: #f8fafc;">Zenemoo Enterprise Solutions Team</strong><br/>📧 contact@zenemoo.in | 🌐 www.zenemoo.in</div>';
+    }
+    document.execCommand('insertHTML', false, sigHtml);
+    setEmailComposer((prev) => ({ ...prev, html: richEditorRef.current?.innerHTML || '' }));
+  };
 
   // Forgot Password / Gmail Verification Authenticator State
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -3360,36 +3393,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         <span className="text-[10px] text-slate-400">Paragraphs &amp; newlines are automatically converted into HTML &lt;p&gt; tags</span>
                       </div>
 
-                      {/* Rich Text Toolbar */}
+                      {/* Visual Rich Text Toolbar (WYSIWYG Mode) */}
                       <div className="p-2 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center gap-1.5 font-mono text-xs">
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <b>Bold Text</b>' }))}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-white font-bold cursor-pointer"
-                          title="Bold (Ctrl+B)"
+                          onClick={() => executeRichCommand('bold')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-white font-bold cursor-pointer transition-colors"
+                          title="Bold (Selection)"
                         >
                           B
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <i>Italic Text</i>' }))}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 italic cursor-pointer"
-                          title="Italic (Ctrl+I)"
+                          onClick={() => executeRichCommand('italic')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 italic cursor-pointer transition-colors"
+                          title="Italic (Selection)"
                         >
                           I
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <u>Underline Text</u>' }))}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 underline cursor-pointer"
-                          title="Underline (Ctrl+U)"
+                          onClick={() => executeRichCommand('underline')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 underline cursor-pointer transition-colors"
+                          title="Underline (Selection)"
                         >
                           U
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <s>Strikethrough</s>' }))}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 line-through cursor-pointer"
+                          onClick={() => executeRichCommand('strikeThrough')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 line-through cursor-pointer transition-colors"
                           title="Strikethrough"
                         >
                           S
@@ -3399,35 +3432,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<h2>Heading Title</h2>\n' }))}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer"
+                          onClick={() => executeRichCommand('formatBlock', '<h2>')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer transition-colors"
                           title="Heading 2"
                         >
                           H2
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<h3>Section Subheading</h3>\n' }))}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer"
+                          onClick={() => executeRichCommand('formatBlock', '<h3>')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer transition-colors"
                           title="Heading 3"
                         >
                           H3
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => executeRichCommand('formatBlock', '<p>')}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-slate-500/20 text-slate-300 text-[11px] cursor-pointer transition-colors"
+                          title="Normal Text"
+                        >
+                          Normal
                         </button>
 
                         <div className="h-4 w-[1px] bg-white/10 mx-1" />
 
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<ul>\n  <li>Bullet item 1</li>\n  <li>Bullet item 2</li>\n</ul>\n' }))}
-                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer"
+                          onClick={() => executeRichCommand('insertUnorderedList')}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer transition-colors"
                           title="Bullet List"
                         >
                           • List
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<ol>\n  <li>Numbered item 1</li>\n  <li>Numbered item 2</li>\n</ol>\n' }))}
-                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer"
+                          onClick={() => executeRichCommand('insertOrderedList')}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer transition-colors"
                           title="Numbered List"
                         >
                           1. List
@@ -3435,38 +3476,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                         <div className="h-4 w-[1px] bg-white/10 mx-1" />
 
+                        <button
+                          type="button"
+                          onClick={() => executeRichCommand('justifyLeft')}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-slate-500/20 text-slate-300 cursor-pointer"
+                          title="Align Left"
+                        >
+                          Left
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => executeRichCommand('justifyCenter')}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-slate-500/20 text-slate-300 cursor-pointer"
+                          title="Align Center"
+                        >
+                          Center
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => executeRichCommand('removeFormat')}
+                          className="px-2 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 cursor-pointer"
+                          title="Clear Formatting"
+                        >
+                          Clear
+                        </button>
+
+                        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
                         {/* Signatures Preset Dropdown */}
                         <select
                           onChange={(e) => {
-                            const sigKey = e.target.value;
-                            if (!sigKey) return;
-                            let sigHtml = '';
-                            if (sigKey === 'prem') {
-                              sigHtml = '\n<p style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Kind Regards,<br><strong style="color: #f8fafc;">Prem Prasad Pradhan</strong><br><span style="color: #06b6d4; font-weight: bold;">Founder &amp; CEO</span> | Zenemoo Tech<br>📧 prem@zenemoo.in | 🌐 www.zenemoo.in</p>';
-                            } else if (sigKey === 'support') {
-                              sigHtml = '\n<p style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Best regards,<br><strong style="color: #f8fafc;">Zenemoo Technical Support Team</strong><br>📧 support@zenemoo.in | 🌐 www.zenemoo.in</p>';
-                            } else if (sigKey === 'sales') {
-                              sigHtml = '\n<p style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Sincerely,<br><strong style="color: #f8fafc;">Zenemoo Enterprise Solutions Team</strong><br>📧 contact@zenemoo.in | 🌐 www.zenemoo.in</p>';
-                            }
-                            setEmailComposer((p) => ({ ...p, html: p.html + sigHtml }));
+                            insertVisualSignature(e.target.value);
                             e.target.value = '';
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-bold focus:outline-none text-xs"
+                          className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-bold focus:outline-none text-xs cursor-pointer"
                         >
                           <option value="">+ Insert Signature</option>
-                          <option value="prem" className="bg-slate-900">Prem Prasad Pradhan (Founder)</option>
-                          <option value="support" className="bg-slate-900">Zenemoo Technical Support</option>
-                          <option value="sales" className="bg-slate-900">Zenemoo Enterprise Sales</option>
+                          <option value="prem" className="bg-slate-900 text-white">Prem Prasad Pradhan (Founder)</option>
+                          <option value="support" className="bg-slate-900 text-white">Zenemoo Technical Support</option>
+                          <option value="sales" className="bg-slate-900 text-white">Zenemoo Enterprise Sales</option>
                         </select>
                       </div>
 
-                      <textarea
-                        rows={9}
-                        placeholder="Dear Client,&#10;&#10;I hope you're doing well.&#10;&#10;Thank you for reaching out to Zenemoo Data Solutions. We are pleased to confirm project capacity...&#10;&#10;Kind Regards,&#10;Prem Prasad Pradhan&#10;Founder, Zenemoo"
-                        value={emailComposer.html}
-                        onChange={(e) => setEmailComposer({ ...emailComposer, html: e.target.value })}
-                        className="w-full px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-sans text-xs focus:outline-none focus:border-cyan-400 leading-relaxed"
-                        required
+                      {/* True Visual WYSIWYG ContentEditable Container */}
+                      <div
+                        ref={richEditorRef}
+                        contentEditable
+                        suppressContentEditableWarning
+                        onInput={(e) => {
+                          const htmlValue = e.currentTarget.innerHTML;
+                          setEmailComposer((prev) => ({ ...prev, html: htmlValue }));
+                        }}
+                        className="w-full min-h-[240px] max-h-[480px] overflow-y-auto px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs focus:outline-none focus:border-cyan-400 leading-relaxed outline-none"
                       />
                     </div>
                   ) : (
