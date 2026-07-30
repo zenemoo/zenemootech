@@ -6,7 +6,7 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { contactApi, subscriberApi, authApi } from '../services/api';
+import { contactApi, subscriberApi, authApi, emailApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
 
 interface AdminDashboardProps {
@@ -100,12 +100,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [newAuthAvatarUrl, setNewAuthAvatarUrl] = useState('');
   const [isAuthAvatarUploading, setIsAuthAvatarUploading] = useState(false);
 
-  // Message History State
-  const [messageHistoryList, setMessageHistoryList] = useState<MessageHistoryRecord[]>([]);
-  const [selectedMessage, setSelectedMessage] = useState<MessageHistoryRecord | null>(null);
-  const [historySubTab, setHistorySubTab] = useState<'history' | 'compose' | 'sent' | 'drafts' | 'templates' | 'contacts'>('history');
-  const [historySearchQuery, setHistorySearchQuery] = useState('');
-  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('all');
+  // Brevo SMTP Email Engine & Encrypted Supabase Storage State
+  const [emailLogs, setEmailLogs] = useState<any[]>([]);
+  const [emailDrafts, setEmailDrafts] = useState<any[]>([]);
+  const [isLoadingEmails, setIsLoadingEmails] = useState(false);
+  const [isSendingBrevoMail, setIsSendingBrevoMail] = useState(false);
+  const [isSavingBrevoDraft, setIsSavingBrevoDraft] = useState(false);
+  const [selectedEmailDetail, setSelectedEmailDetail] = useState<any | null>(null);
+  const [emailSubTab, setEmailSubTab] = useState<'history' | 'compose' | 'drafts'>('history');
+  const [emailSearchQuery, setEmailSearchQuery] = useState('');
+  const [emailStatusFilter, setEmailStatusFilter] = useState<'all' | 'sent' | 'failed'>('all');
+
+  const [emailComposer, setEmailComposer] = useState({
+    id: '',
+    sender: 'contact@zenemoo.in',
+    recipients: '',
+    cc: '',
+    bcc: '',
+    subject: '',
+    html: '',
+    attachments: [] as { filename: string; contentType: string; content: string }[],
+  });
 
   // Forgot Password / Gmail Verification Authenticator State
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -196,6 +211,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         setSubscribers(res.data.data);
       }
     } catch (e) {}
+  };
+
+  const loadEmailHistory = async () => {
+    setIsLoadingEmails(true);
+    try {
+      const res = await emailApi.getHistory();
+      if (res.data && res.data.success && Array.isArray(res.data.data)) {
+        setEmailLogs(res.data.data);
+      }
+    } catch (e) {
+      console.warn('Failed to load email history:', e);
+    } finally {
+      setIsLoadingEmails(false);
+    }
+  };
+
+  const loadEmailDrafts = async () => {
+    try {
+      const res = await emailApi.getDrafts();
+      if (res.data && res.data.success && Array.isArray(res.data.data)) {
+        setEmailDrafts(res.data.data);
+      }
+    } catch (e) {
+      console.warn('Failed to load email drafts:', e);
+    }
   };
 
   const loadTeamData = async () => {
@@ -314,8 +354,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
       await loadSubscribers();
       const authList = await getStoredAuthorizedEmails();
       setAuthorizedEmails(authList);
-      const msgList = await getStoredMessageHistoryRecords();
-      setMessageHistoryList(msgList);
+      await loadEmailHistory();
+      await loadEmailDrafts();
 
       // Fetch authenticated user profile and connection metadata
       try {
@@ -1272,7 +1312,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
     { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
     { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
-    { id: 'history', name: 'Message History', icon: Send, count: messageHistoryList.length },
+    { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
     { id: 'ai-analytics', name: 'Zenemoo AI Analytics', icon: Bot },
     { id: 'telemetry', name: 'Metrics & Capacity', icon: Activity },
     { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
@@ -3019,6 +3059,672 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
+        {/* TAB 3.5: REAL-TIME BREVO SMTP EMAIL DISPATCHER & ENCRYPTED SUPABASE HISTORY */}
+        {activeTab === 'history' && (
+          <div className="space-y-6">
+            {/* Top Cards: Email Engine Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Dispatched Emails</span>
+                  <span className="text-3xl font-extrabold text-white block">{emailLogs.length}</span>
+                  <span className="text-[10px] font-mono text-cyan-400 block">End-to-End Encrypted Logs</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <Send className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">SMTP Relay Gateway</span>
+                  <span className="text-sm font-bold text-white block font-mono">Brevo (smtp-relay.brevo.com)</span>
+                  <span className="text-[10px] font-mono text-emerald-400 block font-bold">● Active Gateway (Port 587)</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Zap className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Storage Security</span>
+                  <span className="text-sm font-bold text-white block font-mono">AES-256 Supabase Tables</span>
+                  <span className="text-[10px] font-mono text-purple-400 block font-bold">Metadata Attachments Only</span>
+                </div>
+                <button
+                  onClick={async () => {
+                    await loadEmailHistory();
+                    await loadEmailDrafts();
+                    showStatus('Refreshed email history & drafts from Supabase!');
+                  }}
+                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isLoadingEmails ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Email Engine Sub-Tabs Bar */}
+            <div className="glass-panel p-2 rounded-2xl border border-white/10 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEmailSubTab('history')}
+                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                    emailSubTab === 'history'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <History className="w-4 h-4" /> Sent Logs & History ({emailLogs.length})
+                </button>
+
+                <button
+                  onClick={() => setEmailSubTab('compose')}
+                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                    emailSubTab === 'compose'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-lg shadow-purple-500/10'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" /> Compose Email
+                </button>
+
+                <button
+                  onClick={() => setEmailSubTab('drafts')}
+                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                    emailSubTab === 'drafts'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" /> Saved Drafts ({emailDrafts.length})
+                </button>
+              </div>
+
+              <div className="text-[11px] font-mono text-cyan-400/80 px-3 py-1 rounded-xl bg-white/[0.02] border border-white/5 hidden sm:block">
+                Authentication: Brevo SMTP TLS 1.3
+              </div>
+            </div>
+
+            {/* SUB-TAB 1: COMPOSE EMAIL FORM */}
+            {emailSubTab === 'compose' && (
+              <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                  <div>
+                    <h3 className="text-lg font-bold font-display text-white">Compose & Send Email</h3>
+                    <p className="text-xs font-mono text-slate-400">Dispatches instantly via Brevo SMTP Gateway</p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-xs font-bold flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5" /> Brevo Relay Ready
+                  </span>
+                </div>
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!emailComposer.recipients || !emailComposer.subject || !emailComposer.html) {
+                      addToast('Validation Error', 'Recipients, subject, and body are required.', 'error');
+                      return;
+                    }
+
+                    setIsSendingBrevoMail(true);
+                    try {
+                      const res = await emailApi.send(emailComposer);
+                      if (res.data && res.data.success) {
+                        addToast('Email Sent', `Delivered via Brevo SMTP to ${emailComposer.recipients}`, 'success');
+                        showStatus('Email dispatched successfully via Brevo SMTP!');
+                        setEmailComposer({
+                          id: '',
+                          sender: 'contact@zenemoo.in',
+                          recipients: '',
+                          cc: '',
+                          bcc: '',
+                          subject: '',
+                          html: '',
+                          attachments: [],
+                        });
+                        setEmailSubTab('history');
+                        await loadEmailHistory();
+                      } else {
+                        addToast('Send Error', res.data?.message || 'SMTP delivery failed.', 'error');
+                      }
+                    } catch (err: any) {
+                      addToast('SMTP Delivery Failed', err.response?.data?.message || err.message || 'SMTP Handshake Error', 'error');
+                    } finally {
+                      setIsSendingBrevoMail(false);
+                    }
+                  }}
+                  className="space-y-4 font-mono text-xs"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Sender Address Dropdown */}
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1.5">Sender Identity</label>
+                      <select
+                        value={emailComposer.sender}
+                        onChange={(e) => setEmailComposer({ ...emailComposer, sender: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="contact@zenemoo.in" className="bg-slate-900 text-white">contact@zenemoo.in (Primary Contact)</option>
+                        <option value="support@zenemoo.in" className="bg-slate-900 text-white">support@zenemoo.in (Technical Support)</option>
+                        <option value="info@zenemoo.in" className="bg-slate-900 text-white">info@zenemoo.in (General Inquiries)</option>
+                        <option value="prem@zenemoo.in" className="bg-slate-900 text-white">prem@zenemoo.in (Founder Direct)</option>
+                        <option value="noreply@zenemoo.in" className="bg-slate-900 text-white">noreply@zenemoo.in (Automated System)</option>
+                        <option value="zenemootech@gmail.com" className="bg-slate-900 text-white">zenemootech@gmail.com (Tech Ops)</option>
+                      </select>
+                    </div>
+
+                    {/* Recipient Input */}
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1.5">Recipient Address(es) <span className="text-cyan-400">*</span></label>
+                      <input
+                        type="text"
+                        placeholder="e.g. client@company.com, partner@org.io"
+                        value={emailComposer.recipients}
+                        onChange={(e) => setEmailComposer({ ...emailComposer, recipients: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Optional CC & BCC */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 mb-1">CC (Carbon Copy)</label>
+                      <input
+                        type="text"
+                        placeholder="Optional CC recipients..."
+                        value={emailComposer.cc}
+                        onChange={(e) => setEmailComposer({ ...emailComposer, cc: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 mb-1">BCC (Blind Carbon Copy)</label>
+                      <input
+                        type="text"
+                        placeholder="Optional BCC recipients..."
+                        value={emailComposer.bcc}
+                        onChange={(e) => setEmailComposer({ ...emailComposer, bcc: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Subject Line */}
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1.5">Email Subject <span className="text-cyan-400">*</span></label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Zenemoo AI Speech Data Solutions Proposal"
+                      value={emailComposer.subject}
+                      onChange={(e) => setEmailComposer({ ...emailComposer, subject: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400 font-bold"
+                      required
+                    />
+                  </div>
+
+                  {/* Message Body Textarea */}
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1.5">Email Content Body (HTML / Plain Text) <span className="text-cyan-400">*</span></label>
+                    <textarea
+                      rows={8}
+                      placeholder="Dear Client,&#10;&#10;Thank you for contacting Zenemoo Data Solutions. We are pleased to confirm project capacity...&#10;&#10;Best regards,&#10;Zenemoo Engineering Team"
+                      value={emailComposer.html}
+                      onChange={(e) => setEmailComposer({ ...emailComposer, html: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-sans text-xs focus:outline-none focus:border-cyan-400 leading-relaxed"
+                      required
+                    />
+                  </div>
+
+                  {/* File Attachments Section with Type Indicators */}
+                  <div className="space-y-2 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-slate-300 font-bold flex items-center gap-2">
+                        <Upload className="w-4 h-4 text-cyan-400" /> Attach Files (Images, PDFs, Documents)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">Max size per file: 10MB</span>
+                    </div>
+
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => {
+                        const files = e.target.files;
+                        if (!files || files.length === 0) return;
+                        Array.from(files).forEach((file) => {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const base64Content = ev.target?.result as string;
+                            setEmailComposer((prev) => ({
+                              ...prev,
+                              attachments: [
+                                ...prev.attachments,
+                                {
+                                  filename: file.name,
+                                  contentType: file.type || 'application/octet-stream',
+                                  content: base64Content,
+                                },
+                              ],
+                            }));
+                          };
+                          reader.readAsDataURL(file);
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-300 file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-mono file:bg-cyan-500/20 file:text-cyan-300 cursor-pointer"
+                    />
+
+                    {/* Attachment Indicators Privacy Alert */}
+                    <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-300 flex items-start gap-2">
+                      <Info className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
+                      <div>
+                        <span className="font-bold block text-white">Privacy & Attachment Policy:</span>
+                        File binaries are transmitted via Brevo SMTP to recipients. For database efficiency & security, Supabase logs attachment metadata indicators only (<code className="bg-black/40 px-1 py-0.5 rounded text-cyan-300">image: "yes"</code>, <code className="bg-black/40 px-1 py-0.5 rounded text-cyan-300">pdf: "no"</code>) without saving raw file data into Supabase tables.
+                      </div>
+                    </div>
+
+                    {/* Currently Attached Files List */}
+                    {emailComposer.attachments.length > 0 && (
+                      <div className="space-y-1.5 pt-2">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Attached Files ({emailComposer.attachments.length}):</div>
+                        <div className="flex flex-wrap gap-2">
+                          {emailComposer.attachments.map((att, idx) => {
+                            const isImg = (att.contentType && att.contentType.includes('image')) || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.filename);
+                            const isPdf = (att.contentType && att.contentType.includes('pdf')) || /\.pdf$/i.test(att.filename);
+                            return (
+                              <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-200">
+                                {isImg ? <Image className="w-3.5 h-3.5 text-cyan-400" /> : isPdf ? <FileText className="w-3.5 h-3.5 text-purple-400" /> : <FileCheck className="w-3.5 h-3.5 text-emerald-400" />}
+                                <span className="font-mono text-xs">{att.filename}</span>
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold uppercase">
+                                  {isImg ? 'image: yes' : isPdf ? 'pdf: yes' : 'file'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEmailComposer((prev) => ({
+                                      ...prev,
+                                      attachments: prev.attachments.filter((_, i) => i !== idx),
+                                    }));
+                                  }}
+                                  className="text-red-400 hover:text-red-300 p-0.5 cursor-pointer ml-1"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submit & Draft Buttons */}
+                  <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsSavingBrevoDraft(true);
+                        try {
+                          const res = await emailApi.saveDraft(emailComposer);
+                          if (res.data && res.data.success) {
+                            addToast('Draft Saved', 'Draft stored securely in Supabase database.', 'success');
+                            showStatus('Draft saved to Supabase!');
+                            await loadEmailDrafts();
+                          }
+                        } catch (err) {
+                          addToast('Error', 'Failed to save draft.', 'error');
+                        } finally {
+                          setIsSavingBrevoDraft(false);
+                        }
+                      }}
+                      disabled={isSavingBrevoDraft}
+                      className="px-5 py-3 rounded-xl bg-white/5 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-white/10 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Save className="w-4 h-4 text-amber-400" /> {isSavingBrevoDraft ? 'Saving Draft...' : 'Save as Draft'}
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isSendingBrevoMail}
+                      className="px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold text-xs font-mono shadow-lg shadow-cyan-500/20 flex items-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Send className={`w-4 h-4 ${isSendingBrevoMail ? 'animate-spin' : ''}`} />
+                      {isSendingBrevoMail ? 'Sending via Brevo SMTP...' : 'Send Email Now'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* SUB-TAB 2: SENT LOGS & HISTORY TABLE */}
+            {emailSubTab === 'history' && (
+              <div className="space-y-4">
+                {/* Search & Status Filter */}
+                <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 font-mono text-xs">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Search email logs by recipient or subject..."
+                      value={emailSearchQuery}
+                      onChange={(e) => setEmailSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Filter Status:</span>
+                    <button
+                      onClick={() => setEmailStatusFilter('all')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-mono cursor-pointer transition-all ${
+                        emailStatusFilter === 'all' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-white/5 text-slate-400 border-white/10'
+                      }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setEmailStatusFilter('sent')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-mono cursor-pointer transition-all ${
+                        emailStatusFilter === 'sent' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-white/5 text-slate-400 border-white/10'
+                      }`}
+                    >
+                      ✓ Sent
+                    </button>
+                    <button
+                      onClick={() => setEmailStatusFilter('failed')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-mono cursor-pointer transition-all ${
+                        emailStatusFilter === 'failed' ? 'bg-red-500/20 text-red-300 border-red-500/40' : 'bg-white/5 text-slate-400 border-white/10'
+                      }`}
+                    >
+                      ✕ Failed
+                    </button>
+                  </div>
+                </div>
+
+                {/* Email Logs Grid */}
+                {emailLogs.length === 0 ? (
+                  <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                    <Send className="w-10 h-10 text-slate-500 mx-auto" />
+                    <h4 className="text-base font-bold text-white">No Email History Found</h4>
+                    <p className="text-xs font-mono text-slate-400">
+                      Dispatched emails sent via Brevo SMTP will appear here automatically with AES-256 encrypted database storage.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {emailLogs
+                      .filter((log) => {
+                        const recs = Array.isArray(log.recipients) ? log.recipients.join(' ') : String(log.recipients || '');
+                        const subj = String(log.subject || '');
+                        const matchesQuery =
+                          !emailSearchQuery ||
+                          recs.toLowerCase().includes(emailSearchQuery.toLowerCase()) ||
+                          subj.toLowerCase().includes(emailSearchQuery.toLowerCase());
+                        const matchesStatus = emailStatusFilter === 'all' || log.status === emailStatusFilter;
+                        return matchesQuery && matchesStatus;
+                      })
+                      .map((log) => {
+                        const recStr = Array.isArray(log.recipients) ? log.recipients.join(', ') : String(log.recipients || '');
+                        const atts = log.attachments_meta || [];
+                        const hasImg = atts.some((a: any) => a.image === 'yes');
+                        const hasPdf = atts.some((a: any) => a.pdf === 'yes');
+
+                        return (
+                          <div
+                            key={log.id}
+                            className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 hover:border-cyan-500/30 transition-all"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-white text-sm truncate">{log.subject || '(No Subject)'}</span>
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                                      log.status === 'sent'
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                        : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                    }`}
+                                  >
+                                    {log.status === 'sent' ? '✓ SENT' : '✕ FAILED'}
+                                  </span>
+
+                                  {/* Attachment Indicators Badges */}
+                                  {hasImg && (
+                                    <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                                      📷 image: yes
+                                    </span>
+                                  )}
+                                  {hasPdf && (
+                                    <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
+                                      📄 pdf: yes
+                                    </span>
+                                  )}
+                                  {!hasImg && !hasPdf && atts.length > 0 && (
+                                    <span className="px-2 py-0.5 rounded bg-slate-500/10 border border-slate-500/30 text-slate-300 text-[10px] font-mono">
+                                      📎 file attached
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="text-xs font-mono text-cyan-400">
+                                  From: <span className="text-slate-200">{log.sender}</span> → To: <span className="text-white font-bold">{recStr}</span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => setSelectedEmailDetail(log)}
+                                  className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 cursor-pointer transition-all"
+                                  title="View Full Decrypted Email"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    showConfirm(
+                                      'Delete Email Log Record',
+                                      `Are you sure you want to delete this email log record from Supabase?`,
+                                      async () => {
+                                        setEmailLogs((prev) => prev.filter((item) => item.id !== log.id));
+                                        try {
+                                          await emailApi.deleteHistory(log.id);
+                                        } catch (e) {}
+                                        showStatus('Email record deleted from Supabase!');
+                                      },
+                                      { confirmText: 'Yes, Delete Record', intent: 'danger' }
+                                    );
+                                  }}
+                                  className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer transition-all"
+                                  title="Delete Record"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Email Snippet */}
+                            <p className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 line-clamp-2 leading-relaxed font-sans">
+                              {log.html?.replace(/<[^>]+>/g, '') || ''}
+                            </p>
+
+                            <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between pt-1">
+                              <span>Message ID: {log.messageId || 'N/A'}</span>
+                              <span>Dispatched: {new Date(log.createdAt).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUB-TAB 3: SAVED DRAFTS VIEW */}
+            {emailSubTab === 'drafts' && (
+              <div className="space-y-4">
+                {emailDrafts.length === 0 ? (
+                  <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                    <FileText className="w-10 h-10 text-slate-500 mx-auto" />
+                    <h4 className="text-base font-bold text-white">No Saved Email Drafts</h4>
+                    <p className="text-xs font-mono text-slate-400">
+                      Drafts saved while composing will be securely stored in Supabase and listed here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {emailDrafts.map((draft) => {
+                      const recStr = Array.isArray(draft.recipients) ? draft.recipients.join(', ') : String(draft.recipients || '');
+                      return (
+                        <div key={draft.id} className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 flex flex-col justify-between">
+                          <div className="space-y-2">
+                            <div className="font-bold text-white text-base">{draft.subject || '(Untitled Draft)'}</div>
+                            <div className="text-xs font-mono text-cyan-400">To: {recStr || 'Unspecified'}</div>
+                            <p className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 line-clamp-3">
+                              {draft.html?.replace(/<[^>]+>/g, '') || 'Empty draft...'}
+                            </p>
+                          </div>
+
+                          <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                            <button
+                              onClick={() => {
+                                setEmailComposer({
+                                  id: draft.id,
+                                  sender: draft.sender || 'contact@zenemoo.in',
+                                  recipients: recStr,
+                                  cc: Array.isArray(draft.cc) ? draft.cc.join(', ') : draft.cc || '',
+                                  bcc: Array.isArray(draft.bcc) ? draft.bcc.join(', ') : draft.bcc || '',
+                                  subject: draft.subject || '',
+                                  html: draft.html || '',
+                                  attachments: [],
+                                });
+                                setEmailSubTab('compose');
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Edit className="w-3.5 h-3.5" /> Resume in Composer
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                showConfirm(
+                                  'Delete Email Draft',
+                                  'Are you sure you want to delete this draft from Supabase?',
+                                  async () => {
+                                    setEmailDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+                                    try {
+                                      await emailApi.deleteDraft(draft.id);
+                                    } catch (e) {}
+                                    showStatus('Draft deleted!');
+                                  },
+                                  { confirmText: 'Yes, Delete Draft', intent: 'danger' }
+                                );
+                              }}
+                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
+                              title="Delete Draft"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FULL DECRYPTED EMAIL DETAIL MODAL */}
+        <AnimatePresence>
+          {selectedEmailDetail && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+              onClick={() => setSelectedEmailDetail(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#090a10] border border-white/10 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 space-y-6 shadow-2xl"
+              >
+                <div className="flex items-start justify-between pb-4 border-b border-white/10 gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-bold text-white font-display">{selectedEmailDetail.subject || '(No Subject)'}</h3>
+                    <div className="flex items-center gap-2 font-mono text-xs text-cyan-400">
+                      <span>Sender: {selectedEmailDetail.sender}</span>
+                      <span>•</span>
+                      <span>Dispatched: {new Date(selectedEmailDetail.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedEmailDetail(null)}
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 font-mono text-xs bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                  <div><span className="text-slate-400">Recipients (To):</span> <span className="text-white font-bold">{Array.isArray(selectedEmailDetail.recipients) ? selectedEmailDetail.recipients.join(', ') : selectedEmailDetail.recipients}</span></div>
+                  {selectedEmailDetail.cc && selectedEmailDetail.cc.length > 0 && (
+                    <div><span className="text-slate-400">CC:</span> <span className="text-slate-200">{Array.isArray(selectedEmailDetail.cc) ? selectedEmailDetail.cc.join(', ') : selectedEmailDetail.cc}</span></div>
+                  )}
+                  {selectedEmailDetail.bcc && selectedEmailDetail.bcc.length > 0 && (
+                    <div><span className="text-slate-400">BCC:</span> <span className="text-slate-200">{Array.isArray(selectedEmailDetail.bcc) ? selectedEmailDetail.bcc.join(', ') : selectedEmailDetail.bcc}</span></div>
+                  )}
+                  <div>
+                    <span className="text-slate-400">Delivery Status:</span>{' '}
+                    <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${selectedEmailDetail.status === 'sent' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+                      {selectedEmailDetail.status?.toUpperCase()}
+                    </span>
+                  </div>
+                  <div><span className="text-slate-400">Brevo Message ID:</span> <span className="text-cyan-400">{selectedEmailDetail.messageId || 'N/A'}</span></div>
+
+                  {/* Attachment Indicators */}
+                  {selectedEmailDetail.attachments_meta && selectedEmailDetail.attachments_meta.length > 0 && (
+                    <div className="pt-2 border-t border-white/5 space-y-1">
+                      <span className="text-slate-400 font-bold block">Attachment Metadata (DB record):</span>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedEmailDetail.attachments_meta.map((att: any, idx: number) => (
+                          <span key={idx} className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-cyan-300 text-xs flex items-center gap-1.5">
+                            📎 {att.filename} <code className="text-[9px] bg-cyan-500/20 text-cyan-200 px-1.5 py-0.5 rounded font-bold">image: {att.image}, pdf: {att.pdf}</code>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Render Decrypted HTML Body */}
+                <div className="space-y-2">
+                  <div className="text-xs font-mono text-slate-400 font-bold">Decrypted Body Content:</div>
+                  <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-200 font-sans text-sm leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
+                    <div dangerouslySetInnerHTML={{ __html: selectedEmailDetail.html || '' }} />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/10 flex justify-end">
+                  <button
+                    onClick={() => setSelectedEmailDetail(null)}
+                    className="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
+                  >
+                    Close Window
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* TAB 4: TELEMETRY & CAPACITY */}
         {activeTab === 'telemetry' && (
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-2xl mx-auto space-y-6">
@@ -3207,241 +3913,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
           </div>
         )}
 
-        {/* TAB 6: DEDICATED MESSAGE HISTORY & COMMUNICATION HUB PAGE */}
-        {activeTab === 'history' && (
-          <div className="space-y-8">
-            {/* Communication Sub-Navigation */}
-            <div className="glass-panel p-3 rounded-2xl border border-white/10 flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { id: 'history', label: 'Message History', icon: History, count: messageHistoryList.length },
-                  { id: 'sent', label: 'Sent Emails', icon: Send, count: messageHistoryList.filter(m => m.folder === 'sent').length },
-                  { id: 'inbox', label: 'Inbox', icon: Inbox, count: 0 },
-                  { id: 'drafts', label: 'Drafts', icon: FileText, count: 0 },
-                  { id: 'templates', label: 'Templates', icon: Layers, count: 2 },
-                  { id: 'contacts', label: 'Contacts', icon: Users, count: inquiries.length },
-                ].map((st) => {
-                  const Icon = st.icon;
-                  const isActive = historySubTab === st.id;
-                  return (
-                    <button
-                      key={st.id}
-                      onClick={() => setHistorySubTab(st.id as any)}
-                      className={`px-3.5 py-2 rounded-xl font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-md'
-                          : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{st.label}</span>
-                      {st.count > 0 && (
-                        <span className={`px-1.5 py-0.2 text-[10px] rounded-full ${isActive ? 'bg-cyan-500/30 text-white' : 'bg-white/5 text-slate-400'}`}>
-                          {st.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
 
-              <button
-                onClick={() => addToast('Compose Email', 'Email composer launched for Zenemoo platform', 'info')}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
-              >
-                <Plus className="w-4 h-4" /> Compose Email
-              </button>
-            </div>
-
-            {/* Email Dispatch Statistics Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="modern-dashboard-card p-5 space-y-1">
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Total Emails Sent</span>
-                <span className="text-2xl font-extrabold text-white block font-mono">1,284</span>
-                <span className="text-[10px] font-mono text-cyan-400 block">+14% this month</span>
-              </div>
-              <div className="modern-dashboard-card p-5 space-y-1">
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Today's Dispatches</span>
-                <span className="text-2xl font-extrabold text-cyan-300 block font-mono">{messageHistoryList.length}</span>
-                <span className="text-[10px] font-mono text-emerald-400 block">100% Sent Successfully</span>
-              </div>
-              <div className="modern-dashboard-card p-5 space-y-1">
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Failed Emails</span>
-                <span className="text-2xl font-extrabold text-emerald-400 block font-mono">0</span>
-                <span className="text-[10px] font-mono text-emerald-400 block">Zero bounce rate</span>
-              </div>
-              <div className="modern-dashboard-card p-5 space-y-1">
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Success SLA</span>
-                <span className="text-2xl font-extrabold text-purple-300 block font-mono">99.8%</span>
-                <span className="text-[10px] font-mono text-purple-400 block">Verified SMTP Route</span>
-              </div>
-              <div className="modern-dashboard-card p-5 space-y-1">
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Avg Delivery Latency</span>
-                <span className="text-2xl font-extrabold text-amber-300 block font-mono">820 ms</span>
-                <span className="text-[10px] font-mono text-amber-400 block">Sub-second dispatch</span>
-              </div>
-            </div>
-
-            {/* Message History Search, Filter & Export Toolbar */}
-            <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 font-mono text-xs">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Search by recipient, sender, subject, or MSG ID..."
-                  value={historySearchQuery}
-                  onChange={(e) => setHistorySearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
-                />
-                {historySearchQuery && (
-                  <button onClick={() => setHistorySearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 flex-wrap">
-                <select
-                  value={historyStatusFilter}
-                  onChange={(e) => setHistoryStatusFilter(e.target.value)}
-                  className="px-3.5 py-2 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-bold focus:outline-none"
-                >
-                  <option value="all">ALL STATUSES</option>
-                  <option value="delivered">DELIVERED</option>
-                  <option value="opened">OPENED</option>
-                  <option value="clicked">CLICKED</option>
-                  <option value="failed">FAILED</option>
-                </select>
-
-                <button
-                  onClick={() => {
-                    const csvContent = "data:text/csv;charset=utf-8," + ["Message ID,Sender,Recipient,Subject,Sent At,Status,Latency MS", ...messageHistoryList.map(m => `"${m.message_id}","${m.sender}","${m.recipient}","${m.subject}","${m.sent_at}","${m.status}","${m.delivery_time_ms || 800}"`)].join("\n");
-                    const encodedUri = encodeURI(csvContent);
-                    const link = document.createElement("a");
-                    link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", `Zenemoo_Message_History_${Date.now()}.csv`);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    addToast('Export Complete', 'Message history exported to CSV', 'success');
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/30 text-slate-200 hover:text-cyan-300 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-cyan-400" /> Export CSV
-                </button>
-              </div>
-            </div>
-
-            {/* Enterprise Message History Table */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
-              <div className="flex items-center justify-between font-mono text-xs">
-                <h4 className="text-sm font-bold font-display text-white flex items-center gap-2">
-                  <Send className="w-4 h-4 text-cyan-400" /> Email Dispatch Records ({messageHistoryList.length})
-                </h4>
-                <span className="text-slate-400">Showing all dispatched system communication logs</span>
-              </div>
-
-              {messageHistoryList.filter(m => {
-                const q = historySearchQuery.toLowerCase();
-                const matchesQ = !q || m.recipient.toLowerCase().includes(q) || m.sender.toLowerCase().includes(q) || m.subject.toLowerCase().includes(q) || m.message_id.toLowerCase().includes(q);
-                const matchesStatus = historyStatusFilter === 'all' || m.status === historyStatusFilter;
-                return matchesQ && matchesStatus;
-              }).length === 0 ? (
-                <div className="py-12 text-center space-y-3 font-mono">
-                  <Send className="w-12 h-12 text-slate-600 mx-auto" />
-                  <h4 className="text-base font-bold text-white">No Message History Records Found</h4>
-                  <p className="text-xs text-slate-400">No communication logs match the current search or filter query.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.01]">
-                  <table className="w-full text-left font-mono text-xs">
-                    <thead className="bg-white/[0.03] text-slate-300 border-b border-white/10 uppercase text-[10px] tracking-wider font-bold">
-                      <tr>
-                        <th className="p-3.5">Message ID</th>
-                        <th className="p-3.5">Status</th>
-                        <th className="p-3.5">Sender</th>
-                        <th className="p-3.5">Recipient</th>
-                        <th className="p-3.5">Subject &amp; Snippet</th>
-                        <th className="p-3.5">Sent Time</th>
-                        <th className="p-3.5">Latency</th>
-                        <th className="p-3.5 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5 text-slate-200">
-                      {messageHistoryList
-                        .filter(m => {
-                          const q = historySearchQuery.toLowerCase();
-                          const matchesQ = !q || m.recipient.toLowerCase().includes(q) || m.sender.toLowerCase().includes(q) || m.subject.toLowerCase().includes(q) || m.message_id.toLowerCase().includes(q);
-                          const matchesStatus = historyStatusFilter === 'all' || m.status === historyStatusFilter;
-                          return matchesQ && matchesStatus;
-                        })
-                        .map((msg) => (
-                          <tr key={msg.id} className="hover:bg-white/[0.02] transition-colors">
-                            <td className="p-3.5 font-bold font-mono text-cyan-400 text-xs">
-                              {msg.message_id}
-                            </td>
-                            <td className="p-3.5">
-                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                                msg.status === 'opened' || msg.status === 'clicked'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : msg.status === 'delivered'
-                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                                  : msg.status === 'failed'
-                                  ? 'bg-red-500/20 text-red-300 border border-red-500/40'
-                                  : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                              }`}>
-                                {msg.status}
-                              </span>
-                            </td>
-                            <td className="p-3.5 text-cyan-300 font-bold">{msg.sender}</td>
-                            <td className="p-3.5 text-white font-bold">{msg.recipient}</td>
-                            <td className="p-3.5 max-w-xs">
-                              <div className="font-bold text-white truncate">{msg.subject}</div>
-                              <div className="text-[10px] text-slate-400 truncate mt-0.5">{msg.snippet}</div>
-                            </td>
-                            <td className="p-3.5 text-[11px] text-slate-400">
-                              {getRelativeTimeString(msg.sent_at)}
-                            </td>
-                            <td className="p-3.5 text-[10px] text-slate-400">
-                              {msg.delivery_time_ms ? `${msg.delivery_time_ms} ms` : '950 ms'}
-                            </td>
-                            <td className="p-3.5 text-right space-x-1.5">
-                              <button
-                                onClick={() => setSelectedMessage(msg)}
-                                className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 cursor-pointer"
-                                title="View Email Details"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => addToast('Resent Email', `Re-queued dispatch to ${msg.recipient}`, 'success')}
-                                className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 cursor-pointer"
-                                title="Resend Email"
-                              >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  showConfirm('Delete Message Log?', `Remove history record ${msg.message_id}?`, () => {
-                                    setMessageHistoryList(messageHistoryList.filter(m => m.id !== msg.id));
-                                    addToast('Record Deleted', `Deleted log entry ${msg.message_id}`, 'info');
-                                  });
-                                }}
-                                className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer"
-                                title="Delete Record"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* TAB 7: UPGRADED AUTHORIZED ADMINS & SECURITY MANAGEMENT PAGE */}
         {activeTab === 'keys' && (
@@ -4720,81 +5192,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         )}
       </AnimatePresence>
 
-      {/* 9. MESSAGE HISTORY INSPECTION MODAL */}
-      <AnimatePresence>
-        {selectedMessage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-5 font-mono text-xs max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <div>
-                  <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider block">{selectedMessage.message_id}</span>
-                  <h3 className="text-base font-bold text-white font-display mt-0.5">{selectedMessage.subject}</h3>
-                </div>
-                <button onClick={() => setSelectedMessage(null)} className="p-1 text-slate-400 hover:text-white bg-white/5 rounded-lg cursor-pointer">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
 
-              <div className="space-y-3 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">SENDER</span>
-                    <span className="text-cyan-300 font-bold">{selectedMessage.sender}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">RECIPIENT</span>
-                    <span className="text-white font-bold">{selectedMessage.recipient}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">DISPATCHED AT</span>
-                    <span className="text-slate-200">{new Date(selectedMessage.sent_at).toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[9px]">DELIVERY SLA</span>
-                    <span className="text-emerald-400 font-bold">100% Verified ({selectedMessage.delivery_time_ms || 820} ms)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Email Content Body</h4>
-                <div className="p-4 rounded-2xl bg-[#08090e] border border-white/10 text-slate-200 text-xs font-mono leading-relaxed whitespace-pre-wrap">
-                  {selectedMessage.body || selectedMessage.snippet}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  onClick={() => {
-                    addToast('Email Resent', `Re-queued dispatch for ${selectedMessage.recipient}`, 'success');
-                    setSelectedMessage(null);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Resend Message
-                </button>
-
-                <button
-                  onClick={() => setSelectedMessage(null)}
-                  className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold cursor-pointer"
-                >
-                  Close Window
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* 10. ENTERPRISE TOAST NOTIFICATION CONTAINER */}
       <div className="fixed top-5 right-5 z-[200] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">

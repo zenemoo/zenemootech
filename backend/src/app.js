@@ -16,6 +16,7 @@ import partnerRoutes from './routes/partnerRoutes.js';
 import opportunityRoutes from './routes/opportunityRoutes.js';
 import opportunityApplicationRoutes from './routes/opportunityApplicationRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import emailRoutes from './routes/emailRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -61,6 +62,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/media', uploadRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/email', emailRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
@@ -78,6 +80,8 @@ app.use('/subscribe', subscriberRoutes);
 app.use('/settings', settingsRoutes);
 app.use('/upload', uploadRoutes);
 app.use('/media', uploadRoutes);
+app.use('/ai', aiRoutes);
+app.use('/email', emailRoutes);
 
 // Global 404 Route Handler
 app.use('*', (req, res) => {

@@ -204,3 +204,14 @@ export const aiApi = {
     api.post('/ai/chat', { messages, language }),
   getAnalytics: () => api.get('/ai/analytics'),
 };
+
+// Zenemoo Brevo Email Engine APIs
+export const emailApi = {
+  send: (data: any) => api.post('/email/send', data),
+  getHistory: () => api.get('/email/history'),
+  deleteHistory: (id: string) => api.delete(`/email/history/${encodeURIComponent(id)}`),
+  getDrafts: () => api.get('/email/drafts'),
+  saveDraft: (data: any) => api.post('/email/drafts', data),
+  deleteDraft: (id: string) => api.delete(`/email/drafts/${encodeURIComponent(id)}`),
+};
+
