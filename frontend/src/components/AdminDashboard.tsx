@@ -11,9 +11,11 @@ import { supabase } from '../lib/supabaseClient';
 
 interface AdminDashboardProps {
   onExit: () => void;
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics';
+  isStandaloneEmailView?: boolean;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialTab, isStandaloneEmailView }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminEmail, setAdminEmail] = useState('mr.prem2006@gmail.com');
   const [passcode, setPasscode] = useState('');
@@ -111,6 +113,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [emailSearchQuery, setEmailSearchQuery] = useState('');
   const [emailStatusFilter, setEmailStatusFilter] = useState<'all' | 'sent' | 'failed'>('all');
 
+  const [composerViewMode, setComposerViewMode] = useState<'edit' | 'preview-desktop' | 'preview-mobile'>('edit');
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<string>('');
+  const [expandedDateGroups, setExpandedDateGroups] = useState<{ [key: string]: boolean }>({
+    'Today': true,
+    'Yesterday': true,
+    'This Week': true,
+    'Last Week': true,
+    'This Month': true,
+    'Older Months': false,
+  });
+
+  // Helper to ensure multi-paragraph text is converted into clean HTML paragraphs & line breaks
+  const formatContentToHtml = (content: string) => {
+    if (!content) return '';
+    if (/<(p|div|br|h[1-6]|ul|ol|li|blockquote|table)\b/i.test(content)) {
+      return content;
+    }
+    return content
+      .split(/\n{2,}/)
+      .map((paragraph) => `<p style="margin-bottom: 12px; line-height: 1.6; color: #e2e8f0;">${paragraph.replace(/\n/g, '<br/>')}</p>`)
+      .join('');
+  };
+
   const [emailComposer, setEmailComposer] = useState({
     id: '',
     sender: 'contact@zenemoo.in',
@@ -132,7 +158,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics'>((initialTab as any) || 'team');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -3142,22 +3168,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 </button>
               </div>
 
-              <div className="text-[11px] font-mono text-cyan-400/80 px-3 py-1 rounded-xl bg-white/[0.02] border border-white/5 hidden sm:block">
-                Authentication: Brevo SMTP TLS 1.3
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    window.history.pushState(null, '', '/email');
+                    window.dispatchEvent(new Event('popstate'));
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold hover:bg-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer text-xs"
+                  title="Open standalone email portal"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" /> Open Standalone (/email)
+                </button>
+                <div className="text-[11px] font-mono text-cyan-400/80 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 hidden sm:block">
+                  Authentication: Brevo SMTP TLS 1.3
+                </div>
               </div>
             </div>
 
             {/* SUB-TAB 1: COMPOSE EMAIL FORM */}
             {emailSubTab === 'compose' && (
               <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 space-y-6">
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/10 gap-3">
                   <div>
-                    <h3 className="text-lg font-bold font-display text-white">Compose & Send Email</h3>
-                    <p className="text-xs font-mono text-slate-400">Dispatches instantly via Brevo SMTP Gateway</p>
+                    <h3 className="text-lg font-bold font-display text-white flex items-center gap-2">
+                      <Send className="w-5 h-5 text-cyan-400" /> Compose & Send Email
+                    </h3>
+                    <p className="text-xs font-mono text-slate-400">Dispatches instantly via Brevo HTTPS REST API & SMTP Gateway</p>
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-xs font-bold flex items-center gap-1.5">
-                    <CheckCircle className="w-3.5 h-3.5" /> Brevo Relay Ready
-                  </span>
+                  
+                  {/* Mode & Auto-Save Indicators */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setComposerViewMode('edit')}
+                        className={`px-3 py-1 rounded-lg transition-all ${composerViewMode === 'edit' ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-400 hover:text-white'}`}
+                      >
+                        ✏️ Rich Editor
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComposerViewMode('preview-desktop')}
+                        className={`px-3 py-1 rounded-lg transition-all ${composerViewMode === 'preview-desktop' ? 'bg-purple-500/20 text-purple-300 font-bold' : 'text-slate-400 hover:text-white'}`}
+                      >
+                        🖥️ Desktop Preview
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComposerViewMode('preview-mobile')}
+                        className={`px-3 py-1 rounded-lg transition-all ${composerViewMode === 'preview-mobile' ? 'bg-amber-500/20 text-amber-300 font-bold' : 'text-slate-400 hover:text-white'}`}
+                      >
+                        📱 Mobile Preview
+                      </button>
+                    </div>
+
+                    <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-xs font-bold flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5" /> Brevo Relay Ready
+                    </span>
+                  </div>
                 </div>
 
                 <form
@@ -3170,8 +3238,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
                     setIsSendingBrevoMail(true);
                     try {
-                      const res = await emailApi.send(emailComposer);
+                      // Format multi-paragraph text into clean HTML paragraphs & line breaks
+                      const formattedHtml = formatContentToHtml(emailComposer.html);
+
+                      const res = await emailApi.send({
+                        ...emailComposer,
+                        html: formattedHtml,
+                      });
+
                       if (res.data && res.data.success) {
+                        // Fix Draft Cleanup: If email was sent from an existing draft, delete draft from database
+                        if (emailComposer.id) {
+                          try {
+                            await emailApi.deleteDraft(emailComposer.id);
+                          } catch (cleanupErr) {
+                            console.warn('Draft cleanup notice:', cleanupErr);
+                          }
+                        }
+
                         addToast('Email Sent', `Delivered via Brevo SMTP to ${emailComposer.recipients}`, 'success');
                         showStatus('Email dispatched successfully via Brevo SMTP!');
                         setEmailComposer({
@@ -3185,6 +3269,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                           attachments: [],
                         });
                         setEmailSubTab('history');
+                        await loadEmailDrafts();
                         await loadEmailHistory();
                       } else {
                         addToast('Send Error', res.data?.message || 'SMTP delivery failed.', 'error');
@@ -3267,18 +3352,158 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                     />
                   </div>
 
-                  {/* Message Body Textarea */}
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1.5">Email Content Body (HTML / Plain Text) <span className="text-cyan-400">*</span></label>
-                    <textarea
-                      rows={8}
-                      placeholder="Dear Client,&#10;&#10;Thank you for contacting Zenemoo Data Solutions. We are pleased to confirm project capacity...&#10;&#10;Best regards,&#10;Zenemoo Engineering Team"
-                      value={emailComposer.html}
-                      onChange={(e) => setEmailComposer({ ...emailComposer, html: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-sans text-xs focus:outline-none focus:border-cyan-400 leading-relaxed"
-                      required
-                    />
-                  </div>
+                  {/* EDITOR / LIVE PREVIEW TAB VIEW */}
+                  {composerViewMode === 'edit' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-slate-300 font-bold">Email Content Body (Rich Text / Multi-Paragraph HTML) <span className="text-cyan-400">*</span></label>
+                        <span className="text-[10px] text-slate-400">Paragraphs &amp; newlines are automatically converted into HTML &lt;p&gt; tags</span>
+                      </div>
+
+                      {/* Rich Text Toolbar */}
+                      <div className="p-2 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-wrap items-center gap-1.5 font-mono text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <b>Bold Text</b>' }))}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-white font-bold cursor-pointer"
+                          title="Bold (Ctrl+B)"
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <i>Italic Text</i>' }))}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 italic cursor-pointer"
+                          title="Italic (Ctrl+I)"
+                        >
+                          I
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <u>Underline Text</u>' }))}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 underline cursor-pointer"
+                          title="Underline (Ctrl+U)"
+                        >
+                          U
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + ' <s>Strikethrough</s>' }))}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 line-through cursor-pointer"
+                          title="Strikethrough"
+                        >
+                          S
+                        </button>
+
+                        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<h2>Heading Title</h2>\n' }))}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer"
+                          title="Heading 2"
+                        >
+                          H2
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<h3>Section Subheading</h3>\n' }))}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 text-purple-300 font-bold cursor-pointer"
+                          title="Heading 3"
+                        >
+                          H3
+                        </button>
+
+                        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<ul>\n  <li>Bullet item 1</li>\n  <li>Bullet item 2</li>\n</ul>\n' }))}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer"
+                          title="Bullet List"
+                        >
+                          • List
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmailComposer((p) => ({ ...p, html: p.html + '\n<ol>\n  <li>Numbered item 1</li>\n  <li>Numbered item 2</li>\n</ol>\n' }))}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-200 cursor-pointer"
+                          title="Numbered List"
+                        >
+                          1. List
+                        </button>
+
+                        <div className="h-4 w-[1px] bg-white/10 mx-1" />
+
+                        {/* Signatures Preset Dropdown */}
+                        <select
+                          onChange={(e) => {
+                            const sigKey = e.target.value;
+                            if (!sigKey) return;
+                            let sigHtml = '';
+                            if (sigKey === 'prem') {
+                              sigHtml = '\n<p style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Kind Regards,<br><strong style="color: #f8fafc;">Prem Prasad Pradhan</strong><br><span style="color: #06b6d4; font-weight: bold;">Founder &amp; CEO</span> | Zenemoo Tech<br>📧 prem@zenemoo.in | 🌐 www.zenemoo.in</p>';
+                            } else if (sigKey === 'support') {
+                              sigHtml = '\n<p style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Best regards,<br><strong style="color: #f8fafc;">Zenemoo Technical Support Team</strong><br>📧 support@zenemoo.in | 🌐 www.zenemoo.in</p>';
+                            } else if (sigKey === 'sales') {
+                              sigHtml = '\n<p style="margin-top: 24px; border-top: 1px solid #334155; padding-top: 12px; color: #94a3b8;">Sincerely,<br><strong style="color: #f8fafc;">Zenemoo Enterprise Solutions Team</strong><br>📧 contact@zenemoo.in | 🌐 www.zenemoo.in</p>';
+                            }
+                            setEmailComposer((p) => ({ ...p, html: p.html + sigHtml }));
+                            e.target.value = '';
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-bold focus:outline-none text-xs"
+                        >
+                          <option value="">+ Insert Signature</option>
+                          <option value="prem" className="bg-slate-900">Prem Prasad Pradhan (Founder)</option>
+                          <option value="support" className="bg-slate-900">Zenemoo Technical Support</option>
+                          <option value="sales" className="bg-slate-900">Zenemoo Enterprise Sales</option>
+                        </select>
+                      </div>
+
+                      <textarea
+                        rows={9}
+                        placeholder="Dear Client,&#10;&#10;I hope you're doing well.&#10;&#10;Thank you for reaching out to Zenemoo Data Solutions. We are pleased to confirm project capacity...&#10;&#10;Kind Regards,&#10;Prem Prasad Pradhan&#10;Founder, Zenemoo"
+                        value={emailComposer.html}
+                        onChange={(e) => setEmailComposer({ ...emailComposer, html: e.target.value })}
+                        className="w-full px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-sans text-xs focus:outline-none focus:border-cyan-400 leading-relaxed"
+                        required
+                      />
+                    </div>
+                  ) : (
+                    /* LIVE PREVIEW CONTAINER (GMAIL / OUTLOOK RENDER MOCKUP) */
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs text-slate-300 font-mono">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <Eye className="w-4 h-4 text-purple-400" /> Live Gmail Inbox Preview ({composerViewMode === 'preview-desktop' ? 'Desktop Frame' : 'Mobile Frame'})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setComposerViewMode('edit')}
+                          className="text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <Edit className="w-3.5 h-3.5" /> Return to Edit Mode
+                        </button>
+                      </div>
+
+                      <div className={`mx-auto transition-all ${composerViewMode === 'preview-mobile' ? 'max-w-xs' : 'w-full'}`}>
+                        <div className="p-6 rounded-3xl bg-[#0b0f19] border border-white/15 shadow-2xl text-slate-100 font-sans space-y-4">
+                          <div className="border-b border-white/10 pb-3 space-y-1">
+                            <div className="text-xs text-cyan-400 font-mono font-bold">From: {emailComposer.sender}</div>
+                            <div className="text-xs text-slate-300 font-mono">To: {emailComposer.recipients || '(No Recipient Specified)'}</div>
+                            <div className="text-base font-bold text-white mt-2 font-display">{emailComposer.subject || '(No Subject Line)'}</div>
+                          </div>
+
+                          {/* Formatted HTML Content Body Output */}
+                          <div
+                            className="text-slate-200 text-xs leading-relaxed space-y-3 font-sans min-h-[160px]"
+                            dangerouslySetInnerHTML={{
+                              __html: formatContentToHtml(emailComposer.html) || '<p class="text-slate-500 italic">Email content preview will appear here...</p>',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* File Attachments Section with Type Indicators */}
                   <div className="space-y-2 bg-white/[0.02] p-4 rounded-2xl border border-white/5">

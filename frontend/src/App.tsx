@@ -28,7 +28,7 @@ import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
+    'home' | 'admin' | 'email' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -42,6 +42,19 @@ export function App() {
       const hash = window.location.hash;
       const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
 
+      // Dynamic robots noindex protection for admin and standalone email routes
+      let robotsMeta = document.querySelector('meta[name="robots"]');
+      if (path === '/email' || path === '/admin' || path.startsWith('/portal')) {
+        if (!robotsMeta) {
+          robotsMeta = document.createElement('meta');
+          robotsMeta.setAttribute('name', 'robots');
+          document.head.appendChild(robotsMeta);
+        }
+        robotsMeta.setAttribute('content', 'noindex, nofollow');
+      } else if (robotsMeta) {
+        robotsMeta.setAttribute('content', 'index, follow');
+      }
+
       // Check if path or hash matches secret private admin route
       const isSecretAdminRoute =
         path === `/${secretEnvRoute}` ||
@@ -53,6 +66,8 @@ export function App() {
 
       if (isSecretAdminRoute) {
         setCurrentRoute('admin');
+      } else if (path === '/email' || hash === '#email' || hash === '#/email') {
+        setCurrentRoute('email');
       } else if (hash === '#admin' || path === '/admin') {
         window.history.replaceState(null, '', '/');
         window.location.hash = '';
@@ -140,6 +155,8 @@ export function App() {
     <ThemeProvider>
       {currentRoute === 'admin' ? (
         <AdminDashboard onExit={handleExitAdmin} />
+      ) : currentRoute === 'email' ? (
+        <AdminDashboard initialTab="history" isStandaloneEmailView={true} onExit={handleExitAdmin} />
       ) : currentRoute === 'forgot-password' ? (
         <ForgotPasswordPage
           onNavigateVerify={(email) => {
