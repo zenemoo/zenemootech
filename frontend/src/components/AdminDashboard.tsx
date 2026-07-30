@@ -3601,24 +3601,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       onChange={(e) => {
                         const files = e.target.files;
                         if (!files || files.length === 0) return;
+
+                        const MAX_SINGLE_FILE_BYTES = 5 * 1024 * 1024; // 5MB
+                        const MAX_COMBINED_BYTES = 10 * 1024 * 1024; // 10MB
+
+                        let currentCombined = emailComposer.attachments.reduce((acc, att) => {
+                          const est = att.content ? Math.round((att.content.length * 3) / 4) : 0;
+                          return acc + est;
+                        }, 0);
+
                         Array.from(files).forEach((file) => {
+                          if (file.size > MAX_SINGLE_FILE_BYTES) {
+                            addToast(
+                              'File Limit Exceeded',
+                              `'${file.name}' (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds 5MB max single file limit.`,
+                              'error'
+                            );
+                            return;
+                          }
+
+                          if (currentCombined + file.size > MAX_COMBINED_BYTES) {
+                            addToast(
+                              'Total Attachment Limit Exceeded',
+                              `Adding '${file.name}' exceeds 10MB combined attachment limit.`,
+                              'warning'
+                            );
+                            return;
+                          }
+
+                          currentCombined += file.size;
+
                           const reader = new FileReader();
                           reader.onload = (ev) => {
                             const base64Content = ev.target?.result as string;
                             setEmailComposer((prev) => ({
                               ...prev,
                               attachments: [
-                                ...prev.attachments,
+                                ...prev.attachments.filter((a) => a.filename !== file.name),
                                 {
                                   filename: file.name,
                                   contentType: file.type || 'application/octet-stream',
                                   content: base64Content,
+                                  sizeFormatted: file.size < 1024 * 1024
+                                    ? `${(file.size / 1024).toFixed(0)} KB`
+                                    : `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
                                 },
                               ],
                             }));
+                            addToast('Attachment Added', `'${file.name}' (${(file.size / 1024).toFixed(0)} KB)`, 'success');
                           };
                           reader.readAsDataURL(file);
                         });
+                        e.target.value = '';
                       }}
                       className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-300 file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-mono file:bg-cyan-500/20 file:text-cyan-300 cursor-pointer"
                     />
@@ -3627,8 +3661,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-300 flex items-start gap-2">
                       <Info className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
                       <div>
-                        <span className="font-bold block text-white">Privacy & Attachment Policy:</span>
-                        File binaries are transmitted via Brevo SMTP to recipients. For database efficiency & security, Supabase logs attachment metadata indicators only (<code className="bg-black/40 px-1 py-0.5 rounded text-cyan-300">image: "yes"</code>, <code className="bg-black/40 px-1 py-0.5 rounded text-cyan-300">pdf: "no"</code>) without saving raw file data into Supabase tables.
+                        <span className="font-bold block text-white">Privacy &amp; Attachment Policy:</span>
+                        File binaries are transmitted via Brevo SMTP to recipients. Max size: 5MB per file / 10MB combined. For database efficiency &amp; security, Supabase logs attachment metadata indicators only without saving raw binary data into Supabase tables.
                       </div>
                     </div>
 
@@ -3637,15 +3671,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <div className="space-y-1.5 pt-2">
                         <div className="text-[10px] font-bold text-slate-400 uppercase">Attached Files ({emailComposer.attachments.length}):</div>
                         <div className="flex flex-wrap gap-2">
-                          {emailComposer.attachments.map((att, idx) => {
+                          {emailComposer.attachments.map((att: any, idx: number) => {
                             const isImg = (att.contentType && att.contentType.includes('image')) || /\.(png|jpe?g|gif|webp|svg)$/i.test(att.filename);
                             const isPdf = (att.contentType && att.contentType.includes('pdf')) || /\.pdf$/i.test(att.filename);
                             return (
-                              <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-200">
+                              <div key={idx} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-200 shadow-md">
                                 {isImg ? <Image className="w-3.5 h-3.5 text-cyan-400" /> : isPdf ? <FileText className="w-3.5 h-3.5 text-purple-400" /> : <FileCheck className="w-3.5 h-3.5 text-emerald-400" />}
-                                <span className="font-mono text-xs">{att.filename}</span>
+                                <span className="font-mono text-xs font-bold">{att.filename}</span>
+                                {att.sizeFormatted && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/10 text-slate-300 font-mono">
+                                    {att.sizeFormatted}
+                                  </span>
+                                )}
                                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold uppercase">
-                                  {isImg ? 'image: yes' : isPdf ? 'pdf: yes' : 'file'}
+                                  {isImg ? 'image' : isPdf ? 'pdf' : 'file'}
                                 </span>
                                 <button
                                   type="button"
@@ -3656,6 +3695,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                     }));
                                   }}
                                   className="text-red-400 hover:text-red-300 p-0.5 cursor-pointer ml-1"
+                                  title="Remove attachment"
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
