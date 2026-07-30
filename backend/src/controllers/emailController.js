@@ -120,8 +120,13 @@ export const sendEmail = async (req, res, next) => {
 
       return res.status(500).json({
         success: false,
-        message: `Brevo SMTP delivery failed: ${sendErr.message}`,
-        error: sendErr.message,
+        stage: sendErr.stage || 'SMTP Delivery',
+        code: sendErr.code || 'ESMTPFAILED',
+        error: sendErr.error || sendErr.message || 'Brevo SMTP delivery failed',
+        response: sendErr.response,
+        responseCode: sendErr.responseCode,
+        command: sendErr.command,
+        suggestion: sendErr.suggestion || 'Verify BREVO_SMTP_KEY in environment variables and sender authorization.',
       });
     }
   } catch (err) {
