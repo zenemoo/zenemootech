@@ -2101,55 +2101,110 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 </div>
 
                 <form onSubmit={handleGrantPortalAccess} className="space-y-6">
-                  {/* Team Roster Autocomplete Search Bar */}
-                  <div className="space-y-2 relative">
-                    <label className="block text-xs font-bold text-cyan-300">
-                      1. Search Employee in Team Roster (Name, Employee ID, or Email) *
-                    </label>
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                      <input
-                        type="text"
-                        placeholder="Type to search e.g. Prem, Sangita, EMP-001..."
-                        value={rosterSearchQuery}
-                        onChange={(e) => handleSearchRoster(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
-                      />
+                  {/* Team Roster Employee Selection */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-cyan-300 mb-1.5">
+                        1. Select Employee from Existing Team Roster ({teamList.length} Available) *
+                      </label>
+                      <select
+                        value={selectedRosterMember?.id || ''}
+                        onChange={(e) => {
+                          const selected = teamList.find((m) => m.id === e.target.value);
+                          if (selected) {
+                            setSelectedRosterMember({
+                              ...selected,
+                              designation: selected.designation || selected.role || 'Specialist',
+                              department: selected.category || selected.department || 'Engineering',
+                              employee_id: selected.employee_id || `EMP-${String(selected.position || 1).padStart(3, '0')}`,
+                              image_url: selected.image_url || selected.image || '/assets/executive.png',
+                            });
+                            setRosterSearchQuery(selected.name);
+                          }
+                        }}
+                        className="w-full px-4 py-3 rounded-xl bg-[#0d0e15] border border-cyan-500/40 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value="">-- Click to Select Employee (Prem, Sangita, Chandan, Madhushmita, etc.) --</option>
+                        {teamList.map((m) => (
+                          <option key={m.id} value={m.id} className="bg-slate-900 text-white py-1">
+                            {m.name} — {m.designation || m.role || 'Specialist'} ({m.category || m.department || 'Engineering'})
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    {/* Autocomplete Dropdown */}
-                    {rosterSearchResults.length > 0 && (
-                      <div className="absolute left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-2xl bg-[#090d16] border border-cyan-500/30 shadow-2xl z-50 divide-y divide-white/5">
-                        {rosterSearchResults.map((m) => (
-                          <div
-                            key={m.id}
-                            onClick={() => {
-                              setSelectedRosterMember(m);
-                              setRosterSearchQuery(m.name);
-                              setRosterSearchResults([]);
-                            }}
-                            className={`p-3 hover:bg-cyan-500/10 cursor-pointer flex items-center justify-between transition-all ${
-                              selectedRosterMember?.id === m.id ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <img src={m.image_url} alt={m.name} className="w-8 h-8 rounded-full object-cover border border-white/10" />
-                              <div>
-                                <div className="text-xs font-bold text-white">{m.name}</div>
-                                <div className="text-[10px] text-slate-400">{m.designation} &bull; {m.department}</div>
-                              </div>
-                            </div>
-
-                            <div className="text-right">
-                              <span className="text-[10px] font-mono text-cyan-400 block">{m.employee_id}</span>
-                              {m.has_access && (
-                                <span className="text-[9px] font-mono text-amber-400 font-bold">Access Granted</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                    <div className="relative">
+                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                        Or Type to Filter by Name, Employee ID, or Designation:
+                      </label>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                        <input
+                          type="text"
+                          placeholder="Type to filter e.g. Chandan, Sangita, Prem, EMP-001..."
+                          value={rosterSearchQuery}
+                          onChange={(e) => {
+                            const q = e.target.value;
+                            setRosterSearchQuery(q);
+                            handleSearchRoster(q);
+                          }}
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                        />
                       </div>
-                    )}
+
+                      {/* Instant Live Client-Side + API Search Filter Results */}
+                      {rosterSearchQuery.trim().length > 0 && (
+                        <div className="mt-1 max-h-52 overflow-y-auto rounded-2xl bg-[#090d16] border border-cyan-500/40 shadow-2xl z-50 divide-y divide-white/5 font-mono text-xs">
+                          {teamList
+                            .filter((m) => {
+                              const q = rosterSearchQuery.toLowerCase();
+                              return (
+                                m.name.toLowerCase().includes(q) ||
+                                (m.designation || m.role || '').toLowerCase().includes(q) ||
+                                (m.category || m.department || '').toLowerCase().includes(q) ||
+                                (m.email || '').toLowerCase().includes(q) ||
+                                (m.employee_id || `EMP-${String(m.position || 1).padStart(3, '0')}`).toLowerCase().includes(q)
+                              );
+                            })
+                            .map((m) => (
+                              <div
+                                key={m.id}
+                                onClick={() => {
+                                  setSelectedRosterMember({
+                                    ...m,
+                                    designation: m.designation || m.role || 'Specialist',
+                                    department: m.category || m.department || 'Engineering',
+                                    employee_id: m.employee_id || `EMP-${String(m.position || 1).padStart(3, '0')}`,
+                                    image_url: m.image_url || m.image || '/assets/executive.png',
+                                  });
+                                  setRosterSearchQuery(m.name);
+                                }}
+                                className={`p-3 hover:bg-cyan-500/20 cursor-pointer flex items-center justify-between transition-all ${
+                                  selectedRosterMember?.id === m.id ? 'bg-cyan-500/30 text-cyan-300 font-bold border-l-2 border-cyan-400' : 'text-slate-200'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={m.image_url || m.image || '/assets/executive.png'}
+                                    alt={m.name}
+                                    className="w-8 h-8 rounded-full object-cover border border-white/10"
+                                  />
+                                  <div>
+                                    <div className="text-xs font-bold text-white">{m.name}</div>
+                                    <div className="text-[10px] text-slate-400">{m.designation || m.role} &bull; {m.category || m.department}</div>
+                                  </div>
+                                </div>
+
+                                <div className="text-right">
+                                  <span className="text-[10px] font-mono text-cyan-400 block">
+                                    {m.employee_id || `EMP-${String(m.position || 1).padStart(3, '0')}`}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Auto-Populated Read-Only Employee Card */}
