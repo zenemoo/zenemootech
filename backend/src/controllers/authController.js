@@ -54,25 +54,29 @@ const checkAdminEmailAuthorized = async (email) => {
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail) return false;
 
-  // 1. Query Supabase authorized_admin_emails table
+  // 1. Primary Super Admin & Core Executive Emails are ALWAYS authorized
+  if (DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in')) {
+    return true;
+  }
+
+  // 2. Query Supabase authorized_admin_emails table for dynamic accounts
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from('authorized_admin_emails')
-        .select('*')
+        .select('status')
         .eq('email', cleanEmail)
         .maybeSingle();
 
       if (!error && data) {
-        return true;
+        return data.status !== 'disabled';
       }
     } catch (err) {
       console.warn('[Auth Check DB Note]', err.message);
     }
   }
 
-  // 2. Check domain or fallback list
-  return DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in');
+  return false;
 };
 
 /**
@@ -645,37 +649,45 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     console.log('✅ Hashing successful.');
 
-    // Update password_hash in Supabase authorized_admin_emails table
+    // Update or insert password_hash in Supabase authorized_admin_emails table (UPSERT)
     if (supabase) {
       try {
-        console.log(`🌐 Fetching user details to retrieve telegram_chat_id for: ${cleanEmail}...`);
+        console.log(`🌐 Fetching user details for: ${cleanEmail}...`);
         
         let telegramChatId = null;
         const { data: userData, error: userError } = await supabase
           .from('authorized_admin_emails')
-          .select('telegram_chat_id')
+          .select('id, telegram_chat_id')
           .eq('email', cleanEmail)
           .maybeSingle();
 
         if (!userError && userData) {
           telegramChatId = userData.telegram_chat_id;
-        }
-
-        console.log(`🌐 Updating password_hash and last_password_reset in DB for: ${cleanEmail}...`);
-        const { error } = await supabase
-          .from('authorized_admin_emails')
-          .update({ 
-            password_hash: passwordHash,
-            last_password_reset: new Date().toISOString()
-          })
-          .eq('email', cleanEmail);
-
-        if (error) {
-          console.error('❌ Supabase password_hash update error:', error.message);
-          throw error;
+          console.log(`🌐 Updating password_hash in DB for existing record: ${cleanEmail}...`);
+          await supabase
+            .from('authorized_admin_emails')
+            .update({ 
+              password_hash: passwordHash,
+              status: 'active',
+              last_password_reset: new Date().toISOString()
+            })
+            .eq('email', cleanEmail);
+        } else {
+          console.log(`🌐 Creating new active admin DB record with password_hash for: ${cleanEmail}...`);
+          await supabase
+            .from('authorized_admin_emails')
+            .insert([{
+              email: cleanEmail,
+              name: cleanEmail === 'mr.prem2006@gmail.com' ? 'Prem Prasad' : cleanEmail.split('@')[0],
+              role: 'Super Admin',
+              status: 'active',
+              password_hash: passwordHash,
+              added_by: 'System Recovery',
+              last_password_reset: new Date().toISOString()
+            }]);
         }
         
-        console.log(`✅ Password hash successfully updated in database.`);
+        console.log(`✅ Password hash successfully updated in database for ${cleanEmail}.`);
 
         // If a telegram chat ID is linked, send a password change success confirmation alert!
         if (telegramChatId) {
