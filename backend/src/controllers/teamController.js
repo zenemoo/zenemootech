@@ -449,4 +449,24 @@ export const uploadSelfImage = async (req, res, next) => {
   }
 };
 
+// DELETE /api/team/:id - Delete member and renumber remaining 1..N
+export const deleteTeamMember = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await supabaseService.delete('team', id);
+
+    // Renumber remaining members 1..N
+    const updatedTeam = await normalizeAndSavePositions();
+
+    res.json({
+      success: true,
+      message: 'Team member deleted and positions renumbered 1..N',
+      team: updatedTeam,
+      data: updatedTeam,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 
