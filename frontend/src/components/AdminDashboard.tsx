@@ -6,12 +6,12 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { contactApi, subscriberApi, authApi, emailApi } from '../services/api';
+import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin';
   isStandaloneEmailView?: boolean;
 }
 
@@ -199,7 +199,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics'>((initialTab as any) || 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin'>((initialTab as any) || 'team');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -218,6 +218,192 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [partnersList, setPartnersList] = useState<PartnerCompany[]>([]);
   const [editingPartner, setEditingPartner] = useState<PartnerCompany | null>(null);
   const [isPartnerUploading, setIsPartnerUploading] = useState(false);
+
+  // RBAC User Accounts & Team Roster Search State
+  const [rbacUsers, setRbacUsers] = useState<any[]>([]);
+  const [rosterSearchResults, setRosterSearchResults] = useState<any[]>([]);
+  const [rosterSearchQuery, setRosterSearchQuery] = useState('');
+  const [selectedRosterMember, setSelectedRosterMember] = useState<any | null>(null);
+  const [grantRole, setGrantRole] = useState('team_member');
+  const [grantPassword, setGrantPassword] = useState('Team@123');
+  const [grantEmailAccess, setGrantEmailAccess] = useState(false);
+  const [grantNotificationAccess, setGrantNotificationAccess] = useState(true);
+  const [isGrantingAccess, setIsGrantingAccess] = useState(false);
+  const [isSearchingRoster, setIsSearchingRoster] = useState(false);
+  const [isRbacModalOpen, setIsRbacModalOpen] = useState(false);
+
+  // Admin Notification Dispatcher State
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifType, setNotifType] = useState('info');
+  const [notifTargetType, setNotifTargetType] = useState('broadcast');
+  const [notifTargetRole, setNotifTargetRole] = useState('team_member');
+  const [notifTargetUserId, setNotifTargetUserId] = useState('');
+  const [isDispatchingNotif, setIsDispatchingNotif] = useState(false);
+  const [adminNotifList, setAdminNotifList] = useState<any[]>([]);
+
+  const loadRbacUsers = async () => {
+    try {
+      const res = await userManagementApi.getUsers();
+      if (res.data && res.data.success) {
+        setRbacUsers(res.data.data || []);
+      }
+    } catch (err) {}
+  };
+
+  const handleSearchRoster = async (query: string) => {
+    setRosterSearchQuery(query);
+    if (!query) {
+      setRosterSearchResults([]);
+      return;
+    }
+    setIsSearchingRoster(true);
+    try {
+      const res = await userManagementApi.searchRoster(query);
+      if (res.data && res.data.success) {
+        setRosterSearchResults(res.data.data || []);
+      }
+    } catch (err) {
+    } finally {
+      setIsSearchingRoster(false);
+    }
+  };
+
+  const handleGrantPortalAccess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRosterMember) {
+      alert('Please select an employee from the Team Roster search results.');
+      return;
+    }
+    setIsGrantingAccess(true);
+    try {
+      const res = await userManagementApi.grantAccess({
+        team_member_id: selectedRosterMember.id,
+        role: grantRole,
+        password: grantPassword || 'Team@123',
+        status: 'active',
+        email_access: grantEmailAccess,
+        notification_access: grantNotificationAccess,
+      });
+
+      if (res.data && res.data.success) {
+        showStatus(`Granted ${grantRole.toUpperCase()} portal access for ${selectedRosterMember.name}!`);
+        setIsRbacModalOpen(false);
+        setSelectedRosterMember(null);
+        setRosterSearchQuery('');
+        setRosterSearchResults([]);
+        await loadRbacUsers();
+      } else {
+        alert(res.data?.message || 'Failed to grant portal access.');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to grant portal access.');
+    } finally {
+      setIsGrantingAccess(false);
+    }
+  };
+
+  const handleResetUserPassword = async (userId: string, userName: string) => {
+    if (!confirm(`Reset password for ${userName} to default 'Team@123'?`)) return;
+    try {
+      const res = await userManagementApi.resetPassword(userId, 'Team@123');
+      if (res.data && res.data.success) {
+        showStatus(`Password for ${userName} reset to 'Team@123'. User will be prompted to change password on next login.`);
+        await loadRbacUsers();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Password reset failed.');
+    }
+  };
+
+  const handleToggleUserStatus = async (user: any) => {
+    const newStatus = user.status === 'active' ? 'disabled' : 'active';
+    try {
+      const res = await userManagementApi.updateUser(user.id, { status: newStatus });
+      if (res.data && res.data.success) {
+        showStatus(`Updated user ${user.name || user.email} status to ${newStatus.toUpperCase()}`);
+        await loadRbacUsers();
+      }
+    } catch (err: any) {
+      alert('Status update failed.');
+    }
+  };
+
+  const handleToggleEmailAccess = async (user: any) => {
+    const newAccess = !user.email_access;
+    try {
+      const res = await userManagementApi.updateUser(user.id, { email_access: newAccess });
+      if (res.data && res.data.success) {
+        showStatus(`Company email access for ${user.name} set to ${newAccess ? 'YES' : 'NO'}`);
+        await loadRbacUsers();
+      }
+    } catch (err: any) {
+      alert('Email access permission update failed.');
+    }
+  };
+
+  const handleRevokeUserAccess = async (userId: string, userName: string) => {
+    if (!confirm(`Revoke portal access for ${userName}? The employee record in Team Roster will remain untouched.`)) return;
+    try {
+      const res = await userManagementApi.deleteAccess(userId);
+      if (res.data && res.data.success) {
+        showStatus(`Portal access revoked for ${userName}.`);
+        await loadRbacUsers();
+      }
+    } catch (err: any) {
+      alert('Failed to revoke access.');
+    }
+  };
+
+  const loadAdminNotifications = async () => {
+    try {
+      const res = await notificationApi.getAll();
+      if (res.data && res.data.success) {
+        setAdminNotifList(res.data.data || []);
+      }
+    } catch (err) {}
+  };
+
+  const handleDispatchNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifTitle || !notifMessage) {
+      alert('Notification title and message body are required.');
+      return;
+    }
+    setIsDispatchingNotif(true);
+    try {
+      const res = await notificationApi.adminCreate({
+        title: notifTitle,
+        message: notifMessage,
+        type: notifType,
+        target_type: notifTargetType,
+        target_role: notifTargetRole,
+        target_user_id: notifTargetUserId || undefined,
+      });
+
+      if (res.data && res.data.success) {
+        showStatus(`Dispatched notification '${notifTitle}' successfully!`);
+        setNotifTitle('');
+        setNotifMessage('');
+        await loadAdminNotifications();
+      } else {
+        alert(res.data?.message || 'Notification dispatch failed.');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Notification dispatch failed.');
+    } finally {
+      setIsDispatchingNotif(false);
+    }
+  };
+
+  const handleDeleteAdminNotif = async (id: string) => {
+    if (!confirm('Delete this notification entry?')) return;
+    try {
+      await notificationApi.adminDelete(id);
+      showStatus('Notification deleted.');
+      await loadAdminNotifications();
+    } catch (err) {}
+  };
 
   // Opportunities & Candidate Applications State
   const [opportunitiesList, setOpportunitiesList] = useState<OpportunityProgram[]>([]);
@@ -464,6 +650,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       setAuthorizedEmails(authList);
       await loadEmailHistory();
       await loadEmailDrafts();
+      await loadRbacUsers();
+      await loadAdminNotifications();
 
       // Fetch authenticated user profile and connection metadata
       try {
@@ -1416,6 +1604,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   const navItems = [
     { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
+    { id: 'rbac', name: 'User Access & RBAC', icon: UserCheck },
+    { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Bell },
     { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
     { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
     { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
@@ -1843,6 +2033,470 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
         {/* 4. MAIN DYNAMIC DISPLAY PANEL */}
         <main className="flex-1 p-6 space-y-8 max-w-7xl mx-auto w-full">
+
+        {/* TAB: USER ACCESS & ROLE-BASED ACCESS CONTROL (RBAC) */}
+        {activeTab === 'rbac' && (
+          <div className="space-y-8 font-mono text-xs">
+            {/* Top Bar: Stats & Grant Access Button */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Total Active Login Accounts</span>
+                  <span className="text-3xl font-extrabold text-white block">{rbacUsers.length}</span>
+                  <span className="text-[10px] text-cyan-400 block">Single-Source Team Roster Links</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">HR Portal Members</span>
+                  <span className="text-3xl font-extrabold text-purple-300 block">
+                    {rbacUsers.filter((u) => u.role === 'hr').length}
+                  </span>
+                  <span className="text-[10px] text-purple-400 block">
+                    {rbacUsers.filter((u) => u.role === 'hr' && u.email_access).length} with email access
+                  </span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Create Portal Credentials</span>
+                  <span className="text-xs text-slate-300 block">Search existing Team Roster</span>
+                  <span className="text-[10px] text-emerald-400 block">No duplicate records created</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsRbacModalOpen(true);
+                    setSelectedRosterMember(null);
+                    setRosterSearchQuery('');
+                    setRosterSearchResults([]);
+                  }}
+                  className="px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold text-xs shadow-lg flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-black" /> Create Login Access
+                </button>
+              </div>
+            </div>
+
+            {/* Modal: Grant Access via Team Roster Search */}
+            {isRbacModalOpen && (
+              <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 space-y-6 bg-black/90 relative z-50">
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <h3 className="text-lg font-bold font-display text-white">Create Portal Login Access</h3>
+                    <p className="text-xs text-slate-400">
+                      Search an employee from the existing Team Roster to populate their profile automatically.
+                    </p>
+                  </div>
+                  <button onClick={() => setIsRbacModalOpen(false)} className="text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleGrantPortalAccess} className="space-y-6">
+                  {/* Team Roster Autocomplete Search Bar */}
+                  <div className="space-y-2 relative">
+                    <label className="block text-xs font-bold text-cyan-300">
+                      1. Search Employee in Team Roster (Name, Employee ID, or Email) *
+                    </label>
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        placeholder="Type to search e.g. Prem, Sangita, EMP-001..."
+                        value={rosterSearchQuery}
+                        onChange={(e) => handleSearchRoster(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                      />
+                    </div>
+
+                    {/* Autocomplete Dropdown */}
+                    {rosterSearchResults.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-2xl bg-[#090d16] border border-cyan-500/30 shadow-2xl z-50 divide-y divide-white/5">
+                        {rosterSearchResults.map((m) => (
+                          <div
+                            key={m.id}
+                            onClick={() => {
+                              setSelectedRosterMember(m);
+                              setRosterSearchQuery(m.name);
+                              setRosterSearchResults([]);
+                            }}
+                            className={`p-3 hover:bg-cyan-500/10 cursor-pointer flex items-center justify-between transition-all ${
+                              selectedRosterMember?.id === m.id ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'text-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <img src={m.image_url} alt={m.name} className="w-8 h-8 rounded-full object-cover border border-white/10" />
+                              <div>
+                                <div className="text-xs font-bold text-white">{m.name}</div>
+                                <div className="text-[10px] text-slate-400">{m.designation} &bull; {m.department}</div>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <span className="text-[10px] font-mono text-cyan-400 block">{m.employee_id}</span>
+                              {m.has_access && (
+                                <span className="text-[9px] font-mono text-amber-400 font-bold">Access Granted</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto-Populated Read-Only Employee Card */}
+                  {selectedRosterMember && (
+                    <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center gap-4">
+                      <img
+                        src={selectedRosterMember.image_url}
+                        alt={selectedRosterMember.name}
+                        className="w-12 h-12 rounded-xl object-cover border-2 border-cyan-400 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white truncate">{selectedRosterMember.name}</div>
+                        <div className="text-xs text-slate-300 truncate">
+                          {selectedRosterMember.designation} &bull; <span className="text-cyan-400">{selectedRosterMember.department}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 pt-0.5">
+                          ID: <strong className="text-white">{selectedRosterMember.employee_id}</strong> &bull; Email:{' '}
+                          <strong className="text-white">{selectedRosterMember.email || 'N/A'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Portal Configuration Settings */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-white/10 pt-4">
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1.5">Portal Role Assignment *</label>
+                      <select
+                        value={grantRole}
+                        onChange={(e) => setGrantRole(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="team_member">Team Member (/team-login)</option>
+                        <option value="hr">HR Operations (/hr-login)</option>
+                        <option value="admin">Administrator (/portal)</option>
+                        <option value="manager">Project Manager (Future Ready)</option>
+                        <option value="finance">Finance Lead (Future Ready)</option>
+                        <option value="qa_lead">QA Lead (Future Ready)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1.5">Initial Default Password</label>
+                      <input
+                        type="text"
+                        value={grantPassword}
+                        onChange={(e) => setGrantPassword(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6 pt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={grantEmailAccess}
+                        onChange={(e) => setGrantEmailAccess(e.target.checked)}
+                        className="rounded border-white/20 bg-white/5 text-cyan-500 focus:ring-cyan-400"
+                      />
+                      <span className="text-slate-300 font-bold">Grant Company Email Access (email_access=true)</span>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setIsRbacModalOpen(false)}
+                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isGrantingAccess || !selectedRosterMember}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-black font-bold flex items-center gap-2 cursor-pointer shadow-lg"
+                    >
+                      {isGrantingAccess ? <RefreshCw className="w-4 h-4 animate-spin text-black" /> : <UserCheck className="w-4 h-4 text-black" />} Grant Access Credentials
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Active User Accounts Table */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" /> Active User Accounts &amp; Permissions Registry
+                </h3>
+                <button onClick={loadRbacUsers} className="text-cyan-400 hover:underline flex items-center gap-1">
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh List
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/10 text-[10px] text-slate-400 uppercase">
+                      <th className="py-3 px-4">Employee Member</th>
+                      <th className="py-3 px-4">Designation &amp; Dept</th>
+                      <th className="py-3 px-4">Assigned Role</th>
+                      <th className="py-3 px-4">Account Status</th>
+                      <th className="py-3 px-4">Email Permission</th>
+                      <th className="py-3 px-4 text-right">Admin Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {rbacUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-500">
+                          No portal user accounts created yet. Click 'Create Login Access' to assign credentials from Team Roster.
+                        </td>
+                      </tr>
+                    ) : (
+                      rbacUsers.map((user) => (
+                        <tr key={user.id} className="hover:bg-white/[0.02]">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={user.image_url || '/assets/executive.png'}
+                                alt={user.name}
+                                className="w-8 h-8 rounded-full object-cover border border-cyan-400/40"
+                              />
+                              <div>
+                                <div className="font-bold text-white text-xs">{user.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{user.email}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <div className="text-xs text-white">{user.designation}</div>
+                            <div className="text-[10px] text-cyan-400 font-mono">{user.department} &bull; {user.employee_id}</div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              user.role === 'admin'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                : user.role === 'hr'
+                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            }`}>
+                              {user.role}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <button
+                              onClick={() => handleToggleUserStatus(user)}
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-all ${
+                                user.status === 'active'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                              }`}
+                            >
+                              ● {user.status.toUpperCase()}
+                            </button>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <button
+                              onClick={() => handleToggleEmailAccess(user)}
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-all ${
+                                user.email_access
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                  : 'bg-white/5 text-slate-400 border border-white/10'
+                              }`}
+                            >
+                              {user.email_access ? '✓ Email Allowed' : '✕ No Email'}
+                            </button>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleResetUserPassword(user.id, user.name)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold cursor-pointer"
+                                title="Reset password to Team@123"
+                              >
+                                Reset Pass
+                              </button>
+                              <button
+                                onClick={() => handleRevokeUserAccess(user.id, user.name)}
+                                className="p-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer"
+                                title="Revoke login access (Preserves Team Roster entry)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: NOTIFICATION DISPATCHER */}
+        {activeTab === 'notifications-admin' && (
+          <div className="space-y-8 font-mono text-xs">
+            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-6">
+              <div className="border-b border-white/10 pb-4">
+                <h2 className="text-lg font-bold font-display text-white flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-cyan-400" /> Admin Notification Broadcast Dispatcher
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Send real-time individual or broadcast notifications directly to Team Member &amp; HR portals.
+                </p>
+              </div>
+
+              <form onSubmit={handleDispatchNotification} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1.5">Notification Type</label>
+                    <select
+                      value={notifType}
+                      onChange={(e) => setNotifType(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white"
+                    >
+                      <option value="info">Info (Blue)</option>
+                      <option value="success">Success (Green)</option>
+                      <option value="warning">Warning (Amber)</option>
+                      <option value="error">Error (Red)</option>
+                      <option value="payment">Payment Released (Emerald)</option>
+                      <option value="meeting">Meeting Today (Purple)</option>
+                      <option value="project">New Project (Cyan)</option>
+                      <option value="system">System (Slate)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1.5">Target Audience</label>
+                    <select
+                      value={notifTargetType}
+                      onChange={(e) => setNotifTargetType(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white"
+                    >
+                      <option value="broadcast">Broadcast (All Users)</option>
+                      <option value="role">Role Target (e.g. HR, Team Member)</option>
+                      <option value="individual">Individual Specific User</option>
+                    </select>
+                  </div>
+
+                  {notifTargetType === 'role' && (
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1.5">Select Target Role</label>
+                      <select
+                        value={notifTargetRole}
+                        onChange={(e) => setNotifTargetRole(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white"
+                      >
+                        <option value="team_member">Team Members</option>
+                        <option value="hr">HR Members</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {notifTargetType === 'individual' && (
+                    <div>
+                      <label className="block text-slate-300 font-bold mb-1.5">Select Specific User</label>
+                      <select
+                        value={notifTargetUserId}
+                        onChange={(e) => setNotifTargetUserId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white"
+                      >
+                        <option value="">Select User...</option>
+                        {rbacUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">Notification Title *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Weekly All-Hands Meeting Today at 4 PM"
+                    value={notifTitle}
+                    onChange={(e) => setNotifTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">Notification Message Body *</label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="Enter detailed message contents..."
+                    value={notifMessage}
+                    onChange={(e) => setNotifMessage(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isDispatchingNotif}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-black font-bold flex items-center gap-2 cursor-pointer shadow-lg"
+                >
+                  {isDispatchingNotif ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Dispatch Notification Now
+                </button>
+              </form>
+            </div>
+
+            {/* Notification History Log */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/10 pb-3">
+                <History className="w-4 h-4 text-cyan-400" /> Dispatched Notifications History
+              </h3>
+
+              <div className="space-y-3">
+                {adminNotifList.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500">No admin notifications dispatched yet.</div>
+                ) : (
+                  adminNotifList.map((n) => (
+                    <div key={n.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="font-bold text-white text-xs">{n.title}</div>
+                        <div className="text-[11px] text-slate-300 font-sans">{n.message}</div>
+                        <div className="text-[10px] text-slate-500">Type: {n.type} &bull; Target: {n.target_type} &bull; {n.created_at}</div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteAdminNotif(n.id)}
+                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 cursor-pointer"
+                        title="Delete notification"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* TAB 1: TEAM MEMBERS MANAGEMENT WITH AUTOMATIC REORDERING ENGINE */}
         {activeTab === 'team' && (

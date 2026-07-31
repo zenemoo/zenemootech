@@ -26,15 +26,21 @@ import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 
+import { TeamLoginPage } from './components/TeamLoginPage';
+import { HRLoginPage } from './components/HRLoginPage';
+import { TeamDashboard } from './components/TeamDashboard';
+import { HRDashboard } from './components/HRDashboard';
+
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
   const [resetEmail, setResetEmail] = useState<string>('');
   const [verifiedOtp, setVerifiedOtp] = useState<string>('');
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
+  const [portalUser, setPortalUser] = useState<any>(null);
 
   useEffect(() => {
     const checkRoute = () => {
@@ -68,6 +74,14 @@ export function App() {
         setCurrentRoute('admin');
       } else if (path === '/email' || hash === '#email' || hash === '#/email') {
         setCurrentRoute('email');
+      } else if (path === '/team-login' || hash === '#team-login' || hash === '#/team-login') {
+        setCurrentRoute('team-login');
+      } else if (path === '/team/dashboard' || hash === '#team/dashboard' || hash === '#/team/dashboard') {
+        setCurrentRoute('team-dashboard');
+      } else if (path === '/hr-login' || hash === '#hr-login' || hash === '#/hr-login') {
+        setCurrentRoute('hr-login');
+      } else if (path === '/hr/dashboard' || hash === '#hr/dashboard' || hash === '#/hr/dashboard') {
+        setCurrentRoute('hr-dashboard');
       } else if (hash === '#admin' || path === '/admin') {
         window.history.replaceState(null, '', '/');
         window.location.hash = '';
@@ -80,7 +94,7 @@ export function App() {
         setCurrentRoute('forgot-password-reset');
       } else if (path === '/zenemooai' || path === '/ai' || hash === '#zenemooai' || hash === '#ai') {
         setCurrentRoute('zenemooai');
-      } else if (path === '/team-directory' || path === '/team' || hash === '#team-directory' || hash === '#full-team') {
+      } else if (path === '/team-directory' || path === '/team-directory/' || hash === '#team-directory' || hash === '#full-team') {
         setCurrentRoute('team-directory');
       } else if (path.startsWith('/team/') || hash.startsWith('#team/')) {
         const slug = path.startsWith('/team/')
@@ -188,6 +202,42 @@ export function App() {
         <AdminDashboard onExit={handleExitAdmin} />
       ) : currentRoute === 'email' ? (
         <AdminDashboard initialTab="history" isStandaloneEmailView={true} onExit={handleExitAdmin} />
+      ) : currentRoute === 'team-login' ? (
+        <TeamLoginPage
+          onSuccessLogin={(userData) => {
+            setPortalUser(userData);
+            setCurrentRoute('team-dashboard');
+            window.location.hash = 'team/dashboard';
+          }}
+          onBackToHome={handleBackToHome}
+        />
+      ) : currentRoute === 'team-dashboard' ? (
+        <TeamDashboard
+          initialUserData={portalUser}
+          onLogout={() => {
+            localStorage.removeItem('zenemoo_jwt_token');
+            setCurrentRoute('team-login');
+            window.location.hash = 'team-login';
+          }}
+        />
+      ) : currentRoute === 'hr-login' ? (
+        <HRLoginPage
+          onSuccessLogin={(userData) => {
+            setPortalUser(userData);
+            setCurrentRoute('hr-dashboard');
+            window.location.hash = 'hr/dashboard';
+          }}
+          onBackToHome={handleBackToHome}
+        />
+      ) : currentRoute === 'hr-dashboard' ? (
+        <HRDashboard
+          initialUserData={portalUser}
+          onLogout={() => {
+            localStorage.removeItem('zenemoo_jwt_token');
+            setCurrentRoute('hr-login');
+            window.location.hash = 'hr-login';
+          }}
+        />
       ) : currentRoute === 'forgot-password' ? (
         <ForgotPasswordPage
           onNavigateVerify={(email) => {

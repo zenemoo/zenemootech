@@ -277,23 +277,176 @@ export const generateMemberSummary = async (req, res, next) => {
   }
 };
 
-// DELETE /api/team/:id - Delete member and renumber remaining 1..N
-export const deleteTeamMember = async (req, res, next) => {
+// PUT /api/team/profile/me - Self-service profile updates (Allowed fields ONLY)
+export const updateSelfProfile = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    await supabaseService.delete('team', id);
+    const teamMemberId = req.user?.team_member_id;
+    const cleanEmail = (req.user?.email || '').toLowerCase();
+    const role = (req.user?.role || 'team_member').toLowerCase();
 
-    // Renumber remaining members 1..N
-    const updatedTeam = await normalizeAndSavePositions();
+    let targetMember = null;
+    if (teamMemberId) {
+      targetMember = await supabaseService.selectById('team', teamMemberId);
+    }
+    if (!targetMember && cleanEmail) {
+      const allMembers = await supabaseService.selectAll('team');
+      if (Array.isArray(allMembers)) {
+        targetMember = allMembers.find((m) => (m.email || '').toLowerCase() === cleanEmail);
+      }
+    }
+
+    if (!targetMember) {
+      return res.status(404).json({
+        success: false,
+        message: 'Your employee profile record was not found in Team Roster.',
+      });
+    }
+
+    // Filter allowed fields ONLY (Self-service restrictions)
+    const updatePayload = {};
+    const allowedSelfFields = [
+      'bio',
+      'skills',
+      'languages',
+      'linkedin',
+      'github',
+      'twitter',
+      'phone',
+      'portfolio',
+      'availability',
+      'long_bio',
+    ];
+
+    if (Array.isArray(req.body.skills)) {
+      updatePayload.skills = req.body.skills;
+    } else if (typeof req.body.skills === 'string') {
+      updatePayload.skills = req.body.skills.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    }
+
+    if (Array.isArray(req.body.languages)) {
+      updatePayload.languages = req.body.languages;
+    } else if (typeof req.body.languages === 'string') {
+      updatePayload.languages = req.body.languages.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    }
+
+    for (const field of allowedSelfFields) {
+      if (req.body[field] !== undefined && field !== 'skills' && field !== 'languages') {
+        updatePayload[field] = req.body[field];
+      }
+    }
+
+    updatePayload.updated_at = new Date().toISOString();
+
+    const updated = await supabaseService.update('team', targetMember.id, updatePayload);
 
     res.json({
       success: true,
-      message: 'Team member deleted and positions renumbered 1..N',
-      team: updatedTeam,
-      data: updatedTeam,
+      message: 'Profile details updated successfully in Team Roster.',
+      data: updated,
     });
   } catch (err) {
     next(err);
   }
 };
+
+// POST /api/team/profile/upload-image - Upload profile picture with 7-day rule enforcement
+export const uploadSelfImage = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    const teamMemberId = req.user?.team_member_id;
+    const cleanEmail = (req.user?.email || '').toLowerCase();
+    const role = (req.user?.role || 'team_member').toLowerCase();
+    const { image_url } = req.body;
+
+    if (!image_url) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image URL is required.',
+      });
+    }
+
+    let targetMember = null;
+    if (teamMemberId) {
+      targetMember = await supabaseService.selectById('team', teamMemberId);
+    }
+    if (!targetMember && cleanEmail) {
+      const allMembers = await supabaseService.selectAll('team');
+      if (Array.isArray(allMembers)) {
+        targetMember = allMembers.find((m) => (m.email || '').toLowerCase() === cleanEmail);
+      }
+    }
+
+    if (!targetMember) {
+      return res.status(404).json({
+        success: false,
+        message: 'Your employee profile record was not found in Team Roster.',
+      });
+    }
+
+    // 7-day rule verification for non-admin users
+    if (role !== 'admin' && supabase) {
+      try {
+        const { data: latestLog } = await supabase
+          .from('profile_image_logs')
+          .select('next_allowed_upload, uploaded_at')
+          .or(`user_id.eq.${userId},team_member_id.eq.${targetMember.id}`)
+          .order('uploaded_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestLog && latestLog.next_allowed_upload) {
+          const nextTime = new Date(latestLog.next_allowed_upload).getTime();
+          const now = Date.now();
+          if (now < nextTime) {
+            const remainingSeconds = Math.ceil((nextTime - now) / 1000);
+            const days = Math.floor(remainingSeconds / 86400);
+            const hours = Math.floor((remainingSeconds % 86400) / 3600);
+            const mins = Math.floor((remainingSeconds % 3600) / 60);
+            const msg = `You can update your profile picture again in ${days} Days ${hours} Hours ${mins} Mins`;
+
+            return res.status(403).json({
+              success: false,
+              code: 'PROFILE_IMAGE_COOLDOWN_ACTIVE',
+              message: msg,
+              remaining_seconds: remainingSeconds,
+              next_allowed_upload: latestLog.next_allowed_upload,
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Update single-source Team Roster record
+    const updated = await supabaseService.update('team', targetMember.id, {
+      image_url,
+      updated_at: new Date().toISOString(),
+    });
+
+    // Log upload in profile_image_logs
+    if (supabase) {
+      try {
+        const nextAllowed = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        await supabase.from('profile_image_logs').insert([
+          {
+            user_id: userId || null,
+            team_member_id: targetMember.id,
+            uploaded_at: new Date().toISOString(),
+            next_allowed_upload: nextAllowed,
+            image_url,
+          },
+        ]);
+      } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile picture updated successfully in Team Roster.',
+      data: updated,
+      next_allowed_upload: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 

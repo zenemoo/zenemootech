@@ -8,18 +8,20 @@ import {
   deleteEmailDraft,
   runEmailDiagnostics,
 } from '../controllers/emailController.js';
+import { verifyToken, requireEmailAccess } from '../middleware/rbacMiddleware.js';
 
 const router = Router();
 
 router.get('/diagnose', runEmailDiagnostics);
 router.post('/diagnose', runEmailDiagnostics);
 
-router.post('/send', sendEmail);
+// Email operations (Permitted for Admin or HR with email_access=true)
+router.post('/send', verifyToken, requireEmailAccess, sendEmail);
 router.get('/history', getEmailHistory);
-router.delete('/history/:id', deleteEmailHistory);
+router.delete('/history/:id', verifyToken, requireEmailAccess, deleteEmailHistory);
 
 router.get('/drafts', getEmailDrafts);
-router.post('/drafts', saveEmailDraft);
-router.delete('/drafts/:id', deleteEmailDraft);
+router.post('/drafts', verifyToken, requireEmailAccess, saveEmailDraft);
+router.delete('/drafts/:id', verifyToken, requireEmailAccess, deleteEmailDraft);
 
 export default router;

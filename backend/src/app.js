@@ -17,6 +17,8 @@ import opportunityRoutes from './routes/opportunityRoutes.js';
 import opportunityApplicationRoutes from './routes/opportunityApplicationRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
+import userManagementRoutes from './routes/userManagementRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -48,6 +50,8 @@ app.get('/health', (req, res) => {
 // Mounting API Routes under /api
 app.use('/api/auth', authRoutes);
 app.use('/api/team', teamRoutes);
+app.use('/api/users', userManagementRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/opportunities', opportunityRoutes);
@@ -67,6 +71,8 @@ app.use('/api/email', emailRoutes);
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
 app.use('/team', teamRoutes);
+app.use('/users', userManagementRoutes);
+app.use('/notifications', notificationRoutes);
 app.use('/services', serviceRoutes);
 app.use('/partners', partnerRoutes);
 app.use('/opportunities', opportunityRoutes);

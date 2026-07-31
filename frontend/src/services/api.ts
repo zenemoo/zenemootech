@@ -215,3 +215,52 @@ export const emailApi = {
   deleteDraft: (id: string) => api.delete(`/email/drafts/${encodeURIComponent(id)}`),
 };
 
+// Unified Portal Authentication APIs (Team Member, HR, Admin)
+export const portalAuthApi = {
+  portalLogin: (email: string, password: string, expectedRole?: string) =>
+    api.post('/auth/portal-login', { email, password, expectedRole }),
+  getMeProfile: () => api.get('/auth/me'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/auth/change-password', { currentPassword, newPassword }),
+};
+
+// User Management & RBAC APIs (Admin Only)
+export const userManagementApi = {
+  searchRoster: (query: string) => api.get('/users/search-roster', { params: { q: query } }),
+  grantAccess: (data: {
+    team_member_id: string;
+    role: string;
+    password?: string;
+    status?: string;
+    email_access?: boolean;
+    notification_access?: boolean;
+  }) => api.post('/users/grant-access', data),
+  getUsers: () => api.get('/users'),
+  updateUser: (id: string, data: any) => api.put(`/users/${id}`, data),
+  resetPassword: (id: string, newPassword?: string) => api.post(`/users/${id}/reset-password`, { newPassword }),
+  deleteAccess: (id: string) => api.delete(`/users/${id}`),
+};
+
+// Notification System APIs
+export const notificationApi = {
+  getAll: () => api.get('/notifications'),
+  markRead: (id: string) => api.put(`/notifications/${id}/read`),
+  markAllRead: () => api.put('/notifications/read-all'),
+  deleteNotification: (id: string) => api.delete(`/notifications/${id}`),
+  adminCreate: (data: {
+    title: string;
+    message: string;
+    type?: string;
+    target_type?: string;
+    target_user_id?: string;
+    target_role?: string;
+  }) => api.post('/notifications', data),
+  adminDelete: (id: string) => api.delete(`/notifications/admin/${id}`),
+};
+
+// Team Member & HR Self-Service Profile APIs
+export const selfProfileApi = {
+  updateProfile: (data: any) => api.put('/team/profile/me', data),
+  uploadImage: (image_url: string) => api.post('/team/profile/upload-image', { image_url }),
+};
+
