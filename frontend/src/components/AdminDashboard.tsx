@@ -3297,7 +3297,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           }
                         }
 
-                        addToast('Email Sent', `Delivered via Brevo SMTP to ${emailComposer.recipients}`, 'success');
+                        const recipientsSent = Array.isArray(res.data?.entry?.recipients)
+                          ? res.data.entry.recipients.join(', ')
+                          : emailComposer.recipients;
+                        addToast('Email Sent', `Delivered via Brevo SMTP to ${recipientsSent}`, 'success');
                         showStatus('Email dispatched successfully via Brevo SMTP!');
                         setEmailComposer({
                           id: '',
@@ -3346,7 +3349,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <label className="block text-slate-300 font-bold mb-1.5">Recipient Address(es) <span className="text-cyan-400">*</span></label>
                       <input
                         type="text"
-                        placeholder="e.g. client@company.com, partner@org.io"
+                        placeholder="Multiple emails (separated by commas or spaces): e.g. client@company.com, partner@org.io"
                         value={emailComposer.recipients}
                         onChange={(e) => setEmailComposer({ ...emailComposer, recipients: e.target.value })}
                         className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400"

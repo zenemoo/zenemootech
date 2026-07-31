@@ -127,16 +127,51 @@ export const runTcpConnectivityTest = (host, port, timeoutMs = 5000) => {
 };
 
 /**
- * Parse recipient inputs into cleaned array of email strings
+ * Parse recipient inputs into cleaned, deduplicated array of email strings
+ * Supports:
+ * - String or Array inputs
+ * - Delimiters: commas, semicolons, spaces, tabs, newlines
+ * - Extracting emails from angle bracket syntax (e.g. "John Doe <john@zenemoo.in>")
+ * - Automatic deduplication
  */
 export const parseRecipients = (input) => {
-  if (Array.isArray(input)) return input.map((s) => String(s).trim()).filter(Boolean);
-  if (!input || typeof input !== 'string') return [];
+  if (input === null || input === undefined) return [];
 
-  return input
-    .split(/[,\n\r;]+/)
-    .map((value) => value.trim())
-    .filter(Boolean);
+  let rawTokens = [];
+  if (Array.isArray(input)) {
+    rawTokens = input.flatMap((item) => String(item).split(/[,\s\n\r;]+/));
+  } else if (typeof input === 'string') {
+    rawTokens = input.split(/[,\s\n\r;]+/);
+  } else {
+    return [];
+  }
+
+  const cleanedEmails = [];
+  const seen = new Set();
+
+  for (let token of rawTokens) {
+    if (!token) continue;
+    let str = token.trim();
+
+    // Extract email from angle brackets if present: "Name <email@domain.com>"
+    const angleMatch = str.match(/<([^>]+)>/);
+    if (angleMatch) {
+      str = angleMatch[1].trim();
+    }
+
+    // Clean surrounding quotes or brackets
+    str = str.replace(/^["'<\(\[]+|["'>\)\],.]+$/g, '').trim();
+
+    if (str && validateEmail(str)) {
+      const lower = str.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        cleanedEmails.push(str);
+      }
+    }
+  }
+
+  return cleanedEmails;
 };
 
 /**

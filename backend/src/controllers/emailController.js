@@ -26,13 +26,11 @@ export const sendEmail = async (req, res, next) => {
     }
 
     const parsedTo = parseRecipients(recipients);
-    const invalidTo = parsedTo.filter((email) => !validateEmail(email));
 
-    if (parsedTo.length === 0 || invalidTo.length > 0) {
+    if (parsedTo.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'One or more recipient email addresses are invalid.',
-        invalidRecipients: invalidTo,
+        message: 'Please specify at least one valid recipient email address (e.g. user1@company.com, user2@org.io).',
       });
     }
 
