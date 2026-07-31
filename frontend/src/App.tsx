@@ -23,12 +23,32 @@ import { TermsConditionsPage } from './components/TermsConditionsPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { VerifyOtpPage } from './components/VerifyOtpPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { TeamLoginPage } from './components/TeamLoginPage';
+import { HRLoginPage } from './components/HRLoginPage';
+import { TeamDashboard } from './components/TeamDashboard';
+import { HRDashboard } from './components/HRDashboard';
 import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
+    | 'home'
+    | 'admin'
+    | 'email'
+    | 'team-login'
+    | 'team-dashboard'
+    | 'hr-login'
+    | 'hr-dashboard'
+    | 'team-directory'
+    | 'team-profile'
+    | 'opportunities'
+    | 'opportunity-detail'
+    | 'privacy'
+    | 'terms'
+    | 'forgot-password'
+    | 'forgot-password-verify'
+    | 'forgot-password-reset'
+    | 'zenemooai'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -72,6 +92,14 @@ export function App() {
         window.history.replaceState(null, '', '/');
         window.location.hash = '';
         setCurrentRoute('home');
+      } else if (path === '/team-login' || hash === '#team-login' || hash === '#/team-login') {
+        setCurrentRoute('team-login');
+      } else if (path === '/team/dashboard' || path === '/team/profile' || hash === '#team/dashboard' || hash === '#/team/dashboard') {
+        setCurrentRoute('team-dashboard');
+      } else if (path === '/hr-login' || hash === '#hr-login' || hash === '#/hr-login') {
+        setCurrentRoute('hr-login');
+      } else if (path === '/hr/dashboard' || hash === '#hr/dashboard' || hash === '#/hr/dashboard') {
+        setCurrentRoute('hr-dashboard');
       } else if (path === '/forgot-password' || hash === '#forgot-password' || hash === '#/forgot-password') {
         setCurrentRoute('forgot-password');
       } else if (path === '/forgot-password/verify' || hash === '#forgot-password/verify' || hash === '#/forgot-password/verify') {
@@ -188,6 +216,42 @@ export function App() {
         <AdminDashboard onExit={handleExitAdmin} />
       ) : currentRoute === 'email' ? (
         <AdminDashboard initialTab="history" isStandaloneEmailView={true} onExit={handleExitAdmin} />
+      ) : currentRoute === 'team-login' ? (
+        <TeamLoginPage
+          onBackToHome={handleBackToHome}
+          onLoginSuccess={() => {
+            window.history.pushState(null, '', '/team/dashboard');
+            window.location.hash = '/team/dashboard';
+            setCurrentRoute('team-dashboard');
+          }}
+        />
+      ) : currentRoute === 'team-dashboard' ? (
+        <TeamDashboard
+          onLogout={() => {
+            localStorage.removeItem('zenemoo_jwt_token');
+            localStorage.removeItem('zenemoo_user_role');
+            localStorage.removeItem('zenemoo_user_profile');
+            handleBackToHome();
+          }}
+        />
+      ) : currentRoute === 'hr-login' ? (
+        <HRLoginPage
+          onBackToHome={handleBackToHome}
+          onLoginSuccess={() => {
+            window.history.pushState(null, '', '/hr/dashboard');
+            window.location.hash = '/hr/dashboard';
+            setCurrentRoute('hr-dashboard');
+          }}
+        />
+      ) : currentRoute === 'hr-dashboard' ? (
+        <HRDashboard
+          onLogout={() => {
+            localStorage.removeItem('zenemoo_jwt_token');
+            localStorage.removeItem('zenemoo_user_role');
+            localStorage.removeItem('zenemoo_user_profile');
+            handleBackToHome();
+          }}
+        />
       ) : currentRoute === 'forgot-password' ? (
         <ForgotPasswordPage
           onNavigateVerify={(email) => {
