@@ -18,7 +18,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 6000, // 6-second timeout
+  timeout: 30000, // 30-second timeout to accommodate cloud database & cold start latencies
 });
 
 // Request interceptor for JWT authentication header
@@ -43,11 +43,9 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 401) {
+      console.warn('🔑 401 Unauthorized API response received. Session invalidated.');
       localStorage.removeItem('zenemoo_jwt_token');
       localStorage.removeItem('zenemoo_jwt_expiry');
-      if (typeof window !== 'undefined' && window.location.hash.includes('portal')) {
-        window.location.reload();
-      }
     }
     return Promise.reject(error);
   }

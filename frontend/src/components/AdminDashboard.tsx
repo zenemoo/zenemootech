@@ -362,10 +362,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           localStorage.removeItem('zenemoo_jwt_token');
           localStorage.removeItem('zenemoo_jwt_expiry');
         }
-      } catch (err) {
-        console.warn('Session verification failed on mount:', err);
-        localStorage.removeItem('zenemoo_jwt_token');
-        localStorage.removeItem('zenemoo_jwt_expiry');
+      } catch (err: any) {
+        console.warn('Session verification notice on mount:', err);
+        // Only clear token if server explicitly returned 401 Unauthorized
+        if (err.response && err.response.status === 401) {
+          localStorage.removeItem('zenemoo_jwt_token');
+          localStorage.removeItem('zenemoo_jwt_expiry');
+        } else {
+          // Keep session active for transient network/timeout glitches if token exists
+          setIsAuthenticated(true);
+          const fallbackExpiry = Date.now() + 30 * 60 * 1000;
+          localStorage.setItem('zenemoo_jwt_expiry', fallbackExpiry.toString());
+        }
       } finally {
         setIsCheckingSession(false);
       }
@@ -374,26 +382,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     restoreSession();
   }, []);
 
-  // Inactivity timeout watcher and live countdown updater
+  // Inactivity timeout watcher, user interaction reset & live countdown updater
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    // Reset expiry timer on user interaction (mouse move, click, keydown, scroll)
+    let lastActivityReset = Date.now();
+    const handleUserActivity = () => {
+      const now = Date.now();
+      // Throttle expiry reset writes to at most once every 30 seconds
+      if (now - lastActivityReset > 30000) {
+        lastActivityReset = now;
+        const newExpiry = now + 30 * 60 * 1000;
+        localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
+      }
+    };
+
+    window.addEventListener('mousemove', handleUserActivity, { passive: true });
+    window.addEventListener('keydown', handleUserActivity, { passive: true });
+    window.addEventListener('click', handleUserActivity, { passive: true });
+    window.addEventListener('scroll', handleUserActivity, { passive: true });
+
     const interval = setInterval(() => {
-      const expiry = localStorage.getItem('zenemoo_jwt_expiry');
-      if (expiry) {
-        const expiryMs = parseInt(expiry, 10);
-        const remainingMs = expiryMs - Date.now();
-        
-        if (remainingMs <= 0) {
-          console.log('⚠️ Inactivity session timeout reached.');
-          handleLogoutClick();
-        } else {
-          setSessionExpiresInSec(Math.ceil(remainingMs / 1000));
-        }
+      const token = localStorage.getItem('zenemoo_jwt_token');
+      if (!token) {
+        setIsAuthenticated(false);
+        return;
+      }
+
+      let expiry = localStorage.getItem('zenemoo_jwt_expiry');
+      if (!expiry || isNaN(parseInt(expiry, 10))) {
+        const freshExpiry = Date.now() + 30 * 60 * 1000;
+        localStorage.setItem('zenemoo_jwt_expiry', freshExpiry.toString());
+        expiry = freshExpiry.toString();
+      }
+
+      const expiryMs = parseInt(expiry, 10);
+      const remainingMs = expiryMs - Date.now();
+      
+      if (remainingMs <= 0) {
+        console.log('⚠️ Inactivity session timeout reached.');
+        handleLogoutClick();
+      } else {
+        setSessionExpiresInSec(Math.ceil(remainingMs / 1000));
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+      clearInterval(interval);
+    };
   }, [isAuthenticated]);
 
   // Count-up timer for session active duration
