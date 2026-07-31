@@ -794,10 +794,10 @@ export const portalLogin = async (req, res, next) => {
     let userAccount = null;
     let teamMember = null;
 
-    // 1. Search in user_accounts or Team Roster by Email OR Employee ID (e.g. ZNM-E861A, EMP-003)
+    // 1. Flexible lookup in user_accounts and Team Roster by Email, Employee ID (ZNM-E861A, EMP-003), or Name
     if (supabase) {
       try {
-        // Direct email match in user_accounts
+        // A. Direct email match in user_accounts
         const { data: accByEmail } = await supabase
           .from('user_accounts')
           .select('*')
@@ -807,41 +807,60 @@ export const portalLogin = async (req, res, next) => {
         if (accByEmail) {
           userAccount = accByEmail;
         } else {
-          // Search Team Roster by employee_id (e.g. ZNM-E861A or EMP-003)
-          const empNum = parseInt(cleanEmail.replace(/\D/g, ''), 10) || 0;
-          const { data: memberByEmpId } = await supabase
-            .from('team')
-            .select('*')
-            .or(`employee_id.ilike.${cleanEmail},position.eq.${empNum}`)
-            .maybeSingle();
+          // B. Fetch all team members to perform flexible matching (ZNM-E861A, EMP-003, position, name)
+          const { data: allTeam } = await supabase.from('team').select('*');
+          if (Array.isArray(allTeam) && allTeam.length > 0) {
+            const queryClean = cleanEmail.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
-          if (memberByEmpId) {
-            teamMember = memberByEmpId;
-            const { data: accByTeamId } = await supabase
-              .from('user_accounts')
-              .select('*')
-              .eq('team_member_id', memberByEmpId.id)
-              .maybeSingle();
+            const foundMember = allTeam.find((m) => {
+              const empIdClean = (m.employee_id || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+              const badgeClean = (m.badge || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+              const nameClean = (m.name || '').toLowerCase();
+              const emailClean = (m.email || '').toLowerCase();
+              const posStr = String(m.position || '');
 
-            if (accByTeamId) {
-              userAccount = accByTeamId;
-            } else if (cleanPass === 'Team@123' || cleanPass === 'zenemoo2026') {
-              // Auto-grant initial account for Team Roster member if logging in with default Team@123
-              userAccount = {
-                id: `user_${Date.now()}`,
-                team_member_id: memberByEmpId.id,
-                email: memberByEmpId.email || `${cleanEmail}@zenemoo.in`,
-                password_hash: await bcrypt.hash(cleanPass, 10),
-                role: 'team_member',
-                status: 'active',
-                email_access: false,
-                notification_access: true,
-                password_changed: false,
-              };
+              return (
+                (empIdClean && empIdClean === queryClean) ||
+                (badgeClean && badgeClean === queryClean) ||
+                (queryClean.length > 2 && empIdClean.includes(queryClean)) ||
+                (queryClean.length > 2 && badgeClean.includes(queryClean)) ||
+                (queryClean.length > 3 && nameClean.includes(cleanEmail)) ||
+                emailClean === cleanEmail ||
+                posStr === cleanEmail
+              );
+            });
+
+            if (foundMember) {
+              teamMember = foundMember;
+              // Check if user_accounts has an account linked to this team_member_id
+              const { data: accByTeamId } = await supabase
+                .from('user_accounts')
+                .select('*')
+                .eq('team_member_id', foundMember.id)
+                .maybeSingle();
+
+              if (accByTeamId) {
+                userAccount = accByTeamId;
+              } else {
+                // Auto-create initial access for Team Roster member if logging in with default Team@123
+                userAccount = {
+                  id: `user_${Date.now()}`,
+                  team_member_id: foundMember.id,
+                  email: foundMember.email || `${cleanEmail}@zenemoo.in`,
+                  password_hash: await bcrypt.hash(cleanPass, 10),
+                  role: 'team_member',
+                  status: 'active',
+                  email_access: false,
+                  notification_access: true,
+                  password_changed: false,
+                };
+              }
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Supabase portalLogin search warning:', e.message);
+      }
     }
 
     // 2. Fallback check for Super Admin if not yet in user_accounts
