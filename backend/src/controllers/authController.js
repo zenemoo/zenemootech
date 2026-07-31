@@ -54,29 +54,25 @@ const checkAdminEmailAuthorized = async (email) => {
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail) return false;
 
-  // 1. Primary Super Admin & Core Executive Emails are ALWAYS authorized
-  if (DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in')) {
-    return true;
-  }
-
-  // 2. Query Supabase authorized_admin_emails table for dynamic accounts
+  // 1. Query Supabase authorized_admin_emails table
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from('authorized_admin_emails')
-        .select('status')
+        .select('*')
         .eq('email', cleanEmail)
         .maybeSingle();
 
       if (!error && data) {
-        return data.status !== 'disabled';
+        return true;
       }
     } catch (err) {
       console.warn('[Auth Check DB Note]', err.message);
     }
   }
 
-  return false;
+  // 2. Check domain or fallback list
+  return DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in');
 };
 
 /**
@@ -144,29 +140,8 @@ export const login = async (req, res, next) => {
       console.log('🔐 Performing bcrypt hash comparison against database password...');
       isPasswordValid = await bcrypt.compare(passcode, passwordHash);
       console.log('🔒 Bcrypt verification result:', isPasswordValid ? '✅ MATCH' : '❌ MISMATCH');
-    }
-
-    // Fallback: If DB record has no password_hash or comparison failed, verify against system admin passcodes
-    if (!isPasswordValid) {
-      const defaultPasscode = process.env.CUSTOM_ADMIN_PASSCODE || process.env.ADMIN_PASSCODE || 'zenemoo2026';
-      if (passcode === defaultPasscode || passcode === 'zenemoo2026') {
-        isPasswordValid = true;
-        console.log('✅ Passcode verified against system admin passcode fallback.');
-
-        // Auto-hash & store in database for future logins if record exists
-        if (supabase && dbUser?.id && !passwordHash) {
-          try {
-            const newHash = await bcrypt.hash(passcode, 10);
-            await supabase
-              .from('authorized_admin_emails')
-              .update({ password_hash: newHash })
-              .eq('id', dbUser.id);
-            console.log(`🔒 Auto-migrated password_hash for ${cleanEmail} in database.`);
-          } catch (e) {
-            console.warn('Auto-migration notice:', e.message);
-          }
-        }
-      }
+    } else {
+      console.warn(`⚠️ Login failed: No password hash configured in database for ${cleanEmail}.`);
     }
 
     if (!isPasswordValid) {
@@ -649,45 +624,37 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     console.log('✅ Hashing successful.');
 
-    // Update or insert password_hash in Supabase authorized_admin_emails table (UPSERT)
+    // Update password_hash in Supabase authorized_admin_emails table
     if (supabase) {
       try {
-        console.log(`🌐 Fetching user details for: ${cleanEmail}...`);
+        console.log(`🌐 Fetching user details to retrieve telegram_chat_id for: ${cleanEmail}...`);
         
         let telegramChatId = null;
         const { data: userData, error: userError } = await supabase
           .from('authorized_admin_emails')
-          .select('id, telegram_chat_id')
+          .select('telegram_chat_id')
           .eq('email', cleanEmail)
           .maybeSingle();
 
         if (!userError && userData) {
           telegramChatId = userData.telegram_chat_id;
-          console.log(`🌐 Updating password_hash in DB for existing record: ${cleanEmail}...`);
-          await supabase
-            .from('authorized_admin_emails')
-            .update({ 
-              password_hash: passwordHash,
-              status: 'active',
-              last_password_reset: new Date().toISOString()
-            })
-            .eq('email', cleanEmail);
-        } else {
-          console.log(`🌐 Creating new active admin DB record with password_hash for: ${cleanEmail}...`);
-          await supabase
-            .from('authorized_admin_emails')
-            .insert([{
-              email: cleanEmail,
-              name: cleanEmail === 'mr.prem2006@gmail.com' ? 'Prem Prasad' : cleanEmail.split('@')[0],
-              role: 'Super Admin',
-              status: 'active',
-              password_hash: passwordHash,
-              added_by: 'System Recovery',
-              last_password_reset: new Date().toISOString()
-            }]);
+        }
+
+        console.log(`🌐 Updating password_hash and last_password_reset in DB for: ${cleanEmail}...`);
+        const { error } = await supabase
+          .from('authorized_admin_emails')
+          .update({ 
+            password_hash: passwordHash,
+            last_password_reset: new Date().toISOString()
+          })
+          .eq('email', cleanEmail);
+
+        if (error) {
+          console.error('❌ Supabase password_hash update error:', error.message);
+          throw error;
         }
         
-        console.log(`✅ Password hash successfully updated in database for ${cleanEmail}.`);
+        console.log(`✅ Password hash successfully updated in database.`);
 
         // If a telegram chat ID is linked, send a password change success confirmation alert!
         if (telegramChatId) {

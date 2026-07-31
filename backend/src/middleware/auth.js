@@ -13,20 +13,18 @@ export const authMiddleware = (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
 
-    if (decoded && decoded.email) {
-      const newToken = jwt.sign(
-        { role: decoded.role || 'admin', email: decoded.email },
-        JWT_SECRET,
-        { expiresIn: '30m' }
-      );
+    // Sliding session token renewal: Sign a new token with fresh 30-minute expiry
+    const newToken = jwt.sign(
+      { role: decoded.role, email: decoded.email },
+      JWT_SECRET,
+      { expiresIn: '30m' }
+    );
 
-      res.setHeader('X-New-Token', newToken);
-      res.setHeader('Access-Control-Expose-Headers', 'X-New-Token');
-    }
+    res.setHeader('X-New-Token', newToken);
+    res.setHeader('Access-Control-Expose-Headers', 'X-New-Token');
 
     next();
   } catch (err) {
-    console.warn('🔑 Auth middleware token verification warning:', err.message);
     return res.status(401).json({ success: false, message: 'Unauthorized: Invalid or expired token' });
   }
 };
