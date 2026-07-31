@@ -217,33 +217,3 @@ export const emailApi = {
   deleteDraft: (id: string) => api.delete(`/email/drafts/${encodeURIComponent(id)}`),
 };
 
-// RBAC Portal & User Self-Service APIs
-export const portalApi = {
-  login: (data: { email: string; password: string; targetPortal: 'admin' | 'hr' | 'team' }) =>
-    api.post('/auth/portal-login', data),
-  getMyProfile: () => api.get('/user/profile'),
-  updateMyProfile: (data: any) => api.put('/user/profile', data),
-  updateProfileImage: (image_url: string) => api.post('/user/profile-image', { image_url }),
-  changePassword: (data: any) => api.post('/user/change-password', data),
-  getMyNotifications: () => api.get('/user/notifications'),
-  markNotificationRead: (id: string) => api.put(`/user/notifications/${id}/read`),
-  deleteNotification: (id: string) => api.delete(`/user/notifications/${id}`),
-};
-
-// Admin User & Permission Management APIs
-export const userManagementApi = {
-  getAll: () => api.get('/admin/users'),
-  create: (data: any) => api.post('/admin/users', data),
-  update: (id: string, data: any) => api.put(`/admin/users/${id}`, data),
-  toggleStatus: (id: string) => api.put(`/admin/users/${id}/toggle-status`),
-  resetPassword: (id: string, newPassword?: string) => api.post(`/admin/users/${id}/reset-password`, { newPassword }),
-  delete: (id: string) => api.delete(`/admin/users/${id}`),
-};
-
-// Admin Notification Engine APIs
-export const adminNotificationApi = {
-  getAll: () => api.get('/admin/notifications'),
-  create: (data: any) => api.post('/admin/notifications', data),
-  delete: (id: string) => api.delete(`/admin/notifications/${id}`),
-};
-

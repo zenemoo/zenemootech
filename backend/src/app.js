@@ -45,15 +45,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-import rbacRoutes from './routes/rbacRoutes.js';
-import userManagementRoutes from './routes/userManagementRoutes.js';
-import notificationRoutes from './routes/notificationRoutes.js';
-
 // Mounting API Routes under /api
 app.use('/api/auth', authRoutes);
-app.use('/api', rbacRoutes);
-app.use('/api', userManagementRoutes);
-app.use('/api', notificationRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/partners', partnerRoutes);
@@ -73,9 +66,6 @@ app.use('/api/email', emailRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
-app.use('/', rbacRoutes);
-app.use('/', userManagementRoutes);
-app.use('/', notificationRoutes);
 app.use('/team', teamRoutes);
 app.use('/services', serviceRoutes);
 app.use('/partners', partnerRoutes);
