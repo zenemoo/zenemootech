@@ -116,6 +116,37 @@ export function App() {
       } else {
         setCurrentRoute('home');
       }
+
+      // Update document title & canonical tag for SEO indexing
+      let pageTitle = 'Zenemoo — AI Data Solutions, Multilingual Speech Annotation & AI Training Datasets';
+      let canonicalUrl = 'https://www.zenemoo.in/';
+
+      if (path === '/terms' || hash.includes('#terms')) {
+        pageTitle = 'Terms & Conditions — Zenemoo Enterprise AI';
+        canonicalUrl = 'https://www.zenemoo.in/terms';
+      } else if (path === '/privacy' || hash.includes('#privacy')) {
+        pageTitle = 'Privacy Policy — Zenemoo Enterprise AI';
+        canonicalUrl = 'https://www.zenemoo.in/privacy';
+      } else if (path === '/team-directory' || path === '/team' || hash.includes('#team')) {
+        pageTitle = 'Data Team Roster & Executive Directory — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/team-directory';
+      } else if (path === '/opportunities' || hash.includes('#opportunities')) {
+        pageTitle = 'Program Opportunities & Careers — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/opportunities';
+      } else if (path === '/zenemooai' || hash.includes('#zenemooai')) {
+        pageTitle = 'Zenemoo AI Assistant — Multilingual AI Engine';
+        canonicalUrl = 'https://www.zenemoo.in/zenemooai';
+      }
+
+      document.title = pageTitle;
+
+      let canonicalMeta = document.querySelector('link[rel="canonical"]');
+      if (!canonicalMeta) {
+        canonicalMeta = document.createElement('link');
+        canonicalMeta.setAttribute('rel', 'canonical');
+        document.head.appendChild(canonicalMeta);
+      }
+      canonicalMeta.setAttribute('href', canonicalUrl);
     };
 
     checkRoute();

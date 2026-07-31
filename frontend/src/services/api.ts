@@ -118,10 +118,12 @@ export const authApi = {
 // Team APIs
 export const teamApi = {
   getAll: () => api.get('/team'),
-  create: (data: any) => api.post('/team', data),
-  reorder: (id: string, newPosition: number) => api.put('/team/reorder', { id, newPosition }),
-  generateSummary: (id: string) => api.post(`/team/${id}/generate-summary`),
-  update: (id: string, data: any) => api.put(`/team/${id}`, data),
+  // create/update/reorder use 30s timeout: AI summary generation (Groq) + DB insert +
+  // two-phase position normalisation can easily exceed the global 6s default.
+  create: (data: any) => api.post('/team', data, { timeout: 30000 }),
+  reorder: (id: string, newPosition: number) => api.put('/team/reorder', { id, newPosition }, { timeout: 30000 }),
+  generateSummary: (id: string) => api.post(`/team/${id}/generate-summary`, {}, { timeout: 30000 }),
+  update: (id: string, data: any) => api.put(`/team/${id}`, data, { timeout: 30000 }),
   delete: (id: string) => api.delete(`/team/${id}`),
 };
 
