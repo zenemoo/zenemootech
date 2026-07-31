@@ -264,3 +264,10 @@ export const selfProfileApi = {
   uploadImage: (image_url: string) => api.post('/team/profile/upload-image', { image_url }),
 };
 
+// Admin Profile Updates Approval APIs
+export const pendingProfileUpdatesApi = {
+  getPending: () => api.get('/team/profile-updates/pending'),
+  approve: (id: string) => api.post(`/team/profile-updates/${id}/approve`),
+  reject: (id: string, notes?: string) => api.post(`/team/profile-updates/${id}/reject`, { admin_notes: notes }),
+};
+

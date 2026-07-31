@@ -277,7 +277,10 @@ export const generateMemberSummary = async (req, res, next) => {
   }
 };
 
-// PUT /api/team/profile/me - Self-service profile updates (Allowed fields ONLY)
+// In-memory pending updates fallback store
+const memoryPendingUpdates = [];
+
+// PUT /api/team/profile/me - Self-service profile updates (Admin approval workflow)
 export const updateSelfProfile = async (req, res, next) => {
   try {
     const teamMemberId = req.user?.team_member_id;
@@ -337,6 +340,33 @@ export const updateSelfProfile = async (req, res, next) => {
 
     updatePayload.updated_at = new Date().toISOString();
 
+    // If non-admin user, route through Admin Approval Workflow
+    if (role !== 'admin') {
+      const pendingPayload = {
+        team_member_id: targetMember.id,
+        user_id: req.user?.id || null,
+        employee_name: targetMember.name,
+        employee_id: targetMember.employee_id || `EMP-${String(targetMember.position || 1).padStart(3, '0')}`,
+        requested_changes: updatePayload,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+
+      if (supabase) {
+        try {
+          await supabase.from('pending_profile_updates').insert([pendingPayload]);
+        } catch (e) {}
+      }
+      memoryPendingUpdates.unshift({ id: `pending_${Date.now()}`, ...pendingPayload });
+
+      return res.json({
+        success: true,
+        message: 'Profile update submitted for Administrator approval. Changes will appear on the website once approved.',
+        is_pending_approval: true,
+      });
+    }
+
+    // Direct update for Super Admin
     const updated = await supabaseService.update('team', targetMember.id, updatePayload);
 
     res.json({
@@ -349,7 +379,7 @@ export const updateSelfProfile = async (req, res, next) => {
   }
 };
 
-// POST /api/team/profile/upload-image - Upload profile picture with 7-day rule enforcement
+// POST /api/team/profile/upload-image - Upload profile picture with 7-day rule & Admin approval workflow
 export const uploadSelfImage = async (req, res, next) => {
   try {
     const userId = req.user?.id;
@@ -416,33 +446,149 @@ export const uploadSelfImage = async (req, res, next) => {
       } catch (e) {}
     }
 
-    // Update single-source Team Roster record
+    // Route non-admin image uploads through Admin Approval Workflow
+    if (role !== 'admin') {
+      const pendingPayload = {
+        team_member_id: targetMember.id,
+        user_id: userId || null,
+        employee_name: targetMember.name,
+        employee_id: targetMember.employee_id || `EMP-${String(targetMember.position || 1).padStart(3, '0')}`,
+        requested_changes: { image_url, updated_at: new Date().toISOString() },
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+
+      if (supabase) {
+        try {
+          await supabase.from('pending_profile_updates').insert([pendingPayload]);
+        } catch (e) {}
+      }
+      memoryPendingUpdates.unshift({ id: `pending_${Date.now()}`, ...pendingPayload });
+
+      return res.json({
+        success: true,
+        message: 'Profile picture update submitted for Administrator approval. It will appear on the website once approved.',
+        is_pending_approval: true,
+      });
+    }
+
+    // Update single-source Team Roster record for Super Admin
     const updated = await supabaseService.update('team', targetMember.id, {
       image_url,
       updated_at: new Date().toISOString(),
     });
 
-    // Log upload in profile_image_logs
-    if (supabase) {
-      try {
-        const nextAllowed = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        await supabase.from('profile_image_logs').insert([
-          {
-            user_id: userId || null,
-            team_member_id: targetMember.id,
-            uploaded_at: new Date().toISOString(),
-            next_allowed_upload: nextAllowed,
-            image_url,
-          },
-        ]);
-      } catch (e) {}
-    }
-
     res.json({
       success: true,
       message: 'Profile picture updated successfully in Team Roster.',
       data: updated,
-      next_allowed_upload: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/team/profile-updates/pending - Admin list pending profile updates
+export const getPendingProfileUpdates = async (req, res, next) => {
+  try {
+    let list = [];
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('pending_profile_updates')
+          .select('*')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+        if (Array.isArray(data)) list = data;
+      } catch (e) {}
+    }
+    if (list.length === 0) {
+      list = memoryPendingUpdates.filter((u) => u.status === 'pending');
+    }
+
+    res.json({
+      success: true,
+      count: list.length,
+      data: list,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/team/profile-updates/:id/approve - Admin approves pending profile update
+export const approveProfileUpdate = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let pendingRecord = null;
+
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('pending_profile_updates')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) pendingRecord = data;
+      } catch (e) {}
+    }
+
+    if (!pendingRecord) {
+      pendingRecord = memoryPendingUpdates.find((u) => u.id === id);
+    }
+
+    if (!pendingRecord) {
+      return res.status(404).json({ success: false, message: 'Pending profile update request not found.' });
+    }
+
+    // Apply requested changes directly to single-source team table
+    const changes = pendingRecord.requested_changes || {};
+    changes.updated_at = new Date().toISOString();
+
+    const updatedMember = await supabaseService.update('team', pendingRecord.team_member_id, changes);
+
+    // Mark status = approved
+    if (supabase) {
+      try {
+        await supabase
+          .from('pending_profile_updates')
+          .update({ status: 'approved', updated_at: new Date().toISOString() })
+          .eq('id', id);
+      } catch (e) {}
+    }
+    pendingRecord.status = 'approved';
+
+    res.json({
+      success: true,
+      message: `Approved profile update for ${pendingRecord.employee_name}. Changes are now live on the website!`,
+      data: updatedMember,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/team/profile-updates/:id/reject - Admin rejects pending profile update
+export const rejectProfileUpdate = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { admin_notes } = req.body;
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('pending_profile_updates')
+          .update({ status: 'rejected', admin_notes: admin_notes || 'Rejected by Admin', updated_at: new Date().toISOString() })
+          .eq('id', id);
+      } catch (e) {}
+    }
+
+    const rec = memoryPendingUpdates.find((u) => u.id === id);
+    if (rec) rec.status = 'rejected';
+
+    res.json({
+      success: true,
+      message: 'Pending profile update rejected.',
     });
   } catch (err) {
     next(err);

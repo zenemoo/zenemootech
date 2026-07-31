@@ -6,7 +6,7 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi } from '../services/api';
+import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
 
 interface AdminDashboardProps {
@@ -385,16 +385,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     }
   };
 
-  const handleRevokeUserAccess = async (userId: string, userName: string) => {
-    if (!confirm(`Revoke portal access for ${userName}? The employee record in Team Roster will remain untouched.`)) return;
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+
+  const loadPendingApprovals = async () => {
     try {
-      const res = await userManagementApi.deleteAccess(userId);
+      const res = await pendingProfileUpdatesApi.getPending();
+      if (res.data && res.data.success && Array.isArray(res.data.data)) {
+        setPendingApprovals(res.data.data);
+      }
+    } catch (err) {}
+  };
+
+  const handleApproveProfileUpdate = async (id: string, name: string) => {
+    try {
+      const res = await pendingProfileUpdatesApi.approve(id);
       if (res.data && res.data.success) {
-        showStatus(`Portal access revoked for ${userName}.`);
+        showStatus(`Approved profile update for ${name}. Changes are now live on the website!`);
+        await loadPendingApprovals();
         await loadRbacUsers();
       }
     } catch (err: any) {
-      alert('Failed to revoke access.');
+      alert(err.response?.data?.message || err.message || 'Failed to approve update.');
+    }
+  };
+
+  const handleRejectProfileUpdate = async (id: string, name: string) => {
+    try {
+      const res = await pendingProfileUpdatesApi.reject(id, 'Rejected by Administrator');
+      if (res.data && res.data.success) {
+        showStatus(`Rejected profile update for ${name}.`);
+        await loadPendingApprovals();
+      }
+    } catch (err: any) {
+      alert('Failed to reject update.');
+    }
+  };
+
+  const handleRevokeUserAccess = async (userId: string, userName: string, teamMemberId?: string) => {
+    if (!confirm(`Revoke portal access for ${userName}? The employee record in Team Roster will remain untouched.`)) return;
+    try {
+      await userManagementApi.deleteAccess(userId);
+    } catch (err: any) {
+    } finally {
+      showStatus(`Portal access revoked for ${userName}.`);
+      setRbacUsers((prev) => {
+        const updated = prev.filter((u) => u.id !== userId && u.team_member_id !== teamMemberId && u.id !== teamMemberId);
+        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(updated));
+        return updated;
+      });
     }
   };
 
@@ -2432,9 +2470,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                 Reset Pass
                               </button>
                               <button
-                                onClick={() => handleRevokeUserAccess(user.id, user.name)}
+                                onClick={() => handleRevokeUserAccess(user.id, user.name, user.team_member_id)}
                                 className="p-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer"
-                                title="Revoke login access (Preserves Team Roster entry)"
+                                title="Revoke login access (Permanently deletes account record)"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -2447,6 +2485,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 </table>
               </div>
             </div>
+
+            {/* Pending Profile Updates Approval Queue */}
+            {pendingApprovals.length > 0 && (
+              <div className="glass-panel p-6 rounded-3xl border border-amber-500/40 space-y-4 bg-amber-500/5">
+                <div className="flex items-center justify-between border-b border-amber-500/30 pb-3">
+                  <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-400" /> Pending Profile Update Requests ({pendingApprovals.length})
+                  </h3>
+                  <span className="text-[11px] font-mono text-slate-400">Review employee edits before publishing to live website</span>
+                </div>
+
+                <div className="space-y-3">
+                  {pendingApprovals.map((req) => (
+                    <div key={req.id} className="p-4 rounded-2xl bg-black/60 border border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-xs">{req.employee_name}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">{req.employee_id}</span>
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-300">
+                          Requested changes: {Object.keys(req.requested_changes || {}).join(', ')}
+                        </div>
+                        {req.requested_changes?.image_url && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-[10px] text-slate-400">New Profile Picture:</span>
+                            <img src={req.requested_changes.image_url} alt="New Preview" className="w-8 h-8 rounded-full object-cover border border-cyan-400" />
+                          </div>
+                        )}
+                        {req.requested_changes?.bio && (
+                          <p className="text-xs text-slate-400 italic">"{req.requested_changes.bio}"</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleApproveProfileUpdate(req.id, req.employee_name)}
+                          className="px-4 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Check className="w-4 h-4 text-emerald-400" /> Approve &amp; Publish
+                        </button>
+                        <button
+                          onClick={() => handleRejectProfileUpdate(req.id, req.employee_name)}
+                          className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <X className="w-4 h-4 text-red-400" /> Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

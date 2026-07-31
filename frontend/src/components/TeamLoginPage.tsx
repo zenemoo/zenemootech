@@ -94,12 +94,12 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-cyan-400" /> Work Email Address
+                <Mail className="w-3.5 h-3.5 text-cyan-400" /> Employee ID (e.g. ZNM-E861A) or Email Address
               </label>
               <input
-                type="email"
+                type="text"
                 required
-                placeholder="name@zenemoo.in or personal email"
+                placeholder="Enter Employee ID (e.g. ZNM-E861A, EMP-003) or email..."
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-xs"
@@ -107,9 +107,18 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-cyan-400" /> Account Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-cyan-400" /> Account Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => alert("Forgot Password? Default initial password is 'Team@123'. If you have changed your password and forgotten it, please contact your Administrator to reset your password to default.")}
+                  className="text-[11px] font-mono text-cyan-400 hover:underline cursor-pointer"
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}

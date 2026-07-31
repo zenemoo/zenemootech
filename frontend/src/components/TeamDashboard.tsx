@@ -121,7 +121,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
       });
 
       if (res.data && res.data.success) {
-        showToast('Profile updated successfully in Team Roster!', 'success');
+        showToast(
+          res.data.message || '⚡ Profile updates submitted for Administrator approval. Changes will appear on the website once approved.',
+          'success'
+        );
         await fetchProfile();
       } else {
         showToast(res.data?.message || 'Failed to update profile.', 'error');
@@ -153,7 +156,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         const imageUrl = uploadRes.data.url;
         const res = await selfProfileApi.uploadImage(imageUrl);
         if (res.data && res.data.success) {
-          showToast('Profile image updated successfully!', 'success');
+          showToast(
+            res.data.message || '⚡ Profile picture submitted for Administrator approval!',
+            'success'
+          );
           await fetchProfile();
         } else {
           showToast(res.data?.message || 'Failed to update image.', 'error');
