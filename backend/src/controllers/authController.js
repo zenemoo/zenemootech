@@ -795,73 +795,50 @@ export const portalLogin = async (req, res, next) => {
     let userAccount = null;
     let teamMember = null;
 
-    // 1. Lookup in user_accounts and Team Roster by Employee ID (ZNM-E861A, EMP-003)
+    // 1. Efficient lookup: Search team table by employee_id, then get user_accounts
     if (supabase) {
       try {
         const queryClean = cleanEmail.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
-        // A. Match in user_accounts by employee_id stored in linked team member
-        const { data: allAccounts } = await supabase.from('user_accounts').select('*');
-        if (Array.isArray(allAccounts)) {
-          // Check each account's linked team member for employee_id match
-          for (const acc of allAccounts) {
-            if (acc.team_member_id) {
-              const { data: tm } = await supabase
-                .from('team')
-                .select('employee_id')
-                .eq('id', acc.team_member_id)
-                .maybeSingle();
-              if (tm && tm.employee_id) {
-                const tmIdClean = (tm.employee_id || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-                if (tmIdClean === queryClean) {
-                  userAccount = acc;
-                  break;
-                }
-              }
-            }
-          }
-        }
+        // Step A: Find team member by employee_id (single query — no N+1)
+        const { data: allTeam } = await supabase.from('team').select('*');
+        if (Array.isArray(allTeam) && allTeam.length > 0) {
+          const foundMember = allTeam.find((m) => {
+            // Use stored employee_id OR derive it from id (same logic as frontend profile page)
+            const effectiveEmpId = m.employee_id || `ZNM-${(m.id || '').substring(0, 5).toUpperCase()}`;
+            const empIdClean = effectiveEmpId.replace(/[^a-z0-9]/gi, '').toLowerCase();
+            const posStr = String(m.position || '');
+            return (
+              (empIdClean && empIdClean === queryClean) ||
+              (queryClean.length > 2 && empIdClean.includes(queryClean)) ||
+              posStr === cleanEmail
+            );
+          });
 
-        if (!userAccount) {
-          // B. Fetch all team members to perform employee_id matching
-          const { data: allTeam } = await supabase.from('team').select('*');
-          if (Array.isArray(allTeam) && allTeam.length > 0) {
-            const foundMember = allTeam.find((m) => {
-              const empIdClean = (m.employee_id || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-              const posStr = String(m.position || '');
+          if (foundMember) {
+            teamMember = foundMember;
+            // Step B: Look up user_accounts linked to this team member
+            const { data: accByTeamId } = await supabase
+              .from('user_accounts')
+              .select('*')
+              .eq('team_member_id', foundMember.id)
+              .maybeSingle();
 
-              return (
-                (empIdClean && empIdClean === queryClean) ||
-                (queryClean.length > 2 && empIdClean.includes(queryClean)) ||
-                posStr === cleanEmail
-              );
-            });
-
-            if (foundMember) {
-              teamMember = foundMember;
-              // Check if user_accounts has an account linked to this team_member_id
-              const { data: accByTeamId } = await supabase
-                .from('user_accounts')
-                .select('*')
-                .eq('team_member_id', foundMember.id)
-                .maybeSingle();
-
-              if (accByTeamId) {
-                userAccount = accByTeamId;
-              } else {
-                // Auto-create initial access for Team Roster member
-                userAccount = {
-                  id: `user_${Date.now()}`,
-                  team_member_id: foundMember.id,
-                  email: foundMember.email || `${foundMember.employee_id || cleanEmail}@zenemoo.in`,
-                  password_hash: await bcrypt.hash(cleanPass, 10),
-                  role: 'team_member',
-                  status: 'active',
-                  email_access: false,
-                  notification_access: true,
-                  password_changed: false,
-                };
-              }
+            if (accByTeamId) {
+              userAccount = accByTeamId;
+            } else {
+              // Auto-create in-memory access for first login with Team@123
+              userAccount = {
+                id: `user_${Date.now()}`,
+                team_member_id: foundMember.id,
+                email: foundMember.email || `${foundMember.employee_id || cleanEmail}@zenemoo.in`,
+                password_hash: null,
+                role: 'team_member',
+                status: 'active',
+                email_access: false,
+                notification_access: true,
+                password_changed: false,
+              };
             }
           }
         }

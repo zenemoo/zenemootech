@@ -42,7 +42,7 @@ export const searchRosterForAccess = async (req, res, next) => {
       id: member.id,
       position: member.position,
       name: member.name || 'Team Member',
-      employee_id: member.employee_id || `EMP-${String(member.position).padStart(3, '0')}`,
+      employee_id: member.employee_id || (member.id ? `ZNM-${member.id.substring(0, 5).toUpperCase()}` : `EMP-${String(member.position).padStart(3, '0')}`),
       email: member.email || '',
       designation: member.designation || 'Specialist',
       department: member.department || 'Engineering',
@@ -148,7 +148,7 @@ export const grantUserAccess = async (req, res, next) => {
         team_member_id: teamMember.id,
         name: teamMember.name,
         email,
-        employee_id: teamMember.employee_id || `EMP-${String(teamMember.position).padStart(3, '0')}`,
+        employee_id: teamMember.employee_id || (teamMember.id ? `ZNM-${teamMember.id.substring(0, 5).toUpperCase()}` : `EMP-${String(teamMember.position).padStart(3, '0')}`),
         designation: teamMember.designation,
         department: teamMember.department,
         image_url: teamMember.image_url,
@@ -197,8 +197,9 @@ export const getUsers = async (req, res, next) => {
         password_changed: Boolean(account.password_changed),
         created_at: account.created_at,
         // Single Source of Truth fields from Team Roster
+        // Derive effective employee_id same as frontend TeamMemberProfilePage
         name: member.name || 'Admin User',
-        employee_id: member.employee_id || `EMP-${String(member.position || 1).padStart(3, '0')}`,
+        employee_id: member.employee_id || (member.id ? `ZNM-${member.id.substring(0, 5).toUpperCase()}` : `EMP-${String(member.position || 1).padStart(3, '0')}`),
         designation: member.designation || 'Specialist',
         department: member.department || 'Engineering',
         badge: member.badge || 'Specialist',
