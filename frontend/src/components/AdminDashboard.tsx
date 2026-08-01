@@ -1198,6 +1198,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       const updatedList = await saveTeamMemberToApi(memberToSave);
       setTeamList(updatedList);
       setEditingMember(null);
+      setSearchQuery('');
+      setStatusFilter('all');
+      setCategoryFilter('all');
       showStatus('Team member saved live to Supabase PostgreSQL database!');
     } catch (err: any) {
       alert('Error saving team member: ' + (err.message || 'Server error'));

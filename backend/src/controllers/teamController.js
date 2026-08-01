@@ -282,10 +282,14 @@ export const createTeamMember = async (req, res, next) => {
 
     const createdMember = await insertResiliently('team', newMemberPayload);
 
+    // Re-normalize positions using 2-phase offset update and get full team list
+    const updatedTeam = await normalizeAndSavePositions();
+
     res.status(201).json({
       success: true,
       message: 'Team member added successfully',
       data: createdMember || newMemberPayload,
+      team: Array.isArray(updatedTeam) && updatedTeam.length > 0 ? updatedTeam : undefined,
     });
   } catch (err) {
     console.error('Final Error creating team member:', err);

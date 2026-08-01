@@ -139,25 +139,65 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
     delete payload.id;
   }
 
+  let serverResult: any = null;
+
   if (payload.id && payload.id.length > 10) {
     try {
       const res = await teamApi.update(payload.id, payload);
-      if (res.data && (res.data.team || res.data.data)) {
-        const team = res.data.team || res.data.data;
-        if (Array.isArray(team)) return team;
+      if (res.data) {
+        if (Array.isArray(res.data.team) && res.data.team.length > 0) return res.data.team;
+        if (Array.isArray(res.data.data) && res.data.data.length > 0) return res.data.data;
+        serverResult = res.data.data || res.data.team;
       }
     } catch (e) {
       console.warn('Update failed, creating new record:', e);
     }
   }
 
-  delete payload.id;
-  const res = await teamApi.create(payload);
-  if (res.data && (res.data.team || res.data.data)) {
-    const team = res.data.team || res.data.data;
-    if (Array.isArray(team)) return team;
+  if (!serverResult) {
+    delete payload.id;
+    const res = await teamApi.create(payload);
+    if (res.data) {
+      if (Array.isArray(res.data.team) && res.data.team.length > 0) return res.data.team;
+      if (Array.isArray(res.data.data) && res.data.data.length > 0) return res.data.data;
+      serverResult = res.data.data || res.data.team;
+    }
   }
-  return await getStoredTeamMembers();
+
+  const freshList = await getStoredTeamMembers();
+  if (serverResult && typeof serverResult === 'object' && serverResult.name) {
+    const targetId = serverResult.id || member.id;
+    const exists = targetId ? freshList.some((m) => m.id === targetId || m.name.toLowerCase() === serverResult.name.toLowerCase()) : false;
+    if (!exists) {
+      let parsedSkills: string[] = [];
+      if (Array.isArray(serverResult.skills)) {
+        parsedSkills = serverResult.skills;
+      } else if (typeof serverResult.skills === 'string') {
+        parsedSkills = serverResult.skills.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+      }
+      if (parsedSkills.length === 0) parsedSkills = ['Specialist'];
+
+      const mergedMember: TeamMember = {
+        id: serverResult.id || `member_${Date.now()}`,
+        position: Number(serverResult.position || freshList.length + 1),
+        name: serverResult.name || member.name || 'New Team Member',
+        designation: serverResult.designation || member.designation || member.role || 'Specialist',
+        badge: serverResult.badge || member.badge || 'Specialist',
+        skills: parsedSkills,
+        image_url: serverResult.image_url || serverResult.image || member.image_url || member.image || '/assets/executive.png',
+        bio: serverResult.bio || member.bio || '',
+        email: serverResult.email || member.email || '',
+        status: serverResult.status || member.status || 'active',
+        department: serverResult.department || serverResult.category || member.category || 'Engineering',
+        category: serverResult.department || serverResult.category || member.category || 'Engineering',
+        slug: serverResult.slug || getSlugFromName(serverResult.name || member.name || 'Team Member'),
+      };
+
+      freshList.push(mergedMember);
+      freshList.sort((a, b) => a.position - b.position);
+    }
+  }
+  return freshList;
 };
 
 export const reorderTeamMemberInApi = async (id: string, newPosition: number): Promise<TeamMember[]> => {
