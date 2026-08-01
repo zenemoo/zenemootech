@@ -112,7 +112,10 @@ export const createTeamMember = async (req, res, next) => {
       updated_at: new Date().toISOString(),
     };
 
-    // Auto generate AI summary on creation if not provided (non-blocking try-catch)
+    // Strip id if present and empty to allow PostgreSQL UUID generation
+    delete newMemberPayload.id;
+
+    // Auto generate AI summary on creation if not provided (non-blocking)
     if (!newMemberPayload.ai_summary) {
       try {
         newMemberPayload.ai_summary = await generateTeamMemberSummary(newMemberPayload);
@@ -121,7 +124,30 @@ export const createTeamMember = async (req, res, next) => {
       }
     }
 
-    const createdMember = await supabaseService.insert('team', newMemberPayload);
+    let createdMember = null;
+    try {
+      createdMember = await supabaseService.insert('team', newMemberPayload);
+    } catch (insertErr) {
+      console.warn('Full payload insert note, retrying with core schema columns:', insertErr.message);
+      const corePayload = {
+        position: newPosition,
+        name: req.body.name || 'New Team Member',
+        designation,
+        department: req.body.department || req.body.category || 'Engineering',
+        badge: req.body.badge || 'Specialist',
+        skills: skillsArray,
+        bio: req.body.bio || '',
+        image_url: imageUrl,
+        email: req.body.email || '',
+        phone: req.body.phone || '',
+        status: req.body.status || 'active',
+        slug: req.body.slug || '',
+        employee_id: req.body.employee_id || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      createdMember = await supabaseService.insert('team', corePayload);
+    }
 
     res.status(201).json({
       success: true,
