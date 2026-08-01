@@ -22,6 +22,7 @@ const memoryNotifications = [
 ];
 
 const memoryUserNotifications = new Map(); // key: userId, value: set of read notification IDs
+const memoryUserDeletedNotifications = new Map(); // key: userId, value: set of deleted notification IDs
 
 /**
  * 1. GET /api/notifications
@@ -42,32 +43,36 @@ export const getUserNotifications = async (req, res, next) => {
       allNotifications = memoryNotifications;
     }
 
-    // Filter relevant notifications (broadcast, role match, or individual match)
+    // Check read & deleted status for this user from user_notifications table or memory store
+    let readNotifIds = new Set();
+    let deletedNotifIds = new Set();
+    if (supabase && userId !== 'temp_user') {
+      try {
+        const { data } = await supabase
+          .from('user_notifications')
+          .select('notification_id, is_read, is_deleted, deleted_at')
+          .eq('user_id', userId);
+        if (Array.isArray(data)) {
+          data.forEach((item) => {
+            if (item.is_read) readNotifIds.add(item.notification_id);
+            if (item.is_deleted || item.deleted_at) deletedNotifIds.add(item.notification_id);
+          });
+        }
+      } catch (e) {}
+    } else {
+      readNotifIds = memoryUserNotifications.get(userId) || new Set();
+      deletedNotifIds = memoryUserDeletedNotifications.get(userId) || new Set();
+    }
+
+    // Filter relevant notifications (broadcast, role match, or individual match) AND exclude per-user deleted ones
     const userRelevant = allNotifications.filter((n) => {
+      if (deletedNotifIds.has(n.id)) return false;
       const targetType = (n.target_type || 'broadcast').toLowerCase();
       if (targetType === 'broadcast') return true;
       if (targetType === 'role' && n.target_role?.toLowerCase() === userRole) return true;
       if (targetType === 'individual' && n.target_user_id === userId) return true;
       return false;
     });
-
-    // Check read status from user_notifications table or memory store
-    let readNotifIds = new Set();
-    if (supabase && userId !== 'temp_user') {
-      try {
-        const { data } = await supabase
-          .from('user_notifications')
-          .select('notification_id, is_read, deleted_at')
-          .eq('user_id', userId);
-        if (Array.isArray(data)) {
-          data.forEach((item) => {
-            if (item.is_read) readNotifIds.add(item.notification_id);
-          });
-        }
-      } catch (e) {}
-    } else {
-      readNotifIds = memoryUserNotifications.get(userId) || new Set();
-    }
 
     const formatted = userRelevant.map((n) => ({
       id: n.id,
@@ -189,20 +194,48 @@ export const markAllNotificationsAsRead = async (req, res, next) => {
 
 /**
  * 4. DELETE /api/notifications/:id
- * Delete / hide notification for user
+ * Delete / hide notification for logged-in user only
  */
 export const deleteUserNotification = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user?.id || 'temp_user';
 
-    const userReads = memoryUserNotifications.get(userId) || new Set();
-    userReads.add(id);
-    memoryUserNotifications.set(userId, userReads);
+    if (supabase && userId !== 'temp_user') {
+      try {
+        const { data: existing } = await supabase
+          .from('user_notifications')
+          .select('id')
+          .eq('notification_id', id)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase
+            .from('user_notifications')
+            .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+            .eq('id', existing.id);
+        } else {
+          await supabase.from('user_notifications').insert([
+            {
+              notification_id: id,
+              user_id: userId,
+              is_read: true,
+              is_deleted: true,
+              deleted_at: new Date().toISOString(),
+            },
+          ]);
+        }
+      } catch (e) {}
+    }
+
+    const userDeleted = memoryUserDeletedNotifications.get(userId) || new Set();
+    userDeleted.add(id);
+    memoryUserDeletedNotifications.set(userId, userDeleted);
 
     res.json({
       success: true,
-      message: 'Notification deleted.',
+      message: 'Notification deleted for your account.',
     });
   } catch (err) {
     next(err);

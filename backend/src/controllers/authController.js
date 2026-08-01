@@ -932,7 +932,7 @@ export const portalLogin = async (req, res, next) => {
         password_changed: Boolean(userAccount.password_changed),
         // Single Source of Truth fields from Team Roster
         name: teamMember?.name || cleanEmail.split('@')[0],
-        employee_id: teamMember?.employee_id || `EMP-${String(teamMember?.position || 1).padStart(3, '0')}`,
+        employee_id: teamMember?.employee_id || (teamMember?.id ? `ZNM-${teamMember.id.substring(0, 5).toUpperCase()}` : `EMP-${String(teamMember?.position || 1).padStart(3, '0')}`),
         designation: teamMember?.designation || 'Specialist',
         department: teamMember?.department || 'Engineering',
         badge: teamMember?.badge || 'Specialist',
@@ -1025,7 +1025,7 @@ export const getMeProfile = async (req, res, next) => {
         notification_access: Boolean(userAccount?.notification_access ?? true),
         password_changed: Boolean(userAccount?.password_changed ?? false),
         name: teamMember?.name || cleanEmail.split('@')[0],
-        employee_id: teamMember?.employee_id || `EMP-${String(teamMember?.position || 1).padStart(3, '0')}`,
+        employee_id: teamMember?.employee_id || (teamMember?.id ? `ZNM-${teamMember.id.substring(0, 5).toUpperCase()}` : `EMP-${String(teamMember?.position || 1).padStart(3, '0')}`),
         designation: teamMember?.designation || 'Specialist',
         department: teamMember?.department || 'Engineering',
         badge: teamMember?.badge || 'Specialist',

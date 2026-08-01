@@ -28,7 +28,15 @@ interface HRDashboardProps {
 
 export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'email' | 'profile' | 'password'>('email');
-  const [profile, setProfile] = useState<any>(initialUserData || {});
+  const [profile, setProfile] = useState<any>(() => {
+    if (initialUserData && Object.keys(initialUserData).length > 0) return initialUserData;
+    try {
+      const saved = localStorage.getItem('zenemoo_portal_user');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
   const [cooldownInfo, setCooldownInfo] = useState<any>({});
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -73,13 +81,18 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
       if (res.data && res.data.success) {
         const u = res.data.user;
         setProfile(u);
+        localStorage.setItem('zenemoo_portal_user', JSON.stringify(u));
         setCooldownInfo(res.data.image_cooldown || {});
         setEditBio(u.bio || '');
         setEditSkills(Array.isArray(u.skills) ? u.skills.join(', ') : u.skills || '');
         setEditLanguages(Array.isArray(u.languages) ? u.languages.join(', ') : u.languages || '');
         setEditPhone(u.phone || '');
       }
-    } catch (err) {}
+    } catch (err: any) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        onLogout();
+      }
+    }
   };
 
   const loadEmailData = async () => {

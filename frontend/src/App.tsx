@@ -40,7 +40,14 @@ export function App() {
   const [resetEmail, setResetEmail] = useState<string>('');
   const [verifiedOtp, setVerifiedOtp] = useState<string>('');
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
-  const [portalUser, setPortalUser] = useState<any>(null);
+  const [portalUser, setPortalUser] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('zenemoo_portal_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   useEffect(() => {
     const checkRoute = () => {
@@ -216,6 +223,9 @@ export function App() {
           initialUserData={portalUser}
           onLogout={() => {
             localStorage.removeItem('zenemoo_jwt_token');
+            localStorage.removeItem('zenemoo_jwt_expiry');
+            localStorage.removeItem('zenemoo_portal_user');
+            setPortalUser(null);
             setCurrentRoute('team-login');
             window.location.hash = 'team-login';
           }}
@@ -234,6 +244,9 @@ export function App() {
           initialUserData={portalUser}
           onLogout={() => {
             localStorage.removeItem('zenemoo_jwt_token');
+            localStorage.removeItem('zenemoo_jwt_expiry');
+            localStorage.removeItem('zenemoo_portal_user');
+            setPortalUser(null);
             setCurrentRoute('hr-login');
             window.location.hash = 'hr-login';
           }}

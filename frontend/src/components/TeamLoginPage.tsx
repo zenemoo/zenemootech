@@ -18,6 +18,7 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setErrorMsg('');
     setIsLoading(true);
 
@@ -28,16 +29,17 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
       const res = await portalAuthApi.portalLogin(cleanId, cleanPass, 'team_member');
       if (res.data && res.data.success && res.data.token) {
         localStorage.setItem('zenemoo_jwt_token', res.data.token);
+        localStorage.setItem('zenemoo_portal_user', JSON.stringify(res.data.user));
         const expiry = Date.now() + 30 * 60 * 1000;
         localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
         onSuccessLogin(res.data.user, res.data.token);
       } else {
         setErrorMsg(res.data?.message || 'Login failed. Please check your Employee ID and password.');
+        setIsLoading(false);
       }
     } catch (err: any) {
       console.error('Team login error:', err);
       setErrorMsg(err.response?.data?.message || err.message || 'Invalid Employee ID or password.');
-    } finally {
       setIsLoading(false);
     }
   };

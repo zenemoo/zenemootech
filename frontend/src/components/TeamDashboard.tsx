@@ -33,7 +33,15 @@ interface TeamDashboardProps {
 
 export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password' | 'notifications'>('overview');
-  const [profile, setProfile] = useState<any>(initialUserData || {});
+  const [profile, setProfile] = useState<any>(() => {
+    if (initialUserData && Object.keys(initialUserData).length > 0) return initialUserData;
+    try {
+      const saved = localStorage.getItem('zenemoo_portal_user');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
   const [cooldownInfo, setCooldownInfo] = useState<any>({});
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -70,6 +78,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
       if (res.data && res.data.success) {
         const u = res.data.user;
         setProfile(u);
+        localStorage.setItem('zenemoo_portal_user', JSON.stringify(u));
         setCooldownInfo(res.data.image_cooldown || {});
         setEditBio(u.bio || '');
         setEditSkills(Array.isArray(u.skills) ? u.skills.join(', ') : u.skills || '');
@@ -80,8 +89,11 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         setEditTwitter(u.twitter || '');
         setEditPortfolio(u.portfolio || '');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to fetch profile:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        onLogout();
+      }
     } finally {
       setIsLoadingProfile(false);
     }
