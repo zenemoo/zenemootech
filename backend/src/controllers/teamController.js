@@ -1,7 +1,7 @@
 import { supabaseService } from '../services/supabaseService.js';
 import { generateTeamMemberSummary } from '../services/aiService.js';
 
-// Helper: Normalize team positions in database cleanly
+// Helper: Normalize team positions in database cleanly using 2-phase offset update to avoid PostgreSQL UNIQUE constraint collision
 const normalizeAndSavePositions = async (customList = null) => {
   try {
     let list = customList;
@@ -10,25 +10,39 @@ const normalizeAndSavePositions = async (customList = null) => {
     }
     if (!Array.isArray(list) || list.length === 0) return [];
 
-    // Assign final sequential positions 1..N cleanly
-    const updatedList = [];
+    // Phase 1: Move items needing position updates to temporary negative offset positions (-10000 - i)
     for (let index = 0; index < list.length; index++) {
       const member = list[index];
       const finalPos = index + 1;
       if (Number(member.position) !== finalPos) {
         try {
-          const updated = await supabaseService.update('team', member.id, {
-            position: finalPos,
+          await supabaseService.update('team', member.id, {
+            position: -(10000 + index + 1),
             updated_at: new Date().toISOString(),
           });
-          updatedList.push(updated || { ...member, position: finalPos });
         } catch (e) {
-          updatedList.push({ ...member, position: finalPos });
+          console.warn(`Phase 1 offset position error for ${member.name}:`, e.message);
         }
-      } else {
-        updatedList.push(member);
       }
     }
+
+    // Phase 2: Assign clean sequential positive positions 1..N
+    const updatedList = [];
+    for (let index = 0; index < list.length; index++) {
+      const member = list[index];
+      const finalPos = index + 1;
+      try {
+        const updated = await supabaseService.update('team', member.id, {
+          position: finalPos,
+          updated_at: new Date().toISOString(),
+        });
+        updatedList.push(updated || { ...member, position: finalPos });
+      } catch (e) {
+        console.warn(`Phase 2 final position error for ${member.name}:`, e.message);
+        updatedList.push({ ...member, position: finalPos });
+      }
+    }
+
     return updatedList.sort((a, b) => Number(a.position) - Number(b.position));
   } catch (err) {
     console.warn('normalizeAndSavePositions warning:', err.message);
