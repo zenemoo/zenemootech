@@ -795,40 +795,47 @@ export const portalLogin = async (req, res, next) => {
     let userAccount = null;
     let teamMember = null;
 
-    // 1. Efficient lookup: Search team table by employee_id, then get user_accounts
+    // 1. Efficient parallel lookup: Fetch team roster & user_accounts concurrently in 1 round-trip
     if (supabase) {
       try {
         const queryClean = cleanEmail.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
-        // Step A: Find team member by employee_id (single query — no N+1)
-        const { data: allTeam } = await supabase.from('team').select('*');
+        const [{ data: allTeam }, { data: allAccounts }] = await Promise.all([
+          supabase.from('team').select('*'),
+          supabase.from('user_accounts').select('*'),
+        ]);
+
         if (Array.isArray(allTeam) && allTeam.length > 0) {
           const foundMember = allTeam.find((m) => {
-            // Use stored employee_id OR derive it from id (same logic as frontend profile page)
             const effectiveEmpId = m.employee_id || `ZNM-${(m.id || '').substring(0, 5).toUpperCase()}`;
             const empIdClean = effectiveEmpId.replace(/[^a-z0-9]/gi, '').toLowerCase();
             const posStr = String(m.position || '');
+            const emailClean = (m.email || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
             return (
               (empIdClean && empIdClean === queryClean) ||
               (queryClean.length > 2 && empIdClean.includes(queryClean)) ||
+              (emailClean && emailClean === queryClean) ||
               posStr === cleanEmail
             );
           });
 
           if (foundMember) {
             teamMember = foundMember;
-            // Step B: Look up user_accounts linked to this team member
-            const { data: accByTeamId } = await supabase
-              .from('user_accounts')
-              .select('*')
-              .eq('team_member_id', foundMember.id)
-              .maybeSingle();
-
-            if (accByTeamId) {
-              userAccount = accByTeamId;
+            if (Array.isArray(allAccounts)) {
+              userAccount = allAccounts.find((u) => u.team_member_id === foundMember.id);
             }
-            // If no user_accounts record exists → access was never granted by Admin
-            // Do NOT auto-create — just leave userAccount = null so login is denied below
+          }
+        }
+
+        // Direct user_accounts fallback if not matched via team roster
+        if (!userAccount && Array.isArray(allAccounts)) {
+          userAccount = allAccounts.find(
+            (u) =>
+              u.id === cleanEmail ||
+              (u.email && u.email.toLowerCase() === cleanEmail.toLowerCase())
+          );
+          if (userAccount && userAccount.team_member_id && Array.isArray(allTeam)) {
+            teamMember = allTeam.find((m) => m.id === userAccount.team_member_id) || null;
           }
         }
       } catch (e) {
@@ -881,42 +888,30 @@ export const portalLogin = async (req, res, next) => {
       });
     }
 
-    // Fetch single-source Team Roster details if linked
-    if (supabase && userAccount.team_member_id) {
-      try {
-        const { data: member } = await supabase
-          .from('team')
-          .select('*')
-          .eq('id', userAccount.team_member_id)
-          .maybeSingle();
-        if (member) teamMember = member;
-      } catch (e) {}
-    }
-
     // Sign JWT Token with 30-min expiration
     const token = jwt.sign(
       {
         id: userAccount.id,
         team_member_id: userAccount.team_member_id,
         role: userAccount.role || 'team_member',
-        email: cleanEmail,
+        email: userAccount.email || teamMember?.email || cleanEmail,
         email_access: Boolean(userAccount.email_access),
       },
       JWT_SECRET,
       { expiresIn: '30m' }
     );
 
-    // Update last_login
-    if (supabase && userAccount.id && !String(userAccount.id).startsWith('admin_')) {
+    // Non-blocking background updates for last_login & audit log (does NOT delay response)
+    (async () => {
       try {
-        await supabase
-          .from('user_accounts')
-          .update({ last_login: new Date().toISOString() })
-          .eq('id', userAccount.id);
-      } catch (e) {}
-    }
-
-    await writeAuditLog(req, 'PORTAL_LOGIN_SUCCESS', cleanEmail, { role: userAccount.role });
+        if (supabase && userAccount.id && !String(userAccount.id).startsWith('admin_')) {
+          await supabase.from('user_accounts').update({ last_login: new Date().toISOString() }).eq('id', userAccount.id);
+        }
+        await writeAuditLog(req, 'PORTAL_LOGIN_SUCCESS', userAccount.email || cleanEmail, { role: userAccount.role });
+      } catch (e) {
+        console.warn('Background login audit update warning:', e.message);
+      }
+    })();
 
     res.json({
       success: true,
@@ -925,7 +920,7 @@ export const portalLogin = async (req, res, next) => {
       user: {
         id: userAccount.id,
         team_member_id: userAccount.team_member_id,
-        email: cleanEmail,
+        email: teamMember?.email || userAccount.email || cleanEmail,
         role: userAccount.role || 'team_member',
         email_access: Boolean(userAccount.email_access),
         notification_access: Boolean(userAccount.notification_access),
