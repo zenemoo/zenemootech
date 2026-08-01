@@ -26,7 +26,6 @@ export const searchRosterForAccess = async (req, res, next) => {
     if (!Array.isArray(userAccounts)) userAccounts = memoryUserAccounts;
 
     const existingTeamMemberIds = new Set(userAccounts.map((u) => u.team_member_id).filter(Boolean));
-    const existingEmails = new Set(userAccounts.map((u) => (u.email || '').toLowerCase()).filter(Boolean));
 
     // Filter matching team members
     const filtered = roster.filter((m) => {
@@ -49,7 +48,7 @@ export const searchRosterForAccess = async (req, res, next) => {
       badge: member.badge || 'Specialist',
       image_url: member.image_url || '/assets/executive.png',
       joining_date: member.joining_date || '',
-      has_access: existingTeamMemberIds.has(member.id) || (member.email && existingEmails.has(member.email.toLowerCase())),
+      has_access: existingTeamMemberIds.has(member.id),
     }));
 
     res.json({
@@ -93,6 +92,7 @@ export const grantUserAccess = async (req, res, next) => {
       });
     }
 
+    const empId = teamMember.employee_id || (teamMember.id ? `ZNM-${teamMember.id.substring(0, 5).toUpperCase()}` : `EMP-${String(teamMember.position).padStart(3, '0')}`);
     const email = (teamMember.email || req.body.email || `${teamMember.name.toLowerCase().replace(/\s+/g, '.')}@zenemoo.in`).trim().toLowerCase();
     const passwordHash = await bcrypt.hash(password || 'Team@123', 10);
 
@@ -114,29 +114,43 @@ export const grantUserAccess = async (req, res, next) => {
     try {
       const allAccounts = await supabaseService.selectAll('user_accounts');
       if (Array.isArray(allAccounts)) {
-        existingAccount = allAccounts.find(
-          (u) => u.team_member_id === teamMember.id || (u.email && u.email.toLowerCase() === email)
-        );
+        // Strict Single-Source matching: Each team member ID gets exactly one user account
+        existingAccount = allAccounts.find((u) => u.team_member_id === teamMember.id);
       }
     } catch (e) {}
 
     if (existingAccount) {
-      // Update existing access
+      // Update existing access for THIS team member
       try {
         userRecord = await supabaseService.update('user_accounts', existingAccount.id, payload);
       } catch (dbErr) {
         userRecord = { ...existingAccount, ...payload };
       }
     } else {
-      // Create new access account
+      // Create new access account for THIS team member
       payload.created_at = new Date().toISOString();
       try {
         userRecord = await supabaseService.insert('user_accounts', payload);
       } catch (dbErr) {
-        console.warn('Supabase user_accounts insert fallback:', dbErr.message);
-        payload.id = `user_${Date.now()}`;
-        memoryUserAccounts.push(payload);
-        userRecord = payload;
+        if (dbErr.message?.includes('user_accounts_email_key') || dbErr.message?.includes('unique')) {
+          console.warn(`Duplicate email constraint caught for ${teamMember.name}. Retrying with aliased email...`);
+          const parts = email.split('@');
+          const empClean = empId.toLowerCase().replace(/[^a-z0-9]/g, '');
+          payload.email = `${parts[0]}+${empClean}@${parts[1] || 'zenemoo.in'}`;
+          try {
+            userRecord = await supabaseService.insert('user_accounts', payload);
+          } catch (retryErr) {
+            console.warn('Supabase user_accounts insert fallback:', retryErr.message);
+            payload.id = `user_${Date.now()}`;
+            memoryUserAccounts.push(payload);
+            userRecord = payload;
+          }
+        } else {
+          console.warn('Supabase user_accounts insert fallback:', dbErr.message);
+          payload.id = `user_${Date.now()}`;
+          memoryUserAccounts.push(payload);
+          userRecord = payload;
+        }
       }
     }
 

@@ -328,30 +328,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       console.warn('Backend RBAC note (cold-start fallback):', err.message);
       showStatus(`Granted ${grantRole.toUpperCase()} portal access for ${selectedRosterMember.name}!`);
     } finally {
-      const newAccount = {
-        id: `user_${Date.now()}`,
-        team_member_id: selectedRosterMember.id,
-        name: selectedRosterMember.name,
-        email,
-        employee_id:
-          selectedRosterMember.employee_id || `EMP-${String(selectedRosterMember.position || 1).padStart(3, '0')}`,
-        designation: selectedRosterMember.designation || selectedRosterMember.role || 'Specialist',
-        department: selectedRosterMember.category || selectedRosterMember.department || 'Engineering',
-        image_url: selectedRosterMember.image_url || selectedRosterMember.image || '/assets/executive.png',
-        role: grantRole,
-        status: 'active',
-        email_access: grantEmailAccess,
-        notification_access: grantNotificationAccess,
-        password_changed: false,
-      };
-
-      setRbacUsers((prev) => {
-        const filtered = prev.filter((u) => u.team_member_id !== selectedRosterMember.id);
-        const updated = [newAccount, ...filtered];
-        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(updated));
-        return updated;
-      });
-
+      await loadRbacUsers();
       setIsRbacModalOpen(false);
       setSelectedRosterMember(null);
       setRosterSearchQuery('');
