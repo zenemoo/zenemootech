@@ -337,11 +337,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   };
 
   const handleResetUserPassword = async (userId: string, userName: string) => {
-    if (!confirm(`Reset password for ${userName} to default 'Team@123'?`)) return;
+    const customPass = prompt(`Enter temporary password for ${userName}:`, 'Team@123');
+    if (customPass === null) return;
+    const targetPassword = customPass.trim() || 'Team@123';
     try {
-      const res = await userManagementApi.resetPassword(userId, 'Team@123');
+      const res = await userManagementApi.resetPassword(userId, targetPassword);
       if (res.data && res.data.success) {
-        showStatus(`Password for ${userName} reset to 'Team@123'. User will be prompted to change password on next login.`);
+        showStatus(`Password for ${userName} reset to '${targetPassword}'. User will be forced to change it upon next sign in.`);
         await loadRbacUsers();
       }
     } catch (err: any) {

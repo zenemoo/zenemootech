@@ -26,6 +26,7 @@ ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS email_access BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS notification_access BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS password_changed BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS temporary_password BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_user_accounts_email ON user_accounts(email);

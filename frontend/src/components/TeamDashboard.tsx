@@ -103,6 +103,12 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
     fetchProfile();
   }, []);
 
+  useEffect(() => {
+    if (profile && (profile.temporary_password === true || profile.password_changed === false)) {
+      setActiveTab('password');
+    }
+  }, [profile]);
+
   // Calculate Profile Completion %
   const calculateCompletion = () => {
     let score = 50; // Base score for credentials & read-only fields

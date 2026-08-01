@@ -89,7 +89,7 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
           <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-mono flex items-start gap-2.5">
             <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-white">First Time Sign In?</span> Default password provided by your admin is <code className="px-1.5 py-0.5 bg-black/40 rounded border border-cyan-500/30 font-bold text-white">Team@123</code>.
+              <span className="font-bold text-white">First Time Sign In?</span> Enter the temporary password assigned by your Administrator. You will be prompted to change it upon sign in.
             </div>
           </div>
 

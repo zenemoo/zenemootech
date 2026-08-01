@@ -3,7 +3,7 @@ import { supabaseService } from '../services/supabaseService.js';
 import { supabase } from '../config/supabase.js';
 
 // Fallback in-memory user account cache if DB table is pending creation
-const memoryUserAccounts = [];
+export const memoryUserAccounts = [];
 
 /**
  * 1. GET /api/users/search-roster
@@ -104,7 +104,8 @@ export const grantUserAccess = async (req, res, next) => {
       status: status.toLowerCase(),
       email_access: Boolean(email_access),
       notification_access: Boolean(notification_access),
-      password_changed: false, // Forces password change on initial login if default Team@123
+      password_changed: false,
+      temporary_password: true,
       updated_at: new Date().toISOString(),
     };
 
@@ -124,7 +125,16 @@ export const grantUserAccess = async (req, res, next) => {
       try {
         userRecord = await supabaseService.update('user_accounts', existingAccount.id, payload);
       } catch (dbErr) {
-        userRecord = { ...existingAccount, ...payload };
+        if (dbErr.message?.includes('temporary_password') || dbErr.message?.includes('PGRST204')) {
+          delete payload.temporary_password;
+          try {
+            userRecord = await supabaseService.update('user_accounts', existingAccount.id, payload);
+          } catch (_) {
+            userRecord = { ...existingAccount, ...payload };
+          }
+        } else {
+          userRecord = { ...existingAccount, ...payload };
+        }
       }
     } else {
       // Create new access account for THIS team member
@@ -132,12 +142,24 @@ export const grantUserAccess = async (req, res, next) => {
       try {
         userRecord = await supabaseService.insert('user_accounts', payload);
       } catch (dbErr) {
-        console.warn('Supabase user_accounts insert note:', dbErr.message);
-        payload.id = `user_${Date.now()}`;
-        // Preserve exact real email without any alias
-        payload.email = email;
-        memoryUserAccounts.push(payload);
-        userRecord = payload;
+        if (dbErr.message?.includes('temporary_password') || dbErr.message?.includes('PGRST204')) {
+          delete payload.temporary_password;
+          try {
+            userRecord = await supabaseService.insert('user_accounts', payload);
+          } catch (retryErr) {
+            console.warn('Supabase user_accounts insert note:', retryErr.message);
+            payload.id = `user_${Date.now()}`;
+            payload.email = email;
+            memoryUserAccounts.push(payload);
+            userRecord = payload;
+          }
+        } else {
+          console.warn('Supabase user_accounts insert note:', dbErr.message);
+          payload.id = `user_${Date.now()}`;
+          payload.email = email;
+          memoryUserAccounts.push(payload);
+          userRecord = payload;
+        }
       }
     }
 
@@ -283,13 +305,20 @@ export const resetUserPassword = async (req, res, next) => {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     const payload = {
       password_hash: passwordHash,
-      password_changed: false, // Force user to change on next login
+      password_changed: false,
+      temporary_password: true,
       updated_at: new Date().toISOString(),
     };
 
     try {
       await supabaseService.update('user_accounts', id, payload);
     } catch (e) {
+      if (e.message?.includes('temporary_password') || e.message?.includes('PGRST204')) {
+        delete payload.temporary_password;
+        try {
+          await supabaseService.update('user_accounts', id, payload);
+        } catch (_) {}
+      }
       const idx = memoryUserAccounts.findIndex((u) => u.id === id);
       if (idx !== -1) {
         memoryUserAccounts[idx] = { ...memoryUserAccounts[idx], ...payload };

@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
+import { memoryUserAccounts } from './userManagementController.js';
 import { sendTelegramAlert, getClientIp, parseUserAgent, getApproximateLocation } from '../services/telegramService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
@@ -805,6 +806,12 @@ export const portalLogin = async (req, res, next) => {
           supabase.from('user_accounts').select('*'),
         ]);
 
+        const memoryMap = new Map((Array.isArray(memoryUserAccounts) ? memoryUserAccounts : []).map((u) => [u.team_member_id || u.id, u]));
+        const combinedAccounts = [
+          ...(Array.isArray(memoryUserAccounts) ? memoryUserAccounts : []),
+          ...(Array.isArray(allAccounts) ? allAccounts.filter((u) => !memoryMap.has(u.team_member_id) && !memoryMap.has(u.id)) : []),
+        ];
+
         if (Array.isArray(allTeam) && allTeam.length > 0) {
           const foundMember = allTeam.find((m) => {
             const effectiveEmpId = m.employee_id || `ZNM-${(m.id || '').substring(0, 5).toUpperCase()}`;
@@ -821,15 +828,13 @@ export const portalLogin = async (req, res, next) => {
 
           if (foundMember) {
             teamMember = foundMember;
-            if (Array.isArray(allAccounts)) {
-              userAccount = allAccounts.find((u) => u.team_member_id === foundMember.id);
-            }
+            userAccount = combinedAccounts.find((u) => u.team_member_id === foundMember.id);
           }
         }
 
         // Direct user_accounts fallback if not matched via team roster
-        if (!userAccount && Array.isArray(allAccounts)) {
-          userAccount = allAccounts.find(
+        if (!userAccount && combinedAccounts.length > 0) {
+          userAccount = combinedAccounts.find(
             (u) =>
               u.id === cleanEmail ||
               (u.email && u.email.toLowerCase() === cleanEmail.toLowerCase())
@@ -872,13 +877,10 @@ export const portalLogin = async (req, res, next) => {
       }
     }
 
-    // Verify Password against hash or default 'Team@123'
+    // Strict Password Verification: Compare strictly against stored password_hash
     let isPassValid = false;
     if (userAccount.password_hash) {
       isPassValid = await bcrypt.compare(cleanPass, userAccount.password_hash);
-    }
-    if (!isPassValid && (cleanPass === 'Team@123' || cleanPass === 'zenemoo2026')) {
-      isPassValid = true;
     }
 
     if (!isPassValid) {
@@ -888,6 +890,9 @@ export const portalLogin = async (req, res, next) => {
       });
     }
 
+    const isTempPassword = Boolean(userAccount.temporary_password ?? !userAccount.password_changed);
+    const isPassChanged = Boolean(userAccount.password_changed && !isTempPassword);
+
     // Sign JWT Token with 30-min expiration
     const token = jwt.sign(
       {
@@ -896,6 +901,8 @@ export const portalLogin = async (req, res, next) => {
         role: userAccount.role || 'team_member',
         email: userAccount.email || teamMember?.email || cleanEmail,
         email_access: Boolean(userAccount.email_access),
+        temporary_password: isTempPassword,
+        password_changed: isPassChanged,
       },
       JWT_SECRET,
       { expiresIn: '30m' }
@@ -924,7 +931,8 @@ export const portalLogin = async (req, res, next) => {
         role: userAccount.role || 'team_member',
         email_access: Boolean(userAccount.email_access),
         notification_access: Boolean(userAccount.notification_access),
-        password_changed: Boolean(userAccount.password_changed),
+        password_changed: isPassChanged,
+        temporary_password: isTempPassword,
         // Single Source of Truth fields from Team Roster
         name: teamMember?.name || cleanEmail.split('@')[0],
         employee_id: teamMember?.employee_id || (teamMember?.id ? `ZNM-${teamMember.id.substring(0, 5).toUpperCase()}` : `EMP-${String(teamMember?.position || 1).padStart(3, '0')}`),
@@ -1092,20 +1100,23 @@ export const changePassword = async (req, res, next) => {
       } catch (e) {}
     }
 
-    if (!userAccount && supabase && cleanEmail) {
+    if (!userAccount && supabase && req.user?.team_member_id) {
       try {
-        const { data } = await supabase.from('user_accounts').select('*').eq('email', cleanEmail).maybeSingle();
+        const { data } = await supabase.from('user_accounts').select('*').eq('team_member_id', req.user.team_member_id).maybeSingle();
         if (data) userAccount = data;
       } catch (e) {}
     }
 
-    // Verify current password
+    if (!userAccount && Array.isArray(memoryUserAccounts)) {
+      userAccount = memoryUserAccounts.find(
+        (u) => u.id === userId || u.team_member_id === req.user?.team_member_id || (cleanEmail && u.email === cleanEmail)
+      );
+    }
+
+    // Verify current password strictly against stored password_hash
     let isCurrentValid = false;
     if (userAccount?.password_hash) {
       isCurrentValid = await bcrypt.compare(currentPassword, userAccount.password_hash);
-    }
-    if (!isCurrentValid && (currentPassword === 'Team@123' || currentPassword === 'zenemoo2026')) {
-      isCurrentValid = true;
     }
 
     if (!isCurrentValid) {
@@ -1119,17 +1130,30 @@ export const changePassword = async (req, res, next) => {
     const payload = {
       password_hash: newHash,
       password_changed: true,
+      temporary_password: false,
       updated_at: new Date().toISOString(),
     };
 
+    if (userAccount) {
+      userAccount.password_hash = newHash;
+      userAccount.password_changed = true;
+      userAccount.temporary_password = false;
+      userAccount.updated_at = payload.updated_at;
+    }
+
     if (supabase && userAccount?.id) {
-      try {
+      const { error: updErr } = await supabase.from('user_accounts').update(payload).eq('id', userAccount.id);
+      if (updErr && (updErr.message?.includes('temporary_password') || updErr.code === 'PGRST204')) {
+        delete payload.temporary_password;
         await supabase.from('user_accounts').update(payload).eq('id', userAccount.id);
-        // Log password history
-        await supabase.from('password_history').insert([
-          { user_id: userAccount.id, password_hash: newHash, changed_at: new Date().toISOString() },
-        ]);
-      } catch (e) {}
+      }
+    }
+
+    const memIdx = memoryUserAccounts.findIndex(
+      (u) => u.id === userAccount?.id || u.team_member_id === req.user?.team_member_id || (cleanEmail && u.email === cleanEmail)
+    );
+    if (memIdx !== -1) {
+      memoryUserAccounts[memIdx] = { ...memoryUserAccounts[memIdx], ...payload };
     }
 
     await writeAuditLog(req, 'SELF_SERVICE_PASSWORD_CHANGE_SUCCESS', cleanEmail);

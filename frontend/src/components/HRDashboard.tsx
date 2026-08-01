@@ -116,6 +116,12 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
     loadEmailData();
   }, []);
 
+  useEffect(() => {
+    if (profile && (profile.temporary_password === true || profile.password_changed === false)) {
+      setActiveTab('password');
+    }
+  }, [profile]);
+
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailComposer.recipients || !emailComposer.subject || !emailComposer.html) {
