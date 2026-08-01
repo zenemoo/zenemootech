@@ -826,20 +826,9 @@ export const portalLogin = async (req, res, next) => {
 
             if (accByTeamId) {
               userAccount = accByTeamId;
-            } else {
-              // Auto-create in-memory access for first login with Team@123
-              userAccount = {
-                id: `user_${Date.now()}`,
-                team_member_id: foundMember.id,
-                email: foundMember.email || `${foundMember.employee_id || cleanEmail}@zenemoo.in`,
-                password_hash: null,
-                role: 'team_member',
-                status: 'active',
-                email_access: false,
-                notification_access: true,
-                password_changed: false,
-              };
             }
+            // If no user_accounts record exists → access was never granted by Admin
+            // Do NOT auto-create — just leave userAccount = null so login is denied below
           }
         }
       } catch (e) {
@@ -847,11 +836,13 @@ export const portalLogin = async (req, res, next) => {
       }
     }
 
-    // 2. No fallback email check — Employee ID only
+    // 2. Deny login if no user_accounts record found (access not granted by Admin)
     if (!userAccount) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message: 'Employee ID not found. Please check your Employee ID or contact your Administrator.',
+        message: teamMember
+          ? `Access Denied: Portal access has not been granted for Employee ID "${cleanEmail}". Please contact your Administrator to request access.`
+          : `Employee ID "${cleanEmail}" not found. Please check your Employee ID or contact your Administrator.`,
       });
     }
 
