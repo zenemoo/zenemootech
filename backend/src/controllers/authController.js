@@ -781,51 +781,58 @@ export const getAuditLogs = async (req, res) => {
 export const portalLogin = async (req, res, next) => {
   try {
     const { email, password, expectedRole } = req.body;
-    const cleanEmail = (email || '').trim().toLowerCase();
+    // Accept employee_id sent in the 'email' field (frontend sends employee_id here)
+    const cleanEmail = (email || '').trim();
     const cleanPass = (password || '').trim();
 
     if (!cleanEmail || !cleanPass) {
       return res.status(400).json({
         success: false,
-        message: 'Email address and password are required.',
+        message: 'Employee ID and password are required.',
       });
     }
 
     let userAccount = null;
     let teamMember = null;
 
-    // 1. Flexible lookup in user_accounts and Team Roster by Email, Employee ID (ZNM-E861A, EMP-003), or Name
+    // 1. Lookup in user_accounts and Team Roster by Employee ID (ZNM-E861A, EMP-003)
     if (supabase) {
       try {
-        // A. Direct email match in user_accounts
-        const { data: accByEmail } = await supabase
-          .from('user_accounts')
-          .select('*')
-          .ilike('email', cleanEmail)
-          .maybeSingle();
+        const queryClean = cleanEmail.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
-        if (accByEmail) {
-          userAccount = accByEmail;
-        } else {
-          // B. Fetch all team members to perform flexible matching (ZNM-E861A, EMP-003, position, name)
+        // A. Match in user_accounts by employee_id stored in linked team member
+        const { data: allAccounts } = await supabase.from('user_accounts').select('*');
+        if (Array.isArray(allAccounts)) {
+          // Check each account's linked team member for employee_id match
+          for (const acc of allAccounts) {
+            if (acc.team_member_id) {
+              const { data: tm } = await supabase
+                .from('team')
+                .select('employee_id')
+                .eq('id', acc.team_member_id)
+                .maybeSingle();
+              if (tm && tm.employee_id) {
+                const tmIdClean = (tm.employee_id || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+                if (tmIdClean === queryClean) {
+                  userAccount = acc;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        if (!userAccount) {
+          // B. Fetch all team members to perform employee_id matching
           const { data: allTeam } = await supabase.from('team').select('*');
           if (Array.isArray(allTeam) && allTeam.length > 0) {
-            const queryClean = cleanEmail.replace(/[^a-z0-9]/gi, '').toLowerCase();
-
             const foundMember = allTeam.find((m) => {
               const empIdClean = (m.employee_id || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-              const badgeClean = (m.badge || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-              const nameClean = (m.name || '').toLowerCase();
-              const emailClean = (m.email || '').toLowerCase();
               const posStr = String(m.position || '');
 
               return (
                 (empIdClean && empIdClean === queryClean) ||
-                (badgeClean && badgeClean === queryClean) ||
                 (queryClean.length > 2 && empIdClean.includes(queryClean)) ||
-                (queryClean.length > 2 && badgeClean.includes(queryClean)) ||
-                (queryClean.length > 3 && nameClean.includes(cleanEmail)) ||
-                emailClean === cleanEmail ||
                 posStr === cleanEmail
               );
             });
@@ -842,11 +849,11 @@ export const portalLogin = async (req, res, next) => {
               if (accByTeamId) {
                 userAccount = accByTeamId;
               } else {
-                // Auto-create initial access for Team Roster member if logging in with default Team@123
+                // Auto-create initial access for Team Roster member
                 userAccount = {
                   id: `user_${Date.now()}`,
                   team_member_id: foundMember.id,
-                  email: foundMember.email || `${cleanEmail}@zenemoo.in`,
+                  email: foundMember.email || `${foundMember.employee_id || cleanEmail}@zenemoo.in`,
                   password_hash: await bcrypt.hash(cleanPass, 10),
                   role: 'team_member',
                   status: 'active',
@@ -863,28 +870,11 @@ export const portalLogin = async (req, res, next) => {
       }
     }
 
-    // 2. Fallback check for Super Admin if not yet in user_accounts
-    if (!userAccount) {
-      const isAuthAdmin = await checkAdminEmailAuthorized(cleanEmail);
-      if (isAuthAdmin) {
-        userAccount = {
-          id: `admin_${Date.now()}`,
-          team_member_id: null,
-          email: cleanEmail,
-          password_hash: await bcrypt.hash('zenemoo2026', 10),
-          role: 'admin',
-          status: 'active',
-          email_access: true,
-          notification_access: true,
-          password_changed: true,
-        };
-      }
-    }
-
+    // 2. No fallback email check — Employee ID only
     if (!userAccount) {
       return res.status(401).json({
         success: false,
-        message: 'Account or User ID not found. Please check your credentials or contact your Administrator.',
+        message: 'Employee ID not found. Please check your Employee ID or contact your Administrator.',
       });
     }
 
@@ -902,7 +892,7 @@ export const portalLogin = async (req, res, next) => {
       if (userRole !== 'admin' && userRole !== reqRole) {
         return res.status(403).json({
           success: false,
-          message: `403 Access Denied: Account '${cleanEmail}' is assigned role '${userAccount.role.toUpperCase()}' and cannot access the ${expectedRole.toUpperCase()} portal.`,
+          message: `403 Access Denied: This Employee ID is assigned role '${userAccount.role.toUpperCase()}' and cannot access the ${expectedRole.toUpperCase()} portal.`,
         });
       }
     }

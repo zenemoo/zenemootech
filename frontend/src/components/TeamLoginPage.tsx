@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowLeft, RefreshCw, Eye, EyeOff, ShieldCheck, UserCheck } from 'lucide-react';
+import { Lock, IdCard, ArrowLeft, RefreshCw, Eye, EyeOff, ShieldCheck, UserCheck } from 'lucide-react';
 import { CursorSpotlight } from './CursorSpotlight';
 import { ThreeNeuralBackground } from './ThreeNeuralBackground';
 import { portalAuthApi } from '../services/api';
@@ -10,7 +10,7 @@ interface TeamLoginPageProps {
 }
 
 export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, onBackToHome }) => {
-  const [email, setEmail] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -22,21 +22,21 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
     setIsLoading(true);
 
     try {
-      const cleanEmail = email.trim().toLowerCase();
+      const cleanId = employeeId.trim();
       const cleanPass = password.trim();
 
-      const res = await portalAuthApi.portalLogin(cleanEmail, cleanPass, 'team_member');
+      const res = await portalAuthApi.portalLogin(cleanId, cleanPass, 'team_member');
       if (res.data && res.data.success && res.data.token) {
         localStorage.setItem('zenemoo_jwt_token', res.data.token);
         const expiry = Date.now() + 30 * 60 * 1000;
         localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
         onSuccessLogin(res.data.user, res.data.token);
       } else {
-        setErrorMsg(res.data?.message || 'Login failed. Please check your credentials.');
+        setErrorMsg(res.data?.message || 'Login failed. Please check your Employee ID and password.');
       }
     } catch (err: any) {
       console.error('Team login error:', err);
-      setErrorMsg(err.response?.data?.message || err.message || 'Invalid email or password.');
+      setErrorMsg(err.response?.data?.message || err.message || 'Invalid Employee ID or password.');
     } finally {
       setIsLoading(false);
     }
@@ -94,14 +94,14 @@ export const TeamLoginPage: React.FC<TeamLoginPageProps> = ({ onSuccessLogin, on
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-mono text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-cyan-400" /> Employee ID (e.g. ZNM-E861A) or Email Address
+                <IdCard className="w-3.5 h-3.5 text-cyan-400" /> Employee ID
               </label>
               <input
                 type="text"
                 required
-                placeholder="Enter Employee ID (e.g. ZNM-E861A, EMP-003) or email..."
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your Employee ID (e.g. ZNM-E861A)"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-xs"
               />
             </div>
