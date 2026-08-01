@@ -231,6 +231,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [isGrantingAccess, setIsGrantingAccess] = useState(false);
   const [isSearchingRoster, setIsSearchingRoster] = useState(false);
   const [isRbacModalOpen, setIsRbacModalOpen] = useState(false);
+  // Delete confirmation modal state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ userId: string; userName: string; teamMemberId?: string } | null>(null);
 
   // Admin Notification Dispatcher State
   const [notifTitle, setNotifTitle] = useState('');
@@ -243,28 +245,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [adminNotifList, setAdminNotifList] = useState<any[]>([]);
 
   const loadRbacUsers = async () => {
-    let localStored: any[] = [];
-    try {
-      const s = localStorage.getItem('zenemoo_rbac_users');
-      if (s) localStored = JSON.parse(s);
-    } catch (e) {}
-
     try {
       const res = await userManagementApi.getUsers();
       if (res.data && res.data.success && Array.isArray(res.data.data)) {
-        const mergedMap = new Map();
-        localStored.forEach((u) => mergedMap.set(u.id || u.team_member_id, u));
-        res.data.data.forEach((u: any) => mergedMap.set(u.id || u.team_member_id, u));
-        const merged = Array.from(mergedMap.values());
-        setRbacUsers(merged);
-        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(merged));
+        // Deduplicate by team_member_id — API is single source of truth
+        const seenTeamIds = new Set<string>();
+        const deduped = res.data.data.filter((u: any) => {
+          const key = u.team_member_id || u.id;
+          if (seenTeamIds.has(key)) return false;
+          seenTeamIds.add(key);
+          return true;
+        });
+        setRbacUsers(deduped);
+        // Overwrite localStorage with clean, deduplicated API data
+        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(deduped));
         return;
       }
     } catch (err) {}
 
-    if (localStored.length > 0) {
-      setRbacUsers(localStored);
-    }
+    // Fallback: use localStorage but still deduplicate by team_member_id
+    try {
+      const s = localStorage.getItem('zenemoo_rbac_users');
+      if (s) {
+        const localStored: any[] = JSON.parse(s);
+        const seenTeamIds = new Set<string>();
+        const deduped = localStored.filter((u) => {
+          const key = u.team_member_id || u.id;
+          if (seenTeamIds.has(key)) return false;
+          seenTeamIds.add(key);
+          return true;
+        });
+        setRbacUsers(deduped);
+      }
+    } catch (e) {}
   };
 
   const handleSearchRoster = async (query: string) => {
@@ -422,18 +435,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   };
 
   const handleRevokeUserAccess = async (userId: string, userName: string, teamMemberId?: string) => {
-    if (!confirm(`Revoke portal access for ${userName}? The employee record in Team Roster will remain untouched.`)) return;
+    // Remove access from DB
     try {
       await userManagementApi.deleteAccess(userId);
-    } catch (err: any) {
-    } finally {
-      showStatus(`Portal access revoked for ${userName}.`);
-      setRbacUsers((prev) => {
-        const updated = prev.filter((u) => u.id !== userId && u.team_member_id !== teamMemberId && u.id !== teamMemberId);
-        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(updated));
-        return updated;
-      });
-    }
+    } catch (err: any) {}
+    showStatus(`Portal access revoked for ${userName}.`);
+    setRbacUsers((prev) => {
+      const updated = prev.filter((u) => u.id !== userId && u.team_member_id !== teamMemberId && u.id !== teamMemberId);
+      localStorage.setItem('zenemoo_rbac_users', JSON.stringify(updated));
+      return updated;
+    });
+    setDeleteConfirm(null);
   };
 
   const loadAdminNotifications = async () => {
@@ -2167,6 +2179,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             </div>
 
             {/* Modal: Grant Access via Team Roster Search */}
+            {/* ── Delete Confirmation Modal ── */}
+            {deleteConfirm && (
+              <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="w-full max-w-sm mx-4 glass-panel rounded-3xl border border-red-500/40 p-8 space-y-5 shadow-2xl shadow-red-500/10 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex flex-col items-center text-center space-y-3">
+                    <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                      <Trash2 className="w-7 h-7 text-red-400" />
+                    </div>
+                    <h3 className="text-lg font-bold font-display text-white">Revoke Portal Access?</h3>
+                    <p className="text-sm text-slate-300">
+                      Are you sure you want to remove portal access for{' '}
+                      <span className="font-bold text-white">{deleteConfirm.userName}</span>?
+                    </p>
+                    <p className="text-xs text-slate-500 font-mono">
+                      Their employee record in the Team Roster will remain untouched. They will no longer be able to log in.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/10 text-sm font-bold text-slate-300 cursor-pointer transition-all"
+                    >
+                      No, Keep Access
+                    </button>
+                    <button
+                      onClick={() => handleRevokeUserAccess(deleteConfirm.userId, deleteConfirm.userName, deleteConfirm.teamMemberId)}
+                      className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-sm font-bold text-red-300 cursor-pointer transition-all"
+                    >
+                      Yes, Revoke Access
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {isRbacModalOpen && (
               <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 space-y-6 bg-black/90 relative z-50">
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
@@ -2402,7 +2449,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       </tr>
                     ) : (
                       rbacUsers.map((user) => (
-                        <tr key={user.id} className="hover:bg-white/[0.02]">
+                        <tr key={user.team_member_id || user.id} className="hover:bg-white/[0.02] transition-colors">
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-3">
                               <img
@@ -2419,7 +2466,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                           <td className="py-3.5 px-4">
                             <div className="text-xs text-white">{user.designation}</div>
-                            <div className="text-[10px] text-cyan-400 font-mono">{user.department} &bull; {user.employee_id}</div>
+                            <div className="text-[10px] text-cyan-400 font-mono">
+                              {user.department} &bull; <span className="text-cyan-300 font-bold">{user.employee_id}</span>
+                            </div>
                           </td>
 
                           <td className="py-3.5 px-4">
@@ -2470,9 +2519,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                 Reset Pass
                               </button>
                               <button
-                                onClick={() => handleRevokeUserAccess(user.id, user.name, user.team_member_id)}
-                                className="p-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer"
-                                title="Revoke login access (Permanently deletes account record)"
+                                onClick={() => setDeleteConfirm({ userId: user.id, userName: user.name, teamMemberId: user.team_member_id })}
+                                className="p-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 cursor-pointer transition-all"
+                                title="Revoke login access"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
