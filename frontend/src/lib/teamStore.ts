@@ -134,9 +134,14 @@ export const getStoredTeamMembers = async (): Promise<TeamMember[]> => {
 
 
 export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<TeamMember[]> => {
-  if (member.id && !member.id.startsWith('temp_') && member.id.length > 10) {
+  const payload = { ...member };
+  if (!payload.id || payload.id.trim() === '' || payload.id.startsWith('temp_')) {
+    delete payload.id;
+  }
+
+  if (payload.id && payload.id.length > 10) {
     try {
-      const res = await teamApi.update(member.id, member);
+      const res = await teamApi.update(payload.id, payload);
       if (res.data && (res.data.team || res.data.data)) {
         const team = res.data.team || res.data.data;
         if (Array.isArray(team)) return team;
@@ -146,7 +151,8 @@ export const saveTeamMemberToApi = async (member: Partial<TeamMember>): Promise<
     }
   }
 
-  const res = await teamApi.create(member);
+  delete payload.id;
+  const res = await teamApi.create(payload);
   if (res.data && (res.data.team || res.data.data)) {
     const team = res.data.team || res.data.data;
     if (Array.isArray(team)) return team;

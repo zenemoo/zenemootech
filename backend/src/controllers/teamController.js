@@ -73,6 +73,7 @@ export const createTeamMember = async (req, res, next) => {
     } else if (typeof req.body.skills === 'string') {
       skillsArray = req.body.skills.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
     }
+    const skillsString = skillsArray.join(', ');
 
     const newMemberPayload = {
       position: newPosition,
@@ -125,28 +126,63 @@ export const createTeamMember = async (req, res, next) => {
     }
 
     let createdMember = null;
+
+    // Attempt 1: Full payload with Array skills
     try {
       createdMember = await supabaseService.insert('team', newMemberPayload);
-    } catch (insertErr) {
-      console.warn('Full payload insert note, retrying with core schema columns:', insertErr.message);
-      const corePayload = {
-        position: newPosition,
-        name: req.body.name || 'New Team Member',
-        designation,
-        department: req.body.department || req.body.category || 'Engineering',
-        badge: req.body.badge || 'Specialist',
-        skills: skillsArray,
-        bio: req.body.bio || '',
-        image_url: imageUrl,
-        email: req.body.email || '',
-        phone: req.body.phone || '',
-        status: req.body.status || 'active',
-        slug: req.body.slug || '',
-        employee_id: req.body.employee_id || '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      createdMember = await supabaseService.insert('team', corePayload);
+    } catch (err1) {
+      console.warn('Attempt 1 full insert failed:', err1.message);
+
+      // Attempt 2: Full payload with String skills (in case PostgreSQL column is TEXT)
+      try {
+        const payloadWithStringSkills = { ...newMemberPayload, skills: skillsString, languages: Array.isArray(newMemberPayload.languages) ? newMemberPayload.languages.join(', ') : newMemberPayload.languages };
+        createdMember = await supabaseService.insert('team', payloadWithStringSkills);
+      } catch (err2) {
+        console.warn('Attempt 2 string skills insert failed:', err2.message);
+
+        // Attempt 3: Minimum Core essential columns only (Array skills)
+        const corePayload = {
+          position: newPosition,
+          name: req.body.name || 'New Team Member',
+          designation,
+          department: req.body.department || req.body.category || 'Engineering',
+          badge: req.body.badge || 'Specialist',
+          skills: skillsArray,
+          bio: req.body.bio || '',
+          image_url: imageUrl,
+          email: req.body.email || '',
+          phone: req.body.phone || '',
+          status: req.body.status || 'active',
+          slug: req.body.slug || '',
+          employee_id: req.body.employee_id || '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        try {
+          createdMember = await supabaseService.insert('team', corePayload);
+        } catch (err3) {
+          console.warn('Attempt 3 core array insert failed:', err3.message);
+
+          // Attempt 4: Minimum Core essential columns with String skills
+          const superCorePayload = {
+            position: newPosition,
+            name: req.body.name || 'New Team Member',
+            designation,
+            department: req.body.department || req.body.category || 'Engineering',
+            badge: req.body.badge || 'Specialist',
+            skills: skillsString,
+            bio: req.body.bio || '',
+            image_url: imageUrl,
+            email: req.body.email || '',
+            status: req.body.status || 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          createdMember = await supabaseService.insert('team', superCorePayload);
+        }
+      }
     }
 
     res.status(201).json({
@@ -155,7 +191,7 @@ export const createTeamMember = async (req, res, next) => {
       data: createdMember || newMemberPayload,
     });
   } catch (err) {
-    console.error('Error creating team member:', err);
+    console.error('Final Error creating team member:', err);
     res.status(500).json({
       success: false,
       message: err.message || 'Failed to add team member. Please try again.',
