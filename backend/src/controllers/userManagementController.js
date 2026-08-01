@@ -132,25 +132,12 @@ export const grantUserAccess = async (req, res, next) => {
       try {
         userRecord = await supabaseService.insert('user_accounts', payload);
       } catch (dbErr) {
-        if (dbErr.message?.includes('user_accounts_email_key') || dbErr.message?.includes('unique')) {
-          console.warn(`Duplicate email constraint caught for ${teamMember.name}. Retrying with aliased email...`);
-          const parts = email.split('@');
-          const empClean = empId.toLowerCase().replace(/[^a-z0-9]/g, '');
-          payload.email = `${parts[0]}+${empClean}@${parts[1] || 'zenemoo.in'}`;
-          try {
-            userRecord = await supabaseService.insert('user_accounts', payload);
-          } catch (retryErr) {
-            console.warn('Supabase user_accounts insert fallback:', retryErr.message);
-            payload.id = `user_${Date.now()}`;
-            memoryUserAccounts.push(payload);
-            userRecord = payload;
-          }
-        } else {
-          console.warn('Supabase user_accounts insert fallback:', dbErr.message);
-          payload.id = `user_${Date.now()}`;
-          memoryUserAccounts.push(payload);
-          userRecord = payload;
-        }
+        console.warn('Supabase user_accounts insert note:', dbErr.message);
+        payload.id = `user_${Date.now()}`;
+        // Preserve exact real email without any alias
+        payload.email = email;
+        memoryUserAccounts.push(payload);
+        userRecord = payload;
       }
     }
 
@@ -192,17 +179,30 @@ export const getUsers = async (req, res, next) => {
     }
     if (!Array.isArray(dbAccounts)) dbAccounts = memoryUserAccounts;
 
+    // Combine DB accounts and memory accounts deduplicated strictly by team_member_id
+    const combinedAccounts = [...dbAccounts, ...memoryUserAccounts];
+    const seenTeamIds = new Set();
+    const uniqueAccounts = [];
+    for (const acc of combinedAccounts) {
+      const key = acc.team_member_id || acc.id;
+      if (key && !seenTeamIds.has(key)) {
+        seenTeamIds.add(key);
+        uniqueAccounts.push(acc);
+      }
+    }
+
     let roster = await supabaseService.selectAll('team', 'position', true);
     if (!Array.isArray(roster)) roster = [];
 
     const rosterMap = new Map(roster.map((m) => [m.id, m]));
 
-    const merged = dbAccounts.map((account) => {
+    const merged = uniqueAccounts.map((account) => {
       const member = rosterMap.get(account.team_member_id) || {};
+      const realEmail = member.email || account.email || '';
       return {
         id: account.id,
         team_member_id: account.team_member_id,
-        email: account.email || member.email || '',
+        email: realEmail, // Always exact real email from Team Roster
         role: account.role || 'team_member',
         status: account.status || 'active',
         email_access: Boolean(account.email_access),
@@ -211,7 +211,6 @@ export const getUsers = async (req, res, next) => {
         password_changed: Boolean(account.password_changed),
         created_at: account.created_at,
         // Single Source of Truth fields from Team Roster
-        // Derive effective employee_id same as frontend TeamMemberProfilePage
         name: member.name || 'Admin User',
         employee_id: member.employee_id || (member.id ? `ZNM-${member.id.substring(0, 5).toUpperCase()}` : `EMP-${String(member.position || 1).padStart(3, '0')}`),
         designation: member.designation || 'Specialist',
