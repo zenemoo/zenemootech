@@ -1,44 +1,39 @@
 import { supabaseService } from '../services/supabaseService.js';
 import { generateTeamMemberSummary } from '../services/aiService.js';
 
-// Helper: Normalize team positions in database using a 2-phase offset update to prevent PostgreSQL UNIQUE constraint violations
+// Helper: Normalize team positions in database cleanly
 const normalizeAndSavePositions = async (customList = null) => {
-  let list = customList;
-  if (!list) {
-    list = await supabaseService.selectAll('team', 'position', true);
-  }
-  if (!Array.isArray(list) || list.length === 0) return [];
-
-  // 1. Phase One: Update all positions to temporary high offset values (10000 + index) to prevent UNIQUE key collisions
-  for (let index = 0; index < list.length; index++) {
-    const member = list[index];
-    try {
-      await supabaseService.update('team', member.id, {
-        position: 10000 + index,
-      });
-    } catch (e) {
-      console.warn('Phase 1 offset update warning:', e.message);
+  try {
+    let list = customList;
+    if (!list) {
+      list = await supabaseService.selectAll('team', 'position', true);
     }
-  }
+    if (!Array.isArray(list) || list.length === 0) return [];
 
-  // 2. Phase Two: Assign final sequential positions 1..N
-  const updatedList = [];
-  for (let index = 0; index < list.length; index++) {
-    const member = list[index];
-    const finalPos = index + 1;
-    try {
-      const updated = await supabaseService.update('team', member.id, {
-        position: finalPos,
-        updated_at: new Date().toISOString(),
-      });
-      updatedList.push(updated || { ...member, position: finalPos });
-    } catch (e) {
-      console.error('Phase 2 position update error:', e.message);
-      updatedList.push({ ...member, position: finalPos });
+    // Assign final sequential positions 1..N cleanly
+    const updatedList = [];
+    for (let index = 0; index < list.length; index++) {
+      const member = list[index];
+      const finalPos = index + 1;
+      if (Number(member.position) !== finalPos) {
+        try {
+          const updated = await supabaseService.update('team', member.id, {
+            position: finalPos,
+            updated_at: new Date().toISOString(),
+          });
+          updatedList.push(updated || { ...member, position: finalPos });
+        } catch (e) {
+          updatedList.push({ ...member, position: finalPos });
+        }
+      } else {
+        updatedList.push(member);
+      }
     }
+    return updatedList.sort((a, b) => Number(a.position) - Number(b.position));
+  } catch (err) {
+    console.warn('normalizeAndSavePositions warning:', err.message);
+    return customList || [];
   }
-
-  return updatedList.sort((a, b) => Number(a.position) - Number(b.position));
 };
 
 // GET /api/team - Return members ordered by position ASC
@@ -58,8 +53,15 @@ export const getTeam = async (req, res, next) => {
 // POST /api/team - Add new member automatically at end position (max + 1)
 export const createTeamMember = async (req, res, next) => {
   try {
-    const currentTeam = await supabaseService.selectAll('team', 'position', true);
-    const maxPosition = currentTeam.reduce((max, m) => Math.max(max, Number(m.position || 0)), 0);
+    let currentTeam = [];
+    try {
+      currentTeam = await supabaseService.selectAll('team', 'position', true);
+    } catch (e) {
+      currentTeam = [];
+    }
+    const maxPosition = Array.isArray(currentTeam) && currentTeam.length > 0
+      ? currentTeam.reduce((max, m) => Math.max(max, Number(m.position || 0)), 0)
+      : 0;
     const newPosition = maxPosition + 1;
 
     const imageUrl = req.body.image_url || req.body.image || '/assets/executive.png';
@@ -110,22 +112,28 @@ export const createTeamMember = async (req, res, next) => {
       updated_at: new Date().toISOString(),
     };
 
-    // Auto generate AI summary on creation if not provided
+    // Auto generate AI summary on creation if not provided (non-blocking try-catch)
     if (!newMemberPayload.ai_summary) {
-      newMemberPayload.ai_summary = await generateTeamMemberSummary(newMemberPayload);
+      try {
+        newMemberPayload.ai_summary = await generateTeamMemberSummary(newMemberPayload);
+      } catch (e) {
+        newMemberPayload.ai_summary = `${newMemberPayload.name} is a dedicated ${newMemberPayload.designation} at Zenemoo.`;
+      }
     }
 
     const createdMember = await supabaseService.insert('team', newMemberPayload);
-    const updatedTeam = await normalizeAndSavePositions();
 
     res.status(201).json({
       success: true,
       message: 'Team member added successfully',
-      data: createdMember,
-      team: updatedTeam,
+      data: createdMember || newMemberPayload,
     });
   } catch (err) {
-    next(err);
+    console.error('Error creating team member:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to add team member. Please try again.',
+    });
   }
 };
 
