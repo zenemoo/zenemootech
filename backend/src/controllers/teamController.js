@@ -50,6 +50,160 @@ export const getTeam = async (req, res, next) => {
   }
 };
 
+// Helper: Resilient Supabase Insert that dynamically prunes unknown columns, handles data types, and resolves position collisions
+const insertResiliently = async (table, payload) => {
+  let currentPayload = { ...payload };
+  delete currentPayload.id;
+
+  const skillsAsArray = Array.isArray(currentPayload.skills)
+    ? currentPayload.skills
+    : (typeof currentPayload.skills === 'string' ? currentPayload.skills.split(',').map((s) => s.trim()).filter(Boolean) : []);
+  const skillsAsString = skillsAsArray.join(', ');
+
+  const languagesAsArray = Array.isArray(currentPayload.languages)
+    ? currentPayload.languages
+    : (typeof currentPayload.languages === 'string' ? currentPayload.languages.split(',').map((s) => s.trim()).filter(Boolean) : []);
+  const languagesAsString = languagesAsArray.join(', ');
+
+  let attemptCount = 0;
+  const maxAttempts = 15;
+
+  while (attemptCount < maxAttempts) {
+    attemptCount++;
+    try {
+      const result = await supabaseService.insert(table, currentPayload);
+      if (result) return result;
+    } catch (err) {
+      const errMsg = (err.message || err.details || '').toLowerCase();
+      console.warn(`[Insert Attempt ${attemptCount}] Error:`, err.message);
+
+      // Handle Unknown/Missing Column error from PostgreSQL / PostgREST (e.g. PGRST204 or 42703)
+      const columnMatch = err.message?.match(/column ["']?(\w+)["']? of relation|Could not find column ['"]?(\w+)['"]?/i);
+      if (columnMatch) {
+        const missingCol = columnMatch[1] || columnMatch[2];
+        if (missingCol && missingCol in currentPayload) {
+          console.warn(`Stripping unknown column '${missingCol}' from team insert payload`);
+          delete currentPayload[missingCol];
+          continue;
+        }
+      }
+
+      // Handle type mismatch on skills column
+      if (errMsg.includes('skills') || errMsg.includes('array') || errMsg.includes('text[]')) {
+        if (Array.isArray(currentPayload.skills)) {
+          currentPayload.skills = skillsAsString;
+          continue;
+        } else if (typeof currentPayload.skills === 'string') {
+          currentPayload.skills = skillsAsArray;
+          continue;
+        }
+      }
+
+      // Handle type mismatch on languages column
+      if (errMsg.includes('languages')) {
+        if (Array.isArray(currentPayload.languages)) {
+          currentPayload.languages = languagesAsString;
+          continue;
+        } else if (typeof currentPayload.languages === 'string') {
+          currentPayload.languages = languagesAsArray;
+          continue;
+        }
+      }
+
+      // Handle position unique key collision
+      if (errMsg.includes('position') || errMsg.includes('unique') || errMsg.includes('duplicate key')) {
+        try {
+          const currentTeam = await supabaseService.selectAll('team', 'position', true);
+          const maxPos = Array.isArray(currentTeam) && currentTeam.length > 0
+            ? currentTeam.reduce((max, m) => Math.max(max, Number(m.position || 0)), 0)
+            : 0;
+          currentPayload.position = maxPos + 1;
+          continue;
+        } catch (_) {
+          delete currentPayload.position;
+          continue;
+        }
+      }
+
+      // Fallback: If error remains, prune optional non-core fields one by one
+      const optionalFields = [
+        'datasets_processed', 'hours_worked', 'completion_rate', 'quality_score',
+        'timeline', 'achievements', 'projects_completed', 'accuracy',
+        'joining_date', 'experience', 'location', 'availability', 'portfolio',
+        'long_bio', 'ai_summary', 'languages', 'slug', 'employee_id', 'public_id',
+        'linkedin', 'github', 'twitter', 'phone'
+      ];
+      const fieldToRemove = optionalFields.find((f) => f in currentPayload);
+      if (fieldToRemove) {
+        console.warn(`Pruning optional field '${fieldToRemove}' to ensure insert success`);
+        delete currentPayload[fieldToRemove];
+        continue;
+      }
+
+      // Final fallback if error persists
+      throw err;
+    }
+  }
+
+  return currentPayload;
+};
+
+// Helper: Resilient Supabase Update that dynamically prunes unknown columns on update
+const updateResiliently = async (table, id, payload) => {
+  let currentPayload = { ...payload };
+  delete currentPayload.id;
+
+  let attemptCount = 0;
+  const maxAttempts = 15;
+
+  while (attemptCount < maxAttempts) {
+    attemptCount++;
+    try {
+      const result = await supabaseService.update(table, id, currentPayload);
+      return result;
+    } catch (err) {
+      console.warn(`[Update Attempt ${attemptCount}] Error:`, err.message);
+
+      // Handle Unknown/Missing Column error
+      const columnMatch = err.message?.match(/column ["']?(\w+)["']? of relation|Could not find column ['"]?(\w+)['"]?/i);
+      if (columnMatch) {
+        const missingCol = columnMatch[1] || columnMatch[2];
+        if (missingCol && missingCol in currentPayload) {
+          delete currentPayload[missingCol];
+          continue;
+        }
+      }
+
+      // Handle skills array/string type mismatch
+      if ((err.message || '').includes('skills') || (err.message || '').includes('array')) {
+        if (Array.isArray(currentPayload.skills)) {
+          currentPayload.skills = currentPayload.skills.join(', ');
+          continue;
+        } else if (typeof currentPayload.skills === 'string') {
+          currentPayload.skills = currentPayload.skills.split(',').map((s) => s.trim()).filter(Boolean);
+          continue;
+        }
+      }
+
+      // Prune optional fields if unknown column error occurs
+      const optionalFields = [
+        'datasets_processed', 'hours_worked', 'completion_rate', 'quality_score',
+        'timeline', 'achievements', 'projects_completed', 'accuracy',
+        'joining_date', 'experience', 'location', 'availability', 'portfolio',
+        'long_bio', 'ai_summary', 'languages', 'slug', 'employee_id', 'public_id'
+      ];
+      const fieldToRemove = optionalFields.find((f) => f in currentPayload);
+      if (fieldToRemove) {
+        delete currentPayload[fieldToRemove];
+        continue;
+      }
+
+      throw err;
+    }
+  }
+  return currentPayload;
+};
+
 // POST /api/team - Add new member automatically at end position (max + 1)
 export const createTeamMember = async (req, res, next) => {
   try {
@@ -73,7 +227,9 @@ export const createTeamMember = async (req, res, next) => {
     } else if (typeof req.body.skills === 'string') {
       skillsArray = req.body.skills.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
     }
-    const skillsString = skillsArray.join(', ');
+    if (skillsArray.length === 0) {
+      skillsArray = ['Specialist'];
+    }
 
     const newMemberPayload = {
       position: newPosition,
@@ -113,7 +269,6 @@ export const createTeamMember = async (req, res, next) => {
       updated_at: new Date().toISOString(),
     };
 
-    // Strip id if present and empty to allow PostgreSQL UUID generation
     delete newMemberPayload.id;
 
     // Auto generate AI summary on creation if not provided (non-blocking)
@@ -125,65 +280,7 @@ export const createTeamMember = async (req, res, next) => {
       }
     }
 
-    let createdMember = null;
-
-    // Attempt 1: Full payload with Array skills
-    try {
-      createdMember = await supabaseService.insert('team', newMemberPayload);
-    } catch (err1) {
-      console.warn('Attempt 1 full insert failed:', err1.message);
-
-      // Attempt 2: Full payload with String skills (in case PostgreSQL column is TEXT)
-      try {
-        const payloadWithStringSkills = { ...newMemberPayload, skills: skillsString, languages: Array.isArray(newMemberPayload.languages) ? newMemberPayload.languages.join(', ') : newMemberPayload.languages };
-        createdMember = await supabaseService.insert('team', payloadWithStringSkills);
-      } catch (err2) {
-        console.warn('Attempt 2 string skills insert failed:', err2.message);
-
-        // Attempt 3: Minimum Core essential columns only (Array skills)
-        const corePayload = {
-          position: newPosition,
-          name: req.body.name || 'New Team Member',
-          designation,
-          department: req.body.department || req.body.category || 'Engineering',
-          badge: req.body.badge || 'Specialist',
-          skills: skillsArray,
-          bio: req.body.bio || '',
-          image_url: imageUrl,
-          email: req.body.email || '',
-          phone: req.body.phone || '',
-          status: req.body.status || 'active',
-          slug: req.body.slug || '',
-          employee_id: req.body.employee_id || '',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        try {
-          createdMember = await supabaseService.insert('team', corePayload);
-        } catch (err3) {
-          console.warn('Attempt 3 core array insert failed:', err3.message);
-
-          // Attempt 4: Minimum Core essential columns with String skills
-          const superCorePayload = {
-            position: newPosition,
-            name: req.body.name || 'New Team Member',
-            designation,
-            department: req.body.department || req.body.category || 'Engineering',
-            badge: req.body.badge || 'Specialist',
-            skills: skillsString,
-            bio: req.body.bio || '',
-            image_url: imageUrl,
-            email: req.body.email || '',
-            status: req.body.status || 'active',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-
-          createdMember = await supabaseService.insert('team', superCorePayload);
-        }
-      }
-    }
+    const createdMember = await insertResiliently('team', newMemberPayload);
 
     res.status(201).json({
       success: true,
@@ -305,7 +402,7 @@ export const updateTeamMember = async (req, res, next) => {
       }
     }
 
-    const updated = await supabaseService.update('team', id, cleanPayload);
+    const updated = await updateResiliently('team', id, cleanPayload);
 
     // Re-normalize positions using 2-phase offset update
     const updatedTeam = await normalizeAndSavePositions();

@@ -46,6 +46,26 @@ CREATE TABLE contacts (
 );
 
 -- Migration commands for existing Supabase database:
+-- Run these in Supabase SQL Editor if you want all extended metrics and staff profile columns:
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS slug TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS employee_id TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS joining_date TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS experience TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS location TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS languages TEXT[] DEFAULT '{}';
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS availability TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS portfolio TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS long_bio TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS ai_summary TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS projects_completed TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS accuracy TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS datasets_processed TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS hours_worked TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS completion_rate TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS quality_score TEXT;
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS timeline JSONB DEFAULT '[]';
+-- ALTER TABLE team ADD COLUMN IF NOT EXISTS achievements JSONB DEFAULT '[]';
+
 -- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'Hindi';
 -- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS inquiry_code TEXT;
 -- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
