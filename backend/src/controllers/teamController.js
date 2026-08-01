@@ -110,8 +110,16 @@ const insertResiliently = async (table, payload) => {
         }
       }
 
+      // Handle slug unique key collision (e.g. team_slug_idx)
+      if (errMsg.includes('slug') || errMsg.includes('team_slug_idx')) {
+        const baseName = currentPayload.name || 'member';
+        const baseSlug = baseName.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+        currentPayload.slug = `${baseSlug || 'member'}-${Math.random().toString(36).substring(2, 7)}`;
+        continue;
+      }
+
       // Handle position unique key collision
-      if (errMsg.includes('position') || errMsg.includes('unique') || errMsg.includes('duplicate key')) {
+      if (errMsg.includes('position') || errMsg.includes('team_position_key')) {
         try {
           const currentTeam = await supabaseService.selectAll('team', 'position', true);
           const maxPos = Array.isArray(currentTeam) && currentTeam.length > 0
@@ -231,9 +239,13 @@ export const createTeamMember = async (req, res, next) => {
       skillsArray = ['Specialist'];
     }
 
+    const nameStr = req.body.name || 'New Team Member';
+    const baseSlug = nameStr.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '') || 'member';
+    const generatedSlug = (req.body.slug && req.body.slug.trim()) ? req.body.slug.trim() : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+
     const newMemberPayload = {
       position: newPosition,
-      name: req.body.name || 'New Team Member',
+      name: nameStr,
       designation,
       department: req.body.department || req.body.category || 'Engineering',
       badge: req.body.badge || 'Specialist',
@@ -247,7 +259,7 @@ export const createTeamMember = async (req, res, next) => {
       email: req.body.email || '',
       phone: req.body.phone || '',
       status: req.body.status || 'active',
-      slug: req.body.slug || '',
+      slug: generatedSlug,
       employee_id: req.body.employee_id || '',
       joining_date: req.body.joining_date || '',
       experience: req.body.experience || '',
