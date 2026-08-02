@@ -43,9 +43,12 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 401) {
-      console.warn('🔑 401 Unauthorized API response received. Session invalidated.');
-      localStorage.removeItem('zenemoo_jwt_token');
-      localStorage.removeItem('zenemoo_jwt_expiry');
+      const reqUrl = error.config?.url || '';
+      if (!reqUrl.includes('/auth/login') && !reqUrl.includes('/auth/check-email')) {
+        console.warn('🔑 401 Unauthorized API response received. Session invalidated.');
+        localStorage.removeItem('zenemoo_jwt_token');
+        localStorage.removeItem('zenemoo_jwt_expiry');
+      }
     }
     return Promise.reject(error);
   }

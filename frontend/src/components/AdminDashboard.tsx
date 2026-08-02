@@ -660,6 +660,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     window.addEventListener('keydown', handleUserActivity, { passive: true });
     window.addEventListener('click', handleUserActivity, { passive: true });
     window.addEventListener('scroll', handleUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+    window.addEventListener('touchmove', handleUserActivity, { passive: true });
+    window.addEventListener('touchend', handleUserActivity, { passive: true });
+    window.addEventListener('pointerdown', handleUserActivity, { passive: true });
 
     const interval = setInterval(() => {
       const token = localStorage.getItem('zenemoo_jwt_token');
@@ -691,6 +695,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       window.removeEventListener('keydown', handleUserActivity);
       window.removeEventListener('click', handleUserActivity);
       window.removeEventListener('scroll', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      window.removeEventListener('touchmove', handleUserActivity);
+      window.removeEventListener('touchend', handleUserActivity);
+      window.removeEventListener('pointerdown', handleUserActivity);
       clearInterval(interval);
     };
   }, [isAuthenticated]);
@@ -1259,6 +1267,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
         setIsAuthenticated(true);
         setPassError('');
+        const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+        if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', `/${secretEnvRoute}`);
+        }
       } else {
         setPassError(response.data?.message || 'Login failed. Please check your credentials.');
       }

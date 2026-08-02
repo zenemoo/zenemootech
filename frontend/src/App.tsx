@@ -69,13 +69,15 @@ export function App() {
       }
 
       // Check if path or hash matches secret private admin route
+      const hasActiveAdminToken = typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
       const isSecretAdminRoute =
         path === `/${secretEnvRoute}` ||
         path === '/portal/9KqvA2Nz8' ||
         hash === `#${secretEnvRoute}` ||
         hash === '#portal/9KqvA2Nz8' ||
         hash === '#manage/portal/x93LmK/admin' ||
-        hash === '#portal-9KqvA2Nz8';
+        hash === '#portal-9KqvA2Nz8' ||
+        (hasActiveAdminToken && (path.startsWith('/portal') || hash.includes('portal') || path === '/admin'));
 
       if (isSecretAdminRoute) {
         setCurrentRoute('admin');
