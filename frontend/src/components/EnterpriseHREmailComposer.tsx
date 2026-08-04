@@ -1336,28 +1336,34 @@ ${customPara}
 
       {/* 5. REAL-TIME RESPONSIVE HTML EMAIL PREVIEW MODAL */}
       {isPreviewModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
-          <div className="w-full max-w-3xl bg-[#090d16] border border-white/15 rounded-3xl p-4 sm:p-6 space-y-4 shadow-2xl font-mono text-xs max-h-[95vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden">
+          <div className="w-full max-w-4xl bg-[#090d16] border border-white/15 rounded-3xl p-4 sm:p-6 flex flex-col shadow-2xl font-mono text-xs max-h-[92vh] sm:max-h-[88vh] h-[850px] max-w-full overflow-hidden">
+            {/* Modal Top Navigation Bar */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <Eye className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-sm sm:text-base font-bold text-white">Live Email Preview</h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold hidden sm:inline-block">
+                  {previewDevice === 'mobile' ? 'Mobile View (360px)' : 'Desktop View (Full Width)'}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <div className="flex items-center bg-white/[0.04] p-1 rounded-xl border border-white/10">
                   <button
+                    type="button"
                     onClick={() => setPreviewDevice('desktop')}
-                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 cursor-pointer ${
-                      previewDevice === 'desktop' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-slate-400'
+                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-all ${
+                      previewDevice === 'desktop' ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     <Monitor className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Desktop</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setPreviewDevice('mobile')}
-                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 cursor-pointer ${
-                      previewDevice === 'mobile' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-slate-400'
+                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-all ${
+                      previewDevice === 'mobile' ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     <Smartphone className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Mobile</span>
@@ -1365,32 +1371,54 @@ ${customPara}
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => setIsPreviewModalOpen(false)}
-                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10"
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer transition-all"
+                  title="Close Live Preview"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* Email Container Frame */}
-            <div className="flex justify-center bg-[#050505] p-2 sm:p-4 rounded-2xl border border-white/10 max-h-[500px] overflow-y-auto">
+            {/* Email Canvas Container (Scrollable Frame) */}
+            <div className="flex-1 min-h-0 bg-[#050505] p-3 sm:p-6 rounded-2xl border border-white/10 my-2 overflow-y-auto flex justify-center items-start scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
               <div
-                className={`bg-white text-slate-900 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xl font-sans text-xs transition-all duration-300 max-w-full ${
-                  previewDevice === 'mobile' ? 'w-[320px] sm:w-[360px]' : 'w-full max-w-2xl'
+                className={`bg-white text-slate-900 rounded-2xl p-4 sm:p-8 space-y-4 shadow-2xl font-sans text-xs sm:text-sm transition-all duration-300 my-auto min-h-fit max-w-full overflow-hidden border border-slate-200 ${
+                  previewDevice === 'mobile' ? 'w-[320px] sm:w-[365px]' : 'w-full max-w-2xl'
                 }`}
               >
-                <div className="border-b border-slate-200 pb-3 space-y-1 font-mono">
+                {/* Email Envelope Header */}
+                <div className="border-b border-slate-200 pb-3 space-y-1 font-mono text-xs">
                   <div className="text-[11px] text-slate-500 truncate">From: <strong className="text-slate-800">{selectedSender}</strong></div>
                   <div className="text-[11px] text-slate-500 truncate">To: <strong className="text-slate-800">{toChips.join(', ') || 'recipients@domain.com'}</strong></div>
                   {ccChips.length > 0 && <div className="text-[11px] text-slate-500 truncate">CC: {ccChips.join(', ')}</div>}
-                  <div className="text-xs sm:text-sm font-bold text-slate-900 pt-1 truncate">{subject || 'No Subject'}</div>
+                  {bccChips.length > 0 && <div className="text-[11px] text-slate-500 truncate">BCC: {bccChips.join(', ')}</div>}
+                  <div className="text-sm font-bold text-slate-900 pt-1.5 break-words font-display">{subject || 'No Subject'}</div>
                 </div>
 
+                {/* Email Body Content */}
                 <div
                   dangerouslySetInnerHTML={{ __html: editorRef.current ? editorRef.current.innerHTML : (htmlContent || '<p>No content entered yet.</p>') }}
-                  className="leading-relaxed text-slate-800 font-sans space-y-2 text-xs sm:text-sm overflow-x-hidden"
+                  className="leading-relaxed text-slate-800 font-sans space-y-3 text-xs sm:text-sm break-words [word-break:break-word] overflow-wrap-break-word max-w-full overflow-x-auto [&_img]:max-w-full [&_img]:h-auto [&_table]:max-w-full [&_table]:block [&_table]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words"
                 />
+
+                {/* Attachments Preview if any */}
+                {attachments.length > 0 && (
+                  <div className="border-t border-slate-200 pt-3 space-y-2 font-mono">
+                    <div className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                      <span>📎 Attachments ({attachments.length}):</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      {attachments.map((att) => (
+                        <div key={att.id} className="p-2 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-between text-slate-700 truncate">
+                          <span className="truncate">{att.name}</span>
+                          <span className="text-[10px] text-slate-500 shrink-0 font-bold">{(att.size / 1024).toFixed(0)} KB</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
