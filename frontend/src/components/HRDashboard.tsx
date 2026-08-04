@@ -233,7 +233,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         setNewPassword('');
         setConfirmPassword('');
         setIsNoticeDismissed(true);
-        setProfile((prev: any) => ({ ...prev, temporary_password: false, password_changed: true }));
+        const updatedUser = { ...profile, temporary_password: false, password_changed: true };
+        setProfile(updatedUser);
+        localStorage.setItem('zenemoo_portal_user', JSON.stringify(updatedUser));
         await fetchProfile();
       } else {
         showToast(res.data?.message || 'Password change failed.', 'error');

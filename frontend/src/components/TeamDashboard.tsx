@@ -222,6 +222,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        setIsNoticeDismissed(true);
+        const updatedUser = { ...profile, temporary_password: false, password_changed: true };
+        setProfile(updatedUser);
+        localStorage.setItem('zenemoo_portal_user', JSON.stringify(updatedUser));
         await fetchProfile();
       } else {
         showToast(res.data?.message || 'Failed to change password.', 'error');

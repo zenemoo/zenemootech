@@ -890,8 +890,8 @@ export const portalLogin = async (req, res, next) => {
       });
     }
 
-    const isTempPassword = Boolean(userAccount.temporary_password ?? !userAccount.password_changed);
-    const isPassChanged = Boolean(userAccount.password_changed && !isTempPassword);
+    const isPassChanged = Boolean(userAccount.password_changed === true || userAccount.temporary_password === false);
+    const isTempPassword = Boolean(!isPassChanged);
 
     // Sign JWT Token with 30-min expiration
     const token = jwt.sign(
@@ -983,6 +983,18 @@ export const getMeProfile = async (req, res, next) => {
           if (data) userAccount = data;
         } catch (e) {}
       }
+      if (!userAccount && teamMemberId) {
+        try {
+          const { data } = await supabase.from('user_accounts').select('*').eq('team_member_id', teamMemberId).maybeSingle();
+          if (data) userAccount = data;
+        } catch (e) {}
+      }
+      if (!userAccount && cleanEmail) {
+        try {
+          const { data } = await supabase.from('user_accounts').select('*').eq('email', cleanEmail).maybeSingle();
+          if (data) userAccount = data;
+        } catch (e) {}
+      }
     }
 
     // 7-day Profile Image Cooldown Calculation
@@ -1017,6 +1029,13 @@ export const getMeProfile = async (req, res, next) => {
       } catch (e) {}
     }
 
+    const isPassChanged = Boolean(
+      userAccount?.password_changed === true ||
+      userAccount?.temporary_password === false ||
+      req.user?.password_changed === true
+    );
+    const isTempPassword = Boolean(!isPassChanged && (userAccount?.temporary_password === true || req.user?.temporary_password === true));
+
     res.json({
       success: true,
       user: {
@@ -1026,7 +1045,8 @@ export const getMeProfile = async (req, res, next) => {
         role: userAccount?.role || role,
         email_access: Boolean(userAccount?.email_access ?? req.user?.email_access),
         notification_access: Boolean(userAccount?.notification_access ?? true),
-        password_changed: Boolean(userAccount?.password_changed ?? false),
+        password_changed: isPassChanged,
+        temporary_password: isTempPassword,
         name: teamMember?.name || cleanEmail.split('@')[0],
         employee_id: teamMember?.employee_id || (teamMember?.id ? `ZNM-${teamMember.id.substring(0, 5).toUpperCase()}` : `EMP-${String(teamMember?.position || 1).padStart(3, '0')}`),
         designation: teamMember?.designation || 'Specialist',
@@ -1141,11 +1161,33 @@ export const changePassword = async (req, res, next) => {
       userAccount.updated_at = payload.updated_at;
     }
 
-    if (supabase && userAccount?.id) {
-      const { error: updErr } = await supabase.from('user_accounts').update(payload).eq('id', userAccount.id);
-      if (updErr && (updErr.message?.includes('temporary_password') || updErr.code === 'PGRST204')) {
-        delete payload.temporary_password;
-        await supabase.from('user_accounts').update(payload).eq('id', userAccount.id);
+    if (supabase) {
+      try {
+        const updatePayload = {
+          password_hash: newHash,
+          password_changed: true,
+          temporary_password: false,
+          updated_at: new Date().toISOString(),
+        };
+
+        let targetId = userAccount?.id;
+        if (!targetId && userId && !String(userId).startsWith('admin_')) targetId = userId;
+
+        if (targetId) {
+          const { error: updErr } = await supabase.from('user_accounts').update(updatePayload).eq('id', targetId);
+          if (updErr && updErr.message?.includes('temporary_password')) {
+            delete updatePayload.temporary_password;
+            await supabase.from('user_accounts').update(updatePayload).eq('id', targetId);
+          }
+        } else if (cleanEmail) {
+          const { error: updErr } = await supabase.from('user_accounts').update(updatePayload).eq('email', cleanEmail);
+          if (updErr && updErr.message?.includes('temporary_password')) {
+            delete updatePayload.temporary_password;
+            await supabase.from('user_accounts').update(updatePayload).eq('email', cleanEmail);
+          }
+        }
+      } catch (e) {
+        console.warn('Supabase password change update note:', e.message);
       }
     }
 
