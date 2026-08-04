@@ -40,6 +40,7 @@ import {
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
+import { FirstLoginOnboardingModal } from './FirstLoginOnboardingModal';
 import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 
 interface TeamDashboardProps {
@@ -53,6 +54,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
   const [searchFilterQuery, setSearchFilterQuery] = useState('');
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const popoverRef = useRef<HTMLDivElement>(null);
   const userCardRef = useRef<HTMLButtonElement>(null);
@@ -142,8 +144,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   }, []);
 
   useEffect(() => {
-    if (profile && (profile.temporary_password === true || profile.password_changed === false)) {
-      setActiveTab('password');
+    if (profile && (profile.temporary_password === true || profile.password_changed === false || profile.must_change_password === true)) {
+      setNeedsOnboarding(true);
+    } else {
+      setNeedsOnboarding(false);
     }
   }, [profile]);
 
@@ -313,6 +317,26 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
 
   return (
     <div className="h-screen overflow-hidden bg-[#050505] text-slate-100 flex flex-col md:flex-row selection:bg-cyan-500/30 selection:text-cyan-200 relative">
+      {/* Mandatory First-Time Login Onboarding Overlay */}
+      {needsOnboarding && (
+        <FirstLoginOnboardingModal
+          userEmail={profile?.email || initialUserData?.email || ''}
+          userName={profile?.name || initialUserData?.name || ''}
+          showToast={showToast}
+          onOnboardingComplete={() => {
+            setNeedsOnboarding(false);
+            setProfile((prev: any) => ({
+              ...prev,
+              temporary_password: false,
+              password_changed: true,
+              must_change_password: false,
+              profile_completed: true,
+            }));
+            setActiveTab('overview');
+          }}
+        />
+      )}
+
       {/* Toast Notification */}
       {toastMsg && (
         <div

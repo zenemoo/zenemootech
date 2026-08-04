@@ -223,8 +223,12 @@ export const portalAuthApi = {
   portalLogin: (email: string, password: string, expectedRole?: string) =>
     api.post('/auth/portal-login', { email, password, expectedRole }),
   getMeProfile: () => api.get('/auth/me'),
-  changePassword: (currentPassword: string, newPassword: string) =>
-    api.post('/auth/change-password', { currentPassword, newPassword }),
+  changePassword: (data: { currentPassword?: string; newPassword?: string } | string, newPass?: string) => {
+    if (typeof data === 'object') {
+      return api.post('/auth/change-password', data);
+    }
+    return api.post('/auth/change-password', { currentPassword: data, newPassword: newPass });
+  },
 };
 
 // User Management & RBAC APIs (Admin Only)
