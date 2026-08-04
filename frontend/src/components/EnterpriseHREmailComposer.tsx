@@ -16,8 +16,8 @@ import {
   Italic,
   Underline,
   Strikethrough,
-  Heading1,
   Heading2,
+  Heading3,
   List,
   ListOrdered,
   AlignLeft,
@@ -355,7 +355,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     showToast(`Signature for ${sig.name} appended.`, 'success');
   };
 
-  // AI Email Generator Simulation / Groq call
+  // AI Email Generator Simulation
   const handleGenerateAiEmail = () => {
     setIsGeneratingAi(true);
     setTimeout(() => {
@@ -387,7 +387,6 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Process any remaining recipient inputs
     let currentTo = [...toChips];
     if (toInput && isValidEmail(toInput) && !currentTo.includes(toInput)) {
       currentTo.push(toInput);
@@ -425,7 +424,6 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       const res = await emailApi.send(payload);
       if (res.data && res.data.success) {
         showToast('🚀 Email dispatched successfully via Brevo SMTP Engine!', 'success');
-        // Clear composer state & draft
         setToChips([]);
         setCcChips([]);
         setBccChips([]);
@@ -447,29 +445,29 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   };
 
   return (
-    <div className="glass-panel p-4 sm:p-7 rounded-3xl border border-emerald-500/30 space-y-6 font-mono text-xs shadow-2xl relative">
-      {/* 1. Header Bar with Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+    <div className="w-full max-w-full overflow-x-hidden glass-panel p-3.5 sm:p-7 rounded-2xl sm:rounded-3xl border border-emerald-500/30 space-y-5 font-mono text-xs shadow-2xl relative">
+      {/* 1. Mobile-First Header Bar with Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-bold font-display text-white flex items-center gap-2">
-              <Mail className="w-5 h-5 text-emerald-400" /> Enterprise HR Email Composer
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm sm:text-lg font-bold font-display text-white flex items-center gap-2">
+              <Mail className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-emerald-400 shrink-0" /> HR Enterprise Email Composer
             </h2>
             {lastSavedTime && (
-              <span className="px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-400 text-[10px]">
+              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-400 text-[10px]">
                 Draft saved {lastSavedTime}
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400">Compose and dispatch verified company communications via Brevo SMTP.</p>
+          <p className="text-[11px] text-slate-400">Compose and dispatch verified company communications via Brevo SMTP.</p>
         </div>
 
-        {/* Header Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Header Action Buttons (Full-Width Stack on Mobile) */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setIsTemplateModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white flex items-center gap-1.5 transition-all cursor-pointer"
+            className="flex-1 sm:flex-none min-h-[40px] px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer font-bold"
           >
             <FileText className="w-3.5 h-3.5 text-cyan-400" /> Templates
           </button>
@@ -477,7 +475,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
           <button
             type="button"
             onClick={() => setIsAiModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-purple-500/10"
+            className="flex-1 sm:flex-none min-h-[40px] px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-purple-500/10"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" /> ✨ AI Writer
           </button>
@@ -485,26 +483,26 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
           <button
             type="button"
             onClick={() => setIsPreviewModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white flex items-center gap-1.5 transition-all cursor-pointer"
+            className="flex-1 sm:flex-none min-h-[40px] px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer font-bold"
           >
             <Eye className="w-3.5 h-3.5 text-emerald-400" /> Preview
           </button>
         </div>
       </div>
 
-      {/* 2. Main Compose Form */}
-      <form onSubmit={handleSendEmail} className="space-y-4 font-mono">
-        {/* Row A: Authorized Sender Dropdown */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* 2. Main Compose Form (Mobile Vertical Stack) */}
+      <form onSubmit={handleSendEmail} className="space-y-4 font-mono w-full max-w-full">
+        {/* Row A: Authorized Sender Selector */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
           <div className="sm:col-span-1">
-            <label className="block text-slate-300 font-bold mb-1.5 text-[11px] uppercase tracking-wider">
+            <label className="block text-slate-300 font-bold mb-1.5 text-[10px] sm:text-[11px] uppercase tracking-wider">
               From Sender Identity *
             </label>
             <div className="relative">
               <select
                 value={selectedSender}
                 onChange={(e) => setSelectedSender(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-emerald-300 font-mono text-xs focus:outline-none focus:border-emerald-400 appearance-none cursor-pointer pr-10"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-emerald-300 font-mono text-xs focus:outline-none focus:border-emerald-400 appearance-none cursor-pointer pr-10"
               >
                 {AUTHORIZED_SENDER_EMAILS.map((email) => (
                   <option key={email} value={email} className="bg-[#090d16] text-white">
@@ -516,18 +514,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             </div>
           </div>
 
-          <div className="sm:col-span-2 flex items-end justify-between">
-            <span className="text-[11px] text-slate-400 mb-2">
-              Assigned Permissions: <strong className="text-emerald-400">Authorized HR Dispatcher</strong>
+          <div className="sm:col-span-2 flex items-end justify-between gap-2 flex-wrap">
+            <span className="text-[10px] sm:text-[11px] text-slate-400 mb-1">
+              Permissions: <strong className="text-emerald-400">Authorized HR Dispatcher</strong>
             </span>
-            <div className="flex items-center gap-2 mb-2 font-mono text-xs">
+            <div className="flex items-center gap-3 mb-1 font-mono text-xs">
               {!showCC && (
                 <button
                   type="button"
                   onClick={() => setShowCC(true)}
                   className="text-cyan-400 hover:underline cursor-pointer font-bold"
                 >
-                  + Add CC
+                  + CC
                 </button>
               )}
               {!showBCC && (
@@ -536,7 +534,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                   onClick={() => setShowBCC(true)}
                   className="text-cyan-400 hover:underline cursor-pointer font-bold"
                 >
-                  + Add BCC
+                  + BCC
                 </button>
               )}
             </div>
@@ -544,21 +542,21 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         </div>
 
         {/* Row B: TO Recipient Chips Input */}
-        <div>
-          <label className="block text-slate-300 font-bold mb-1.5 text-[11px] uppercase tracking-wider">
+        <div className="w-full">
+          <label className="block text-slate-300 font-bold mb-1.5 text-[10px] sm:text-[11px] uppercase tracking-wider">
             To Recipients *
           </label>
-          <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-emerald-400 flex flex-wrap items-center gap-2 min-h-[44px]">
+          <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-emerald-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
             {toChips.map((email, idx) => (
               <span
                 key={idx}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold flex items-center gap-1.5"
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
               >
-                {email}
+                <span className="truncate">{email}</span>
                 <button
                   type="button"
                   onClick={() => setToChips(toChips.filter((_, i) => i !== idx))}
-                  className="hover:text-red-400 cursor-pointer"
+                  className="hover:text-red-400 cursor-pointer shrink-0"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -567,22 +565,22 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
             <input
               type="text"
-              placeholder={toChips.length === 0 ? 'Type email addresses and press Enter or Comma...' : 'Add more...'}
+              placeholder={toChips.length === 0 ? 'Type email & press Enter...' : 'Add more...'}
               value={toInput}
               onChange={(e) => setToInput(e.target.value)}
               onKeyDown={(e) => handleKeyDownRecipient(e, toInput, toChips, setToChips, setToInput)}
               onPaste={(e) => handlePasteRecipient(e, toChips, setToChips, setToInput)}
               onBlur={() => handleAddChip(toInput, toChips, setToChips, setToInput)}
-              className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[200px]"
+              className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
             />
           </div>
         </div>
 
         {/* Row C: CC Recipient Chips Input */}
         {showCC && (
-          <div>
+          <div className="w-full">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider">CC Recipients</label>
+              <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">CC Recipients</label>
               <button
                 type="button"
                 onClick={() => {
@@ -594,17 +592,17 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 Remove CC
               </button>
             </div>
-            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 flex flex-wrap items-center gap-2 min-h-[44px]">
+            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
               {ccChips.map((email, idx) => (
                 <span
                   key={idx}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-1.5"
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
                 >
-                  {email}
+                  <span className="truncate">{email}</span>
                   <button
                     type="button"
                     onClick={() => setCcChips(ccChips.filter((_, i) => i !== idx))}
-                    className="hover:text-red-400 cursor-pointer"
+                    className="hover:text-red-400 cursor-pointer shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -613,13 +611,13 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
               <input
                 type="text"
-                placeholder="Type CC email address..."
+                placeholder="Type CC email..."
                 value={ccInput}
                 onChange={(e) => setCcInput(e.target.value)}
                 onKeyDown={(e) => handleKeyDownRecipient(e, ccInput, ccChips, setCcChips, setCcInput)}
                 onPaste={(e) => handlePasteRecipient(e, ccChips, setCcChips, setCcInput)}
                 onBlur={() => handleAddChip(ccInput, ccChips, setCcChips, setCcInput)}
-                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[200px]"
+                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
               />
             </div>
           </div>
@@ -627,9 +625,9 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
         {/* Row D: BCC Recipient Chips Input */}
         {showBCC && (
-          <div>
+          <div className="w-full">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider">BCC Recipients</label>
+              <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">BCC Recipients</label>
               <button
                 type="button"
                 onClick={() => {
@@ -641,17 +639,17 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 Remove BCC
               </button>
             </div>
-            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-purple-400 flex flex-wrap items-center gap-2 min-h-[44px]">
+            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-purple-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
               {bccChips.map((email, idx) => (
                 <span
                   key={idx}
-                  className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs font-mono font-bold flex items-center gap-1.5"
+                  className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
                 >
-                  {email}
+                  <span className="truncate">{email}</span>
                   <button
                     type="button"
                     onClick={() => setBccChips(bccChips.filter((_, i) => i !== idx))}
-                    className="hover:text-red-400 cursor-pointer"
+                    className="hover:text-red-400 cursor-pointer shrink-0"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -660,21 +658,21 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
               <input
                 type="text"
-                placeholder="Type BCC email address..."
+                placeholder="Type BCC email..."
                 value={bccInput}
                 onChange={(e) => setBccInput(e.target.value)}
                 onKeyDown={(e) => handleKeyDownRecipient(e, bccInput, bccChips, setBccChips, setBccInput)}
                 onPaste={(e) => handlePasteRecipient(e, bccChips, setBccChips, setBccInput)}
                 onBlur={() => handleAddChip(bccInput, bccChips, setBccChips, setBccInput)}
-                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[200px]"
+                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
               />
             </div>
           </div>
         )}
 
         {/* Row E: Email Subject Input */}
-        <div>
-          <label className="block text-slate-300 font-bold mb-1.5 text-[11px] uppercase tracking-wider">
+        <div className="w-full">
+          <label className="block text-slate-300 font-bold mb-1.5 text-[10px] sm:text-[11px] uppercase tracking-wider">
             Email Subject Line *
           </label>
           <input
@@ -683,18 +681,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             placeholder="e.g. Zenemoo HR Operations & Opportunity Follow-up"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-emerald-400 min-h-[44px]"
+            className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-emerald-400"
           />
         </div>
 
-        {/* Row F: Rich Text Formatting Toolbar */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider">
-              Email Message Body Content *
+        {/* Row F: Responsive Formatting Toolbar & Editor */}
+        <div className="space-y-2 w-full max-w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
+              Email Body Content *
             </label>
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] text-slate-400">Append Signature:</label>
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <label className="text-[10px] text-slate-400">Signature:</label>
               <select
                 value={selectedSignatureId}
                 onChange={(e) => setSelectedSignatureId(e.target.value)}
@@ -702,7 +700,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
               >
                 {PRESET_SIGNATURES.map((sig) => (
                   <option key={sig.id} value={sig.id} className="bg-[#090d16] text-white">
-                    {sig.name} ({sig.title})
+                    {sig.name}
                   </option>
                 ))}
               </select>
@@ -716,12 +714,12 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             </div>
           </div>
 
-          {/* Formatting Controls Toolbar */}
-          <div className="p-2 rounded-t-2xl bg-white/[0.06] border border-white/10 border-b-0 flex flex-wrap items-center gap-1">
+          {/* Adaptive Scrollable Formatting Toolbar (Zero Overflow on 320px) */}
+          <div className="p-2 rounded-t-2xl bg-white/[0.06] border border-white/10 border-b-0 flex items-center gap-1 overflow-x-auto whitespace-nowrap scrollbar-none max-w-full">
             <button
               type="button"
               onClick={() => execFormatCommand('bold')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Bold"
             >
               <Bold className="w-4 h-4" />
@@ -729,7 +727,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('italic')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Italic"
             >
               <Italic className="w-4 h-4" />
@@ -737,7 +735,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('underline')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Underline"
             >
               <Underline className="w-4 h-4" />
@@ -745,18 +743,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('strikeThrough')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Strikethrough"
             >
               <Strikethrough className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-white/10 mx-1" />
+            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
 
             <button
               type="button"
               onClick={() => execFormatCommand('formatBlock', '<h2>')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer font-bold text-xs"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer font-bold text-xs shrink-0"
               title="Heading 2"
             >
               H2
@@ -764,7 +762,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('formatBlock', '<h3>')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer font-bold text-xs"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer font-bold text-xs shrink-0"
               title="Heading 3"
             >
               H3
@@ -772,18 +770,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('formatBlock', '<p>')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer text-xs"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer text-xs shrink-0"
               title="Normal Paragraph"
             >
               P
             </button>
 
-            <span className="w-px h-4 bg-white/10 mx-1" />
+            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
 
             <button
               type="button"
               onClick={() => execFormatCommand('insertUnorderedList')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Bullet List"
             >
               <List className="w-4 h-4" />
@@ -791,18 +789,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('insertOrderedList')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Numbered List"
             >
               <ListOrdered className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-white/10 mx-1" />
+            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
 
             <button
               type="button"
               onClick={() => execFormatCommand('justifyLeft')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Align Left"
             >
               <AlignLeft className="w-4 h-4" />
@@ -810,7 +808,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('justifyCenter')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Align Center"
             >
               <AlignCenter className="w-4 h-4" />
@@ -818,13 +816,13 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('justifyRight')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Align Right"
             >
               <AlignRight className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-white/10 mx-1" />
+            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
 
             <button
               type="button"
@@ -832,7 +830,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 const url = prompt('Enter link URL:');
                 if (url) execFormatCommand('createLink', url);
               }}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Insert Link"
             >
               <Link className="w-4 h-4" />
@@ -840,18 +838,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             <button
               type="button"
               onClick={() => execFormatCommand('insertHorizontalRule')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
               title="Horizontal Line"
             >
               <Minus className="w-4 h-4" />
             </button>
 
-            <span className="w-px h-4 bg-white/10 mx-1" />
+            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
 
             <button
               type="button"
               onClick={() => execFormatCommand('removeFormat')}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-red-400 hover:text-red-300 cursor-pointer text-xs"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-red-400 hover:text-red-300 cursor-pointer text-xs shrink-0"
               title="Clear Formatting"
             >
               Clear
@@ -867,19 +865,19 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 setHtmlContent(editorRef.current.innerHTML);
               }
             }}
-            className="w-full min-h-[220px] max-h-[400px] overflow-y-auto p-4 rounded-b-2xl bg-white/[0.03] border border-white/10 text-white font-sans text-xs focus:outline-none focus:border-emerald-400 leading-relaxed"
+            className="w-full min-h-[180px] sm:min-h-[220px] max-h-[360px] overflow-y-auto p-3.5 sm:p-4 rounded-b-2xl bg-white/[0.03] border border-white/10 text-white font-sans text-xs sm:text-sm focus:outline-none focus:border-emerald-400 leading-relaxed overflow-x-hidden"
           />
         </div>
 
-        {/* Row G: Attachments UI */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider">
+        {/* Row G: Responsive File Attachments */}
+        <div className="space-y-2 w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
               File Attachments
             </label>
             <label
               htmlFor="email-file-attachment"
-              className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-cyan-300 font-mono text-xs flex items-center gap-1.5 cursor-pointer font-bold"
+              className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-cyan-300 font-mono text-xs flex items-center justify-center gap-1.5 cursor-pointer font-bold"
             >
               <Paperclip className="w-3.5 h-3.5" /> Attach File (PDF, DOCX, Images)
             </label>
@@ -893,30 +891,34 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
           </div>
 
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full">
               {attachments.map((file, idx) => (
                 <div
                   key={idx}
-                  className="px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 flex items-center gap-2 text-xs font-mono"
+                  className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2 text-xs font-mono"
                 >
-                  <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="text-white truncate max-w-[150px]">{file.name}</span>
-                  <span className="text-[10px] text-slate-400">({(file.size / 1024).toFixed(1)} KB)</span>
-                  <button
-                    type="button"
-                    onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
-                    className="text-slate-400 hover:text-red-400 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-2 truncate">
+                    <Paperclip className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span className="text-white truncate">{file.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
+                      className="text-slate-400 hover:text-red-400 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Row H: Send Button */}
-        <div className="pt-2">
+        {/* Row H: Full-Width Mobile Action Controls */}
+        <div className="pt-2 w-full">
           <button
             type="submit"
             disabled={isSending}
@@ -927,13 +929,13 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         </div>
       </form>
 
-      {/* 3. TEMPLATES SELECTION MODAL */}
+      {/* 3. TEMPLATES SELECTION MODAL & MOBILE BOTTOM SHEET */}
       {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-[#090d16] border border-white/15 rounded-3xl p-6 space-y-5 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FileText className="w-5 h-5 text-cyan-400" /> Pre-loaded HR Email Templates
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full max-w-2xl bg-[#090d16] border-t sm:border border-white/15 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl font-mono text-xs max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-400" /> HR Email Templates
               </h3>
               <button
                 onClick={() => setIsTemplateModalOpen(false)}
@@ -964,12 +966,12 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         </div>
       )}
 
-      {/* 4. AI EMAIL WRITER MODAL */}
+      {/* 4. AI EMAIL WRITER MODAL & MOBILE BOTTOM SHEET */}
       {isAiModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-xl bg-[#090d16] border border-purple-500/40 rounded-3xl p-6 space-y-5 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full max-w-xl bg-[#090d16] border-t sm:border border-purple-500/40 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl font-mono text-xs max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-400 animate-pulse" /> ✨ AI Email Assistant (Groq Engine)
               </h3>
               <button
@@ -986,7 +988,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 <select
                   value={aiPurpose}
                   onChange={(e) => setAiPurpose(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
                 >
                   <option value="Interview Invitation" className="bg-[#090d16]">Interview Invitation</option>
                   <option value="Job Offer Letter" className="bg-[#090d16]">Job Offer Letter</option>
@@ -1001,7 +1003,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 <select
                   value={aiTone}
                   onChange={(e) => setAiTone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
                 >
                   <option value="Professional" className="bg-[#090d16]">Professional & Executive</option>
                   <option value="Warm & Welcoming" className="bg-[#090d16]">Warm & Welcoming</option>
@@ -1016,7 +1018,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                   placeholder="e.g. Alex Rivera (Senior Developer Candidate)"
                   value={aiRecipientName}
                   onChange={(e) => setAiRecipientName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
                 />
               </div>
 
@@ -1024,7 +1026,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 type="button"
                 onClick={handleGenerateAiEmail}
                 disabled={isGeneratingAi}
-                className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold font-display text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-purple-600/20"
+                className="w-full min-h-[44px] py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold font-display text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-purple-600/20"
               >
                 {isGeneratingAi ? <RefreshCw className="w-4 h-4 animate-spin text-white" /> : <Wand2 className="w-4 h-4 text-white" />} Generate Email with Groq AI
               </button>
@@ -1033,34 +1035,33 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         </div>
       )}
 
-      {/* 5. REAL-TIME HTML EMAIL PREVIEW MODAL */}
+      {/* 5. REAL-TIME RESPONSIVE HTML EMAIL PREVIEW MODAL */}
       {isPreviewModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl bg-[#090d16] border border-white/15 rounded-3xl p-6 space-y-4 shadow-2xl font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div className="flex items-center gap-3">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
+          <div className="w-full max-w-3xl bg-[#090d16] border border-white/15 rounded-3xl p-4 sm:p-6 space-y-4 shadow-2xl font-mono text-xs max-h-[95vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
                 <Eye className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-base font-bold text-white">Live Email Preview</h3>
+                <h3 className="text-sm sm:text-base font-bold text-white">Live Email Preview</h3>
               </div>
 
-              <div className="flex items-center gap-3">
-                {/* Device Switcher */}
+              <div className="flex items-center gap-2">
                 <div className="flex items-center bg-white/[0.04] p-1 rounded-xl border border-white/10">
                   <button
                     onClick={() => setPreviewDevice('desktop')}
-                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 cursor-pointer ${
                       previewDevice === 'desktop' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-slate-400'
                     }`}
                   >
-                    <Monitor className="w-3.5 h-3.5" /> Desktop
+                    <Monitor className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Desktop</span>
                   </button>
                   <button
                     onClick={() => setPreviewDevice('mobile')}
-                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 cursor-pointer ${
                       previewDevice === 'mobile' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-slate-400'
                     }`}
                   >
-                    <Smartphone className="w-3.5 h-3.5" /> Mobile
+                    <Smartphone className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Mobile</span>
                   </button>
                 </div>
 
@@ -1074,23 +1075,22 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
             </div>
 
             {/* Email Container Frame */}
-            <div className="flex justify-center bg-[#050505] p-4 rounded-2xl border border-white/10 max-h-[500px] overflow-y-auto">
+            <div className="flex justify-center bg-[#050505] p-2 sm:p-4 rounded-2xl border border-white/10 max-h-[500px] overflow-y-auto">
               <div
-                className={`bg-white text-slate-900 rounded-2xl p-6 space-y-4 shadow-2xl font-sans text-xs transition-all duration-300 ${
-                  previewDevice === 'mobile' ? 'w-[360px]' : 'w-full max-w-2xl'
+                className={`bg-white text-slate-900 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xl font-sans text-xs transition-all duration-300 max-w-full ${
+                  previewDevice === 'mobile' ? 'w-[320px] sm:w-[360px]' : 'w-full max-w-2xl'
                 }`}
               >
                 <div className="border-b border-slate-200 pb-3 space-y-1 font-mono">
-                  <div className="text-[11px] text-slate-500">From: <strong className="text-slate-800">{selectedSender}</strong></div>
-                  <div className="text-[11px] text-slate-500">To: <strong className="text-slate-800">{toChips.join(', ') || 'recipients@domain.com'}</strong></div>
-                  {ccChips.length > 0 && <div className="text-[11px] text-slate-500">CC: {ccChips.join(', ')}</div>}
-                  <div className="text-sm font-bold text-slate-900 pt-1">{subject || 'No Subject'}</div>
+                  <div className="text-[11px] text-slate-500 truncate">From: <strong className="text-slate-800">{selectedSender}</strong></div>
+                  <div className="text-[11px] text-slate-500 truncate">To: <strong className="text-slate-800">{toChips.join(', ') || 'recipients@domain.com'}</strong></div>
+                  {ccChips.length > 0 && <div className="text-[11px] text-slate-500 truncate">CC: {ccChips.join(', ')}</div>}
+                  <div className="text-xs sm:text-sm font-bold text-slate-900 pt-1 truncate">{subject || 'No Subject'}</div>
                 </div>
 
-                {/* Render HTML Body */}
                 <div
                   dangerouslySetInnerHTML={{ __html: editorRef.current ? editorRef.current.innerHTML : (htmlContent || '<p>No content entered yet.</p>') }}
-                  className="leading-relaxed text-slate-800 font-sans space-y-2"
+                  className="leading-relaxed text-slate-800 font-sans space-y-2 text-xs sm:text-sm overflow-x-hidden"
                 />
               </div>
             </div>
