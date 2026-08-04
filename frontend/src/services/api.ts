@@ -280,3 +280,8 @@ export const pendingProfileUpdatesApi = {
   reject: (id: string, notes?: string) => api.post(`/team/profile-updates/${id}/reject`, { admin_notes: notes }),
 };
 
+// Enterprise Team Directory API
+export const directoryApi = {
+  getMembers: () => api.get('/directory/members'),
+};
+

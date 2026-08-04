@@ -8,10 +8,11 @@ import { CandidateApplication, getStoredCandidateApplications, updateCandidateAp
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
 import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
+import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory';
   isStandaloneEmailView?: boolean;
 }
 
@@ -199,7 +200,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin'>((initialTab as any) || 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory'>((initialTab as any) || 'team');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -1691,7 +1692,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   const navItems = [
     { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
-    { id: 'rbac', name: 'User Access & RBAC', icon: UserCheck },
+    { id: 'directory', name: 'Team Directory', icon: UserCheck },
+    { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
     { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Bell },
     { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
     { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
@@ -2581,6 +2583,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               </div>
             )}
           </div>
+        )}
+
+        {/* TAB: ENTERPRISE TEAM DIRECTORY */}
+        {activeTab === 'directory' && (
+          <EnterpriseTeamDirectory userRole="admin" showToast={(msg, type) => addToast(msg, type)} />
         )}
 
         {/* TAB: NOTIFICATION DISPATCHER */}

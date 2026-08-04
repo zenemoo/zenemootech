@@ -34,10 +34,12 @@ import {
   Info,
   ShieldAlert,
   Server,
+  Users,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
+import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { portalAuthApi, emailApi, notificationApi } from '../services/api';
 
 interface HRDashboardProps {
@@ -46,7 +48,7 @@ interface HRDashboardProps {
 }
 
 export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'email' | 'notifications' | 'password'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'email' | 'notifications' | 'password' | 'directory'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
@@ -496,6 +498,38 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
                   Notification Center ({unreadCount})
+                </div>
+              )}
+            </div>
+
+            {/* ITEM 6: Enterprise Team Directory */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  setActiveTab('directory');
+                  setIsMobileSidebarOpen(false);
+                }}
+                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                  isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                } ${
+                  activeTab === 'directory'
+                    ? 'bg-cyan-500/10 text-cyan-300 font-bold border border-cyan-500/30 shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Users className="w-4.5 h-4.5 text-cyan-400 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">Team Directory</span>}
+                </div>
+                {isSidebarCollapsed && activeTab === 'directory' && (
+                  <span className="absolute left-0 w-1 h-5 bg-cyan-400 rounded-r-full shadow-glow" />
+                )}
+              </button>
+
+              {/* Floating Tooltip when Collapsed */}
+              {isSidebarCollapsed && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                  Team Directory
                 </div>
               )}
             </div>
@@ -1140,6 +1174,11 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                 {isChangingPass ? <RefreshCw className="w-4 h-4 animate-spin text-black" /> : <Save className="w-4 h-4 text-black" />} Update Password
               </button>
             </form>
+          )}
+
+          {/* TAB 6: ENTERPRISE TEAM DIRECTORY */}
+          {activeTab === 'directory' && (
+            <EnterpriseTeamDirectory userRole="hr" showToast={showToast} />
           )}
         </main>
 
