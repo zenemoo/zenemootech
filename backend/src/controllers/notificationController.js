@@ -46,6 +46,8 @@ export const getUserNotifications = async (req, res, next) => {
     // Check read & deleted status for this user from user_notifications table or memory store
     let readNotifIds = new Set();
     let deletedNotifIds = new Set();
+    let notifReadCounts = new Map();
+
     if (supabase && userId !== 'temp_user') {
       try {
         const { data } = await supabase
@@ -58,6 +60,19 @@ export const getUserNotifications = async (req, res, next) => {
             if (item.is_deleted || item.deleted_at) deletedNotifIds.add(item.notification_id);
           });
         }
+
+        if (userRole === 'admin') {
+          const { data: readStats } = await supabase
+            .from('user_notifications')
+            .select('notification_id')
+            .eq('is_read', true);
+          if (Array.isArray(readStats)) {
+            readStats.forEach((item) => {
+              const c = notifReadCounts.get(item.notification_id) || 0;
+              notifReadCounts.set(item.notification_id, c + 1);
+            });
+          }
+        }
       } catch (e) {}
     } else {
       readNotifIds = memoryUserNotifications.get(userId) || new Set();
@@ -66,6 +81,7 @@ export const getUserNotifications = async (req, res, next) => {
 
     // Filter relevant notifications (broadcast, role match, or individual match) AND exclude per-user deleted ones
     const userRelevant = allNotifications.filter((n) => {
+      if (userRole === 'admin') return true; // Administrators retrieve ALL database records for total overview
       if (deletedNotifIds.has(n.id)) return false;
       const targetType = (n.target_type || 'broadcast').toLowerCase();
       if (targetType === 'broadcast') return true;
@@ -80,9 +96,13 @@ export const getUserNotifications = async (req, res, next) => {
       message: n.message,
       type: n.type || 'info',
       target_type: n.target_type || 'broadcast',
+      target_role: n.target_role || null,
+      target_user_id: n.target_user_id || null,
       sender_email: n.sender_email || 'contact@zenemoo.in',
       created_at: n.created_at || new Date().toISOString(),
       is_read: readNotifIds.has(n.id),
+      read_count: notifReadCounts.get(n.id) || 0,
+      delivery_status: 'Dispatched',
     }));
 
     const unreadCount = formatted.filter((n) => !n.is_read).length;

@@ -245,6 +245,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [notifTargetUserId, setNotifTargetUserId] = useState('');
   const [isDispatchingNotif, setIsDispatchingNotif] = useState(false);
   const [adminNotifList, setAdminNotifList] = useState<any[]>([]);
+  const [isLoadingAdminNotifs, setIsLoadingAdminNotifs] = useState(false);
+  const [adminNotifFetchError, setAdminNotifFetchError] = useState<string | null>(null);
+  const [adminNotifSearchQuery, setAdminNotifSearchQuery] = useState('');
+  const [adminNotifTypeFilter, setAdminNotifTypeFilter] = useState('all');
+  const [adminNotifTargetFilter, setAdminNotifTargetFilter] = useState('all');
+  const [adminNotifDateFilter, setAdminNotifDateFilter] = useState('all');
+  const [expandedNotifIds, setExpandedNotifIds] = useState<{ [key: string]: boolean }>({});
 
   const loadRbacUsers = async () => {
     try {
@@ -430,12 +437,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   };
 
   const loadAdminNotifications = async () => {
+    setIsLoadingAdminNotifs(true);
+    setAdminNotifFetchError(null);
     try {
       const res = await notificationApi.getAll();
-      if (res.data && res.data.success) {
-        setAdminNotifList(res.data.data || []);
+      if (res.data && res.data.success && Array.isArray(res.data.data)) {
+        // Guarantee newest first created_at DESC
+        const sorted = [...res.data.data].sort(
+          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
+        setAdminNotifList(sorted);
+      } else {
+        setAdminNotifFetchError(res.data?.message || 'Failed to fetch notification history from database.');
       }
-    } catch (err) {}
+    } catch (err: any) {
+      setAdminNotifFetchError(err.response?.data?.message || err.message || 'Database fetch error.');
+    } finally {
+      setIsLoadingAdminNotifs(false);
+    }
   };
 
   const handleDispatchNotification = async (e: React.FormEvent) => {
@@ -470,13 +489,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     }
   };
 
-  const handleDeleteAdminNotif = async (id: string) => {
-    if (!confirm('Delete this notification entry?')) return;
-    try {
-      await notificationApi.adminDelete(id);
-      showStatus('Notification deleted.');
-      await loadAdminNotifications();
-    } catch (err) {}
+  const handleDeleteAdminNotif = async (id: string, notifTitle: string) => {
+    showConfirm(
+      'Delete Dispatched Notification Entry',
+      `Are you sure you want to delete notification entry "${notifTitle}" from database?`,
+      async () => {
+        try {
+          await notificationApi.adminDelete(id);
+          showStatus('Notification entry deleted from database.');
+          await loadAdminNotifications();
+        } catch (err: any) {
+          alert('Failed to delete notification.');
+        }
+      },
+      { confirmText: 'Yes, Delete Record', intent: 'danger' }
+    );
   };
 
   // Opportunities & Candidate Applications State
@@ -2740,35 +2767,328 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               </form>
             </div>
 
-            {/* Notification History Log */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/10 pb-3">
-                <History className="w-4 h-4 text-cyan-400" /> Dispatched Notifications History
-              </h3>
+            {/* Dispatched Notifications History Log (Live Database Fetch & Sync) */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-6">
+              {/* Section Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold font-display text-white flex items-center gap-2">
+                      <History className="w-5 h-5 text-cyan-400" /> Dispatched Notifications History
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-[10px] font-bold">
+                      ● Live DB Sync
+                    </span>
+                  </div>
+                  <p className="text-xs font-mono text-slate-400">
+                    Real-time database entries queried directly from the Supabase notifications table.
+                  </p>
+                </div>
 
-              <div className="space-y-3">
-                {adminNotifList.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500">No admin notifications dispatched yet.</div>
-                ) : (
-                  adminNotifList.map((n) => (
-                    <div key={n.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="font-bold text-white text-xs">{n.title}</div>
-                        <div className="text-[11px] text-slate-300 font-sans">{n.message}</div>
-                        <div className="text-[10px] text-slate-500">Type: {n.type} &bull; Target: {n.target_type} &bull; {n.created_at}</div>
-                      </div>
-
-                      <button
-                        onClick={() => handleDeleteAdminNotif(n.id)}
-                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 cursor-pointer"
-                        title="Delete notification"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
-                )}
+                <button
+                  type="button"
+                  onClick={loadAdminNotifications}
+                  disabled={isLoadingAdminNotifs}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono font-bold text-slate-300 hover:text-white flex items-center gap-1.5 cursor-pointer transition-all self-start sm:self-auto shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isLoadingAdminNotifs ? 'animate-spin' : ''}`} /> Refresh Database
+                </button>
               </div>
+
+              {/* Search & Filter Controls Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
+                {/* Search Input */}
+                <div className="relative sm:col-span-1 lg:col-span-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search history by title, body, sender..."
+                    value={adminNotifSearchQuery}
+                    onChange={(e) => setAdminNotifSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                  />
+                </div>
+
+                {/* Type Filter */}
+                <div>
+                  <select
+                    value={adminNotifTypeFilter}
+                    onChange={(e) => setAdminNotifTypeFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="all" className="bg-[#090d16]">All Notification Types</option>
+                    <option value="info" className="bg-[#090d16]">Info</option>
+                    <option value="meeting" className="bg-[#090d16]">Meeting</option>
+                    <option value="system" className="bg-[#090d16]">System</option>
+                    <option value="warning" className="bg-[#090d16]">Warning</option>
+                    <option value="error" className="bg-[#090d16]">Error</option>
+                    <option value="success" className="bg-[#090d16]">Success</option>
+                    <option value="project" className="bg-[#090d16]">Project</option>
+                    <option value="payment" className="bg-[#090d16]">Payment</option>
+                  </select>
+                </div>
+
+                {/* Target Audience Filter */}
+                <div>
+                  <select
+                    value={adminNotifTargetFilter}
+                    onChange={(e) => setAdminNotifTargetFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="all" className="bg-[#090d16]">All Target Audiences</option>
+                    <option value="broadcast" className="bg-[#090d16]">Broadcast (All Users)</option>
+                    <option value="team_member" className="bg-[#090d16]">Team Member Portal</option>
+                    <option value="hr" className="bg-[#090d16]">HR Portal</option>
+                    <option value="individual" className="bg-[#090d16]">Individual User</option>
+                  </select>
+                </div>
+
+                {/* Date Filter */}
+                <div>
+                  <select
+                    value={adminNotifDateFilter}
+                    onChange={(e) => setAdminNotifDateFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="all" className="bg-[#090d16]">All Time</option>
+                    <option value="today" className="bg-[#090d16]">Today</option>
+                    <option value="yesterday" className="bg-[#090d16]">Yesterday</option>
+                    <option value="last7days" className="bg-[#090d16]">Last 7 Days</option>
+                    <option value="thismonth" className="bg-[#090d16]">This Month</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Error Alert Fallback */}
+              {adminNotifFetchError && (
+                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>Failed to query notifications table: <strong>{adminNotifFetchError}</strong></span>
+                  </div>
+                  <button
+                    onClick={loadAdminNotifications}
+                    className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/40 text-[11px] font-bold cursor-pointer shrink-0"
+                  >
+                    Retry Fetch
+                  </button>
+                </div>
+              )}
+
+              {/* Skeleton Loading State */}
+              {isLoadingAdminNotifs ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((idx) => (
+                    <div key={idx} className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 animate-pulse space-y-3">
+                      <div className="h-4 bg-white/10 rounded w-1/3" />
+                      <div className="h-3 bg-white/5 rounded w-2/3" />
+                      <div className="h-3 bg-white/5 rounded w-1/4" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* History Records List */
+                <div className="space-y-3">
+                  {(() => {
+                    const filtered = adminNotifList.filter((n) => {
+                      // 1. Search Query Filter
+                      const q = adminNotifSearchQuery.trim().toLowerCase();
+                      if (q) {
+                        const titleMatch = (n.title || '').toLowerCase().includes(q);
+                        const msgMatch = (n.message || '').toLowerCase().includes(q);
+                        const senderMatch = (n.sender_email || '').toLowerCase().includes(q);
+                        const typeMatch = (n.type || '').toLowerCase().includes(q);
+                        const targetMatch = (n.target_type || '').toLowerCase().includes(q);
+                        if (!titleMatch && !msgMatch && !senderMatch && !typeMatch && !targetMatch) return false;
+                      }
+
+                      // 2. Type Filter
+                      if (adminNotifTypeFilter !== 'all' && (n.type || '').toLowerCase() !== adminNotifTypeFilter) {
+                        return false;
+                      }
+
+                      // 3. Target Audience Filter
+                      if (adminNotifTargetFilter !== 'all') {
+                        const targetType = (n.target_type || 'broadcast').toLowerCase();
+                        const targetRole = (n.target_role || '').toLowerCase();
+                        if (adminNotifTargetFilter === 'broadcast' && targetType !== 'broadcast') return false;
+                        if (adminNotifTargetFilter === 'individual' && targetType !== 'individual') return false;
+                        if (adminNotifTargetFilter === 'team_member' && targetRole !== 'team_member') return false;
+                        if (adminNotifTargetFilter === 'hr' && targetRole !== 'hr') return false;
+                      }
+
+                      // 4. Date Range Filter
+                      if (adminNotifDateFilter !== 'all' && n.created_at) {
+                        const notifDate = new Date(n.created_at);
+                        const now = new Date();
+                        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                        const notifTime = notifDate.getTime();
+
+                        if (adminNotifDateFilter === 'today' && notifTime < todayStart) return false;
+                        if (adminNotifDateFilter === 'yesterday') {
+                          const yesterdayStart = todayStart - 86400000;
+                          if (notifTime < yesterdayStart || notifTime >= todayStart) return false;
+                        }
+                        if (adminNotifDateFilter === 'last7days' && notifTime < todayStart - 7 * 86400000) return false;
+                        if (adminNotifDateFilter === 'thismonth') {
+                          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+                          if (notifTime < monthStart) return false;
+                        }
+                      }
+
+                      return true;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3 font-mono">
+                          <Inbox className="w-10 h-10 text-slate-500 mx-auto" />
+                          <h4 className="text-base font-bold text-white">No notifications have been dispatched yet</h4>
+                          <p className="text-xs text-slate-400">
+                            {adminNotifList.length === 0
+                              ? 'Notifications dispatched via the form above will be logged here directly from the database.'
+                              : 'No notification records match your current search and filter criteria.'}
+                          </p>
+                          {(adminNotifSearchQuery || adminNotifTypeFilter !== 'all' || adminNotifTargetFilter !== 'all' || adminNotifDateFilter !== 'all') && (
+                            <button
+                              onClick={() => {
+                                setAdminNotifSearchQuery('');
+                                setAdminNotifTypeFilter('all');
+                                setAdminNotifTargetFilter('all');
+                                setAdminNotifDateFilter('all');
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold cursor-pointer inline-block"
+                            >
+                              Reset Search &amp; Filters
+                            </button>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return filtered.map((n) => {
+                      const typeLower = (n.type || 'info').toLowerCase();
+                      const targetTypeLower = (n.target_type || 'broadcast').toLowerCase();
+                      const isLongMsg = (n.message || '').length > 140;
+                      const isExpanded = expandedNotifIds[n.id] || false;
+
+                      // Type Badge Styling & Icon
+                      let typeBadgeClass = 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+                      let TypeIcon = Info;
+                      if (typeLower === 'meeting') {
+                        typeBadgeClass = 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+                        TypeIcon = Clock;
+                      } else if (typeLower === 'system') {
+                        typeBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                        TypeIcon = Zap;
+                      } else if (typeLower === 'warning') {
+                        typeBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                        TypeIcon = AlertTriangle;
+                      } else if (typeLower === 'error') {
+                        typeBadgeClass = 'bg-red-500/20 text-red-300 border-red-500/40';
+                        TypeIcon = XCircle;
+                      } else if (typeLower === 'success') {
+                        typeBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+                        TypeIcon = CheckCircle2;
+                      }
+
+                      // Target Audience Badge
+                      let targetLabel = 'BROADCAST (ALL USERS)';
+                      let targetBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+                      if (targetTypeLower === 'role') {
+                        const roleStr = (n.target_role || 'team_member').toUpperCase();
+                        targetLabel = `ROLE: ${roleStr}`;
+                        targetBadgeClass = 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
+                      } else if (targetTypeLower === 'individual') {
+                        targetLabel = `INDIVIDUAL: ${n.target_user_id || 'USER'}`;
+                        targetBadgeClass = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+                      }
+
+                      // Relative Time String calculation
+                      const timeStr = n.created_at ? new Date(n.created_at).toLocaleString() : 'Just now';
+                      let relTime = 'Just now';
+                      if (n.created_at) {
+                        const diffMs = Date.now() - new Date(n.created_at).getTime();
+                        const diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) relTime = 'Just now';
+                        else if (diffMins < 60) relTime = `${diffMins}m ago`;
+                        else if (diffMins < 1440) relTime = `${Math.floor(diffMins / 60)}h ago`;
+                        else relTime = `${Math.floor(diffMins / 1440)}d ago`;
+                      }
+
+                      return (
+                        <div
+                          key={n.id}
+                          className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 hover:border-cyan-500/30 transition-all font-mono text-xs relative overflow-hidden"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border flex items-center gap-1 ${typeBadgeClass}`}>
+                                  <TypeIcon className="w-3 h-3" /> {n.type || 'INFO'}
+                                </span>
+
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${targetBadgeClass}`}>
+                                  {targetLabel}
+                                </span>
+
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+                                  ✓ DISPATCHED
+                                </span>
+
+                                {n.read_count !== undefined && n.read_count > 0 && (
+                                  <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10px] font-bold">
+                                    👁 Read by {n.read_count} user(s)
+                                  </span>
+                                )}
+                              </div>
+
+                              <h4 className="text-sm font-bold text-white font-display pt-0.5">{n.title}</h4>
+                            </div>
+
+                            {/* Delete Action Button */}
+                            <button
+                              onClick={() => handleDeleteAdminNotif(n.id, n.title)}
+                              className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer transition-all shrink-0"
+                              title="Delete notification record from database"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Message Body Content */}
+                          <div className="text-slate-300 font-sans text-xs bg-white/[0.02] p-3.5 rounded-xl border border-white/5 leading-relaxed">
+                            <p className={!isExpanded && isLongMsg ? 'line-clamp-2' : ''}>{n.message}</p>
+                            {isLongMsg && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedNotifIds((prev) => ({ ...prev, [n.id]: !isExpanded }))}
+                                className="text-cyan-400 hover:underline font-mono text-[11px] font-bold pt-1.5 block cursor-pointer"
+                              >
+                                {isExpanded ? 'Show Less ▲' : 'Read Full Message ▼'}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Card Footer Meta Info */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400 pt-1 border-t border-white/5">
+                            <div className="flex items-center gap-2">
+                              <span>Sender: <strong className="text-slate-200">{n.sender_email || 'Administrator'}</strong></span>
+                              <span>&bull;</span>
+                              <span>ID: <code className="text-cyan-400">{n.id}</code></span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-300 font-bold">{relTime}</span>
+                              <span>({timeStr})</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
             </div>
           </div>
         )}
