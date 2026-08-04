@@ -332,36 +332,43 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         />
       )}
 
-      {/* 1. FIXED ENTERPRISE SIDEBAR NAVIGATION */}
+      {/* 1. FIXED ENTERPRISE 3-SECTION SIDEBAR NAVIGATION */}
       <aside
-        className={`fixed md:sticky top-0 z-50 h-screen bg-[#09090b] border-r border-white/10 flex flex-col justify-between p-3.5 sm:p-4 shrink-0 transition-all duration-300 ${
+        className={`fixed md:sticky top-0 z-50 h-screen bg-[#09090b] border-r border-white/10 flex flex-col justify-between shrink-0 transition-all duration-300 ${
           isSidebarCollapsed ? 'w-20' : 'w-64'
         } ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
-        <div className="space-y-6">
-          {/* Sidebar Brand Header */}
-          <div className="flex items-center justify-between border-b border-white/10 pb-4">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md shrink-0" />
-              {!isSidebarCollapsed && (
-                <div className="truncate">
-                  <div className="font-display font-extrabold text-sm text-white tracking-wider truncate">ZENEMOO</div>
-                  <div className="text-[10px] font-mono text-purple-400 truncate">HR Operations</div>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="hidden md:flex p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            >
-              {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
+        {/* SECTION 1: FIXED BRAND LOGO HEADER */}
+        <div className={`h-16 shrink-0 border-b border-white/10 px-4 flex items-center justify-between bg-[#06070b]/90 backdrop-blur-md z-10 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-9 h-9 rounded-xl bg-white p-0.5 shadow-md shrink-0 object-cover" />
+            {!isSidebarCollapsed && (
+              <div className="truncate">
+                <div className="font-display font-extrabold text-xs text-white tracking-wider truncate">ZENEMOO</div>
+                <div className="text-[9px] font-mono text-purple-400 truncate">HR Operations</div>
+              </div>
+            )}
           </div>
 
-          {/* Sidebar Menu Items */}
-          <nav className="space-y-2 font-mono text-xs">
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="hidden md:flex p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+          >
+            {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* SECTION 2: INDEPENDENTLY SCROLLABLE GROUPED NAVIGATION LIST */}
+        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto custom-scrollbar font-mono text-xs">
+          {/* GROUP 1: HR OVERVIEW */}
+          <div className="space-y-1">
+            {!isSidebarCollapsed && (
+              <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 mb-1.5">
+                HR OVERVIEW
+              </div>
+            )}
+
             {/* ITEM 1: Overview & Profile */}
             <div className="relative group">
               <button
@@ -369,64 +376,90 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                   setActiveTab('overview');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
                   isSidebarCollapsed ? 'justify-center' : 'justify-between'
                 } ${
                   activeTab === 'overview'
-                    ? 'bg-purple-500/10 text-purple-300 font-bold border border-purple-500/30 shadow-lg'
+                    ? 'bg-purple-500/10 text-purple-300 font-bold border-l-2 border-purple-400 shadow-lg'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3 truncate">
-                  <User className="w-4.5 h-4.5 text-purple-400 shrink-0" />
+                  <User className="w-4 h-4 text-purple-400 shrink-0" />
                   {!isSidebarCollapsed && <span className="truncate">Overview &amp; Profile</span>}
                 </div>
-                {isSidebarCollapsed && activeTab === 'overview' && (
-                  <span className="absolute left-0 w-1 h-5 bg-purple-400 rounded-r-full shadow-glow" />
-                )}
               </button>
-
-              {/* Floating Tooltip when Collapsed */}
               {isSidebarCollapsed && (
-                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
                   Overview &amp; Profile
                 </div>
               )}
             </div>
 
-            {/* ITEM 2: Edit Private Profile */}
+            {/* ITEM 2: Team Directory */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  setActiveTab('directory');
+                  setIsMobileSidebarOpen(false);
+                }}
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
+                  isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                } ${
+                  activeTab === 'directory'
+                    ? 'bg-cyan-500/10 text-cyan-300 font-bold border-l-2 border-cyan-400 shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Users className="w-4 h-4 text-cyan-400 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">Team Directory</span>}
+                </div>
+              </button>
+              {isSidebarCollapsed && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
+                  Team Directory
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* GROUP 2: PROFILE & COMMUNICATIONS */}
+          <div className="space-y-1">
+            {!isSidebarCollapsed && (
+              <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 mb-1.5">
+                PROFILE &amp; COMMUNICATIONS
+              </div>
+            )}
+
+            {/* ITEM 3: Edit Private Profile */}
             <div className="relative group">
               <button
                 onClick={() => {
                   setActiveTab('profile');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
                   isSidebarCollapsed ? 'justify-center' : 'justify-between'
                 } ${
                   activeTab === 'profile'
-                    ? 'bg-cyan-500/10 text-cyan-300 font-bold border border-cyan-500/30 shadow-lg'
+                    ? 'bg-cyan-500/10 text-cyan-300 font-bold border-l-2 border-cyan-400 shadow-lg'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3 truncate">
-                  <Sparkles className="w-4.5 h-4.5 text-cyan-400 shrink-0" />
+                  <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
                   {!isSidebarCollapsed && <span className="truncate">Edit Private Profile</span>}
                 </div>
-                {isSidebarCollapsed && activeTab === 'profile' && (
-                  <span className="absolute left-0 w-1 h-5 bg-cyan-400 rounded-r-full shadow-glow" />
-                )}
               </button>
-
-              {/* Floating Tooltip when Collapsed */}
               {isSidebarCollapsed && (
-                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
                   Edit Private Profile
                 </div>
               )}
             </div>
 
-            {/* ITEM 3: Company Email */}
+            {/* ITEM 4: Company Email */}
             {(profile.email_access || profile.role === 'admin') && (
               <div className="relative group">
                 <button
@@ -434,54 +467,49 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                     setActiveTab('email');
                     setIsMobileSidebarOpen(false);
                   }}
-                  className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                  className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
                     isSidebarCollapsed ? 'justify-center' : 'justify-between'
                   } ${
                     activeTab === 'email'
-                      ? 'bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/30 shadow-lg'
+                      ? 'bg-emerald-500/10 text-emerald-300 font-bold border-l-2 border-emerald-400 shadow-lg'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
                   <div className="flex items-center gap-3 truncate">
-                    <Mail className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
-                    {!isSidebarCollapsed && <span className="truncate">Company Email</span>}
+                    <Mail className="w-4 h-4 text-emerald-400 shrink-0" />
+                    {!isSidebarCollapsed && <span className="truncate font-mono">Company Email</span>}
                   </div>
                   {!isSidebarCollapsed && emailLogs.length > 0 && (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
                       {emailLogs.length}
                     </span>
                   )}
-                  {isSidebarCollapsed && activeTab === 'email' && (
-                    <span className="absolute left-0 w-1 h-5 bg-emerald-400 rounded-r-full shadow-glow" />
-                  )}
                 </button>
-
-                {/* Floating Tooltip when Collapsed */}
                 {isSidebarCollapsed && (
-                  <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
-                    Company Email System ({emailLogs.length})
+                  <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
+                    Company Email ({emailLogs.length})
                   </div>
                 )}
               </div>
             )}
 
-            {/* ITEM 4: Notification Center View */}
+            {/* ITEM 5: Notification Center View */}
             <div className="relative group">
               <button
                 onClick={() => {
                   setActiveTab('notifications');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
                   isSidebarCollapsed ? 'justify-center' : 'justify-between'
                 } ${
                   activeTab === 'notifications'
-                    ? 'bg-purple-500/10 text-purple-300 font-bold border border-purple-500/30 shadow-lg'
+                    ? 'bg-purple-500/10 text-purple-300 font-bold border-l-2 border-purple-400 shadow-lg'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3 truncate">
-                  <Bell className="w-4.5 h-4.5 text-purple-400 shrink-0" />
+                  <Bell className="w-4 h-4 text-purple-400 shrink-0" />
                   {!isSidebarCollapsed && <span className="truncate">Notification Center</span>}
                 </div>
                 {!isSidebarCollapsed && unreadCount > 0 && (
@@ -489,84 +517,42 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                     {unreadCount}
                   </span>
                 )}
-                {isSidebarCollapsed && activeTab === 'notifications' && (
-                  <span className="absolute left-0 w-1 h-5 bg-purple-400 rounded-r-full shadow-glow" />
-                )}
               </button>
-
-              {/* Floating Tooltip when Collapsed */}
               {isSidebarCollapsed && (
-                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
                   Notification Center ({unreadCount})
                 </div>
               )}
             </div>
 
-            {/* ITEM 6: Enterprise Team Directory */}
-            <div className="relative group">
-              <button
-                onClick={() => {
-                  setActiveTab('directory');
-                  setIsMobileSidebarOpen(false);
-                }}
-                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
-                  isSidebarCollapsed ? 'justify-center' : 'justify-between'
-                } ${
-                  activeTab === 'directory'
-                    ? 'bg-cyan-500/10 text-cyan-300 font-bold border border-cyan-500/30 shadow-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <Users className="w-4.5 h-4.5 text-cyan-400 shrink-0" />
-                  {!isSidebarCollapsed && <span className="truncate">Team Directory</span>}
-                </div>
-                {isSidebarCollapsed && activeTab === 'directory' && (
-                  <span className="absolute left-0 w-1 h-5 bg-cyan-400 rounded-r-full shadow-glow" />
-                )}
-              </button>
-
-              {/* Floating Tooltip when Collapsed */}
-              {isSidebarCollapsed && (
-                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
-                  Team Directory
-                </div>
-              )}
-            </div>
-
-            {/* ITEM 5: Account Security */}
+            {/* ITEM 6: Account Security */}
             <div className="relative group">
               <button
                 onClick={() => {
                   setActiveTab('password');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
                   isSidebarCollapsed ? 'justify-center' : 'justify-between'
                 } ${
                   activeTab === 'password'
-                    ? 'bg-amber-500/10 text-amber-300 font-bold border border-amber-500/30 shadow-lg'
+                    ? 'bg-amber-500/10 text-amber-300 font-bold border-l-2 border-amber-400 shadow-lg'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3 truncate">
-                  <Key className="w-4.5 h-4.5 text-amber-400 shrink-0" />
+                  <Key className="w-4 h-4 text-amber-400 shrink-0" />
                   {!isSidebarCollapsed && <span className="truncate">Account Security</span>}
                 </div>
-                {isSidebarCollapsed && activeTab === 'password' && (
-                  <span className="absolute left-0 w-1 h-5 bg-amber-400 rounded-r-full shadow-glow" />
-                )}
               </button>
-
-              {/* Floating Tooltip when Collapsed */}
               {isSidebarCollapsed && (
-                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
                   Account Security
                 </div>
               )}
             </div>
-          </nav>
-        </div>
+          </div>
+        </nav>
 
         {/* 2. INTERACTIVE SIDEBAR BOTTOM PROFILE CARD & POPOVER */}
         <div className="relative pt-4 border-t border-white/10 font-mono text-xs">

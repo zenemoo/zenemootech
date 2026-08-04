@@ -1690,27 +1690,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const activeAdminAccount = authorizedEmails.find(a => a.email.toLowerCase() === adminEmail.toLowerCase()) || null;
   const activeAdminPhoto = adminProfile?.profile_photo_url || activeAdminAccount?.profile_photo_url || getStoredAdminPhoto(adminEmail) || '';
 
-  const navItems = [
-    { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
-    { id: 'directory', name: 'Team Directory', icon: UserCheck },
-    { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
-    { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Bell },
-    { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
-    { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
-    { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
-    { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
-    { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
-    { id: 'ai-analytics', name: 'Zenemoo AI Analytics', icon: Bot },
-    { id: 'telemetry', name: 'Metrics & Capacity', icon: Activity },
-    { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
+  const navGroups = [
+    {
+      group: 'CORE MANAGEMENT',
+      items: [
+        { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
+        { id: 'directory', name: 'Team Directory', icon: UserCheck },
+        { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
+      ],
+    },
+    {
+      group: 'COMMUNICATION',
+      items: [
+        { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Bell },
+        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
+        { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
+        { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
+      ],
+    },
+    {
+      group: 'ENTERPRISE OPERATIONS',
+      items: [
+        { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
+        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
+        { id: 'telemetry', name: 'Metrics & Capacity', icon: Activity },
+      ],
+    },
+    {
+      group: 'AI INTELLIGENCE & SECURITY',
+      items: [
+        { id: 'ai-analytics', name: 'Zenemoo AI Analytics', icon: Bot },
+        { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
+      ],
+    },
   ];
 
+  const allNavItems = navGroups.flatMap((g) => g.items);
+
   return (
-    <div className="min-h-screen bg-[#030304] text-slate-200 flex relative z-50 font-sans overflow-hidden w-full">
-      {/* 1. LEFT SIDEBAR PANEL (Desktop Fixed) */}
-      <aside className={`hidden md:flex flex-col shrink-0 border-r border-white/5 glass-sidebar transition-all duration-300 relative ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
-        {/* Brand Header */}
-        <div className={`p-6 flex items-center justify-between border-b border-white/5 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+    <div className="h-screen bg-[#030304] text-slate-200 flex relative z-50 font-sans overflow-hidden w-full">
+      {/* 1. DESKTOP 3-SECTION FIXED SIDEBAR PANEL */}
+      <aside className={`hidden md:flex flex-col shrink-0 border-r border-white/10 glass-sidebar transition-all duration-300 relative h-screen ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
+        {/* SECTION 1: FIXED BRAND LOGO HEADER */}
+        <div className={`h-16 shrink-0 border-b border-white/10 px-4 flex items-center justify-between bg-[#06070b]/90 backdrop-blur-md z-10 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
           {!isSidebarCollapsed ? (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/10 shrink-0">
@@ -1731,7 +1753,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           {!isSidebarCollapsed && (
             <button 
               onClick={() => setIsSidebarCollapsed(true)}
-              className="p-1 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               title="Collapse Sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1740,7 +1762,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           {isSidebarCollapsed && (
             <button 
               onClick={() => setIsSidebarCollapsed(false)}
-              className="absolute left-16 top-6 p-1 rounded-lg bg-[#0a0b10] border border-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer z-50 shadow-md"
+              className="absolute left-16 top-4 p-1 rounded-lg bg-[#0a0b10] border border-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer z-50 shadow-md"
               title="Expand Sidebar"
             >
               <ChevronRight className="w-3 h-3" />
@@ -1748,43 +1770,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           )}
         </div>
 
-        {/* Sidebar Nav items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as any)}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-mono text-xs transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-cyan-400 font-bold'
-                    : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'
-                }`}
-                title={isSidebarCollapsed ? item.name : undefined}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && (
-                  <span className="flex-1 text-left truncate">{item.name}</span>
-                )}
-                {!isSidebarCollapsed && item.count !== undefined && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
-                    {item.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* SECTION 2: INDEPENDENTLY SCROLLABLE GROUPED NAVIGATION LIST */}
+        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto custom-scrollbar">
+          {navGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="space-y-1">
+              {!isSidebarCollapsed && (
+                <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 mb-1.5">
+                  {group.group}
+                </div>
+              )}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id as any)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-mono text-xs transition-all cursor-pointer group relative ${
+                      isActive
+                        ? 'bg-cyan-500/10 text-cyan-300 font-bold border-l-2 border-cyan-400 shadow-sm shadow-cyan-500/10'
+                        : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+                    }`}
+                    title={isSidebarCollapsed ? item.name : undefined}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+                    {!isSidebarCollapsed && (
+                      <span className="flex-1 text-left truncate">{item.name}</span>
+                    )}
+                    {!isSidebarCollapsed && item.count !== undefined && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                        {item.count}
+                      </span>
+                    )}
+                    {isSidebarCollapsed && (
+                      <div className="absolute left-full ml-3 px-3 py-1.5 rounded-xl bg-[#090a0f] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
+                        {item.name} {item.count !== undefined ? `(${item.count})` : ''}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
-        {/* Sidebar Admin Info footer */}
+        {/* SECTION 3: FIXED BOTTOM USER PROFILE CARD */}
         {!isSidebarCollapsed ? (
           <div 
             onClick={() => setIsProfileDrawerOpen(true)}
-            className="p-3.5 border-t border-white/5 bg-gradient-to-b from-white/[0.02] to-black/30 hover:from-white/[0.05] hover:to-white/[0.02] transition-all cursor-pointer group"
+            className="h-20 shrink-0 border-t border-white/10 bg-gradient-to-b from-[#06070b]/90 to-black/60 hover:bg-white/[0.04] transition-all cursor-pointer group p-3 flex items-center"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-full">
               <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform overflow-hidden">
                   {activeAdminPhoto ? (
@@ -1818,7 +1854,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         ) : (
           <div 
             onClick={() => setIsProfileDrawerOpen(true)}
-            className="p-3.5 border-t border-white/5 bg-black/[0.15] hover:bg-white/[0.05] flex justify-center cursor-pointer transition-colors relative group"
+            className="h-20 shrink-0 border-t border-white/10 bg-black/[0.15] hover:bg-white/[0.05] flex items-center justify-center cursor-pointer transition-colors relative group"
             title="Open Administrator Profile"
           >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shadow-md group-hover:scale-105 transition-transform overflow-hidden">
@@ -1867,8 +1903,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   </button>
                 </div>
 
-                <nav className="space-y-1">
-                  {navItems.map((item) => {
+                <nav className="space-y-1 overflow-y-auto max-h-[60vh] custom-scrollbar">
+                  {allNavItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
                     return (
