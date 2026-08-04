@@ -1,8 +1,41 @@
+import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
+import { decryptField } from '../utils/cryptoUtils.js';
+
+/**
+ * Decrypt any string properties inside an object starting with `ENC:`
+ */
+const decryptObjectFields = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const result = { ...obj };
+  for (const key in result) {
+    const val = result[key];
+    if (typeof val === 'string' && val.startsWith('ENC:')) {
+      result[key] = decryptField(val);
+    }
+  }
+  return result;
+};
+
+/**
+ * Generates a deterministic, unique Employee ID for each team member
+ */
+const getUniqueEmployeeId = (member, priv) => {
+  if (member.employee_id && typeof member.employee_id === 'string' && member.employee_id.trim() !== '' && member.employee_id.trim() !== 'ZNM-E861') {
+    return member.employee_id.trim();
+  }
+  if (priv && priv.employee_id && typeof priv.employee_id === 'string' && priv.employee_id.trim() !== '') {
+    return priv.employee_id.trim();
+  }
+  // Generate deterministic hash-based ZNM- ID (e.g. ZNM-30A53, ZNM-3DDC6)
+  const seed = String(member.id || member.email || member.name || 'ZNM_EMP');
+  const hash = crypto.createHash('md5').update(seed).digest('hex').substring(0, 5).toUpperCase();
+  return `ZNM-${hash}`;
+};
 
 /**
  * GET /api/directory/members
- * Role-sanitized Enterprise Team Directory endpoint.
+ * Role-sanitized Enterprise Team Directory endpoint with 100% decrypted data.
  */
 export const getTeamDirectoryMembers = async (req, res) => {
   try {
@@ -10,7 +43,7 @@ export const getTeamDirectoryMembers = async (req, res) => {
 
     // 1. Fetch all members from primary `team` table
     let teamQuery = supabase
-      ? supabase.from('team').select('*').order('created_at', { ascending: false })
+      ? supabase.from('team').select('*').order('position', { ascending: true })
       : null;
 
     let teamMembers = [];
@@ -30,24 +63,31 @@ export const getTeamDirectoryMembers = async (req, res) => {
 
       if (!privError && privData) {
         privData.forEach((p) => {
-          if (p.team_member_id) privateProfilesMap[p.team_member_id] = p;
-          if (p.employee_id) privateProfilesMap[p.employee_id] = p;
-          if (p.email) privateProfilesMap[p.email.toLowerCase()] = p;
+          const decryptedP = decryptObjectFields(p);
+          if (decryptedP.team_member_id) privateProfilesMap[decryptedP.team_member_id] = decryptedP;
+          if (decryptedP.employee_id) privateProfilesMap[decryptedP.employee_id] = decryptedP;
+          if (decryptedP.email) privateProfilesMap[decryptedP.email.toLowerCase()] = decryptedP;
+          if (decryptedP.personal_email) privateProfilesMap[decryptedP.personal_email.toLowerCase()] = decryptedP;
         });
       }
     }
 
     // 3. Merge and sanitize fields based on User Role (Enforced on Backend)
     const sanitizedDirectory = teamMembers.map((member) => {
-      const priv =
+      const rawPriv =
         privateProfilesMap[member.id] ||
         privateProfilesMap[member.employee_id] ||
         (member.email ? privateProfilesMap[member.email.toLowerCase()] : null);
 
+      const priv = rawPriv ? decryptObjectFields(rawPriv) : null;
+      const uniqueEmpId = getUniqueEmployeeId(member, priv);
+
       // Base Public Record (Visible to Team Members, HR, Admin)
       const publicData = {
         id: member.id,
-        employee_id: member.employee_id || 'ZNM-E861',
+        employee_id: uniqueEmpId,
+        position_num: member.position || 0,
+        position: member.position_title || member.position || member.designation || 'Specialist',
         name: member.name,
         photo: member.image_url || member.photo || '/assets/executive.png',
         designation: member.designation || 'Specialist',
@@ -67,55 +107,59 @@ export const getTeamDirectoryMembers = async (req, res) => {
         return publicData;
       }
 
-      // HR ROLE: Return Operational Details (Phone, Email, Address, Emergency), Redact Financial Details
+      // HR ROLE: Return Operational Details (Personal Mobile, Personal Email, Address, Emergency), Redact Financial Details
       if (userRole === 'hr') {
         return {
           ...publicData,
-          personal_phone: priv?.phone_number || priv?.personal_phone || member.phone || '',
-          personal_email: priv?.personal_email || '',
+          personal_phone: priv?.personal_mobile || priv?.phone_number || priv?.mobile_number || priv?.alternate_mobile || '',
+          personal_email: priv?.personal_email || priv?.personal_mail || '',
           address_current: priv?.current_address || priv?.address || '',
           address_permanent: priv?.permanent_address || '',
-          emergency_contact_person: priv?.emergency_contact_person || priv?.emergency_contact || '',
-          emergency_contact_phone: priv?.emergency_contact_phone || '',
-          emergency_relationship: priv?.emergency_relationship || '',
-          languages: priv?.languages || [],
+          emergency_contact_person: priv?.emergency_contact_name || priv?.emergency_contact_person || priv?.emergency_contact || '',
+          emergency_contact_phone: priv?.emergency_contact_number || priv?.emergency_contact_phone || '',
+          emergency_relationship: priv?.relationship || priv?.emergency_relationship || '',
+          languages: Array.isArray(priv?.languages_known)
+            ? priv.languages_known
+            : (priv?.languages_known || '').split(',').map((s) => s.trim()).filter(Boolean),
           dob: priv?.date_of_birth || priv?.dob || '',
           blood_group: priv?.blood_group || '',
-          experience: priv?.experience || '',
-          linkedin_url: priv?.linkedin_url || '',
-          github_url: priv?.github_url || '',
-          portfolio_url: priv?.portfolio_url || '',
-          private_bio: priv?.private_bio || '',
+          experience: priv?.years_of_experience || priv?.experience || '',
+          linkedin_url: priv?.linkedin_profile || priv?.linkedin_url || '',
+          github_url: priv?.github_profile || priv?.github_url || '',
+          portfolio_url: priv?.portfolio_website || priv?.portfolio_url || '',
+          private_bio: priv?.professional_bio || priv?.private_bio || '',
           // FINANCIAL FIELDS REDACTED / MASKED FOR HR
-          bank_account_number: priv?.bank_account_number ? '•••• •••• ' + priv.bank_account_number.slice(-4) : 'Not Provided',
+          bank_account_number: priv?.account_number || priv?.bank_account_number ? '•••• •••• ' + String(priv.account_number || priv.bank_account_number).slice(-4) : '',
           ifsc_code: '•••• (Restricted)',
           pan_number: '•••• (Restricted)',
           upi_id: priv?.upi_id ? '••••@upi (Restricted)' : '',
         };
       }
 
-      // ADMIN ROLE: Return Full Unrestricted Dataset
+      // ADMIN ROLE: Return Full Decrypted Unrestricted Dataset
       return {
         ...publicData,
-        personal_phone: priv?.phone_number || priv?.personal_phone || member.phone || '',
-        personal_email: priv?.personal_email || '',
+        personal_phone: priv?.personal_mobile || priv?.phone_number || priv?.mobile_number || priv?.alternate_mobile || '',
+        personal_email: priv?.personal_email || priv?.personal_mail || '',
         address_current: priv?.current_address || priv?.address || '',
         address_permanent: priv?.permanent_address || '',
-        emergency_contact_person: priv?.emergency_contact_person || priv?.emergency_contact || '',
-        emergency_contact_phone: priv?.emergency_contact_phone || '',
-        emergency_relationship: priv?.emergency_relationship || '',
-        languages: priv?.languages || [],
+        emergency_contact_person: priv?.emergency_contact_name || priv?.emergency_contact_person || priv?.emergency_contact || '',
+        emergency_contact_phone: priv?.emergency_contact_number || priv?.emergency_contact_phone || '',
+        emergency_relationship: priv?.relationship || priv?.emergency_relationship || '',
+        languages: Array.isArray(priv?.languages_known)
+          ? priv.languages_known
+          : (priv?.languages_known || '').split(',').map((s) => s.trim()).filter(Boolean),
         dob: priv?.date_of_birth || priv?.dob || '',
         blood_group: priv?.blood_group || '',
-        experience: priv?.experience || '',
-        linkedin_url: priv?.linkedin_url || '',
-        github_url: priv?.github_url || '',
-        portfolio_url: priv?.portfolio_url || '',
-        private_bio: priv?.private_bio || '',
-        // FULL UNMASKED FINANCIAL DETAILS FOR ADMIN
+        experience: priv?.years_of_experience || priv?.experience || '',
+        linkedin_url: priv?.linkedin_profile || priv?.linkedin_url || '',
+        github_url: priv?.github_profile || priv?.github_url || '',
+        portfolio_url: priv?.portfolio_website || priv?.portfolio_url || '',
+        private_bio: priv?.professional_bio || priv?.private_bio || '',
+        // FULL UNMASKED DECRYPTED FINANCIAL DETAILS FOR ADMIN
         bank_name: priv?.bank_name || '',
         account_holder: priv?.account_holder_name || member.name,
-        bank_account_number: priv?.bank_account_number || '',
+        bank_account_number: priv?.account_number || priv?.bank_account_number || '',
         ifsc_code: priv?.ifsc_code || '',
         pan_number: priv?.pan_number || '',
         upi_id: priv?.upi_id || '',

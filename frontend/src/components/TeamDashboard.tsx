@@ -40,7 +40,7 @@ import {
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
-import { portalAuthApi, uploadApi, selfProfileApi, notificationApi } from '../services/api';
+import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 
 interface TeamDashboardProps {
   initialUserData: any;
@@ -96,7 +96,20 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
     try {
       const res = await portalAuthApi.getMeProfile();
       if (res.data && res.data.success) {
-        const u = res.data.user;
+        let u = res.data.user;
+        try {
+          const privRes = await privateProfileApi.getPrivateProfile();
+          if (privRes.data && privRes.data.profile) {
+            const p = privRes.data.profile;
+            u = {
+              ...u,
+              email: p.personal_email || u.email,
+              phone: p.personal_mobile || p.phone_number || u.phone,
+              personal_email: p.personal_email,
+              personal_mobile: p.personal_mobile,
+            };
+          }
+        } catch (e) {}
         setProfile(u);
         localStorage.setItem('zenemoo_portal_user', JSON.stringify(u));
         setCooldownInfo(res.data.image_cooldown || {});
