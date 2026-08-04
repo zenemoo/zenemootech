@@ -69,7 +69,7 @@ export const PRESET_HR_TEMPLATES: HRTemplate[] = [
     subject: 'Invitation for Interview — Zenemoo AI Solutions',
     body: `<p>Dear Candidate,</p>
 <p>Thank you for applying for the open position at <strong>Zenemoo AI Solutions</strong>. We were thoroughly impressed by your background and experience.</p>
-<p>We would like to invite you for a 45-minute technical and cultural discussion with our engineering leadership team.</p>
+<p>We would like to invite you for a technical and cultural discussion with our leadership team.</p>
 <p><strong>Interview Details:</strong></p>
 <ul>
   <li><strong>Format:</strong> Google Meet Video Conference</li>
@@ -85,8 +85,8 @@ export const PRESET_HR_TEMPLATES: HRTemplate[] = [
     category: 'Recruitment',
     subject: 'Official Employment Offer — Zenemoo AI Solutions',
     body: `<p>Dear Candidate,</p>
-<p>On behalf of <strong>Zenemoo AI Solutions Pvt. Ltd.</strong>, I am delighted to offer you the position of <strong>Team Specialist</strong> in our engineering division!</p>
-<p>We believe your skills and expertise will be valuable additions to our AI engine team.</p>
+<p>On behalf of <strong>Zenemoo AI Solutions</strong>, I am delighted to offer you the position of <strong>Team Specialist</strong> in our engineering & data operations division!</p>
+<p>We believe your skills and expertise will be valuable additions to our team.</p>
 <p><strong>Key Highlights of Offer:</strong></p>
 <ul>
   <li><strong>Role:</strong> Technical Specialist</li>
@@ -124,6 +124,59 @@ export const PRESET_HR_TEMPLATES: HRTemplate[] = [
 <p>Best regards,</p>`,
   },
   {
+    id: 'data_annotation_update',
+    name: 'Data Annotation Milestone',
+    category: 'AI Operations',
+    subject: 'Data Annotation Project Progress & Quality Audit Status',
+    body: `<p>Dear Partner / Team,</p>
+<p>We are pleased to share the milestone status report for the ongoing <strong>Speech & Data Annotation Program</strong> at Zenemoo AI Solutions.</p>
+<p><strong>Milestone Metrics:</strong></p>
+<ul>
+  <li><strong>Accuracy Audit Score:</strong> 99.4% Verified Quality</li>
+  <li><strong>Transcriptions Completed:</strong> Multi-dialect speech datasets processed</li>
+  <li><strong>Security Compliance:</strong> Encrypted dataset pipeline verified</li>
+</ul>
+<p>Please let us know if additional linguistic tags or metadata classifications are required.</p>
+<p>Best regards,</p>`,
+  },
+  {
+    id: 'performance_review',
+    name: 'Performance Review',
+    category: 'HR Operations',
+    subject: 'Quarterly Performance Evaluation & Feedback Sync',
+    body: `<p>Dear Team Member,</p>
+<p>As part of our commitment to continuous growth and excellence at <strong>Zenemoo AI Solutions</strong>, your quarterly performance evaluation is ready.</p>
+<p><strong>Review Highlights:</strong></p>
+<ul>
+  <li><strong>Core Strengths:</strong> High quality output & reliable task delivery</li>
+  <li><strong>Growth Target:</strong> Advanced specialization in AI automation workflows</li>
+</ul>
+<p>Please select a 30-minute slot for our 1-on-1 feedback session.</p>
+<p>Best regards,</p>`,
+  },
+  {
+    id: 'client_proposal',
+    name: 'Enterprise Client Proposal',
+    category: 'Sales & Business',
+    subject: 'Zenemoo AI Speech & Language Solutions Proposal',
+    body: `<p>Dear Valued Partner,</p>
+<p>Thank you for connecting with <strong>Zenemoo AI Solutions</strong> regarding our speech recognition, transcription, and dataset annotation services.</p>
+<p>Attached is our detailed enterprise service proposal tailored for your technical roadmap.</p>
+<p>We look forward to scheduling a technical walkthrough at your convenience.</p>
+<p>Sincerely,</p>`,
+  },
+  {
+    id: 'security_notice',
+    name: 'Security & System Alert',
+    category: 'IT & Security',
+    subject: 'Important: Platform Access Security Update Required',
+    body: `<p>Dear User,</p>
+<p>This is an automated security notice from <strong>Zenemoo Security Operations</strong>.</p>
+<p>To ensure maximum account safety, please review your portal account settings and update your access password if prompted.</p>
+<p>If you encounter any issues, please contact Technical Support immediately.</p>
+<p>Stay safe,</p>`,
+  },
+  {
     id: 'meeting_reminder',
     name: 'Meeting Reminder',
     category: 'Operations',
@@ -138,12 +191,12 @@ export const PRESET_HR_TEMPLATES: HRTemplate[] = [
 
 export const PRESET_SIGNATURES: HRSignature[] = [
   {
-    id: 'sangita',
-    name: 'Sangita Sahoo',
-    title: 'HR & Quality Assurance Lead',
-    department: 'Human Resources & QA',
-    email: 'sangita@zenemoo.in',
-    phone: '+91 (080) 4920-1100',
+    id: 'support',
+    name: 'Zenemoo Support Team',
+    title: 'Enterprise Customer Operations',
+    department: 'Client Partner Support',
+    email: 'support@zenemoo.in',
+    phone: '+91 (080) 4920-1200',
   },
   {
     id: 'prem',
@@ -154,12 +207,12 @@ export const PRESET_SIGNATURES: HRSignature[] = [
     phone: '+91 (080) 4920-1000',
   },
   {
-    id: 'support',
-    name: 'Zenemoo Support Team',
-    title: 'Enterprise Customer Operations',
-    department: 'Client Partner Support',
-    email: 'support@zenemoo.in',
-    phone: '+91 (080) 4920-1200',
+    id: 'sangita',
+    name: 'Sangita Sahoo',
+    title: 'HR & Quality Assurance Lead',
+    department: 'Human Resources & QA',
+    email: 'sangita@zenemoo.in',
+    phone: '+91 (080) 4920-1100',
   },
 ];
 
@@ -213,7 +266,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // 5. Signature State
-  const [selectedSignatureId, setSelectedSignatureId] = useState<string>('sangita');
+  const [selectedSignatureId, setSelectedSignatureId] = useState<string>('support');
 
   // 6. UI Modals
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -223,8 +276,9 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
   // 7. AI Assistant State
   const [aiPurpose, setAiPurpose] = useState('Interview Invitation');
-  const [aiTone, setAiTone] = useState('Professional');
+  const [aiTone, setAiTone] = useState('Professional & Executive');
   const [aiRecipientName, setAiRecipientName] = useState('');
+  const [aiCustomPrompt, setAiCustomPrompt] = useState('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
   // 8. Auto-Save Draft State
@@ -350,10 +404,10 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
   const handleApplyTemplate = (template: HRTemplate) => {
     setSubject(template.subject);
-    const sig = PRESET_SIGNATURES.find((s) => s.id === selectedSignatureId);
+    const sig = PRESET_SIGNATURES.find((s) => s.id === selectedSignatureId) || PRESET_SIGNATURES[0];
     let fullHtml = template.body;
     if (sig) {
-      fullHtml += `<br/><hr/><p style="color:#06b6d4; font-weight:bold; margin-bottom:2px;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions Pvt. Ltd.</p>`;
+      fullHtml += `<br/><hr/><p style="color:#06b6d4; font-weight:bold; margin-bottom:2px;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | ${sig.email}</p>`;
     }
     setHtmlContent(fullHtml);
     setIsTemplateModalOpen(false);
@@ -361,9 +415,9 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   };
 
   const handleAppendSignature = () => {
-    const sig = PRESET_SIGNATURES.find((s) => s.id === selectedSignatureId);
+    const sig = PRESET_SIGNATURES.find((s) => s.id === selectedSignatureId) || PRESET_SIGNATURES[0];
     if (!sig) return;
-    const sigHtml = `<br/><div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1);"><p style="color:#06b6d4; font-weight:bold; margin-bottom:2px;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions Pvt. Ltd. | ${sig.email}</p></div>`;
+    const sigHtml = `<br/><div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1);"><p style="color:#06b6d4; font-weight:bold; margin-bottom:2px;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | ${sig.email}</p></div>`;
     setHtmlContent((prev) => prev + sigHtml);
     showToast(`Signature for ${sig.name} appended.`, 'success');
   };
@@ -373,19 +427,68 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     setIsGeneratingAi(true);
     setTimeout(() => {
       let aiSubj = `${aiPurpose} — Zenemoo AI Solutions`;
-      let aiBody = `<p>Dear ${aiRecipientName || 'Candidate/Partner'},</p><p>I am writing to reach out regarding <strong>${aiPurpose}</strong> at Zenemoo AI Solutions.</p><p>We are dedicated to building state-of-the-art enterprise AI systems and would love to move forward with our collaboration seamlessly.</p><p>Please let us know your preferred availability or any questions you may have.</p><p>Best regards,</p>`;
+      let recipientText = aiRecipientName ? aiRecipientName : 'Team Member / Valued Client';
+      let customPara = aiCustomPrompt.trim()
+        ? `<p>${aiCustomPrompt.trim().replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`
+        : `<p>I am writing to share an important communication regarding <strong>${aiPurpose}</strong> at Zenemoo AI Solutions. Our enterprise teams are dedicated to maintaining standard-setting quality, security, and continuous innovation across all operations.</p>`;
 
-      if (aiPurpose.toLowerCase().includes('offer')) {
+      let aiBody = `<p>Dear ${recipientText},</p>
+${customPara}
+<p><strong>Key Highlights & Summary:</strong></p>
+<ul>
+  <li><strong>Communication Purpose:</strong> ${aiPurpose}</li>
+  <li><strong>Tone & Protocol:</strong> ${aiTone} Standard</li>
+  <li><strong>Next Action Step:</strong> Please review the details above and confirm receipt or feedback at your earliest convenience.</li>
+</ul>
+<p>If you have any questions or require further clarification, please feel free to reach out to our team.</p>
+<p>Best regards,</p>`;
+
+      if (aiPurpose.includes('Offer')) {
         aiSubj = `Official Employment Offer — Zenemoo AI Solutions`;
-        aiBody = `<p>Dear ${aiRecipientName || 'Candidate'},</p><p>We are delighted to extend a formal offer of employment to join <strong>Zenemoo AI Solutions</strong> as part of our Engineering & HR operations team!</p><p>Please find attached the official offer summary details. We look forward to welcoming you aboard.</p><p>Warm regards,</p>`;
+        aiBody = `<p>Dear ${recipientText},</p>
+<p>On behalf of <strong>Zenemoo AI Solutions</strong>, I am delighted to extend a formal offer of employment for you to join our Engineering & AI Operations team!</p>
+${customPara}
+<p><strong>Offer Highlights & Details:</strong></p>
+<ul>
+  <li><strong>Role:</strong> Technical Specialist / Operations Lead</li>
+  <li><strong>Department:</strong> AI Platform & Quality Engineering</li>
+  <li><strong>Work Location:</strong> Zenemoo Headquarters / Hybrid Remote</li>
+</ul>
+<p>Please review the details attached and return your signed acceptance within three business days.</p>
+<p>Warm regards,</p>`;
+      } else if (aiPurpose.includes('Annotation') || aiPurpose.includes('Data')) {
+        aiSubj = `Data Annotation Project Progress Update — Zenemoo AI Solutions`;
+        aiBody = `<p>Dear ${recipientText},</p>
+<p>We are pleased to present the latest milestone progress update for the ongoing <strong>Speech & Data Annotation Program</strong> at Zenemoo AI Solutions.</p>
+${customPara}
+<p><strong>Milestone Metrics & Quality Audit:</strong></p>
+<ul>
+  <li><strong>Quality Audit Score:</strong> 99.4% Accuracy Compliance</li>
+  <li><strong>Transcriptions Completed:</strong> Multi-dialect speech datasets processed</li>
+  <li><strong>Pipeline Security:</strong> Encrypted dataset delivery verified</li>
+</ul>
+<p>Please let us know if additional linguistic tags or metadata classifications are required for your dataset pipeline.</p>
+<p>Best regards,</p>`;
+      } else if (aiPurpose.includes('Performance')) {
+        aiSubj = `Performance Evaluation & Growth Feedback — Zenemoo AI Solutions`;
+        aiBody = `<p>Dear ${recipientText},</p>
+<p>As part of our commitment to continuous growth and excellence at <strong>Zenemoo AI Solutions</strong>, your performance evaluation summary is ready for review.</p>
+${customPara}
+<p><strong>Evaluation Summary:</strong></p>
+<ul>
+  <li><strong>Core Strengths:</strong> Consistently high quality output & reliable execution</li>
+  <li><strong>Growth Target:</strong> Expansion into automated AI verification tools</li>
+</ul>
+<p>Let's schedule a 1-on-1 session this week to discuss your goals for the upcoming quarter.</p>
+<p>Best regards,</p>`;
       }
 
       setSubject(aiSubj);
       setHtmlContent(aiBody);
       setIsGeneratingAi(false);
       setIsAiModalOpen(false);
-      showToast('✨ Email generated via AI successfully!', 'success');
-    }, 1200);
+      showToast('✨ High quality structured email generated!', 'success');
+    }, 1000);
   };
 
   // Attachment Upload Handler with Size Validation & Base64 Reader
@@ -1158,7 +1261,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
             <div className="space-y-4 font-mono">
               <div>
-                <label className="block text-slate-300 font-bold mb-1.5">Email Purpose / Type</label>
+                <label className="block text-slate-300 font-bold mb-1.5">Email Purpose / Category</label>
                 <select
                   value={aiPurpose}
                   onChange={(e) => setAiPurpose(e.target.value)}
@@ -1166,9 +1269,15 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 >
                   <option value="Interview Invitation" className="bg-[#090d16]">Interview Invitation</option>
                   <option value="Job Offer Letter" className="bg-[#090d16]">Job Offer Letter</option>
-                  <option value="Project Assignment" className="bg-[#090d16]">Project Assignment</option>
-                  <option value="Client Follow-up" className="bg-[#090d16]">Client Follow-up</option>
-                  <option value="Performance Feedback" className="bg-[#090d16]">Performance Feedback</option>
+                  <option value="Welcome & Onboarding" className="bg-[#090d16]">Welcome & Onboarding</option>
+                  <option value="Project Assignment & Deliverables" className="bg-[#090d16]">Project Assignment & Deliverables</option>
+                  <option value="Data Annotation Project Update" className="bg-[#090d16]">Data Annotation Project Update</option>
+                  <option value="Performance Review & Feedback" className="bg-[#090d16]">Performance Review & Feedback</option>
+                  <option value="Client Business Proposal" className="bg-[#090d16]">Client Business Proposal</option>
+                  <option value="Meeting Request & Schedule" className="bg-[#090d16]">Meeting Request & Schedule</option>
+                  <option value="General Update / Announcement" className="bg-[#090d16]">General Update / Announcement</option>
+                  <option value="Urgent Notice / Security Alert" className="bg-[#090d16]">Urgent Notice / Security Alert</option>
+                  <option value="Follow-Up & Reminder" className="bg-[#090d16]">Follow-Up & Reminder</option>
                 </select>
               </div>
 
@@ -1179,9 +1288,11 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                   onChange={(e) => setAiTone(e.target.value)}
                   className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
                 >
-                  <option value="Professional" className="bg-[#090d16]">Professional & Executive</option>
-                  <option value="Warm & Welcoming" className="bg-[#090d16]">Warm & Welcoming</option>
-                  <option value="Direct & Urgent" className="bg-[#090d16]">Direct & Urgent</option>
+                  <option value="Professional & Executive" className="bg-[#090d16]">Professional & Executive</option>
+                  <option value="Warm, Welcoming & Friendly" className="bg-[#090d16]">Warm, Welcoming & Friendly</option>
+                  <option value="Direct, Firm & Urgent" className="bg-[#090d16]">Direct, Firm & Urgent</option>
+                  <option value="Persuasive & Engaging" className="bg-[#090d16]">Persuasive & Engaging</option>
+                  <option value="Formal Corporate" className="bg-[#090d16]">Formal Corporate</option>
                 </select>
               </div>
 
@@ -1189,10 +1300,24 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 <label className="block text-slate-300 font-bold mb-1.5">Recipient Name / Context</label>
                 <input
                   type="text"
-                  placeholder="e.g. Alex Rivera (Senior Developer Candidate)"
+                  placeholder="e.g. Alex Rivera (Data Annotation Specialist / Client Lead)"
                   value={aiRecipientName}
                   onChange={(e) => setAiRecipientName(e.target.value)}
                   className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5 flex items-center justify-between">
+                  <span>Describe Details or Write a Paragraph Prompt</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Optional</span>
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Write details or a full paragraph here (e.g. Mention that the speech dataset annotation project is 99% complete, final accuracy audit passed, and request scheduling a review meeting for Friday at 3 PM)..."
+                  value={aiCustomPrompt}
+                  onChange={(e) => setAiCustomPrompt(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs focus:outline-none focus:border-purple-400 leading-relaxed"
                 />
               </div>
 
@@ -1202,7 +1327,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
                 disabled={isGeneratingAi}
                 className="w-full min-h-[44px] py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold font-display text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-purple-600/20"
               >
-                {isGeneratingAi ? <RefreshCw className="w-4 h-4 animate-spin text-white" /> : <Wand2 className="w-4 h-4 text-white" />} Generate Email with Groq AI
+                {isGeneratingAi ? <RefreshCw className="w-4 h-4 animate-spin text-white" /> : <Wand2 className="w-4 h-4 text-white" />} Generate High Quality Structured Email
               </button>
             </div>
           </div>

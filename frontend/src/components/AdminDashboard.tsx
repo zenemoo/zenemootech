@@ -5450,7 +5450,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* 5. CORPORATE FOOTER LAYOUT */}
         <footer className="border-t border-white/5 bg-[#08080b]/60 px-6 py-6 text-center md:flex md:items-center md:justify-between text-[11px] font-mono text-slate-500 shrink-0">
           <div className="space-y-1 text-left">
-            <p className="font-bold text-slate-400">© 2026 Zenemoo AI Solutions Pvt. Ltd.</p>
+            <p className="font-bold text-slate-400">© 2026 Zenemoo AI Solutions</p>
             <p className="text-[10px]">Powered by Zenemoo Enterprise AI Platform • Automatic Reordering Engine</p>
           </div>
           <div className="flex items-center gap-4 mt-4 md:mt-0 justify-center">

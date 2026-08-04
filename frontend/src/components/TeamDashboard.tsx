@@ -1141,7 +1141,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         {/* Dashboard Responsive Footer */}
         <footer className="py-4 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-center sm:text-left">
-            &copy; {new Date().getFullYear()} Zenemoo AI Solutions Pvt. Ltd. Powered by Zenemoo Enterprise AI Platform
+            &copy; {new Date().getFullYear()} Zenemoo AI Solutions. Powered by Zenemoo Enterprise AI Platform
           </div>
           <div className="flex items-center gap-4 text-[11px]">
             <span className="hover:text-slate-400 cursor-pointer">Documentation</span>
