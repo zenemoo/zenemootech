@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { decryptField } from '../utils/cryptoUtils.js';
 
@@ -18,19 +17,19 @@ const decryptObjectFields = (obj) => {
 };
 
 /**
- * Generates a deterministic, unique Employee ID for each team member
+ * Directly sources Employee ID from Supabase `team.employee_id` column.
+ * Fallback matches TeamMemberProfilePage.tsx: ZNM- + first 5 chars of member.id
  */
-const getUniqueEmployeeId = (member, priv) => {
-  if (member.employee_id && typeof member.employee_id === 'string' && member.employee_id.trim() !== '' && member.employee_id.trim() !== 'ZNM-E861') {
+const getEmployeeId = (member, priv) => {
+  if (member.employee_id && typeof member.employee_id === 'string' && member.employee_id.trim() !== '') {
     return member.employee_id.trim();
   }
   if (priv && priv.employee_id && typeof priv.employee_id === 'string' && priv.employee_id.trim() !== '') {
     return priv.employee_id.trim();
   }
-  // Generate deterministic hash-based ZNM- ID (e.g. ZNM-30A53, ZNM-3DDC6)
-  const seed = String(member.id || member.email || member.name || 'ZNM_EMP');
-  const hash = crypto.createHash('md5').update(seed).digest('hex').substring(0, 5).toUpperCase();
-  return `ZNM-${hash}`;
+  // Fallback matching public profile page formula: ZNM- + first 5 chars of record id
+  const rawId = String(member.id || '202401').replace(/-/g, '').substring(0, 5).toUpperCase();
+  return `ZNM-${rawId}`;
 };
 
 /**
@@ -41,7 +40,7 @@ export const getTeamDirectoryMembers = async (req, res) => {
   try {
     const userRole = req.user?.role || 'team';
 
-    // 1. Fetch all members from primary `team` table
+    // 1. Fetch all members from primary `team` table in Supabase
     let teamQuery = supabase
       ? supabase.from('team').select('*').order('position', { ascending: true })
       : null;
@@ -80,12 +79,12 @@ export const getTeamDirectoryMembers = async (req, res) => {
         (member.email ? privateProfilesMap[member.email.toLowerCase()] : null);
 
       const priv = rawPriv ? decryptObjectFields(rawPriv) : null;
-      const uniqueEmpId = getUniqueEmployeeId(member, priv);
+      const explicitEmployeeId = getEmployeeId(member, priv);
 
       // Base Public Record (Visible to Team Members, HR, Admin)
       const publicData = {
         id: member.id,
-        employee_id: uniqueEmpId,
+        employee_id: explicitEmployeeId,
         position_num: member.position || 0,
         position: member.position_title || member.position || member.designation || 'Specialist',
         name: member.name,
