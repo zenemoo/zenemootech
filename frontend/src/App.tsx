@@ -25,6 +25,7 @@ import { VerifyOtpPage } from './components/VerifyOtpPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
+import { NotFoundPage } from './components/NotFoundPage';
 
 import { TeamLoginPage } from './components/TeamLoginPage';
 import { HRLoginPage } from './components/HRLoginPage';
@@ -33,7 +34,7 @@ import { HRDashboard } from './components/HRDashboard';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | '404'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -55,18 +56,7 @@ export function App() {
       const hash = window.location.hash;
       const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
 
-      // Dynamic robots noindex protection for admin and standalone email routes
-      let robotsMeta = document.querySelector('meta[name="robots"]');
-      if (path === '/email' || path === '/admin' || path.startsWith('/portal')) {
-        if (!robotsMeta) {
-          robotsMeta = document.createElement('meta');
-          robotsMeta.setAttribute('name', 'robots');
-          document.head.appendChild(robotsMeta);
-        }
-        robotsMeta.setAttribute('content', 'noindex, nofollow');
-      } else if (robotsMeta) {
-        robotsMeta.setAttribute('content', 'index, follow');
-      }
+      // Dynamic robots protection set below based on matchedRoute
 
       // Check if path or hash matches secret private admin route
       const hasActiveAdminToken = typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
@@ -79,10 +69,30 @@ export function App() {
         hash === '#portal-9KqvA2Nz8' ||
         (hasActiveAdminToken && (path.startsWith('/portal') || hash.includes('portal') || path === '/admin'));
 
+      let matchedRoute:
+        | 'home'
+        | 'admin'
+        | 'email'
+        | 'team-login'
+        | 'team-dashboard'
+        | 'hr-login'
+        | 'hr-dashboard'
+        | 'team-directory'
+        | 'team-profile'
+        | 'opportunities'
+        | 'opportunity-detail'
+        | 'privacy'
+        | 'terms'
+        | 'forgot-password'
+        | 'forgot-password-verify'
+        | 'forgot-password-reset'
+        | 'zenemooai'
+        | '404' = 'home';
+
       if (isSecretAdminRoute) {
-        setCurrentRoute('admin');
+        matchedRoute = 'admin';
       } else if (path === '/email' || hash === '#email' || hash === '#/email') {
-        setCurrentRoute('email');
+        matchedRoute = 'email';
       } else if (
         path === '/team/dashboard' ||
         path === '/team/dashboard/' ||
@@ -90,15 +100,15 @@ export function App() {
         hash === '#/team/dashboard' ||
         hash === '#team-dashboard'
       ) {
-        setCurrentRoute('team-dashboard');
+        matchedRoute = 'team-dashboard';
       } else if (path === '/team-login' || hash === '#team-login' || hash === '#/team-login') {
         const token = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_token');
         const expiry = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_expiry');
         const isNotExpired = !expiry || parseInt(expiry, 10) > Date.now();
         if (token && isNotExpired && portalUser && (portalUser.role === 'team_member' || portalUser.role === 'admin')) {
-          setCurrentRoute('team-dashboard');
+          matchedRoute = 'team-dashboard';
         } else {
-          setCurrentRoute('team-login');
+          matchedRoute = 'team-login';
         }
       } else if (
         path === '/hr/dashboard' ||
@@ -107,40 +117,40 @@ export function App() {
         hash === '#/hr/dashboard' ||
         hash === '#hr-dashboard'
       ) {
-        setCurrentRoute('hr-dashboard');
+        matchedRoute = 'hr-dashboard';
       } else if (path === '/hr-login' || hash === '#hr-login' || hash === '#/hr-login') {
         const token = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_token');
         const expiry = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_expiry');
         const isNotExpired = !expiry || parseInt(expiry, 10) > Date.now();
         if (token && isNotExpired && portalUser && (portalUser.role === 'hr' || portalUser.role === 'admin')) {
-          setCurrentRoute('hr-dashboard');
+          matchedRoute = 'hr-dashboard';
         } else {
-          setCurrentRoute('hr-login');
+          matchedRoute = 'hr-login';
         }
       } else if (hash === '#admin' || path === '/admin') {
         window.history.replaceState(null, '', '/');
         window.location.hash = '';
-        setCurrentRoute('home');
+        matchedRoute = 'home';
       } else if (path === '/forgot-password' || hash === '#forgot-password' || hash === '#/forgot-password') {
-        setCurrentRoute('forgot-password');
+        matchedRoute = 'forgot-password';
       } else if (path === '/forgot-password/verify' || hash === '#forgot-password/verify' || hash === '#/forgot-password/verify') {
-        setCurrentRoute('forgot-password-verify');
+        matchedRoute = 'forgot-password-verify';
       } else if (path === '/forgot-password/reset' || hash === '#forgot-password/reset' || hash === '#/forgot-password/reset') {
-        setCurrentRoute('forgot-password-reset');
+        matchedRoute = 'forgot-password-reset';
       } else if (path === '/zenemooai' || path === '/ai' || hash === '#zenemooai' || hash === '#ai') {
-        setCurrentRoute('zenemooai');
+        matchedRoute = 'zenemooai';
       } else if (path === '/team-directory' || path === '/team-directory/' || hash === '#team-directory' || hash === '#full-team') {
-        setCurrentRoute('team-directory');
+        matchedRoute = 'team-directory';
       } else if (path.startsWith('/team/') || hash.startsWith('#team/')) {
         const slug = path.startsWith('/team/')
           ? path.replace('/team/', '').replace(/^\//, '')
           : hash.replace('#team/', '').replace(/^\//, '');
         setSelectedTeamSlug(slug || '');
-        setCurrentRoute('team-profile');
+        matchedRoute = 'team-profile';
       } else if (path === '/privacy' || hash === '#privacy' || hash === '#privacy-policy') {
-        setCurrentRoute('privacy');
+        matchedRoute = 'privacy';
       } else if (path === '/terms' || hash === '#terms' || hash === '#terms-and-conditions' || hash === '#terms-conditions') {
-        setCurrentRoute('terms');
+        matchedRoute = 'terms';
       } else if (
         path === '/opportunities' ||
         path === '/projects' ||
@@ -153,7 +163,7 @@ export function App() {
         hash === '#desicrew-contributors' ||
         hash === '#desicrew'
       ) {
-        setCurrentRoute('opportunities');
+        matchedRoute = 'opportunities';
       } else if (path.startsWith('/opportunity/') || path.startsWith('/program/') || hash.startsWith('#opportunity/') || hash.startsWith('#program/')) {
         const oppId = path.startsWith('/opportunity/')
           ? path.replace('/opportunity/', '')
@@ -161,16 +171,38 @@ export function App() {
           ? path.replace('/program/', '')
           : hash.replace('#opportunity/', '').replace('#program/', '');
         setSelectedOpportunityId(oppId || '');
-        setCurrentRoute('opportunity-detail');
+        matchedRoute = 'opportunity-detail';
+      } else if (path === '/' || path === '') {
+        matchedRoute = 'home';
       } else {
-        setCurrentRoute('home');
+        matchedRoute = '404';
       }
 
-      // Update document title & canonical tag for SEO indexing
+      setCurrentRoute(matchedRoute);
+
+      // Dynamic robots noindex protection for admin, standalone email, and 404 routes
+      let robotsMeta = document.querySelector('meta[name="robots"]');
+      if (path === '/email' || path === '/admin' || path.startsWith('/portal') || matchedRoute === '404') {
+        if (!robotsMeta) {
+          robotsMeta = document.createElement('meta');
+          robotsMeta.setAttribute('name', 'robots');
+          document.head.appendChild(robotsMeta);
+        }
+        robotsMeta.setAttribute('content', 'noindex, follow');
+      } else if (robotsMeta) {
+        robotsMeta.setAttribute('content', 'index, follow');
+      }
+
+      // Update document title, canonical tag & meta description for SEO indexing
       let pageTitle = 'Zenemoo — AI Data Solutions, Multilingual Speech Annotation & AI Training Datasets';
       let canonicalUrl = 'https://www.zenemoo.in/';
+      let metaDescription = 'Zenemoo provides enterprise AI data solutions, multilingual speech annotation, data collection, and custom AI dataset creation.';
 
-      if (path === '/terms' || hash.includes('#terms')) {
+      if (matchedRoute === '404') {
+        pageTitle = '404 – Page Not Found | Zenemoo';
+        canonicalUrl = `https://www.zenemoo.in${path}`;
+        metaDescription = "The page you requested could not be found. Explore Zenemoo's AI language services, data annotation, transcription, and enterprise solutions.";
+      } else if (path === '/terms' || hash.includes('#terms')) {
         pageTitle = 'Terms & Conditions — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/terms';
       } else if (path === '/privacy' || hash.includes('#privacy')) {
@@ -196,6 +228,14 @@ export function App() {
         document.head.appendChild(canonicalMeta);
       }
       canonicalMeta.setAttribute('href', canonicalUrl);
+
+      let descMeta = document.querySelector('meta[name="description"]');
+      if (!descMeta) {
+        descMeta = document.createElement('meta');
+        descMeta.setAttribute('name', 'description');
+        document.head.appendChild(descMeta);
+      }
+      descMeta.setAttribute('content', metaDescription);
     };
 
     checkRoute();
@@ -331,6 +371,8 @@ export function App() {
             setCurrentRoute('opportunities');
           }}
         />
+      ) : currentRoute === '404' ? (
+        <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
         <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
           {/* Interactive Mouse Spotlight */}

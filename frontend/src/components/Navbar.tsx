@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, ArrowLeft, Briefcase } from 'lucide-react';
+import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, ArrowLeft, Briefcase, Home } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
@@ -22,12 +22,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
   }, []);
 
   const navLinks = [
-    { name: 'Services', href: '#services', icon: Mic },
-    { name: 'Languages', href: '#languages', icon: Languages },
-    { name: 'Opportunities', href: '/opportunities', icon: Briefcase },
-    { name: 'DesiCrew Partner', href: '#partner', icon: Handshake },
-    { name: 'Team', href: '#team', icon: Users },
-    { name: 'Contact', href: '#contact', icon: Mail },
+    { name: 'Home', href: '/', icon: Home },
+    { name: 'Services', href: '/#services', icon: Mic },
+    { name: 'Languages', href: '/#languages', icon: Languages },
+    { name: 'Opportunities', href: '/#opportunities', icon: Briefcase },
+    { name: 'Team', href: '/team-directory', icon: Users },
+    { name: 'Contact', href: '/#contact', icon: Mail },
   ];
 
   return (
@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Logo & Company Name (ZENEMOO) */}
-          <a href="#" className="flex items-center gap-3 group shrink-0">
+          <a href="/" className="flex items-center gap-3 group shrink-0">
             <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300">
               <img
                 src="/assets/logo.png"
