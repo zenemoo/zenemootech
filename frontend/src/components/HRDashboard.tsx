@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
+import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
 import { portalAuthApi, emailApi, notificationApi } from '../services/api';
 
 interface HRDashboardProps {
@@ -841,114 +842,95 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
             <SecurePrivateProfileEditor showToast={showToast} role="hr" />
           )}
 
-          {/* TAB 3: BREVO EMAIL SYSTEM */}
+          {/* TAB 3: ENTERPRISE BREVO EMAIL SYSTEM */}
           {activeTab === 'email' && (profile.email_access || profile.role === 'admin') && (
-            <div className="glass-panel p-5 sm:p-8 rounded-3xl border border-emerald-500/30 space-y-6 font-mono text-xs shadow-2xl">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold font-display text-white flex items-center gap-2">
-                    <Mail className="w-5 h-5 text-emerald-400" /> Enterprise Brevo Email Engine
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">Send authorized emails to team members, candidates, and client partners.</p>
-                </div>
-
-                <div className="flex items-center gap-2 bg-white/[0.04] p-1 rounded-xl border border-white/10">
+            <div className="space-y-6">
+              {/* Sub-navigation Tabs Bar */}
+              <div className="flex items-center justify-between bg-white/[0.03] p-2 rounded-2xl border border-white/10 font-mono text-xs shadow-lg">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setEmailSubTab('compose')}
-                    className={`px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer ${
-                      emailSubTab === 'compose' ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                    className={`px-5 py-2 rounded-xl font-bold transition-all cursor-pointer ${
+                      emailSubTab === 'compose'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-lg'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Compose
+                    ✍️ Compose Email
                   </button>
                   <button
                     onClick={() => setEmailSubTab('history')}
-                    className={`px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer ${
-                      emailSubTab === 'history' ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                    className={`px-5 py-2 rounded-xl font-bold transition-all cursor-pointer ${
+                      emailSubTab === 'history'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-lg'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Sent History ({emailLogs.length})
+                    📜 Sent History ({emailLogs.length})
                   </button>
                 </div>
+
+                <button
+                  onClick={loadEmailData}
+                  className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 flex items-center gap-1.5 cursor-pointer font-bold"
+                  title="Refresh Email System"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                </button>
               </div>
 
               {emailSubTab === 'compose' ? (
-                <form onSubmit={handleSendEmail} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 font-bold mb-1.5">Sender Email Address</label>
-                      <input
-                        type="email"
-                        disabled
-                        value={emailComposer.sender}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 text-slate-400 font-mono text-xs cursor-not-allowed min-h-[44px]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-bold mb-1.5">Recipients (Comma Separated) *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. candidate@gmail.com, team@zenemoo.in"
-                        value={emailComposer.recipients}
-                        onChange={(e) => setEmailComposer({ ...emailComposer, recipients: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-emerald-400 min-h-[44px]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1.5">Subject *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Zenemoo HR Updates & Opportunity Follow-up"
-                      value={emailComposer.subject}
-                      onChange={(e) => setEmailComposer({ ...emailComposer, subject: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-emerald-400 min-h-[44px]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-bold mb-1.5">Message Body Content *</label>
-                    <textarea
-                      rows={6}
-                      required
-                      placeholder="Type message content here..."
-                      value={emailComposer.html}
-                      onChange={(e) => setEmailComposer({ ...emailComposer, html: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs focus:outline-none focus:border-emerald-400 resize-none"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSendingEmail}
-                    className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-black font-bold font-display text-xs flex items-center gap-2 cursor-pointer shadow-lg min-h-[44px]"
-                  >
-                    {isSendingEmail ? <RefreshCw className="w-4 h-4 animate-spin text-black" /> : <Send className="w-4 h-4 text-black" />} Dispatch Email via Brevo
-                  </button>
-                </form>
+                <EnterpriseHREmailComposer
+                  showToast={showToast}
+                  userProfile={profile}
+                  onEmailSentSuccess={loadEmailData}
+                />
               ) : (
-                <div className="space-y-3 font-mono text-xs">
-                  {emailLogs.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400">No email history logs found.</div>
-                  ) : (
-                    emailLogs.map((log) => (
-                      <div key={log.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between gap-4">
-                        <div className="space-y-1 truncate">
-                          <div className="font-bold text-white text-sm truncate">{log.subject}</div>
-                          <div className="text-[11px] text-slate-400 truncate">
-                            To: {Array.isArray(log.recipients) ? log.recipients.join(', ') : log.recipients}
+                <div className="glass-panel p-5 sm:p-8 rounded-3xl border border-emerald-500/30 space-y-6 font-mono text-xs shadow-2xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold font-display text-white flex items-center gap-2">
+                        <Mail className="w-5 h-5 text-emerald-400" /> Brevo Outbound History &amp; Delivery Telemetry
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">Audit log of all authorized outbound HR communications.</p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold shrink-0">
+                      Total Dispatched: {emailLogs.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 font-sans">
+                    {emailLogs.length === 0 ? (
+                      <div className="p-12 text-center space-y-2 glass-panel rounded-3xl border border-white/5">
+                        <Mail className="w-10 h-10 text-slate-600 mx-auto" />
+                        <p className="text-slate-400 font-mono text-xs">No sent email history recorded yet.</p>
+                      </div>
+                    ) : (
+                      emailLogs.map((log) => (
+                        <div
+                          key={log.id}
+                          className="p-5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg"
+                        >
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-white text-sm font-sans">{log.subject}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-mono font-bold">
+                                ✓ DELIVERED (BREVO SMTP)
+                              </span>
+                            </div>
+                            <div className="text-xs font-mono text-slate-300 truncate">
+                              To: {Array.isArray(log.recipients) ? log.recipients.join(', ') : log.recipients}
+                            </div>
+                            {log.sender && (
+                              <div className="text-[11px] font-mono text-slate-400">
+                                From: {log.sender} &bull; Date: {log.created_at ? new Date(log.created_at).toLocaleString() : 'Recent'}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold shrink-0">
-                          ✓ SENT
-                        </span>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>
