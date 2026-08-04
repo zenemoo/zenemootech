@@ -123,22 +123,29 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
     const cleanPhone = formatText(m.personal_phone);
     const cleanEmail = formatText(m.personal_email);
     const cleanUpi = formatText(m.upi_id);
+    const posStr = String(m.position || '');
+    const nameStr = String(m.name || '');
+    const empIdStr = String(m.employee_id || '');
+    const desigStr = String(m.designation || '');
+    const deptStr = String(m.department || '');
+    const badgeStr = String(m.badge || '');
+    const compEmailStr = String(m.company_email || '');
 
     const matchesSearch =
       !q ||
-      m.name.toLowerCase().includes(q) ||
-      m.employee_id.toLowerCase().includes(q) ||
-      (m.position && m.position.toLowerCase().includes(q)) ||
-      m.designation.toLowerCase().includes(q) ||
-      m.department.toLowerCase().includes(q) ||
-      m.badge.toLowerCase().includes(q) ||
-      m.company_email.toLowerCase().includes(q) ||
+      nameStr.toLowerCase().includes(q) ||
+      empIdStr.toLowerCase().includes(q) ||
+      posStr.toLowerCase().includes(q) ||
+      desigStr.toLowerCase().includes(q) ||
+      deptStr.toLowerCase().includes(q) ||
+      badgeStr.toLowerCase().includes(q) ||
+      compEmailStr.toLowerCase().includes(q) ||
       (cleanPhone && cleanPhone.toLowerCase().includes(q)) ||
       (cleanEmail && cleanEmail.toLowerCase().includes(q)) ||
       (cleanUpi && cleanUpi.toLowerCase().includes(q)) ||
-      (Array.isArray(m.skills) && m.skills.some((s) => s.toLowerCase().includes(q)));
+      (Array.isArray(m.skills) && m.skills.some((s) => String(s || '').toLowerCase().includes(q)));
 
-    const matchesDept = selectedDept === 'all' || m.department.toLowerCase() === selectedDept.toLowerCase();
+    const matchesDept = selectedDept === 'all' || deptStr.toLowerCase() === selectedDept.toLowerCase();
 
     const matchesStatus =
       selectedStatusFilter === 'all' ||

@@ -86,7 +86,7 @@ export const getTeamDirectoryMembers = async (req, res) => {
         id: member.id,
         employee_id: explicitEmployeeId,
         position_num: member.position || 0,
-        position: member.position_title || member.position || member.designation || 'Specialist',
+        position: String(member.position_title || member.position || member.designation || 'Specialist'),
         name: member.name,
         photo: member.image_url || member.photo || '/assets/executive.png',
         designation: member.designation || 'Specialist',
