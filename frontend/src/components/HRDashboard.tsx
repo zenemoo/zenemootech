@@ -69,6 +69,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
 
   const [cooldownInfo, setCooldownInfo] = useState<any>({});
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
 
   // Full Notification System State
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -231,6 +232,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        setIsNoticeDismissed(true);
+        setProfile((prev: any) => ({ ...prev, temporary_password: false, password_changed: true }));
+        await fetchProfile();
       } else {
         showToast(res.data?.message || 'Password change failed.', 'error');
       }
@@ -746,17 +750,17 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         {/* 4. SCROLLABLE MAIN CONTENT AREA (<main> handles scrolling) */}
         <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto w-full">
           {/* First Time Login Security Prompt Banner */}
-          {profile && (profile.temporary_password === true || profile.password_changed === false) && (
-            <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs shadow-xl animate-in fade-in duration-300">
-              <div className="flex items-center gap-3">
+          {profile && !isNoticeDismissed && (profile.temporary_password === true || profile.password_changed === false) && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs shadow-xl animate-in fade-in duration-300 relative">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
                   <Key className="w-5 h-5" />
                 </div>
-                <div className="space-y-0.5">
-                  <h4 className="font-bold text-white text-xs sm:text-sm flex items-center gap-2">
+                <div className="space-y-0.5 min-w-0 flex-1">
+                  <h4 className="font-bold text-white text-xs sm:text-sm flex items-center gap-2 truncate">
                     ⚠️ First-Time Login Notice — Action Recommended
                   </h4>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] text-slate-300 leading-normal">
                     You are currently using a temporary password. Please update your password &amp; complete your private profile.
                   </p>
                 </div>
@@ -775,16 +779,25 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                 >
                   Update Profile &rarr;
                 </button>
+                <button
+                  onClick={() => setIsNoticeDismissed(true)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Dismiss notice"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
           )}
 
           {/* Top Metric Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 font-mono text-xs">
-            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-purple-500/30 flex items-center justify-between shadow-lg">
-              <div className="space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Assigned Position</span>
-                <span className="text-sm sm:text-base font-bold text-white block truncate">{profile.designation || 'HR Operations Lead'}</span>
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-purple-500/30 flex items-center justify-between gap-3 shadow-lg min-w-0">
+              <div className="space-y-1 min-w-0 flex-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block truncate">Assigned Position</span>
+                <span className="text-xs sm:text-sm font-bold text-white block truncate font-display" title={profile.designation || 'HR Operations Lead'}>
+                  {profile.designation || 'HR Operations Lead'}
+                </span>
                 <span className="text-[10px] text-purple-400 block truncate">{profile.department || 'Human Resources'}</span>
               </div>
               <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
@@ -792,10 +805,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               </div>
             </div>
 
-            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/30 flex items-center justify-between shadow-lg">
-              <div className="space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Company Email Permission</span>
-                <span className="text-sm sm:text-base font-bold text-emerald-300 block truncate">
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/30 flex items-center justify-between gap-3 shadow-lg min-w-0">
+              <div className="space-y-1 min-w-0 flex-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block truncate">Company Email Permission</span>
+                <span className="text-xs sm:text-sm font-bold text-emerald-300 block truncate">
                   {profile.email_access || profile.role === 'admin' ? '✓ Email Allowed' : '🔒 Restricted'}
                 </span>
                 <span className="text-[10px] text-emerald-400 block truncate">Brevo Enterprise Engine</span>
@@ -805,11 +818,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               </div>
             </div>
 
-            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-cyan-500/30 flex items-center justify-between shadow-lg sm:col-span-2 lg:col-span-1">
-              <div className="space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">HR Employee ID</span>
-                <span className="text-sm sm:text-base font-bold text-cyan-300 block truncate">{profile.employee_id || 'ZNM-3DOC6'}</span>
-                <span className="text-[10px] text-cyan-400 block truncate">Joined: {profile.joining_date || 'Active Roster'}</span>
+            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-cyan-500/30 flex items-center justify-between gap-3 shadow-lg sm:col-span-2 lg:col-span-1 min-w-0">
+              <div className="space-y-1 min-w-0 flex-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block truncate">HR Employee ID</span>
+                <span className="text-xs sm:text-sm font-bold text-cyan-300 block truncate" title={profile.employee_id || 'ZNM-3DOC6'}>
+                  {profile.employee_id || 'ZNM-3DOC6'}
+                </span>
+                <span className="text-[10px] text-cyan-400 block truncate">Joined: {profile.joining_date || 'Active'}</span>
               </div>
               <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0">
                 <UserCheck className="w-5 h-5" />
