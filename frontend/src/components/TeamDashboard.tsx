@@ -3,29 +3,33 @@ import {
   User,
   Shield,
   Key,
-  Bell,
   LogOut,
   Clock,
   CheckCircle,
   AlertTriangle,
-  Upload,
   Save,
   Lock,
   Eye,
   EyeOff,
   Briefcase,
   FileText,
-  Calendar,
   Sparkles,
   RefreshCw,
-  ExternalLink,
   Award,
-  Globe,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  ArrowLeft,
   Camera,
+  UserCheck,
+  Building,
+  Menu,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
-import { portalAuthApi, selfProfileApi, uploadApi } from '../services/api';
+import { portalAuthApi, uploadApi, selfProfileApi } from '../services/api';
 
 interface TeamDashboardProps {
   initialUserData: any;
@@ -33,7 +37,11 @@ interface TeamDashboardProps {
 }
 
 export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password'>('overview');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [searchFilterQuery, setSearchFilterQuery] = useState('');
+
   const [profile, setProfile] = useState<any>(() => {
     if (initialUserData && Object.keys(initialUserData).length > 0) return initialUserData;
     try {
@@ -43,21 +51,11 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
       return {};
     }
   });
+
   const [cooldownInfo, setCooldownInfo] = useState<any>({});
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-
-  // Editable Profile Form State
-  const [editBio, setEditBio] = useState('');
-  const [editSkills, setEditSkills] = useState('');
-  const [editLanguages, setEditLanguages] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editLinkedin, setEditLinkedin] = useState('');
-  const [editGithub, setEditGithub] = useState('');
-  const [editTwitter, setEditTwitter] = useState('');
-  const [editPortfolio, setEditPortfolio] = useState('');
 
   // Password Change Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -81,14 +79,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         setProfile(u);
         localStorage.setItem('zenemoo_portal_user', JSON.stringify(u));
         setCooldownInfo(res.data.image_cooldown || {});
-        setEditBio(u.bio || '');
-        setEditSkills(Array.isArray(u.skills) ? u.skills.join(', ') : u.skills || '');
-        setEditLanguages(Array.isArray(u.languages) ? u.languages.join(', ') : u.languages || '');
-        setEditPhone(u.phone || '');
-        setEditLinkedin(u.linkedin || '');
-        setEditGithub(u.github || '');
-        setEditTwitter(u.twitter || '');
-        setEditPortfolio(u.portfolio || '');
       }
     } catch (err: any) {
       console.warn('Failed to fetch profile:', err);
@@ -110,51 +100,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
     }
   }, [profile]);
 
-  // Calculate Profile Completion %
-  const calculateCompletion = () => {
-    let score = 50; // Base score for credentials & read-only fields
-    if (profile.bio) score += 10;
-    if (profile.skills && profile.skills.length > 0) score += 10;
-    if (profile.languages && profile.languages.length > 0) score += 10;
-    if (profile.image_url && profile.image_url !== '/assets/executive.png') score += 10;
-    if (profile.linkedin || profile.github || profile.portfolio) score += 10;
-    return Math.min(100, score);
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    try {
-      const skillsArr = editSkills.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
-      const langsArr = editLanguages.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
-
-      const res = await selfProfileApi.updateProfile({
-        bio: editBio,
-        skills: skillsArr,
-        languages: langsArr,
-        phone: editPhone,
-        linkedin: editLinkedin,
-        github: editGithub,
-        twitter: editTwitter,
-        portfolio: editPortfolio,
-      });
-
-      if (res.data && res.data.success) {
-        showToast(
-          res.data.message || '⚡ Profile updates submitted for Administrator approval. Changes will appear on the website once approved.',
-          'success'
-        );
-        await fetchProfile();
-      } else {
-        showToast(res.data?.message || 'Failed to update profile.', 'error');
-      }
-    } catch (err: any) {
-      showToast(err.response?.data?.message || err.message || 'Update failed.', 'error');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -175,10 +120,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         const imageUrl = uploadRes.data.url;
         const res = await selfProfileApi.uploadImage(imageUrl);
         if (res.data && res.data.success) {
-          showToast(
-            res.data.message || '⚡ Profile picture submitted for Administrator approval!',
-            'success'
-          );
+          showToast(res.data.message || '⚡ Profile picture submitted for Administrator approval!', 'success');
           await fetchProfile();
         } else {
           showToast(res.data?.message || 'Failed to update image.', 'error');
@@ -219,7 +161,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
     }
   };
 
-  // Password Strength Evaluator
   const getPasswordStrength = (pass: string) => {
     let score = 0;
     if (pass.length >= 8) score++;
@@ -232,9 +173,15 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
 
   const passStrength = getPasswordStrength(newPassword);
 
+  const handleReturnToHome = () => {
+    window.history.pushState(null, '', '/');
+    window.location.hash = '';
+    window.dispatchEvent(new Event('popstate'));
+  };
+
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Toast Banner */}
+    <div className="min-h-screen bg-[#050505] text-slate-100 flex selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Toast Notification */}
       {toastMsg && (
         <div
           className={`fixed top-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-2xl font-mono text-xs font-bold border backdrop-blur-xl animate-bounce flex items-center gap-2 ${
@@ -248,344 +195,441 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         </div>
       )}
 
-      {/* Header Bar */}
-      <header className="sticky top-0 z-40 bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-4 px-4 sm:px-8 transition-all">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
-            <div>
-              <div className="font-display font-extrabold text-base text-white tracking-wider">ZENEMOO</div>
-              <div className="text-[10px] font-mono text-cyan-400">Team Member Portal</div>
+      {/* 1. ENTERPRISE SIDEBAR NAVIGATION (Desktop & Mobile) */}
+      <aside
+        className={`fixed md:sticky top-0 z-40 h-screen bg-[#09090b] border-r border-white/10 flex flex-col justify-between p-4 transition-all duration-300 ${
+          isSidebarCollapsed ? 'w-20' : 'w-64'
+        } ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+      >
+        <div className="space-y-6">
+          {/* Sidebar Brand Header */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md shrink-0" />
+              {!isSidebarCollapsed && (
+                <div className="truncate">
+                  <div className="font-display font-extrabold text-sm text-white tracking-wider truncate">ZENEMOO</div>
+                  <div className="text-[10px] font-mono text-cyan-400 truncate">Team Portal</div>
+                </div>
+              )}
             </div>
+
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="hidden md:flex p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+            >
+              {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-4">
-            <NotificationBell />
+          {/* Sidebar Menu Items */}
+          <nav className="space-y-1.5 font-mono text-xs">
+            <button
+              onClick={() => {
+                setActiveTab('overview');
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full px-3.5 py-3 rounded-xl flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'bg-cyan-500/10 text-cyan-300 font-bold border border-cyan-500/30 shadow-lg'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <User className="w-4 h-4 text-cyan-400 shrink-0" />
+                {!isSidebarCollapsed && <span className="truncate">Overview &amp; Profile</span>}
+              </div>
+            </button>
 
-            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10">
+            <button
+              onClick={() => {
+                setActiveTab('profile');
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full px-3.5 py-3 rounded-xl flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'profile'
+                  ? 'bg-purple-500/10 text-purple-300 font-bold border border-purple-500/30 shadow-lg'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                {!isSidebarCollapsed && <span className="truncate">Edit Private Profile</span>}
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('password');
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full px-3.5 py-3 rounded-xl flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'password'
+                  ? 'bg-amber-500/10 text-amber-300 font-bold border border-amber-500/30 shadow-lg'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <Key className="w-4 h-4 text-amber-400 shrink-0" />
+                {!isSidebarCollapsed && <span className="truncate">Account Security</span>}
+              </div>
+            </button>
+          </nav>
+        </div>
+
+        {/* Sidebar Footer User Card */}
+        <div className="pt-4 border-t border-white/10 space-y-3 font-mono text-xs">
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
               <img
                 src={profile.image_url || '/assets/executive.png'}
                 alt={profile.name}
-                className="w-7 h-7 rounded-full object-cover border border-cyan-400/50"
+                className="w-9 h-9 rounded-xl object-cover border border-cyan-400/50"
               />
-              <div className="text-left">
-                <div className="text-xs font-bold text-white truncate max-w-[120px]">{profile.name}</div>
-                <div className="text-[10px] font-mono text-cyan-400">{profile.employee_id}</div>
-              </div>
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#09090b]" />
             </div>
+
+            {!isSidebarCollapsed && (
+              <div className="truncate">
+                <div className="font-bold text-white text-xs truncate">{profile.name || 'Team Member'}</div>
+                <div className="text-[10px] text-slate-400 truncate">{profile.employee_id || 'ZNM-MEMBER'}</div>
+                <div className="text-[9px] text-emerald-400 font-bold flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Online Member
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      {/* 2. MAIN DASHBOARD CONTENT WRAPPER */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header Bar */}
+        <header className="sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3.5 px-4 sm:px-8 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 truncate">
+            <button
+              onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+              className="md:hidden p-2 rounded-xl bg-white/5 text-slate-300 hover:text-white cursor-pointer"
+            >
+              {isMobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
+            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              {activeTab === 'overview' && <User className="w-5 h-5" />}
+              {activeTab === 'profile' && <Sparkles className="w-5 h-5" />}
+              {activeTab === 'password' && <Key className="w-5 h-5" />}
+            </div>
+
+            <div className="truncate">
+              <h1 className="text-sm font-bold font-display text-white tracking-tight truncate">
+                {activeTab === 'overview' && 'Team Member Profile & Roster Record'}
+                {activeTab === 'profile' && 'Self-Service Secure Private Profile Editor'}
+                {activeTab === 'password' && 'Account Password & Security'}
+              </h1>
+              <p className="text-[11px] font-mono text-slate-400 truncate">
+                Zenemoo Platform &bull; Sequential Reordering &amp; AI Engine
+              </p>
+            </div>
+          </div>
+
+          {/* Right Header Actions */}
+          <div className="flex items-center gap-3 shrink-0 font-mono text-xs">
+            {/* Filter Search Input */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300">
+              <Search className="w-3.5 h-3.5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Filter list records..."
+                value={searchFilterQuery}
+                onChange={(e) => setSearchFilterQuery(e.target.value)}
+                className="bg-transparent text-xs text-white focus:outline-none placeholder-slate-500 w-36"
+              />
+            </div>
+
+            <NotificationBell />
 
             <button
               onClick={onLogout}
-              className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs font-mono font-bold text-red-300 flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Sign Out"
+              className="px-3 py-1.8 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Logout Session"
             >
-              <LogOut className="w-4 h-4 text-red-400" />
-              <span className="hidden sm:inline">Sign Out</span>
+              <LogOut className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+
+            <button
+              onClick={handleReturnToHome}
+              className="px-3 py-1.8 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-slate-300 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Return to Website"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Exit</span>
             </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content Body */}
-      <main className="flex-1 py-8 px-4 sm:px-8 max-w-7xl mx-auto w-full space-y-6">
-        {/* Welcome Header & Profile Overview Banner */}
-        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-6 relative overflow-hidden">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-center gap-4">
-              <div className="relative group">
-                <img
-                  src={profile.image_url || '/assets/executive.png'}
-                  alt={profile.name}
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-cyan-400 shadow-xl"
-                />
-                <label
-                  htmlFor="avatar-upload"
-                  className={`absolute -bottom-2 -right-2 p-2 rounded-xl bg-cyan-500 text-black shadow-lg cursor-pointer hover:bg-cyan-400 transition-all ${
-                    !cooldownInfo.can_upload_image && profile.role !== 'admin' ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                  title={cooldownInfo.countdown_message || 'Update Picture'}
-                >
-                  <Camera className="w-4 h-4" />
-                </label>
-                <input
-                  id="avatar-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  disabled={!cooldownInfo.can_upload_image && profile.role !== 'admin'}
-                  className="hidden"
-                />
-              </div>
-
+        {/* Main Content Body */}
+        <main className="flex-1 p-4 sm:p-8 space-y-8 max-w-7xl mx-auto w-full">
+          {/* Top Metric Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 font-mono text-xs">
+            {/* Metric 1: Assigned Role */}
+            <div className="glass-panel p-5 rounded-2xl border border-cyan-500/30 flex items-center justify-between">
               <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-white">{profile.name}</h1>
-                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] font-bold uppercase">
-                    {profile.badge || 'Specialist'}
-                  </span>
-                </div>
-                <p className="text-xs font-mono text-slate-300">
-                  {profile.designation} &bull; <span className="text-cyan-400">{profile.department}</span>
-                </p>
-                <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400 pt-1">
-                  <span>ID: <strong className="text-white">{profile.employee_id}</strong></span>
-                  <span>Joined: <strong className="text-white">{profile.joining_date || 'Active Member'}</strong></span>
-                </div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Assigned Position</span>
+                <span className="text-base font-bold text-white block">{profile.designation || 'Specialist'}</span>
+                <span className="text-[10px] text-cyan-400 block">{profile.department || 'Engineering'}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <UserCheck className="w-5 h-5" />
               </div>
             </div>
 
-            {/* Quick Completion & 7-Day Countdown Status */}
-            <div className="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1 min-w-[180px]">
-                <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-                  <span>Profile Completion</span>
-                  <strong className="text-cyan-300">{calculateCompletion()}%</strong>
-                </div>
-                <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
-                    style={{ width: `${calculateCompletion()}%` }}
-                  />
-                </div>
+            {/* Metric 2: Official Employee ID */}
+            <div className="glass-panel p-5 rounded-2xl border border-purple-500/30 flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Employee ID</span>
+                <span className="text-base font-bold text-purple-300 block">{profile.employee_id || 'ZNM-E861'}</span>
+                <span className="text-[10px] text-purple-400 block">Joined: {profile.joining_date || 'Active'}</span>
               </div>
+              <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                <Shield className="w-5 h-5" />
+              </div>
+            </div>
 
-              {/* 7-Day Image Upload Rule Banner */}
-              <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 space-y-1 text-xs font-mono min-w-[220px]">
-                <div className="flex items-center gap-1.5 font-bold text-cyan-300">
-                  <Clock className="w-4 h-4 text-cyan-400 shrink-0" /> Image Update Status
-                </div>
-                <div className="text-[11px] text-slate-300 leading-tight">
-                  {cooldownInfo.countdown_message || 'Ready for profile image update.'}
-                </div>
+            {/* Metric 3: Image Cooldown Status */}
+            <div className="glass-panel p-5 rounded-2xl border border-emerald-500/30 flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Image Upload Status</span>
+                <span className="text-xs font-bold text-emerald-300 block truncate max-w-[170px]">
+                  {cooldownInfo.can_upload_image ? 'Ready for Update' : 'Cooldown Active'}
+                </span>
+                <span className="text-[10px] text-emerald-400 block truncate max-w-[170px]">
+                  {cooldownInfo.countdown_message || '7-day policy enforced.'}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Clock className="w-5 h-5" />
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto font-mono text-xs">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'overview'
-                ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-lg'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <User className="w-4 h-4" /> Overview &amp; Profile
-          </button>
-
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'profile'
-                ? 'bg-purple-500/20 text-purple-300 font-bold border border-purple-500/40 shadow-lg'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" /> Edit Profile Details
-          </button>
-
-          <button
-            onClick={() => setActiveTab('password')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'password'
-                ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 shadow-lg'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Key className="w-4 h-4" /> Change Password
-          </button>
-        </div>
-
-        {/* TAB 1: OVERVIEW & MY PROFILE */}
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
-            {/* Read-Only Official Information Panel */}
-            <div className="md:col-span-1 glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-white/10 pb-3">
-                <Shield className="w-4 h-4 text-cyan-400" /> Official Roster Record
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Official employee credentials below are managed by the Administrator and read-only.
-              </p>
-
-              <div className="space-y-3 font-mono">
-                <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                  <div className="text-[10px] text-slate-400 uppercase">Employee ID</div>
-                  <div className="text-sm font-bold text-white">{profile.employee_id}</div>
+          {/* TAB 1: OVERVIEW & MY PROFILE */}
+          {activeTab === 'overview' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
+              {/* Read-Only Official Information Panel */}
+              <div className="md:col-span-1 glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+                <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-white/10 pb-3">
+                  <Shield className="w-4 h-4 text-cyan-400" /> Official Roster Record
                 </div>
-
-                <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                  <div className="text-[10px] text-slate-400 uppercase">Designation &amp; Role</div>
-                  <div className="text-sm font-bold text-white">{profile.designation}</div>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                  <div className="text-[10px] text-slate-400 uppercase">Department</div>
-                  <div className="text-sm font-bold text-cyan-300">{profile.department}</div>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                  <div className="text-[10px] text-slate-400 uppercase">Official Email</div>
-                  <div className="text-xs font-bold text-white truncate">{profile.email}</div>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
-                  <div className="text-[10px] text-slate-400 uppercase">Date of Joining</div>
-                  <div className="text-xs font-bold text-white">{profile.joining_date || 'Active Roster'}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Profile Bio & Skills Overview */}
-            <div className="md:col-span-2 space-y-6">
-              <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-purple-400" /> Bio &amp; Professional Summary
-                  </h3>
-                  <button
-                    onClick={() => setActiveTab('profile')}
-                    className="text-xs font-mono text-cyan-400 hover:underline cursor-pointer"
-                  >
-                    Edit Bio &rarr;
-                  </button>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed font-sans bg-white/[0.02] p-4 rounded-2xl border border-white/5">
-                  {profile.bio || 'No professional bio description added yet. Click Edit Profile to add your bio.'}
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Official employee credentials below are managed by the Administrator and read-only.
                 </p>
-              </div>
 
-              <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/10 pb-3">
-                  <Award className="w-4 h-4 text-cyan-400" /> Skills &amp; Technical Capabilities
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {Array.isArray(profile.skills) && profile.skills.length > 0 ? (
-                    profile.skills.map((skill: string, idx: number) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold"
+                <div className="space-y-3 font-mono">
+                  <div className="relative group p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center gap-3">
+                    <img
+                      src={profile.image_url || '/assets/executive.png'}
+                      alt={profile.name}
+                      className="w-14 h-14 rounded-xl object-cover border border-cyan-400"
+                    />
+                    <div>
+                      <div className="font-bold text-white text-sm">{profile.name}</div>
+                      <div className="text-xs text-cyan-400 font-bold">{profile.employee_id}</div>
+                      <label
+                        htmlFor="avatar-upload"
+                        className="text-[10px] text-purple-400 hover:underline cursor-pointer flex items-center gap-1 mt-1"
                       >
-                        ⚡ {skill}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-slate-500 font-mono italic">No technical skills added yet.</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: EDIT PRIVATE PROFILE DETAILS */}
-        {activeTab === 'profile' && (
-          <SecurePrivateProfileEditor showToast={showToast} role={profile.role} />
-        )}
-
-        {/* TAB 3: CHANGE PASSWORD */}
-        {activeTab === 'password' && (
-          <form onSubmit={handleChangePassword} className="glass-panel p-6 sm:p-8 rounded-3xl border border-amber-500/30 max-w-xl space-y-6 font-mono text-xs">
-            <div className="border-b border-white/10 pb-4">
-              <h2 className="text-lg font-bold font-display text-white flex items-center gap-2">
-                <Key className="w-5 h-5 text-amber-400" /> Account Security &amp; Password Update
-              </h2>
-              <p className="text-xs text-slate-400">Default initial password is Team@123. Please update to a secure password.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-slate-300 font-bold mb-1.5">Current Password</label>
-                <div className="relative">
-                  <input
-                    type={showCurrentPass ? 'text' : 'password'}
-                    required
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Enter current password..."
-                    className="w-full pl-4 pr-11 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-amber-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPass(!showCurrentPass)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
-                  >
-                    {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1.5">New Password</label>
-                <div className="relative">
-                  <input
-                    type={showNewPass ? 'text' : 'password'}
-                    required
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new strong password..."
-                    className="w-full pl-4 pr-11 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-amber-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPass(!showNewPass)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
-                  >
-                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {/* Password Strength Indicator */}
-                {newPassword.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span>Password Strength:</span>
-                      <strong className={passStrength >= 4 ? 'text-emerald-400' : passStrength >= 2 ? 'text-amber-400' : 'text-red-400'}>
-                        {passStrength >= 4 ? 'Strong' : passStrength >= 2 ? 'Medium' : 'Weak'}
-                      </strong>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${
-                          passStrength >= 4 ? 'bg-emerald-500' : passStrength >= 2 ? 'bg-amber-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${(passStrength / 5) * 100}%` }}
+                        <Camera className="w-3 h-3" /> Change Photo
+                      </label>
+                      <input
+                        id="avatar-upload"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={!cooldownInfo.can_upload_image && profile.role !== 'admin'}
+                        className="hidden"
                       />
                     </div>
                   </div>
-                )}
+
+                  <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="text-[10px] text-slate-400 uppercase">Designation &amp; Role</div>
+                    <div className="text-sm font-bold text-white">{profile.designation}</div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="text-[10px] text-slate-400 uppercase">Department</div>
+                    <div className="text-sm font-bold text-cyan-300">{profile.department}</div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="text-[10px] text-slate-400 uppercase">Official Email</div>
+                    <div className="text-xs font-bold text-white truncate">{profile.email}</div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="text-[10px] text-slate-400 uppercase">Date of Joining</div>
+                    <div className="text-xs font-bold text-white">{profile.joining_date || 'Active Roster'}</div>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-bold mb-1.5">Confirm New Password</label>
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter new password..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-amber-400"
-                />
+              {/* Profile Bio & Skills Overview */}
+              <div className="md:col-span-2 space-y-6">
+                <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-purple-400" /> Bio &amp; Professional Summary
+                    </h3>
+                    <button
+                      onClick={() => setActiveTab('profile')}
+                      className="text-xs font-mono text-cyan-400 hover:underline cursor-pointer"
+                    >
+                      Edit Private Profile &rarr;
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed font-sans bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                    {profile.bio || 'No professional bio description added yet. Click Edit Private Profile to add your bio.'}
+                  </p>
+                </div>
+
+                <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/10 pb-3">
+                    <Award className="w-4 h-4 text-cyan-400" /> Skills &amp; Technical Capabilities
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.isArray(profile.skills) && profile.skills.length > 0 ? (
+                      profile.skills.map((skill: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold"
+                        >
+                          ⚡ {skill}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500 font-mono italic">No technical skills added yet.</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
+          )}
 
-            <button
-              type="submit"
-              disabled={isChangingPass}
-              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {isChangingPass ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Update Account Password
-            </button>
-          </form>
-        )}
-      </main>
+          {/* TAB 2: EDIT PRIVATE PROFILE DETAILS */}
+          {activeTab === 'profile' && (
+            <SecurePrivateProfileEditor showToast={showToast} role={profile.role} />
+          )}
 
-      {/* Footer */}
-      <footer className="py-4 text-center text-xs font-mono text-slate-500 border-t border-white/10">
-        &copy; {new Date().getFullYear()} Zenemoo Tech &bull; Enterprise Team Member Portal
-      </footer>
+          {/* TAB 3: CHANGE PASSWORD */}
+          {activeTab === 'password' && (
+            <form onSubmit={handleChangePassword} className="glass-panel p-6 sm:p-8 rounded-3xl border border-amber-500/30 max-w-xl space-y-6 font-mono text-xs">
+              <div className="border-b border-white/10 pb-4">
+                <h2 className="text-lg font-bold font-display text-white flex items-center gap-2">
+                  <Key className="w-5 h-5 text-amber-400" /> Account Security &amp; Password Update
+                </h2>
+                <p className="text-xs text-slate-400">Change your portal account password. Password must contain letters, numbers, and symbols.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">Current Password *</label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPass ? 'text' : 'password'}
+                      required
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password..."
+                      className="w-full pl-4 pr-11 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPass(!showCurrentPass)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">New Password *</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPass ? 'text' : 'password'}
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new strong password..."
+                      className="w-full pl-4 pr-11 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPass(!showNewPass)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  {newPassword && (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Password Complexity Strength</span>
+                        <span className="font-bold text-amber-300">
+                          {passStrength <= 2 ? 'Weak' : passStrength <= 4 ? 'Good' : 'Strong'}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            passStrength <= 2 ? 'bg-red-500' : passStrength <= 4 ? 'bg-amber-400' : 'bg-emerald-400'
+                          }`}
+                          style={{ width: `${(passStrength / 5) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">Confirm New Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-type new password..."
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isChangingPass}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold font-display text-sm transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isChangingPass ? <RefreshCw className="w-4 h-4 animate-spin text-black" /> : <Save className="w-4 h-4 text-black" />} Update Password
+              </button>
+            </form>
+          )}
+        </main>
+
+        {/* Dashboard Footer */}
+        <footer className="py-4 px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 mt-auto">
+          <div>
+            &copy; {new Date().getFullYear()} Zenemoo AI Solutions Pvt. Ltd. Powered by Zenemoo Enterprise AI Platform
+          </div>
+          <div className="flex items-center gap-4 text-[11px]">
+            <span className="hover:text-slate-400 cursor-pointer">Documentation</span>
+            <span className="hover:text-slate-400 cursor-pointer">Support Portal</span>
+            <span className="hover:text-slate-400 cursor-pointer">Privacy &amp; Terms</span>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 };
