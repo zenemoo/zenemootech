@@ -40,7 +40,6 @@ import {
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
-import { FirstLoginOnboardingModal } from './FirstLoginOnboardingModal';
 import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 
 interface TeamDashboardProps {
@@ -54,7 +53,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
   const [searchFilterQuery, setSearchFilterQuery] = useState('');
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const popoverRef = useRef<HTMLDivElement>(null);
   const userCardRef = useRef<HTMLButtonElement>(null);
@@ -142,14 +140,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
     const interval = setInterval(fetchNotifications, 15000);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    if (profile && (profile.temporary_password === true || profile.password_changed === false || profile.must_change_password === true)) {
-      setNeedsOnboarding(true);
-    } else {
-      setNeedsOnboarding(false);
-    }
-  }, [profile]);
 
   // Handle outside click to close profile popover
   useEffect(() => {
@@ -317,26 +307,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
 
   return (
     <div className="h-screen overflow-hidden bg-[#050505] text-slate-100 flex flex-col md:flex-row selection:bg-cyan-500/30 selection:text-cyan-200 relative">
-      {/* Mandatory First-Time Login Onboarding Overlay */}
-      {needsOnboarding && (
-        <FirstLoginOnboardingModal
-          userEmail={profile?.email || initialUserData?.email || ''}
-          userName={profile?.name || initialUserData?.name || ''}
-          showToast={showToast}
-          onOnboardingComplete={() => {
-            setNeedsOnboarding(false);
-            setProfile((prev: any) => ({
-              ...prev,
-              temporary_password: false,
-              password_changed: true,
-              must_change_password: false,
-              profile_completed: true,
-            }));
-            setActiveTab('overview');
-          }}
-        />
-      )}
-
       {/* Toast Notification */}
       {toastMsg && (
         <div
@@ -740,6 +710,40 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
 
         {/* 4. SCROLLABLE MAIN CONTENT AREA (<main> handles scrolling) */}
         <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto w-full">
+          {/* First Time Login Security Prompt Banner */}
+          {profile && (profile.temporary_password === true || profile.password_changed === false) && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs shadow-xl animate-in fade-in duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="font-bold text-white text-xs sm:text-sm flex items-center gap-2">
+                    ⚠️ First-Time Login Notice — Action Recommended
+                  </h4>
+                  <p className="text-[11px] text-slate-300">
+                    You are currently using a temporary password. Please update your password &amp; complete your private profile.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActiveTab('password')}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all cursor-pointer shadow-md"
+                >
+                  Change Password &rarr;
+                </button>
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all cursor-pointer"
+                >
+                  Update Profile &rarr;
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Top Metric Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 font-mono text-xs">
             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-cyan-500/30 flex items-center justify-between shadow-lg">
