@@ -24,6 +24,7 @@ import {
   Camera,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
+import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { portalAuthApi, selfProfileApi, uploadApi } from '../services/api';
 
 interface TeamDashboardProps {
@@ -479,107 +480,9 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
           </div>
         )}
 
-        {/* TAB 2: EDIT ALLOWED PROFILE FIELDS */}
+        {/* TAB 2: EDIT PRIVATE PROFILE DETAILS */}
         {activeTab === 'profile' && (
-          <form onSubmit={handleSaveProfile} className="glass-panel p-6 sm:p-8 rounded-3xl border border-purple-500/30 space-y-6 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div>
-                <h2 className="text-lg font-bold font-display text-white">Self-Service Profile Editor</h2>
-                <p className="text-xs text-slate-400">Update your bio, technical skills, spoken languages, and social links.</p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold flex items-center gap-2 shadow-lg cursor-pointer"
-              >
-                {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Changes
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Professional Bio</label>
-                  <textarea
-                    rows={4}
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    placeholder="Briefly describe your expertise, project accomplishments, and specialization..."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Technical Skills (Comma Separated)</label>
-                  <input
-                    type="text"
-                    value={editSkills}
-                    onChange={(e) => setEditSkills(e.target.value)}
-                    placeholder="e.g. Odia Speech Transcription, Data Annotation, Python, Audio Segmentation"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Spoken Languages (Comma Separated)</label>
-                  <input
-                    type="text"
-                    value={editLanguages}
-                    onChange={(e) => setEditLanguages(e.target.value)}
-                    placeholder="e.g. English, Odia, Hindi"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Contact Phone Number</label>
-                  <input
-                    type="text"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    placeholder="+91 9827775230"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">LinkedIn Profile URL</label>
-                  <input
-                    type="text"
-                    value={editLinkedin}
-                    onChange={(e) => setEditLinkedin(e.target.value)}
-                    placeholder="https://linkedin.com/in/username"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">GitHub Profile URL</label>
-                  <input
-                    type="text"
-                    value={editGithub}
-                    onChange={(e) => setEditGithub(e.target.value)}
-                    placeholder="https://github.com/username"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Portfolio / Website Link</label>
-                  <input
-                    type="text"
-                    value={editPortfolio}
-                    onChange={(e) => setEditPortfolio(e.target.value)}
-                    placeholder="https://portfolio.me"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-400"
-                  />
-                </div>
-              </div>
-            </div>
-          </form>
+          <SecurePrivateProfileEditor showToast={showToast} role={profile.role} />
         )}
 
         {/* TAB 3: CHANGE PASSWORD */}

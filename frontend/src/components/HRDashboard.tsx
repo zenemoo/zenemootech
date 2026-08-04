@@ -19,6 +19,7 @@ import {
   Search,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
+import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { portalAuthApi, selfProfileApi, emailApi } from '../services/api';
 
 interface HRDashboardProps {
@@ -426,51 +427,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
           </div>
         )}
 
-        {/* TAB 2: HR PROFILE */}
+        {/* TAB 2: HR PRIVATE PROFILE */}
         {activeTab === 'profile' && (
-          <form onSubmit={handleSaveProfile} className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-6 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div>
-                <h2 className="text-lg font-bold font-display text-white">HR Profile Settings</h2>
-                <p className="text-xs text-slate-400">Update your HR contact details &amp; bio summary.</p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSavingProfile}
-                className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-black font-bold flex items-center gap-2 cursor-pointer"
-              >
-                {isSavingProfile ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Changes
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Professional Bio Summary</label>
-                  <textarea
-                    rows={4}
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    placeholder="HR operational focus..."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-xs focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1.5">Phone Number</label>
-                  <input
-                    type="text"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-              </div>
-            </div>
-          </form>
+          <SecurePrivateProfileEditor showToast={showToast} role="hr" />
         )}
 
         {/* TAB 3: CHANGE PASSWORD */}

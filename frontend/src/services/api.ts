@@ -267,6 +267,12 @@ export const selfProfileApi = {
   uploadImage: (image_url: string) => api.post('/team/profile/upload-image', { image_url }),
 };
 
+// Enterprise Secure Self-Service Private Profile System
+export const privateProfileApi = {
+  getPrivateProfile: () => api.get('/team/private-profile/me'),
+  updatePrivateProfile: (data: any) => api.put('/team/private-profile/me', data),
+};
+
 // Admin Profile Updates Approval APIs
 export const pendingProfileUpdatesApi = {
   getPending: () => api.get('/team/profile-updates/pending'),

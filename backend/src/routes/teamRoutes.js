@@ -12,11 +12,19 @@ import {
   approveProfileUpdate,
   rejectProfileUpdate,
 } from '../controllers/teamController.js';
+import {
+  getMyPrivateProfile,
+  updateMyPrivateProfile,
+} from '../controllers/privateProfileController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = Router();
 
-// Self-Service Profile Updates (Team Member & HR)
+// Self-Service Private Profile System (Team Member & HR)
+router.get('/private-profile/me', verifyToken, getMyPrivateProfile);
+router.put('/private-profile/me', verifyToken, updateMyPrivateProfile);
+
+// Legacy Public Roster Update Workflow
 router.put('/profile/me', verifyToken, updateSelfProfile);
 router.post('/profile/upload-image', verifyToken, uploadSelfImage);
 
