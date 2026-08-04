@@ -83,14 +83,40 @@ export function App() {
         setCurrentRoute('admin');
       } else if (path === '/email' || hash === '#email' || hash === '#/email') {
         setCurrentRoute('email');
-      } else if (path === '/team-login' || hash === '#team-login' || hash === '#/team-login') {
-        setCurrentRoute('team-login');
-      } else if (path === '/team/dashboard' || hash === '#team/dashboard' || hash === '#/team/dashboard') {
+      } else if (
+        path === '/team/dashboard' ||
+        path === '/team/dashboard/' ||
+        hash === '#team/dashboard' ||
+        hash === '#/team/dashboard' ||
+        hash === '#team-dashboard'
+      ) {
         setCurrentRoute('team-dashboard');
-      } else if (path === '/hr-login' || hash === '#hr-login' || hash === '#/hr-login') {
-        setCurrentRoute('hr-login');
-      } else if (path === '/hr/dashboard' || hash === '#hr/dashboard' || hash === '#/hr/dashboard') {
+      } else if (path === '/team-login' || hash === '#team-login' || hash === '#/team-login') {
+        const token = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_token');
+        const expiry = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_expiry');
+        const isNotExpired = !expiry || parseInt(expiry, 10) > Date.now();
+        if (token && isNotExpired && portalUser && (portalUser.role === 'team_member' || portalUser.role === 'admin')) {
+          setCurrentRoute('team-dashboard');
+        } else {
+          setCurrentRoute('team-login');
+        }
+      } else if (
+        path === '/hr/dashboard' ||
+        path === '/hr/dashboard/' ||
+        hash === '#hr/dashboard' ||
+        hash === '#/hr/dashboard' ||
+        hash === '#hr-dashboard'
+      ) {
         setCurrentRoute('hr-dashboard');
+      } else if (path === '/hr-login' || hash === '#hr-login' || hash === '#/hr-login') {
+        const token = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_token');
+        const expiry = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_expiry');
+        const isNotExpired = !expiry || parseInt(expiry, 10) > Date.now();
+        if (token && isNotExpired && portalUser && (portalUser.role === 'hr' || portalUser.role === 'admin')) {
+          setCurrentRoute('hr-dashboard');
+        } else {
+          setCurrentRoute('hr-login');
+        }
       } else if (hash === '#admin' || path === '/admin') {
         window.history.replaceState(null, '', '/');
         window.location.hash = '';
@@ -216,6 +242,7 @@ export function App() {
           onSuccessLogin={(userData) => {
             setPortalUser(userData);
             setCurrentRoute('team-dashboard');
+            window.history.pushState(null, '', '/team/dashboard');
             window.location.hash = 'team/dashboard';
           }}
           onBackToHome={handleBackToHome}
@@ -229,6 +256,7 @@ export function App() {
             localStorage.removeItem('zenemoo_portal_user');
             setPortalUser(null);
             setCurrentRoute('team-login');
+            window.history.pushState(null, '', '/team-login');
             window.location.hash = 'team-login';
           }}
         />
@@ -237,6 +265,7 @@ export function App() {
           onSuccessLogin={(userData) => {
             setPortalUser(userData);
             setCurrentRoute('hr-dashboard');
+            window.history.pushState(null, '', '/hr/dashboard');
             window.location.hash = 'hr/dashboard';
           }}
           onBackToHome={handleBackToHome}
@@ -250,6 +279,7 @@ export function App() {
             localStorage.removeItem('zenemoo_portal_user');
             setPortalUser(null);
             setCurrentRoute('hr-login');
+            window.history.pushState(null, '', '/hr-login');
             window.location.hash = 'hr-login';
           }}
         />
