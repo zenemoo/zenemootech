@@ -170,7 +170,7 @@ export const NotificationBell: React.FC = () => {
 
       {/* Dropdown Modal */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 rounded-3xl bg-[#090d16]/95 backdrop-blur-2xl border border-white/15 shadow-2xl z-50 overflow-hidden text-xs font-sans">
+        <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-3 w-auto sm:w-96 max-w-full rounded-3xl bg-[#090d16]/95 backdrop-blur-2xl border border-white/15 shadow-2xl z-50 overflow-hidden text-xs font-sans">
           {/* Header */}
           <div className="p-4 border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-2">

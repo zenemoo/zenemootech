@@ -25,10 +25,19 @@ import {
   X,
   Lock,
   ChevronUp,
+  Bell,
+  CheckCheck,
+  Trash2,
+  Calendar,
+  CreditCard,
+  Video,
+  Info,
+  ShieldAlert,
+  Server,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
-import { portalAuthApi, emailApi } from '../services/api';
+import { portalAuthApi, emailApi, notificationApi } from '../services/api';
 
 interface HRDashboardProps {
   initialUserData: any;
@@ -36,7 +45,7 @@ interface HRDashboardProps {
 }
 
 export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'email' | 'password'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'email' | 'notifications' | 'password'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
@@ -57,6 +66,12 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
 
   const [cooldownInfo, setCooldownInfo] = useState<any>({});
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Full Notification System State
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifFilterTab, setNotifFilterTab] = useState<'all' | 'unread'>('all');
+  const [notifSearchQuery, setNotifSearchQuery] = useState('');
 
   // Email System State
   const [emailSubTab, setEmailSubTab] = useState<'compose' | 'history' | 'drafts'>('compose');
@@ -102,6 +117,16 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
     }
   };
 
+  const fetchNotifications = async () => {
+    try {
+      const res = await notificationApi.getAll();
+      if (res.data && res.data.success) {
+        setNotifications(res.data.data || []);
+        setUnreadCount(res.data.unread_count || 0);
+      }
+    } catch (err) {}
+  };
+
   const loadEmailData = async () => {
     if (!profile.email_access && profile.role !== 'admin') return;
     setIsLoadingEmails(true);
@@ -120,7 +145,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
 
   useEffect(() => {
     fetchProfile();
+    fetchNotifications();
     loadEmailData();
+    const interval = setInterval(fetchNotifications, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -216,6 +244,61 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
     }
   };
 
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await notificationApi.markRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {}
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationApi.markAllRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      showToast('All notifications marked as read.', 'success');
+    } catch (err) {}
+  };
+
+  const handleDeleteNotif = async (id: string) => {
+    try {
+      await notificationApi.deleteNotification(id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {}
+  };
+
+  const getNotificationIcon = (type: string) => {
+    switch ((type || '').toLowerCase()) {
+      case 'meeting':
+        return <Video className="w-4 h-4 text-purple-400" />;
+      case 'payment':
+        return <CreditCard className="w-4 h-4 text-emerald-400" />;
+      case 'project':
+        return <Briefcase className="w-4 h-4 text-cyan-400" />;
+      case 'warning':
+        return <AlertTriangle className="w-4 h-4 text-amber-400" />;
+      case 'error':
+        return <ShieldAlert className="w-4 h-4 text-red-400" />;
+      case 'success':
+        return <CheckCircle className="w-4 h-4 text-emerald-400" />;
+      case 'system':
+        return <Server className="w-4 h-4 text-slate-400" />;
+      default:
+        return <Info className="w-4 h-4 text-blue-400" />;
+    }
+  };
+
+  const filteredNotifs = notifications.filter((n) => {
+    const matchesTab = notifFilterTab === 'all' || (notifFilterTab === 'unread' && !n.is_read);
+    const matchesSearch =
+      !notifSearchQuery ||
+      n.title?.toLowerCase().includes(notifSearchQuery.toLowerCase()) ||
+      n.message?.toLowerCase().includes(notifSearchQuery.toLowerCase());
+    return matchesTab && matchesSearch;
+  });
+
   const handleReturnToHome = () => {
     window.history.pushState(null, '', '/');
     window.location.hash = '';
@@ -223,7 +306,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col md:flex-row selection:bg-purple-500/30 selection:text-purple-200 relative overflow-x-hidden">
+    <div className="h-screen overflow-hidden bg-[#050505] text-slate-100 flex flex-col md:flex-row selection:bg-purple-500/30 selection:text-purple-200 relative">
       {/* Toast Notification */}
       {toastMsg && (
         <div
@@ -246,9 +329,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         />
       )}
 
-      {/* 1. ENTERPRISE SIDEBAR NAVIGATION */}
+      {/* 1. FIXED ENTERPRISE SIDEBAR NAVIGATION */}
       <aside
-        className={`fixed md:sticky top-0 z-50 h-screen bg-[#09090b] border-r border-white/10 flex flex-col justify-between p-3.5 sm:p-4 transition-all duration-300 ${
+        className={`fixed md:sticky top-0 z-50 h-screen bg-[#09090b] border-r border-white/10 flex flex-col justify-between p-3.5 sm:p-4 shrink-0 transition-all duration-300 ${
           isSidebarCollapsed ? 'w-20' : 'w-64'
         } ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
       >
@@ -274,7 +357,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
             </button>
           </div>
 
-          {/* Sidebar Menu Items with Pixel-Perfect Tooltips when Collapsed */}
+          {/* Sidebar Menu Items */}
           <nav className="space-y-2 font-mono text-xs">
             {/* ITEM 1: Overview & Profile */}
             <div className="relative group">
@@ -379,7 +462,44 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               </div>
             )}
 
-            {/* ITEM 4: Account Security */}
+            {/* ITEM 4: Notification Center View */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  setActiveTab('notifications');
+                  setIsMobileSidebarOpen(false);
+                }}
+                className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex items-center transition-all cursor-pointer ${
+                  isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                } ${
+                  activeTab === 'notifications'
+                    ? 'bg-purple-500/10 text-purple-300 font-bold border border-purple-500/30 shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Bell className="w-4.5 h-4.5 text-purple-400 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">Notification Center</span>}
+                </div>
+                {!isSidebarCollapsed && unreadCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold">
+                    {unreadCount}
+                  </span>
+                )}
+                {isSidebarCollapsed && activeTab === 'notifications' && (
+                  <span className="absolute left-0 w-1 h-5 bg-purple-400 rounded-r-full shadow-glow" />
+                )}
+              </button>
+
+              {/* Floating Tooltip when Collapsed */}
+              {isSidebarCollapsed && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 whitespace-nowrap">
+                  Notification Center ({unreadCount})
+                </div>
+              )}
+            </div>
+
+            {/* ITEM 5: Account Security */}
             <div className="relative group">
               <button
                 onClick={() => {
@@ -413,9 +533,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
           </nav>
         </div>
 
-        {/* 3. INTERACTIVE EXPANDABLE SIDEBAR BOTTOM PROFILE CARD & POPOVER */}
+        {/* 2. INTERACTIVE SIDEBAR BOTTOM PROFILE CARD & POPOVER */}
         <div className="relative pt-4 border-t border-white/10 font-mono text-xs">
-          {/* Interactive User Profile Trigger Button */}
           <button
             ref={userCardRef}
             onClick={() => setIsProfilePopoverOpen(!isProfilePopoverOpen)}
@@ -456,13 +575,12 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
             )}
           </button>
 
-          {/* Floating Enterprise User Profile Popover Panel */}
+          {/* Floating User Profile Popover */}
           {isProfilePopoverOpen && (
             <div
               ref={popoverRef}
               className="absolute bottom-16 left-0 sm:left-2 w-72 sm:w-80 p-5 rounded-3xl bg-[#09090b]/95 backdrop-blur-2xl border border-purple-500/40 shadow-2xl shadow-purple-500/10 space-y-4 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200"
             >
-              {/* Popover Header */}
               <div className="flex items-start gap-3 border-b border-white/10 pb-4">
                 <img
                   src={profile.image_url || '/assets/executive.png'}
@@ -479,7 +597,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                 </div>
               </div>
 
-              {/* Status & Session Details */}
               <div className="grid grid-cols-2 gap-2 text-[10px]">
                 <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
                   <div className="text-slate-400">Account Status</div>
@@ -495,7 +612,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                 </div>
               </div>
 
-              {/* Quick Action Navigation Buttons */}
               <div className="space-y-1.5 pt-1 border-t border-white/10">
                 <button
                   onClick={() => {
@@ -509,12 +625,12 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
 
                 <button
                   onClick={() => {
-                    setActiveTab('profile');
+                    setActiveTab('notifications');
                     setIsProfilePopoverOpen(false);
                   }}
                   className="w-full px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-slate-300 hover:text-white flex items-center gap-2.5 text-xs transition-colors cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Edit Private Details
+                  <Bell className="w-3.5 h-3.5 text-purple-400" /> Notification Center ({unreadCount})
                 </button>
 
                 <button
@@ -542,10 +658,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         </div>
       </aside>
 
-      {/* 4. MAIN DASHBOARD CONTENT WRAPPER */}
-      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
-        {/* Top Sticky Header Bar */}
-        <header className="sticky top-0 z-30 bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3 sm:py-3.5 px-3.5 sm:px-6 md:px-8 flex items-center justify-between gap-3 sm:gap-4">
+      {/* 3. MAIN CONTENT CONTAINER (h-screen overflow-hidden, <main> scrolls) */}
+      <div className="flex-1 flex flex-col min-w-0 w-full h-screen overflow-hidden">
+        {/* Fixed Top Sticky Header Bar */}
+        <header className="sticky top-0 z-30 shrink-0 bg-[#050505]/95 backdrop-blur-xl border-b border-white/10 py-3 sm:py-3.5 px-3.5 sm:px-6 md:px-8 flex items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-2.5 sm:gap-3 truncate">
             <button
               onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
@@ -559,6 +675,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               {activeTab === 'overview' && <User className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
               {activeTab === 'profile' && <Sparkles className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
               {activeTab === 'email' && <Mail className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
+              {activeTab === 'notifications' && <Bell className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
               {activeTab === 'password' && <Key className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
             </div>
 
@@ -567,6 +684,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                 {activeTab === 'overview' && 'HR Official Record & Overview'}
                 {activeTab === 'profile' && 'HR Secure Private Profile Editor'}
                 {activeTab === 'email' && 'Brevo SMTP Company Email Dispatcher'}
+                {activeTab === 'notifications' && 'System Notification Center & Inbox'}
                 {activeTab === 'password' && 'HR Account Security & Password'}
               </h1>
               <p className="text-[10px] sm:text-[11px] font-mono text-slate-400 truncate hidden sm:block">
@@ -577,7 +695,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0 font-mono text-xs">
-            {/* Filter Search Input */}
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300">
               <Search className="w-3.5 h-3.5 text-slate-500" />
               <input
@@ -611,11 +728,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
           </div>
         </header>
 
-        {/* Main Content Body (320px+ Mobile to 4K Responsive) */}
-        <main className="flex-1 p-3.5 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto w-full">
+        {/* 4. SCROLLABLE MAIN CONTENT AREA (<main> handles scrolling) */}
+        <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 space-y-6 sm:space-y-8 max-w-7xl mx-auto w-full">
           {/* Top Metric Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 font-mono text-xs">
-            {/* Metric 1: Assigned Role */}
             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-purple-500/30 flex items-center justify-between shadow-lg">
               <div className="space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Assigned Position</span>
@@ -627,7 +743,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               </div>
             </div>
 
-            {/* Metric 2: Email System Access */}
             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/30 flex items-center justify-between shadow-lg">
               <div className="space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Company Email Permission</span>
@@ -641,7 +756,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
               </div>
             </div>
 
-            {/* Metric 3: Employee ID */}
             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-cyan-500/30 flex items-center justify-between shadow-lg sm:col-span-2 lg:col-span-1">
               <div className="space-y-1">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block">HR Employee ID</span>
@@ -657,7 +771,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
           {/* TAB 1: OVERVIEW & MY PROFILE */}
           {activeTab === 'overview' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-mono text-xs">
-              {/* Read-Only Official Information Panel */}
               <div className="lg:col-span-1 glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 space-y-4 shadow-xl">
                 <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-white/10 pb-3">
                   <Shield className="w-4 h-4 text-purple-400" /> Official Roster Record
@@ -702,7 +815,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                 </div>
               </div>
 
-              {/* Profile Bio Overview */}
               <div className="lg:col-span-2 space-y-6">
                 <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 space-y-4 shadow-xl">
                   <div className="flex items-center justify-between border-b border-white/10 pb-3">
@@ -740,7 +852,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
                   <p className="text-xs text-slate-400 mt-1">Send authorized emails to team members, candidates, and client partners.</p>
                 </div>
 
-                {/* Email Sub-Tabs */}
                 <div className="flex items-center gap-2 bg-white/[0.04] p-1 rounded-xl border border-white/10">
                   <button
                     onClick={() => setEmailSubTab('compose')}
@@ -843,7 +954,138 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
             </div>
           )}
 
-          {/* TAB 4: CHANGE PASSWORD */}
+          {/* TAB 4: DEDICATED FULL NOTIFICATION CENTER PAGE VIEW */}
+          {activeTab === 'notifications' && (
+            <div className="glass-panel p-5 sm:p-8 rounded-3xl border border-purple-500/30 space-y-6 font-mono text-xs shadow-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold font-display text-white flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-purple-400" /> System Notification Center
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">Manage system alerts, task assignments, security notices, and official announcements.</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllAsRead}
+                      className="px-4 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <CheckCheck className="w-4 h-4" /> Mark All as Read ({unreadCount})
+                    </button>
+                  )}
+
+                  <button
+                    onClick={fetchNotifications}
+                    className="p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white transition-all cursor-pointer"
+                    title="Refresh list"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters & Search */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                <div className="flex items-center bg-white/[0.04] p-1 rounded-xl border border-white/10 font-mono text-xs">
+                  <button
+                    onClick={() => setNotifFilterTab('all')}
+                    className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                      notifFilterTab === 'all' ? 'bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All Notifications ({notifications.length})
+                  </button>
+                  <button
+                    onClick={() => setNotifFilterTab('unread')}
+                    className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                      notifFilterTab === 'unread' ? 'bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Unread ({unreadCount})
+                  </button>
+                </div>
+
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search notifications..."
+                    value={notifSearchQuery}
+                    onChange={(e) => setNotifSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              {/* Notifications Full List */}
+              <div className="space-y-3 font-sans">
+                {filteredNotifs.length === 0 ? (
+                  <div className="p-12 text-center space-y-3 glass-panel rounded-3xl border border-white/5">
+                    <Bell className="w-12 h-12 text-slate-600 mx-auto" />
+                    <h3 className="text-base font-bold text-white">No Notifications Found</h3>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      Your inbox is clean! You will receive system notifications, task updates, and broadcast messages here.
+                    </p>
+                  </div>
+                ) : (
+                  filteredNotifs.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                        n.is_read
+                          ? 'bg-white/[0.02] border-white/10 text-slate-300'
+                          : 'bg-purple-500/[0.04] border-purple-500/40 text-white shadow-lg shadow-purple-500/5'
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="p-3 rounded-2xl bg-white/5 border border-white/10 shrink-0 mt-1">
+                          {getNotificationIcon(n.type)}
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-white">{n.title}</span>
+                            {!n.is_read && (
+                              <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[9px] font-bold uppercase">
+                                New Unread
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed font-sans">{n.message}</p>
+                          <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400 pt-1">
+                            <span>Sender: <strong className="text-slate-200">{n.sender_email || 'Zenemoo System'}</strong></span>
+                            <span>Time: <strong className="text-slate-200">{new Date(n.created_at).toLocaleString()}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0 font-mono">
+                        {!n.is_read && (
+                          <button
+                            onClick={() => handleMarkAsRead(n.id)}
+                            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-purple-500/20 border border-white/10 text-slate-300 hover:text-purple-300 flex items-center gap-1.5 text-xs transition-all cursor-pointer font-bold"
+                          >
+                            <CheckCheck className="w-3.5 h-3.5" /> Mark Read
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => handleDeleteNotif(n.id)}
+                          className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-slate-400 hover:text-red-400 transition-all cursor-pointer"
+                          title="Delete notification"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: CHANGE PASSWORD */}
           {activeTab === 'password' && (
             <form onSubmit={handleChangePassword} className="glass-panel p-5 sm:p-8 rounded-3xl border border-amber-500/30 max-w-xl space-y-6 font-mono text-xs shadow-2xl">
               <div className="border-b border-white/10 pb-4">
@@ -920,7 +1162,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
         </main>
 
         {/* Dashboard Responsive Footer */}
-        <footer className="py-4 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 mt-auto">
+        <footer className="py-4 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-center sm:text-left">
             &copy; {new Date().getFullYear()} Zenemoo AI Solutions Pvt. Ltd. Powered by Zenemoo Enterprise AI Platform
           </div>
