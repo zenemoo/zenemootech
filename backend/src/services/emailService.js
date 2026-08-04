@@ -197,12 +197,53 @@ export const sanitizeHtml = (html) => {
 /**
  * Extract Attachment Metadata for Supabase Storage (NO binary content saved)
  */
+export const getMimeTypeFromFilename = (filename = '') => {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'xls':
+      return 'application/vnd.ms-excel';
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'ppt':
+      return 'application/vnd.ms-powerpoint';
+    case 'pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    case 'txt':
+      return 'text/plain';
+    case 'csv':
+      return 'text/csv';
+    case 'zip':
+      return 'application/zip';
+    case 'rar':
+      return 'application/vnd.rar';
+    default:
+      return 'application/octet-stream';
+  }
+};
+
 export const extractAttachmentMetadata = (attachments = []) => {
   if (!Array.isArray(attachments)) return [];
 
   return attachments.map((attachment) => {
     const filename = attachment.filename || attachment.name || 'attachment';
-    const contentType = attachment.contentType || 'application/octet-stream';
+    const contentType = attachment.contentType || attachment.type || getMimeTypeFromFilename(filename);
 
     const isImage =
       (contentType && contentType.toLowerCase().includes('image')) ||
@@ -210,12 +251,15 @@ export const extractAttachmentMetadata = (attachments = []) => {
     const isPdf =
       (contentType && contentType.toLowerCase().includes('pdf')) ||
       /\.pdf$/i.test(filename);
+    const isDoc = /\.(doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip)$/i.test(filename);
 
     return {
       filename,
       contentType,
       image: isImage ? 'yes' : 'no',
       pdf: isPdf ? 'yes' : 'no',
+      doc: isDoc ? 'yes' : 'no',
+      size: attachment.size || 0,
     };
   });
 };
@@ -229,21 +273,18 @@ export const normalizeAttachments = (attachments = []) => {
   return attachments.map((attachment) => {
     if (!attachment || typeof attachment !== 'object') return attachment;
 
-    const filename = attachment.filename || attachment.name || 'file';
+    const filename = attachment.filename || attachment.name || 'attachment';
+    const contentType = attachment.contentType || attachment.type || getMimeTypeFromFilename(filename);
     let content = attachment.content;
 
-    if (typeof content === 'string' && content.startsWith('data:')) {
-      const match = content.match(/^data:(.+);base64,(.+)$/);
-      if (match) {
-        content = Buffer.from(match[2], 'base64');
-      }
-    } else if (typeof content === 'string' && attachment.encoding === 'base64') {
-      content = Buffer.from(content, 'base64');
+    if (typeof content === 'string') {
+      const base64Clean = content.replace(/^data:[^;]+;base64,/, '');
+      content = Buffer.from(base64Clean, 'base64');
     }
 
     return {
       filename,
-      contentType: attachment.contentType || 'application/octet-stream',
+      contentType,
       content,
       path: attachment.path,
     };
@@ -303,7 +344,7 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
     payload.attachment = attachments.map((att) => {
       let contentBase64 = '';
       if (typeof att.content === 'string') {
-        contentBase64 = att.content.replace(/^data:.+;base64,/, '');
+        contentBase64 = att.content.replace(/^data:[^;]+;base64,/, '');
       } else if (Buffer.isBuffer(att.content)) {
         contentBase64 = att.content.toString('base64');
       }
@@ -311,7 +352,7 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
         name: att.filename || att.name || 'attachment',
         content: contentBase64,
       };
-    }).filter((a) => a.content);
+    }).filter((a) => a.content && a.content.trim() !== '');
   }
 
   const startTime = Date.now();

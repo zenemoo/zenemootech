@@ -172,6 +172,18 @@ export const AUTHORIZED_SENDER_EMAILS = [
   'noreply@zenemoo.in',
 ];
 
+export interface AttachmentItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  content: string; // Base64 Data URL string
+  progress: number;
+  status: 'uploading' | 'ready' | 'error';
+  errorMsg?: string;
+}
+
 export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps> = ({
   showToast,
   userProfile,
@@ -197,7 +209,8 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const editorRef = useRef<HTMLDivElement>(null);
 
   // 4. Attachments State
-  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // 5. Signature State
   const [selectedSignatureId, setSelectedSignatureId] = useState<string>('sangita');
@@ -375,11 +388,95 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     }, 1200);
   };
 
-  // Attachment Upload Handler
+  // Attachment Upload Handler with Size Validation & Base64 Reader
+  const processFiles = (files: File[]) => {
+    let currentTotalSize = attachments.reduce((sum, item) => sum + item.size, 0);
+
+    for (const file of files) {
+      // Rule 1: Max 10 MB per individual file
+      if (file.size > 10 * 1024 * 1024) {
+        showToast(`File "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the maximum 10 MB per file limit.`, 'error');
+        continue;
+      }
+      // Rule 2: Max 25 MB total across all attachments
+      if (currentTotalSize + file.size > 25 * 1024 * 1024) {
+        showToast(`Adding "${file.name}" exceeds the maximum 25 MB total email attachment limit.`, 'error');
+        break;
+      }
+
+      currentTotalSize += file.size;
+      const fileId = `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+      const newItem: AttachmentItem = {
+        id: fileId,
+        file,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'application/octet-stream',
+        content: '',
+        progress: 0,
+        status: 'uploading',
+      };
+
+      setAttachments((prev) => [...prev, newItem]);
+
+      const reader = new FileReader();
+      reader.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const pct = Math.round((evt.loaded / evt.total) * 100);
+          setAttachments((prev) =>
+            prev.map((item) => (item.id === fileId ? { ...item, progress: pct } : item))
+          );
+        }
+      };
+
+      reader.onload = () => {
+        const result = reader.result as string;
+        setAttachments((prev) =>
+          prev.map((item) =>
+            item.id === fileId
+              ? { ...item, content: result, progress: 100, status: 'ready' }
+              : item
+          )
+        );
+      };
+
+      reader.onerror = () => {
+        setAttachments((prev) =>
+          prev.map((item) =>
+            item.id === fileId
+              ? { ...item, status: 'error', errorMsg: 'Failed to read attachment file.' }
+              : item
+          )
+        );
+        showToast(`Failed to load file ${file.name}.`, 'error');
+      };
+
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setAttachments([...attachments, ...newFiles]);
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(Array.from(e.target.files));
+      e.target.value = '';
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(Array.from(e.dataTransfer.files));
     }
   };
 
@@ -410,8 +507,25 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       return;
     }
 
+    // Check if any attachment is still uploading
+    const isStillUploading = attachments.some((att) => att.status === 'uploading');
+    if (isStillUploading) {
+      showToast('Please wait for all attachments to finish loading before sending.', 'error');
+      return;
+    }
+
     setIsSending(true);
     try {
+      const formattedAttachments = attachments
+        .filter((att) => att.status === 'ready' && att.content)
+        .map((att) => ({
+          name: att.name,
+          filename: att.name,
+          contentType: att.type,
+          size: att.size,
+          content: att.content,
+        }));
+
       const payload = {
         sender: selectedSender,
         recipients: currentTo.join(', '),
@@ -419,11 +533,12 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         bcc: bccChips.join(', '),
         subject,
         html: currentContent,
+        attachments: formattedAttachments,
       };
 
       const res = await emailApi.send(payload);
       if (res.data && res.data.success) {
-        showToast('🚀 Email dispatched successfully via Brevo SMTP Engine!', 'success');
+        showToast('🚀 Email dispatched successfully with all attachments!', 'success');
         setToChips([]);
         setCcChips([]);
         setBccChips([]);
@@ -869,17 +984,23 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
           />
         </div>
 
-        {/* Row G: Responsive File Attachments */}
-        <div className="space-y-2 w-full">
+        {/* Row G: Responsive File Attachments with Drag & Drop */}
+        <div className="space-y-3 w-full">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
-              File Attachments
-            </label>
+            <div className="space-y-0.5">
+              <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
+                📎 Attachments (Images, PDFs, Word, Excel, ZIP)
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono block">
+                Max 10 MB per file &bull; 25 MB total limit
+              </span>
+            </div>
+
             <label
               htmlFor="email-file-attachment"
-              className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-cyan-300 font-mono text-xs flex items-center justify-center gap-1.5 cursor-pointer font-bold"
+              className="min-h-[40px] px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono text-xs flex items-center justify-center gap-1.5 cursor-pointer font-bold transition-all shadow-md"
             >
-              <Paperclip className="w-3.5 h-3.5" /> Attach File (PDF, DOCX, Images)
+              <Paperclip className="w-3.5 h-3.5" /> Browse Files
             </label>
             <input
               id="email-file-attachment"
@@ -887,32 +1008,85 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
               multiple
               onChange={handleFileUpload}
               className="hidden"
+              accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar"
             />
           </div>
 
+          {/* Drag & Drop Zone */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`p-4 rounded-2xl border-2 border-dashed transition-all text-center font-mono text-xs space-y-1 ${
+              isDraggingOver
+                ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 scale-[1.01]'
+                : 'border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2 font-bold text-white text-xs">
+              <Paperclip className="w-4 h-4 text-cyan-400" /> Drag &amp; Drop Files Here or Click Browse
+            </div>
+            <div className="text-[10px] text-slate-500">
+              Supports Images (PNG, JPG, SVG), PDFs, Word, Excel, PowerPoint &amp; ZIP files
+            </div>
+          </div>
+
+          {/* Attachment Preview List */}
           {attachments.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 w-full">
-              {attachments.map((file, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2 text-xs font-mono"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <Paperclip className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                    <span className="text-white truncate">{file.name}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 w-full pt-1">
+              {attachments.map((att) => {
+                const formattedSize =
+                  att.size > 1024 * 1024
+                    ? `${(att.size / (1024 * 1024)).toFixed(2)} MB`
+                    : `${Math.round(att.size / 1024)} KB`;
+
+                return (
+                  <div
+                    key={att.id}
+                    className="p-3 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2 text-xs font-mono relative overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <div className="flex items-center gap-2 truncate min-w-0">
+                        <Paperclip className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <span className="text-white font-bold truncate text-xs">{att.name}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setAttachments(attachments.filter((a) => a.id !== att.id))}
+                        className="text-slate-400 hover:text-red-400 p-1 rounded-lg hover:bg-white/10 cursor-pointer shrink-0 transition-colors"
+                        title="Remove attachment"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span>{formattedSize}</span>
+                      {att.status === 'uploading' && (
+                        <span className="text-cyan-400 font-bold">Uploading {att.progress}%...</span>
+                      )}
+                      {att.status === 'ready' && (
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          ✓ Ready
+                        </span>
+                      )}
+                      {att.status === 'error' && (
+                        <span className="text-red-400 font-bold">Error</span>
+                      )}
+                    </div>
+
+                    {att.status === 'uploading' && (
+                      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-cyan-400 transition-all duration-200"
+                          style={{ width: `${att.progress}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>
-                    <button
-                      type="button"
-                      onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
-                      className="text-slate-400 hover:text-red-400 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
