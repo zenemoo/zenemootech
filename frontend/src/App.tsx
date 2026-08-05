@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ThemeProvider } from './context/ThemeContext';
 import { CursorSpotlight } from './components/CursorSpotlight';
 import { ThreeNeuralBackground } from './components/ThreeNeuralBackground';
 import { Navbar } from './components/Navbar';
@@ -272,7 +271,7 @@ export function App() {
   };
 
   return (
-    <ThemeProvider>
+    <>
       {currentRoute === 'admin' ? (
         <AdminDashboard onExit={handleExitAdmin} />
       ) : currentRoute === 'email' ? (
@@ -374,7 +373,7 @@ export function App() {
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
-        <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
+        <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 transition-colors duration-300">
           {/* Interactive Mouse Spotlight */}
           <CursorSpotlight />
 
@@ -409,7 +408,7 @@ export function App() {
           onClose={() => setIsAiDrawerOpen(false)}
         />
       )}
-    </ThemeProvider>
+    </>
   );
 }
 
