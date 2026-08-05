@@ -26,6 +26,7 @@ import {
   Eye,
   Slash,
   Camera,
+  Download,
 } from 'lucide-react';
 import { directoryApi, pendingProfileUpdatesApi } from '../services/api';
 
@@ -100,16 +101,16 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
   const [pendingReviewMember, setPendingReviewMember] = useState<DirectoryMember | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
-  const handleAcceptPhotoRequest = async (requestId: string, newPhotoUrl: string) => {
+  const handleAcceptPhotoRequest = async (requestId: string) => {
     setIsProcessingAction(true);
     try {
       const res = await pendingProfileUpdatesApi.approve(requestId);
       if (res.data && res.data.success) {
-        showToast('✅ Profile photo request APPROVED! New photo is now live on the site.', 'success');
+        showToast('✅ Profile photo request APPROVED! Employee has been notified.', 'success');
         setMembers((prev) =>
           prev.map((m) =>
             m.pending_photo_request?.id === requestId
-              ? { ...m, photo: newPhotoUrl, pending_photo_request: null }
+              ? { ...m, pending_photo_request: null }
               : m
           )
         );
@@ -831,15 +832,22 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                   <div className="text-cyan-300 font-mono text-[11px] break-all border-b border-white/5 pb-2">
                     {pendingReviewMember.pending_photo_request?.image_url}
                   </div>
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <a
                       href={pendingReviewMember.pending_photo_request?.image_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all min-h-[38px]"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" /> Open Media Link in New Tab
+                      <ExternalLink className="w-3.5 h-3.5" /> Open Media Link
                     </a>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(pendingReviewMember.pending_photo_request?.image_url || '', 'Media Link')}
+                      className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all min-h-[38px]"
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Copy Image Link
+                    </button>
                   </div>
                 </div>
               </div>
@@ -860,15 +868,15 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                   />
                   <div className="hidden text-center space-y-2 p-3 text-slate-400 text-xs">
                     <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
-                    <p>Drive page or external web link. Please click <strong>"Open Media Link in New Tab"</strong> to inspect public access.</p>
+                    <p>Drive page or external web link. Click <strong>"Open Media Link"</strong> above to inspect and download photo.</p>
                   </div>
                 </div>
               </div>
 
               {/* Notice */}
-              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[11px] flex items-start gap-2">
-                <Shield className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
-                <span>Verify that the file is publicly viewable. Accepting will update the employee's official avatar across the entire website.</span>
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-start gap-2">
+                <Shield className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <span>Accepting sends an approval notification to the user. Live website photo will NOT change automatically — you can download the image and update Team Roster manually whenever ready.</span>
               </div>
             </div>
 
@@ -884,12 +892,12 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
               </button>
 
               <button
-                onClick={() => handleAcceptPhotoRequest(pendingReviewMember.pending_photo_request!.id, pendingReviewMember.pending_photo_request!.image_url || '')}
+                onClick={() => handleAcceptPhotoRequest(pendingReviewMember.pending_photo_request!.id)}
                 disabled={isProcessingAction}
                 className="py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold font-display text-xs cursor-pointer flex items-center justify-center gap-2 transition-all shadow-lg min-h-[44px]"
               >
                 {isProcessingAction ? <RefreshCw className="w-4 h-4 animate-spin text-black" /> : <CheckCircle className="w-4 h-4 text-black" />}
-                <span>Accept &amp; Update</span>
+                <span>Accept Request</span>
               </button>
             </div>
           </div>

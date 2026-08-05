@@ -828,17 +828,10 @@ export const approveProfileUpdate = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Pending profile update request not found.' });
     }
 
-    // Apply requested changes directly to single-source team table
     const changes = pendingRecord.requested_changes || {};
-    const newImageUrl = changes.image_url || changes.photo;
     const refNo = changes.request_ref_no || pendingRecord.id;
 
-    const updatedMember = await supabaseService.update('team', pendingRecord.team_member_id, {
-      image_url: newImageUrl,
-      updated_at: new Date().toISOString(),
-    });
-
-    // Mark status = approved
+    // Mark status = approved (do NOT overwrite live team image_url automatically; Admin/HR will update Team Roster manually)
     if (supabase) {
       try {
         await supabase
@@ -850,7 +843,7 @@ export const approveProfileUpdate = async (req, res, next) => {
         if (pendingRecord.user_id) {
           await supabase.from('notifications').insert([{
             title: `✅ Profile Photo Request Approved`,
-            message: `Your profile photo update request (Ref: ${refNo}) has been APPROVED by Admin/HR. Your new photo is now live on the site!`,
+            message: `Your profile photo update request (Ref: ${refNo}) has been APPROVED by Admin/HR. The administrator will process your photo update on the official roster.`,
             type: 'success',
             target_type: 'individual',
             target_user_id: pendingRecord.user_id,
@@ -863,8 +856,8 @@ export const approveProfileUpdate = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: `Approved profile update for ${pendingRecord.employee_name}. Changes are now live on the website!`,
-      data: updatedMember,
+      message: `Approved profile photo request for ${pendingRecord.employee_name}. Employee has been notified! You can manually download and update the photo in Team Roster.`,
+      data: pendingRecord,
     });
   } catch (err) {
     next(err);
