@@ -7,7 +7,7 @@
 -- 1. Base Table: user_accounts
 CREATE TABLE IF NOT EXISTS user_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'team_member',
   status TEXT NOT NULL DEFAULT 'active',
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS user_accounts (
 
 -- Ensure team_member_id and all required columns exist
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS team_member_id UUID REFERENCES team(id) ON DELETE SET NULL;
+ALTER TABLE user_accounts DROP CONSTRAINT IF EXISTS user_accounts_email_key;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'team_member';
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS email_access BOOLEAN NOT NULL DEFAULT false;
@@ -28,6 +29,16 @@ ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS notification_access BOOLEAN N
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS password_changed BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS temporary_password BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;
+
+-- Ensure each team member has a unique user account entry
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_accounts_team_member_id_key'
+  ) THEN
+    ALTER TABLE user_accounts ADD CONSTRAINT user_accounts_team_member_id_key UNIQUE (team_member_id);
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_user_accounts_email ON user_accounts(email);
 CREATE INDEX IF NOT EXISTS idx_user_accounts_team_member ON user_accounts(team_member_id);
