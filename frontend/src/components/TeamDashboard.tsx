@@ -1221,7 +1221,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
                   </div>
                   <div>
                     <h3 className="text-base font-bold font-display text-white">Update Profile Picture</h3>
-                    <p className="text-[11px] text-slate-400">Submit Google Drive, Cloudinary link, or upload media file</p>
+                    <p className="text-[11px] text-slate-400">Submit Google Drive, Cloudinary, Imgur, or public media link</p>
                   </div>
                 </div>
                 <button
@@ -1264,22 +1264,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
                       onChange={(e) => setPhotoLinkInput(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 min-h-[44px]"
                     />
-                  </div>
-
-                  {/* Device File Upload Alternative */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-slate-400 text-[11px]">Or choose an image file from device:</span>
-                    <label className="px-3.5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5 transition-all">
-                      {isUploadingImage ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
-                      <span>Upload Image File</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleDeviceFileUpload}
-                        className="hidden"
-                        disabled={isUploadingImage}
-                      />
-                    </label>
                   </div>
 
                   {/* Contact Phone Number */}
