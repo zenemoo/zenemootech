@@ -1,18 +1,13 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ArrowLeft, FileText, Mail, MapPin, CheckCircle2 } from 'lucide-react';
 import { CursorSpotlight } from './CursorSpotlight';
 import { ThreeNeuralBackground } from './ThreeNeuralBackground';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 interface TermsConditionsPageProps {
   onBack: () => void;
 }
 
 export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack }) => {
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
   return (
     <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Interactive Mouse Spotlight */}
@@ -31,13 +26,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
       <header className="sticky top-0 z-50 bg-[#050505]/80 light:bg-white/80 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-4 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <button onClick={onBack} className="flex items-center gap-3 group cursor-pointer">
-            <ImageWithSkeleton 
-              src="/assets/logo.png" 
-              alt="ZENEMOO Logo" 
-              className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md"
-              fallbackType="logo"
-              isAvatar
-            />
+            <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
             <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
           </button>
 

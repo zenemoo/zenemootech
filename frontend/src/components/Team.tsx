@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Star, UserCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
 import { TeamMember, getStoredTeamMembers, getSlugFromName } from '../lib/teamStore';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
-import { TeamDirectorySkeleton } from './SkeletonComponents';
 
 export const Team: React.FC = () => {
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -40,35 +38,39 @@ export const Team: React.FC = () => {
 
   const handleOpenFullDirectory = () => {
     window.history.pushState(null, '', '/team-directory');
-    window.dispatchEvent(new Event('popstate'));
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
   const handleMemberClick = (member: TeamMember) => {
     const slug = member.slug || getSlugFromName(member.name);
     window.history.pushState(null, '', `/team/${slug}`);
-    window.dispatchEvent(new Event('popstate'));
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
   return (
-    <section id="team" className="py-24 relative z-10 bg-[#050505] light:bg-slate-50 border-t border-white/10 light:border-slate-200 font-sans">
+    <section id="team" className="py-24 relative z-10 bg-noise">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono">
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono mb-4">
             <Users className="w-3.5 h-3.5" />
-            <span>Zenemoo Core Team</span>
+            THE ZENEMOO TECH TEAM
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold font-display tracking-tight text-white light:text-slate-900">
-            Meet the Specialists Behind <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500">Zenemoo</span>
+
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-display text-white tracking-tight mb-4">
+            Meet Our Data Solutions Team
           </h2>
-          <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base leading-relaxed">
-            Our expert team of AI trainers, linguists, data annotators, and engineers delivering high-accuracy datasets for next-gen models.
+          <p className="text-slate-400 text-base sm:text-lg">
+            Our specialized team of transcribers, annotators, and quality control leads delivering enterprise accuracy for DesiCrew Solutions and AI tech companies.
           </p>
         </div>
 
-        {/* Content Section */}
+        {/* Dynamic Team Grid */}
         {loading ? (
-          <TeamDirectorySkeleton count={displayLimit} />
+          <div className="py-16 text-center space-y-3 font-mono text-xs text-cyan-400">
+            <span className="inline-block w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></span>
+            <div>Loading Zenemoo Team Directory...</div>
+          </div>
         ) : members.length === 0 ? (
           <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 max-w-md mx-auto space-y-3">
             <UserCheck className="w-10 h-10 text-cyan-400 mx-auto" />
@@ -90,13 +92,13 @@ export const Team: React.FC = () => {
                   <div>
                     {/* Profile Image */}
                     <div className="relative h-48 rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-cyan-500/40 transition-colors bg-slate-900">
-                      <ImageWithSkeleton
+                      <img
                         src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
-                        fallbackSrc={member.fallback || '/assets/executive.png'}
-                        fallbackType="avatar"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
+                        }}
                         alt={member.name}
                         className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
-                        containerClassName="w-full h-full"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#090b12] via-transparent to-transparent opacity-70"></div>
                       <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-[10px] font-mono text-cyan-300 flex items-center gap-1">

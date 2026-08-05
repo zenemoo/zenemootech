@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 import {
   Users,
   Search,
@@ -258,12 +257,10 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                 {/* Header: Photo & Unique Employee ID */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <ImageWithSkeleton
+                    <img
                       src={member.photo}
-                      fallbackType="avatar"
                       alt={member.name}
                       className="w-14 h-14 rounded-2xl object-cover border border-cyan-400/60 group-hover:scale-105 transition-transform shrink-0"
-                      isAvatar
                     />
                     <div className="truncate min-w-0">
                       <h3 className="font-bold text-white text-sm truncate group-hover:text-cyan-300 transition-colors">
@@ -336,12 +333,10 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-white/10 pb-4">
               <div className="flex items-center gap-4 min-w-0">
-                <ImageWithSkeleton
+                <img
                   src={selectedMember.photo}
-                  fallbackType="avatar"
                   alt={selectedMember.name}
                   className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-400 shadow-xl shrink-0"
-                  isAvatar
                 />
                 <div className="space-y-1 min-w-0">
                   <h3 className="text-base sm:text-xl font-bold font-display text-white truncate">{selectedMember.name}</h3>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, ArrowRight, ShieldCheck, CheckCircle2, Mic, Tags, Volume2, Globe, Users, Calendar, Mail, Play, Pause } from 'lucide-react';
 import { CountUp } from './CountUp';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 export const Hero: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -39,12 +38,7 @@ export const Hero: React.FC = () => {
         <div className="text-center max-w-4xl mx-auto">
           {/* Top Pill Badge with Official Logo */}
           <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-8 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg">
-            <ImageWithSkeleton 
-              src="/assets/logo.png" 
-              alt="ZENEMOO Logo" 
-              className="w-6 h-6 rounded-full bg-white p-0.5 shadow"
-              fallbackType="logo"
-            />
+            <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-6 h-6 rounded-full bg-white p-0.5 shadow" />
             <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
             <span className="text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold">
               Trusted DesiCrew Vendor • Est. 2023

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 import { X, Plus, Edit, Trash2, Upload, Database, Cloud, CheckCircle, Sparkles, Image, RefreshCw, Save } from 'lucide-react';
 import { TeamMember } from '../lib/teamStore';
 import { uploadImageToCloudinary } from '../lib/adminStore';
@@ -198,14 +197,13 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-900 border border-white/10 shrink-0">
-                        <ImageWithSkeleton
+                        <img
                           src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
-                          fallbackSrc={member.fallback || '/assets/executive.png'}
-                          fallbackType="avatar"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
+                          }}
                           alt={member.name}
                           className="w-full h-full object-cover"
-                          containerClassName="w-full h-full"
-                          isAvatar
                         />
                       </div>
                       <div>
@@ -309,7 +307,7 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
                     {editingMember.image_url || editingMember.image ? (
-                      <ImageWithSkeleton src={editingMember.image_url || editingMember.image} fallbackType="avatar" alt="Preview" className="w-full h-full object-cover" containerClassName="w-full h-full" isAvatar />
+                      <img src={editingMember.image_url || editingMember.image} alt="Preview" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">No Image</div>
                     )}

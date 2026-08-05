@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Key, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
 import { authApi } from '../services/api';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 interface VerifyOtpPageProps {
   email: string;
@@ -119,7 +118,7 @@ export const VerifyOtpPage: React.FC<VerifyOtpPageProps> = ({
       <div className="glass-panel p-8 sm:p-10 rounded-3xl border border-cyan-500/30 max-w-md w-full space-y-6 text-center shadow-2xl relative">
         {/* Header Logo */}
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] mx-auto shadow-lg shadow-cyan-500/25">
-          <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" fallbackType="logo" isAvatar />
+          <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
         </div>
 
         <div>

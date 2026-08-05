@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 import {
   Sparkles,
   X,
@@ -398,7 +397,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
             {/* Logo + Title */}
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1.5px] shadow-lg shadow-cyan-500/20 shrink-0">
-                <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo AI" className="w-full h-full object-cover rounded-full bg-white p-0.5" fallbackType="logo" isAvatar />
+                <img src="/assets/logo.png" alt="Zenemoo AI" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
                 <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#07080f] animate-pulse" />
               </div>
               <div className="min-w-0">
@@ -578,7 +577,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                     {/* AI Avatar */}
                     {m.role === 'assistant' && (
                       <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[1.5px] shrink-0 mt-1">
-                        <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo AI" className="w-full h-full object-cover rounded-full bg-white p-0.5" fallbackType="logo" isAvatar />
+                        <img src="/assets/logo.png" alt="Zenemoo AI" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
                       </div>
                     )}
 
@@ -655,7 +654,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                 {loading && (
                   <div className="flex gap-2 sm:gap-3 justify-start items-start">
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[1.5px] shrink-0 animate-pulse">
-                      <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo AI" className="w-full h-full object-cover rounded-full bg-white p-0.5" fallbackType="logo" isAvatar />
+                      <img src="/assets/logo.png" alt="Zenemoo AI" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
                     </div>
                     <div className="px-4 py-3 rounded-2xl rounded-tl-none bg-white/[0.04] border border-white/[0.08] font-mono text-xs text-slate-400 flex items-center gap-2">
                       <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />

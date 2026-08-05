@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImageWithSkeleton } from './ImageWithSkeleton';
 import {
   User,
   Shield,
@@ -344,7 +343,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
         {/* SECTION 1: FIXED BRAND LOGO HEADER */}
         <div className={`h-16 shrink-0 border-b border-white/10 px-4 flex items-center justify-between bg-[#06070b]/90 backdrop-blur-md z-10 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
           <div className="flex items-center gap-3 overflow-hidden">
-            <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo Logo" className="w-9 h-9 rounded-xl bg-white p-0.5 shadow-md shrink-0 object-cover" fallbackType="logo" />
+            <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-9 h-9 rounded-xl bg-white p-0.5 shadow-md shrink-0 object-cover" />
             {!isSidebarCollapsed && (
               <div className="truncate">
                 <div className="font-display font-extrabold text-xs text-white tracking-wider truncate">ZENEMOO</div>
@@ -535,13 +534,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
           >
             <div className="flex items-center gap-3 truncate">
               <div className="relative shrink-0">
-                <ImageWithSkeleton
+                <img
                   src={profile.image_url || '/assets/executive.png'}
-                  fallbackSrc="/assets/executive.png"
-                  fallbackType="avatar"
                   alt={profile.name}
                   className="w-9 h-9 rounded-xl object-cover border border-cyan-400/60 shadow-md group-hover:scale-105 transition-transform"
-                  isAvatar
                 />
                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#09090b] animate-pulse" />
               </div>
@@ -575,13 +571,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
               className="absolute bottom-16 left-0 sm:left-2 w-72 sm:w-80 p-5 rounded-3xl bg-[#09090b]/95 backdrop-blur-2xl border border-cyan-500/40 shadow-2xl shadow-cyan-500/10 space-y-4 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200"
             >
               <div className="flex items-start gap-3 border-b border-white/10 pb-4">
-                <ImageWithSkeleton
+                <img
                   src={profile.image_url || '/assets/executive.png'}
-                  fallbackSrc="/assets/executive.png"
-                  fallbackType="avatar"
                   alt={profile.name}
                   className="w-14 h-14 rounded-2xl object-cover border-2 border-cyan-400 shadow-xl"
-                  isAvatar
                 />
                 <div className="space-y-1 truncate">
                   <div className="font-bold text-sm text-white truncate">{profile.name}</div>
@@ -820,13 +813,10 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
 
                 <div className="space-y-3 font-mono">
                   <div className="relative group p-3.5 sm:p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center gap-3">
-                    <ImageWithSkeleton
+                    <img
                       src={profile.image_url || '/assets/executive.png'}
-                      fallbackSrc="/assets/executive.png"
-                      fallbackType="avatar"
                       alt={profile.name}
                       className="w-14 h-14 rounded-xl object-cover border border-cyan-400 shrink-0"
-                      isAvatar
                     />
                     <div className="truncate">
                       <div className="font-bold text-white text-sm truncate">{profile.name}</div>
