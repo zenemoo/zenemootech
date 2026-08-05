@@ -1,27 +1,13 @@
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'zenemoo2026';
 
 /**
  * Universal Token Verification Middleware
  */
 export const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  const adminPasskeyHeader = req.headers['x-admin-passkey'];
-
-  // 1. Direct Master Admin Passkey Header Check
-  if (adminPasskeyHeader && adminPasskeyHeader === ADMIN_PASSCODE) {
-    req.user = { role: 'admin', email: 'mr.prem2006@gmail.com' };
-    return next();
-  }
-
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    // If no authorization header, check if request is in admin context or has passcode in query/body
-    if (req.headers['x-admin-passkey'] === ADMIN_PASSCODE || req.query?.admin_passkey === ADMIN_PASSCODE) {
-      req.user = { role: 'admin', email: 'mr.prem2006@gmail.com' };
-      return next();
-    }
     return res.status(401).json({
       success: false,
       code: 'UNAUTHORIZED_MISSING_TOKEN',
@@ -30,13 +16,6 @@ export const verifyToken = (req, res, next) => {
   }
 
   const token = authHeader.split(' ')[1];
-
-  // 2. Direct Admin Passcode as Token Check
-  if (token === ADMIN_PASSCODE) {
-    req.user = { role: 'admin', email: 'mr.prem2006@gmail.com' };
-    return next();
-  }
-
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
@@ -59,11 +38,6 @@ export const verifyToken = (req, res, next) => {
 
     next();
   } catch (err) {
-    // Fallback: If token expired or invalid, check master admin passkey
-    if (token === ADMIN_PASSCODE || adminPasskeyHeader === ADMIN_PASSCODE) {
-      req.user = { role: 'admin', email: 'mr.prem2006@gmail.com' };
-      return next();
-    }
     return res.status(401).json({
       success: false,
       code: 'UNAUTHORIZED_EXPIRED_TOKEN',
@@ -86,13 +60,7 @@ export const requireRole = (allowedRoles = []) => {
     }
 
     const userRole = (req.user.role || '').toLowerCase();
-
-    // Master Admin or Admin role always bypassed
-    if (userRole === 'admin' || req.user.role === 'admin') {
-      return next();
-    }
-
-    const isAllowed = allowedRoles.some((r) => r.toLowerCase() === userRole);
+    const isAllowed = allowedRoles.some((r) => r.toLowerCase() === userRole || userRole === 'admin');
 
     if (!isAllowed) {
       return res.status(403).json({
