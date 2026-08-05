@@ -583,12 +583,12 @@ export const uploadSelfImage = async (req, res, next) => {
     const teamMemberId = req.user?.team_member_id;
     const cleanEmail = (req.user?.email || '').toLowerCase();
     const role = (req.user?.role || 'team_member').toLowerCase();
-    const { image_url } = req.body;
+    const { image_url, phone_number, link_type, notes } = req.body;
 
     if (!image_url) {
       return res.status(400).json({
         success: false,
-        message: 'Image URL is required.',
+        message: 'Image URL or Media Link is required.',
       });
     }
 
@@ -645,12 +645,42 @@ export const uploadSelfImage = async (req, res, next) => {
 
     // Route non-admin image uploads through Admin Approval Workflow
     if (role !== 'admin') {
+      const empId = targetMember.employee_id || `ZNM-${String(targetMember.id || '000').replace(/-/g, '').substring(0, 5).toUpperCase()}`;
+      const refNo = `REF-IMG-${Math.floor(100000 + Math.random() * 900000)}`;
+      const cleanPhone = phone_number || targetMember.phone || targetMember.company_phone || '';
+
+      // 2nd Submission Rule: Delete/overwrite previous pending request for this team member so only 1 active request exists
+      if (supabase) {
+        try {
+          await supabase
+            .from('pending_profile_updates')
+            .delete()
+            .eq('team_member_id', targetMember.id)
+            .eq('status', 'pending');
+        } catch (e) {}
+      }
+
+      // Also clean up in-memory fallback store
+      for (let i = memoryPendingUpdates.length - 1; i >= 0; i--) {
+        if (memoryPendingUpdates[i].team_member_id === targetMember.id && memoryPendingUpdates[i].status === 'pending') {
+          memoryPendingUpdates.splice(i, 1);
+        }
+      }
+
       const pendingPayload = {
         team_member_id: targetMember.id,
         user_id: userId || null,
         employee_name: targetMember.name,
-        employee_id: targetMember.employee_id || `EMP-${String(targetMember.position || 1).padStart(3, '0')}`,
-        requested_changes: { image_url, updated_at: new Date().toISOString() },
+        employee_id: empId,
+        requested_changes: {
+          image_url,
+          phone_number: cleanPhone,
+          link_type: link_type || 'external',
+          notes: notes || '',
+          request_ref_no: refNo,
+          submitted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
         status: 'pending',
         created_at: new Date().toISOString(),
       };
@@ -658,13 +688,27 @@ export const uploadSelfImage = async (req, res, next) => {
       if (supabase) {
         try {
           await supabase.from('pending_profile_updates').insert([pendingPayload]);
+
+          // Create Notification for Admin & HR Notification Center
+          await supabase.from('notifications').insert([{
+            title: `📸 Profile Photo Update Request: ${targetMember.name}`,
+            message: `${targetMember.name} (${empId}) submitted a new profile photo link (Ref: ${refNo}). Contact: ${cleanPhone || 'N/A'}. Please review in Team Directory.`,
+            type: 'warning',
+            target_type: 'role',
+            target_role: 'admin,hr',
+            created_at: new Date().toISOString(),
+          }]);
         } catch (e) {}
       }
       memoryPendingUpdates.unshift({ id: `pending_${Date.now()}`, ...pendingPayload });
 
       return res.json({
         success: true,
-        message: 'Profile picture update submitted for Administrator approval. It will appear on the website once approved.',
+        ref_no: refNo,
+        phone_number: cleanPhone,
+        image_url,
+        employee_id: empId,
+        message: `Thank you for submitting! Your photo update request (Ref: ${refNo}) has been sent for Admin/HR review. It will be verified and posted on the site once approved.`,
         is_pending_approval: true,
       });
     }
@@ -740,9 +784,13 @@ export const approveProfileUpdate = async (req, res, next) => {
 
     // Apply requested changes directly to single-source team table
     const changes = pendingRecord.requested_changes || {};
-    changes.updated_at = new Date().toISOString();
+    const newImageUrl = changes.image_url || changes.photo;
+    const refNo = changes.request_ref_no || pendingRecord.id;
 
-    const updatedMember = await supabaseService.update('team', pendingRecord.team_member_id, changes);
+    const updatedMember = await supabaseService.update('team', pendingRecord.team_member_id, {
+      image_url: newImageUrl,
+      updated_at: new Date().toISOString(),
+    });
 
     // Mark status = approved
     if (supabase) {
@@ -751,6 +799,18 @@ export const approveProfileUpdate = async (req, res, next) => {
           .from('pending_profile_updates')
           .update({ status: 'approved', updated_at: new Date().toISOString() })
           .eq('id', id);
+
+        // Notify target employee that request was approved
+        if (pendingRecord.user_id) {
+          await supabase.from('notifications').insert([{
+            title: `✅ Profile Photo Request Approved`,
+            message: `Your profile photo update request (Ref: ${refNo}) has been APPROVED by Admin/HR. Your new photo is now live on the site!`,
+            type: 'success',
+            target_type: 'individual',
+            target_user_id: pendingRecord.user_id,
+            created_at: new Date().toISOString(),
+          }]);
+        }
       } catch (e) {}
     }
     pendingRecord.status = 'approved';
@@ -770,13 +830,44 @@ export const rejectProfileUpdate = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { admin_notes } = req.body;
+    let pendingRecord = null;
+
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('pending_profile_updates')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (data) pendingRecord = data;
+      } catch (e) {}
+    }
+
+    if (!pendingRecord) {
+      pendingRecord = memoryPendingUpdates.find((u) => u.id === id);
+    }
+
+    const refNo = pendingRecord?.requested_changes?.request_ref_no || id;
+    const rejectionNote = admin_notes || 'Media link invalid or access not set to public.';
 
     if (supabase) {
       try {
         await supabase
           .from('pending_profile_updates')
-          .update({ status: 'rejected', admin_notes: admin_notes || 'Rejected by Admin', updated_at: new Date().toISOString() })
+          .update({ status: 'rejected', admin_notes: rejectionNote, updated_at: new Date().toISOString() })
           .eq('id', id);
+
+        // Notify target employee that request was rejected
+        if (pendingRecord && pendingRecord.user_id) {
+          await supabase.from('notifications').insert([{
+            title: `❌ Profile Photo Request Rejected`,
+            message: `Your profile photo update request (Ref: ${refNo}) was rejected by Admin/HR. Note: ${rejectionNote}`,
+            type: 'error',
+            target_type: 'individual',
+            target_user_id: pendingRecord.user_id,
+            created_at: new Date().toISOString(),
+          }]);
+        }
       } catch (e) {}
     }
 
@@ -785,7 +876,7 @@ export const rejectProfileUpdate = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: 'Pending profile update rejected.',
+      message: 'Pending profile update rejected and employee notified.',
     });
   } catch (err) {
     next(err);

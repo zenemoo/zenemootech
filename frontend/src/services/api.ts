@@ -268,7 +268,8 @@ export const notificationApi = {
 // Team Member & HR Self-Service Profile APIs
 export const selfProfileApi = {
   updateProfile: (data: any) => api.put('/team/profile/me', data),
-  uploadImage: (image_url: string) => api.post('/team/profile/upload-image', { image_url }),
+  uploadImage: (payload: string | { image_url: string; phone_number?: string; link_type?: string; notes?: string }) =>
+    api.post('/team/profile/upload-image', typeof payload === 'string' ? { image_url: payload } : payload),
 };
 
 // Enterprise Secure Self-Service Private Profile System

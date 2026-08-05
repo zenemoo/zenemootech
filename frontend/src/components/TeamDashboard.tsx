@@ -87,9 +87,82 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   const [showNewPass, setShowNewPass] = useState(false);
   const [isChangingPass, setIsChangingPass] = useState(false);
 
+  // Photo Update Media Link & Public Guide Modal State
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [photoLinkInput, setPhotoLinkInput] = useState('');
+  const [contactPhoneInput, setContactPhoneInput] = useState('');
+  const [isSubmittingPhoto, setIsSubmittingPhoto] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{
+    ref_no: string;
+    phone_number: string;
+    image_url: string;
+    message: string;
+    employee_id: string;
+  } | null>(null);
+
   const showToast = (text: string, type: 'success' | 'error') => {
     setToastMsg({ text, type });
     setTimeout(() => setToastMsg(null), 4000);
+  };
+
+  const handlePhotoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!photoLinkInput.trim()) {
+      showToast('Please enter an image link (Google Drive, Cloudinary, Imgur, etc.) or upload a file.', 'error');
+      return;
+    }
+
+    setIsSubmittingPhoto(true);
+    try {
+      const payload = {
+        image_url: photoLinkInput.trim(),
+        phone_number: contactPhoneInput.trim() || profile.phone || profile.company_phone || '',
+        link_type: photoLinkInput.includes('drive.google') ? 'google_drive' : photoLinkInput.includes('cloudinary') ? 'cloudinary' : 'external_link',
+        notes: 'Submitted via Team Dashboard Overview',
+      };
+
+      const res = await selfProfileApi.uploadImage(payload);
+      if (res.data && res.data.success) {
+        setSubmissionResult({
+          ref_no: res.data.ref_no || `REF-IMG-${Math.floor(100000 + Math.random() * 900000)}`,
+          phone_number: res.data.phone_number || payload.phone_number,
+          image_url: res.data.image_url || payload.image_url,
+          message: res.data.message || 'Submitted successfully for Admin/HR review.',
+          employee_id: res.data.employee_id || profile.employee_id || 'ZNM-30A53',
+        });
+        showToast('Profile photo request submitted to Admin & HR!', 'success');
+        await fetchProfile();
+      } else {
+        showToast(res.data?.message || 'Failed to submit photo request.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || err.message || 'Submission failed.', 'error');
+    } finally {
+      setIsSubmittingPhoto(false);
+    }
+  };
+
+  const handleDeviceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('folder', 'zenemoo/team');
+
+      const uploadRes = await uploadApi.upload(formData);
+      if (uploadRes.data && uploadRes.data.url) {
+        setPhotoLinkInput(uploadRes.data.url);
+        showToast('Image file uploaded! Media link auto-filled below.', 'success');
+      } else {
+        showToast('Failed to upload image file.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Failed to upload image file.', 'error');
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
   const fetchProfile = async () => {
@@ -821,20 +894,18 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
                     <div className="truncate">
                       <div className="font-bold text-white text-sm truncate">{profile.name}</div>
                       <div className="text-xs text-cyan-400 font-bold truncate">{profile.employee_id}</div>
-                      <label
-                        htmlFor="avatar-upload-overview"
-                        className="text-[10px] text-purple-400 hover:underline cursor-pointer flex items-center gap-1 mt-1 font-bold"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPhotoModalOpen(true);
+                          setPhotoLinkInput('');
+                          setContactPhoneInput(profile.phone || profile.company_phone || profile.personal_mobile || '');
+                          setSubmissionResult(null);
+                        }}
+                        className="text-[10px] text-purple-400 hover:text-purple-300 hover:underline cursor-pointer flex items-center gap-1 mt-1 font-bold"
                       >
-                        <Camera className="w-3 h-3" /> Change Photo
-                      </label>
-                      <input
-                        id="avatar-upload-overview"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        disabled={!cooldownInfo.can_upload_image && profile.role !== 'admin'}
-                        className="hidden"
-                      />
+                        <Camera className="w-3 h-3 text-purple-400" /> Change Photo
+                      </button>
                     </div>
                   </div>
 
@@ -1137,6 +1208,162 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
             <EnterpriseTeamDirectory userRole="team" showToast={showToast} />
           )}
         </main>
+
+        {/* CHANGE PHOTO & MEDIA LINK MODAL */}
+        {isPhotoModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-mono text-xs">
+            <div className="w-full max-w-lg bg-[#090d16] border border-cyan-500/40 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xl relative my-auto">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold font-display text-white">Update Profile Picture</h3>
+                    <p className="text-[11px] text-slate-400">Submit Google Drive, Cloudinary link, or upload media file</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsPhotoModalOpen(false)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {!submissionResult ? (
+                <form onSubmit={handlePhotoSubmit} className="space-y-4">
+                  {/* Public Access Guide Box */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-purple-950/30 to-blue-950/40 border border-cyan-500/30 space-y-2 shadow-inner">
+                    <div className="flex items-center gap-2 font-bold text-cyan-300 text-xs">
+                      <Info className="w-4 h-4 shrink-0 text-cyan-400" />
+                      <span>Google Drive &amp; Public Sharing Instructions</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      If pasting a link from <strong>Google Drive</strong>, <strong>Cloudinary</strong>, <strong>Imgur</strong>, or <strong>PostImages</strong>, please ensure the file link permission is set to <span className="text-amber-300 font-bold underline">"Anyone with the link can view"</span> so Admin &amp; HR can verify and approve your photo!
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400 pt-1 border-t border-white/10">
+                      <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-cyan-300 font-bold">Google Drive</span>
+                      <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-purple-300 font-bold">Cloudinary</span>
+                      <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-emerald-300 font-bold">Imgur</span>
+                      <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-amber-300 font-bold">Direct URL</span>
+                    </div>
+                  </div>
+
+                  {/* Media Link Input */}
+                  <div className="space-y-1.5">
+                    <label className="text-slate-300 font-bold block text-[11px]">
+                      Media / Image Link <span className="text-cyan-400">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://drive.google.com/file/d/... or Cloudinary image link"
+                      value={photoLinkInput}
+                      onChange={(e) => setPhotoLinkInput(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 min-h-[44px]"
+                    />
+                  </div>
+
+                  {/* Device File Upload Alternative */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                    <span className="text-slate-400 text-[11px]">Or choose an image file from device:</span>
+                    <label className="px-3.5 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5 transition-all">
+                      {isUploadingImage ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+                      <span>Upload Image File</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleDeviceFileUpload}
+                        className="hidden"
+                        disabled={isUploadingImage}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Contact Phone Number */}
+                  <div className="space-y-1.5">
+                    <label className="text-slate-300 font-bold block text-[11px]">
+                      Contact Phone Number <span className="text-slate-400 font-normal">(For Verification)</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="+91 9876543210"
+                      value={contactPhoneInput}
+                      onChange={(e) => setContactPhoneInput(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 min-h-[44px]"
+                    />
+                  </div>
+
+                  {/* Submit Action Buttons */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setIsPhotoModalOpen(false)}
+                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingPhoto || isUploadingImage}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold cursor-pointer flex items-center gap-2 shadow-lg min-h-[44px]"
+                    >
+                      {isSubmittingPhoto ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      <span>Submit for Verification</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Submission Confirmation Screen */
+                <div className="space-y-5 text-center py-2">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                    <CheckCircle className="w-8 h-8" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <h4 className="text-base font-bold font-display text-white">Thank You for Submitting!</h4>
+                    <p className="text-xs text-emerald-400 font-bold">{submissionResult.message}</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-left space-y-2.5 font-mono text-[11px]">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                      <span className="text-slate-400">Submission Reference:</span>
+                      <span className="text-cyan-300 font-bold">{submissionResult.ref_no}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                      <span className="text-slate-400">Employee ID:</span>
+                      <span className="text-purple-300 font-bold">{submissionResult.employee_id}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                      <span className="text-slate-400">Contact Number:</span>
+                      <span className="text-white font-bold">{submissionResult.phone_number || 'Provided'}</span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-slate-400 block">Submitted Media Link:</span>
+                      <div className="p-2.5 rounded-xl bg-black/40 text-cyan-400 truncate text-[10px] border border-white/5">
+                        {submissionResult.image_url}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] text-left flex items-start gap-2">
+                    <Info className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                    <span>Admin or HR will check public link accessibility. Once approved, your new profile picture will be posted on the site!</span>
+                  </div>
+
+                  <button
+                    onClick={() => setIsPhotoModalOpen(false)}
+                    className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-display text-xs cursor-pointer shadow-lg"
+                  >
+                    Close Window
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Dashboard Responsive Footer */}
         <footer className="py-4 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">

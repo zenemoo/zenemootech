@@ -25,8 +25,19 @@ import {
   RefreshCw,
   Eye,
   Slash,
+  Camera,
 } from 'lucide-react';
-import { directoryApi } from '../services/api';
+import { directoryApi, pendingProfileUpdatesApi } from '../services/api';
+
+export interface PendingPhotoRequest {
+  id: string;
+  ref_no: string;
+  image_url: string;
+  phone_number?: string;
+  link_type?: string;
+  created_at: string;
+  status: string;
+}
 
 export interface DirectoryMember {
   id: string;
@@ -45,6 +56,7 @@ export interface DirectoryMember {
   joining_date: string;
   status: string;
   is_private_profile_completed: boolean;
+  pending_photo_request?: PendingPhotoRequest | null;
   // Role-Sanitized Fields (Populated depending on backend RBAC)
   personal_phone?: string;
   personal_email?: string;
@@ -85,6 +97,56 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
   const [selectedMember, setSelectedMember] = useState<DirectoryMember | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'overview' | 'personal' | 'professional' | 'address' | 'bank' | 'emergency'>('overview');
+  const [pendingReviewMember, setPendingReviewMember] = useState<DirectoryMember | null>(null);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  const handleAcceptPhotoRequest = async (requestId: string, newPhotoUrl: string) => {
+    setIsProcessingAction(true);
+    try {
+      const res = await pendingProfileUpdatesApi.approve(requestId);
+      if (res.data && res.data.success) {
+        showToast('✅ Profile photo request APPROVED! New photo is now live on the site.', 'success');
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.pending_photo_request?.id === requestId
+              ? { ...m, photo: newPhotoUrl, pending_photo_request: null }
+              : m
+          )
+        );
+        setPendingReviewMember(null);
+      } else {
+        showToast(res.data?.message || 'Failed to approve photo request.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || err.message || 'Approval failed.', 'error');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleRejectPhotoRequest = async (requestId: string) => {
+    setIsProcessingAction(true);
+    try {
+      const res = await pendingProfileUpdatesApi.reject(requestId, 'Photo request rejected by Admin/HR.');
+      if (res.data && res.data.success) {
+        showToast('❌ Profile photo request REJECTED. Employee has been notified.', 'success');
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.pending_photo_request?.id === requestId
+              ? { ...m, pending_photo_request: null }
+              : m
+          )
+        );
+        setPendingReviewMember(null);
+      } else {
+        showToast(res.data?.message || 'Failed to reject photo request.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.message || err.message || 'Rejection failed.', 'error');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
 
   const fetchDirectory = async () => {
     setIsLoading(true);
@@ -255,7 +317,7 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
             >
               <div className="space-y-3">
                 {/* Header: Photo & Unique Employee ID */}
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 relative">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
                       src={member.photo}
@@ -275,6 +337,22 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                       </div>
                     </div>
                   </div>
+
+                  {/* Card Top-Right Notification Badge for Admin & HR */}
+                  {(userRole === 'admin' || userRole === 'hr') && member.pending_photo_request && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingReviewMember(member);
+                      }}
+                      className="relative z-10 p-2 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 font-bold text-xs flex items-center gap-1.5 shadow-lg animate-pulse hover:animate-none transition-all cursor-pointer shrink-0"
+                      title="Click to review pending photo request"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="bg-amber-500 text-black text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none">1</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Designation, Department & Badge */}
@@ -693,6 +771,127 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 5. PENDING PHOTO UPDATE REVIEW POPUP CARD MODAL (Admin & HR) */}
+      {pendingReviewMember && pendingReviewMember.pending_photo_request && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-mono text-xs">
+          <div className="w-full max-w-lg bg-[#090d16] border border-amber-500/40 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xl relative my-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-white/10 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                  <Camera className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
+                      Pending Photo Request
+                    </span>
+                    <span className="text-cyan-400 font-bold text-xs font-mono">{pendingReviewMember.pending_photo_request.ref_no}</span>
+                  </div>
+                  <h3 className="text-lg font-bold font-display text-white mt-1">{pendingReviewMember.name}</h3>
+                  <p className="text-xs text-cyan-400 font-bold font-mono">{pendingReviewMember.employee_id} &bull; {pendingReviewMember.designation}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPendingReviewMember(null)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Submitted Details & Contact Info */}
+            <div className="space-y-4">
+              {/* Phone Number Display */}
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Submitted Contact / Phone Number</div>
+                  <div className="text-sm font-bold text-white font-mono mt-0.5">
+                    {pendingReviewMember.pending_photo_request?.phone_number || pendingReviewMember.personal_phone || pendingReviewMember.company_phone || 'Not provided'}
+                  </div>
+                </div>
+                {(pendingReviewMember.pending_photo_request?.phone_number || pendingReviewMember.personal_phone) && (
+                  <button
+                    onClick={() => copyToClipboard(pendingReviewMember.pending_photo_request?.phone_number || pendingReviewMember.personal_phone || '', 'Phone Number')}
+                    className="p-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copy Number
+                  </button>
+                )}
+              </div>
+
+              {/* Media / Drive Link Display */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-slate-400 uppercase font-bold">Submitted Image Link (Google Drive / Cloudinary / Web)</div>
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                  <div className="text-cyan-300 font-mono text-[11px] break-all border-b border-white/5 pb-2">
+                    {pendingReviewMember.pending_photo_request?.image_url}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <a
+                      href={pendingReviewMember.pending_photo_request?.image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all min-h-[38px]"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Open Media Link in New Tab
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Photo Preview Thumbnail */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-slate-400 uppercase font-bold">Submitted Photo Preview</div>
+                <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-center min-h-[140px]">
+                  <img
+                    src={pendingReviewMember.pending_photo_request?.image_url}
+                    alt="Submitted Profile Preview"
+                    className="max-h-40 rounded-xl object-contain border border-cyan-400/50 shadow-xl"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                      const fallback = (e.target as HTMLElement).nextElementSibling;
+                      if (fallback) fallback.classList.remove('hidden');
+                    }}
+                  />
+                  <div className="hidden text-center space-y-2 p-3 text-slate-400 text-xs">
+                    <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
+                    <p>Drive page or external web link. Please click <strong>"Open Media Link in New Tab"</strong> to inspect public access.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notice */}
+              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[11px] flex items-start gap-2">
+                <Shield className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
+                <span>Verify that the file is publicly viewable. Accepting will update the employee's official avatar across the entire website.</span>
+              </div>
+            </div>
+
+            {/* Action Buttons: ACCEPT & REJECT */}
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/10">
+              <button
+                onClick={() => handleRejectPhotoRequest(pendingReviewMember.pending_photo_request!.id)}
+                disabled={isProcessingAction}
+                className="py-3 rounded-2xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 font-bold font-display text-xs cursor-pointer flex items-center justify-center gap-2 transition-all shadow-lg min-h-[44px]"
+              >
+                {isProcessingAction ? <RefreshCw className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4 text-red-400" />}
+                <span>Reject</span>
+              </button>
+
+              <button
+                onClick={() => handleAcceptPhotoRequest(pendingReviewMember.pending_photo_request!.id, pendingReviewMember.pending_photo_request!.image_url || '')}
+                disabled={isProcessingAction}
+                className="py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold font-display text-xs cursor-pointer flex items-center justify-center gap-2 transition-all shadow-lg min-h-[44px]"
+              >
+                {isProcessingAction ? <RefreshCw className="w-4 h-4 animate-spin text-black" /> : <CheckCircle className="w-4 h-4 text-black" />}
+                <span>Accept &amp; Update</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -71,6 +71,23 @@ export const getTeamDirectoryMembers = async (req, res) => {
       }
     }
 
+    // 2.5 Fetch active pending photo updates from `pending_profile_updates`
+    let pendingUpdatesMap = {};
+    if (supabase) {
+      try {
+        const { data: pData } = await supabase
+          .from('pending_profile_updates')
+          .select('*')
+          .eq('status', 'pending');
+        if (Array.isArray(pData)) {
+          pData.forEach((p) => {
+            if (p.team_member_id) pendingUpdatesMap[p.team_member_id] = p;
+            if (p.employee_id) pendingUpdatesMap[p.employee_id] = p;
+          });
+        }
+      } catch (e) {}
+    }
+
     // 3. Merge and sanitize fields based on User Role (Enforced on Backend)
     const sanitizedDirectory = teamMembers.map((member) => {
       const rawPriv =
@@ -80,6 +97,17 @@ export const getTeamDirectoryMembers = async (req, res) => {
 
       const priv = rawPriv ? decryptObjectFields(rawPriv) : null;
       const explicitEmployeeId = getEmployeeId(member, priv);
+
+      const pendingForMember = pendingUpdatesMap[member.id] || pendingUpdatesMap[explicitEmployeeId] || null;
+      const pendingPhotoReq = pendingForMember ? {
+        id: pendingForMember.id,
+        ref_no: pendingForMember.requested_changes?.request_ref_no || pendingForMember.id,
+        image_url: pendingForMember.requested_changes?.image_url || pendingForMember.requested_changes?.photo || '',
+        phone_number: pendingForMember.requested_changes?.phone_number || member.phone || '',
+        link_type: pendingForMember.requested_changes?.link_type || 'external',
+        created_at: pendingForMember.created_at,
+        status: 'pending',
+      } : null;
 
       // Base Public Record (Visible to Team Members, HR, Admin)
       const publicData = {
@@ -99,6 +127,7 @@ export const getTeamDirectoryMembers = async (req, res) => {
         joining_date: member.joining_date || member.created_at || 'Active Roster',
         status: member.status || 'Active',
         is_private_profile_completed: !!priv,
+        pending_photo_request: pendingPhotoReq,
       };
 
       // TEAM MEMBER ROLE: Return Public Data ONLY
