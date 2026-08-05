@@ -190,3 +190,40 @@ html.light .text-slate-400 {
   color: #ef4444;
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
+
+/* Premium Skeleton Shimmer Animations */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #15161B 0%,
+    #252A35 30%,
+    rgba(0, 255, 255, 0.08) 50%,
+    #252A35 70%,
+    #15161B 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.35s infinite linear;
+  position: relative;
+  overflow: hidden;
+}
+
+html.light .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #ECECEC 0%,
+    #F8F8F8 50%,
+    #ECECEC 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.35s infinite linear;
+}
+

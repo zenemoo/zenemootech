@@ -10,6 +10,7 @@ import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notifi
 import { supabase } from '../lib/supabaseClient';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -1376,7 +1377,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       <div className="min-h-screen bg-[#050507] flex items-center justify-center p-4 relative z-50 font-sans">
         <div className="glass-panel p-8 rounded-3xl border border-white/10 max-w-md w-full space-y-6 text-center">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] mx-auto shadow-lg shadow-cyan-500/25">
-            <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
+            <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" fallbackType="logo" isAvatar />
           </div>
 
           <div>
@@ -1764,7 +1765,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           {!isSidebarCollapsed ? (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/10 shrink-0">
-                <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-xl bg-[#0a0b10] p-0.5" />
+                <ImageWithSkeleton src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-xl bg-[#0a0b10] p-0.5" fallbackType="logo" />
               </div>
               <div className="truncate">
                 <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider truncate">Zenemoo</h2>
@@ -1773,7 +1774,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             </div>
           ) : (
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px]">
-              <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-cover rounded-lg bg-[#0a0b10] p-0.5" />
+              <ImageWithSkeleton src="/assets/logo.png" alt="Logo" className="w-full h-full object-cover rounded-lg bg-[#0a0b10] p-0.5" fallbackType="logo" />
             </div>
           )}
           
@@ -1852,7 +1853,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform overflow-hidden">
                   {activeAdminPhoto ? (
-                    <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" />
+                    <ImageWithSkeleton src={activeAdminPhoto} fallbackType="avatar" alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" isAvatar />
                   ) : (
                     <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase tracking-wider">
                       {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
@@ -1887,7 +1888,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shadow-md group-hover:scale-105 transition-transform overflow-hidden">
               {activeAdminPhoto ? (
-                <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" />
+                <ImageWithSkeleton src={activeAdminPhoto} fallbackType="avatar" alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" isAvatar />
               ) : (
                 <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
                   {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
@@ -1920,7 +1921,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-white/5">
                   <div className="flex items-center gap-2">
-                    <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-cover rounded-xl bg-white p-0.5" />
+                    <ImageWithSkeleton src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-cover rounded-xl bg-white p-0.5" fallbackType="logo" />
                     <div>
                       <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider">Zenemoo</h2>
                       <p className="text-[9px] font-mono text-cyan-400">Admin Control Center</p>
@@ -1971,7 +1972,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 <div className="relative shrink-0">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] overflow-hidden">
                     {activeAdminPhoto ? (
-                      <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" />
+                      <ImageWithSkeleton src={activeAdminPhoto} fallbackType="avatar" alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" isAvatar />
                     ) : (
                       <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
                         {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
@@ -2619,7 +2620,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         {req.requested_changes?.image_url && (
                           <div className="flex items-center gap-2 pt-1">
                             <span className="text-[10px] text-slate-400">New Profile Picture:</span>
-                            <img src={req.requested_changes.image_url} alt="New Preview" className="w-8 h-8 rounded-full object-cover border border-cyan-400" />
+                            <ImageWithSkeleton src={req.requested_changes.image_url} fallbackType="avatar" alt="New Preview" className="w-8 h-8 rounded-full object-cover border border-cyan-400" isAvatar />
                           </div>
                         )}
                         {req.requested_changes?.bio && (
@@ -3288,7 +3289,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
                         {editingMember.image_url || editingMember.image ? (
-                          <img src={editingMember.image_url || editingMember.image} alt="Preview" className="w-full h-full object-cover" />
+                          <ImageWithSkeleton src={editingMember.image_url || editingMember.image} fallbackType="avatar" alt="Preview" className="w-full h-full object-cover" containerClassName="w-full h-full" isAvatar />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">No Image</div>
                         )}
@@ -3658,7 +3659,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 p-2 overflow-hidden shrink-0 flex items-center justify-center">
                         {editingPartner.image_url ? (
-                          <img src={editingPartner.image_url} alt="Logo Preview" className="w-full h-full object-contain" />
+                          <ImageWithSkeleton src={editingPartner.image_url} fallbackType="partner" alt="Logo Preview" className="w-full h-full object-contain" containerClassName="w-full h-full" />
                         ) : (
                           <div className="text-[10px] text-slate-500 font-mono text-center">No Logo</div>
                         )}
@@ -3772,7 +3773,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-xl bg-slate-900 border border-white/10 p-1.5 shrink-0 flex items-center justify-center">
                         {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-full h-full object-contain" />
+                          <ImageWithSkeleton src={p.image_url} fallbackType="partner" alt={p.name} className="w-full h-full object-contain" containerClassName="w-full h-full" />
                         ) : (
                           <Globe className="w-6 h-6 text-emerald-400" />
                         )}
@@ -5130,7 +5131,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         <td className="p-3.5">
                           <div className="relative w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shrink-0 overflow-hidden">
                             {acc.profile_photo_url ? (
-                              <img src={acc.profile_photo_url} alt={acc.email} className="w-full h-full object-cover rounded-[10px]" />
+                              <ImageWithSkeleton src={acc.profile_photo_url} fallbackType="avatar" alt={acc.email} className="w-full h-full object-cover rounded-[10px]" isAvatar />
                             ) : (
                               <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
                                 {acc.name ? acc.name.substring(0, 2) : acc.email.substring(0, 2).toUpperCase()}
@@ -5832,7 +5833,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="relative shrink-0">
                       <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 p-[2px] shadow-xl shadow-cyan-500/20 overflow-hidden">
                         {activeAdminPhoto ? (
-                          <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[14px]" />
+                          <ImageWithSkeleton src={activeAdminPhoto} fallbackType="avatar" alt="Admin Profile" className="w-full h-full object-cover rounded-[14px]" isAvatar />
                         ) : (
                           <div className="w-full h-full rounded-[14px] bg-[#0c0d14] flex items-center justify-center text-xl font-extrabold text-cyan-300 uppercase tracking-widest font-display">
                             {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
@@ -6179,7 +6180,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     {/* Live Preview Thumbnail */}
                     <div className="relative w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shrink-0 overflow-hidden shadow-md">
                       {newAuthAvatarUrl ? (
-                        <img src={newAuthAvatarUrl} alt="Avatar Preview" className="w-full h-full object-cover rounded-[10px]" />
+                        <ImageWithSkeleton src={newAuthAvatarUrl} fallbackType="avatar" alt="Avatar Preview" className="w-full h-full object-cover rounded-[10px]" isAvatar />
                       ) : (
                         <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
                           {newAuthNameInput ? newAuthNameInput.substring(0, 2).toUpperCase() : 'AV'}

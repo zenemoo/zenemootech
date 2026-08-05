@@ -3,6 +3,7 @@ import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAler
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
 import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 interface OpportunitiesPageProps {
   onBack: () => void;
@@ -79,7 +80,13 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       <header className="sticky top-0 z-50 bg-[#050505]/80 light:bg-white/80 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-4 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <button onClick={onBack} className="flex items-center gap-3 group cursor-pointer">
-            <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
+            <ImageWithSkeleton 
+              src="/assets/logo.png" 
+              alt="ZENEMOO Logo" 
+              className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md"
+              fallbackType="logo"
+              isAvatar
+            />
             <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
           </button>
 
@@ -171,16 +178,18 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                       {/* Header with Company Logo & Poster Banner */}
                       <div className="flex items-start gap-4">
                         {op.company_logo ? (
-                          <img
+                          <ImageWithSkeleton
                             src={op.company_logo}
                             alt={op.partner_name}
                             className="w-14 h-14 object-contain bg-white p-1 rounded-2xl border border-white/10 shrink-0 shadow-md"
+                            fallbackType="logo"
                           />
                         ) : op.poster_url ? (
-                          <img
+                          <ImageWithSkeleton
                             src={op.poster_url}
                             alt={op.title}
                             className="w-14 h-16 object-cover rounded-xl border border-white/10 shrink-0"
+                            fallbackType="default"
                           />
                         ) : (
                           <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">

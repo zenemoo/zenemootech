@@ -3,6 +3,7 @@ import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket,
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India 🇮🇳', flag: '🇮🇳', len: 10 },
@@ -291,10 +292,12 @@ export const Contact: React.FC = () => {
             <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 p-[1.5px] shadow-lg shrink-0 overflow-hidden">
-                  <img
+                  <ImageWithSkeleton
                     src="https://res.cloudinary.com/rwoe0mm9/image/upload/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg"
                     alt="Prem Prasad Pradhan - Founder & Vendor Manager"
                     className="w-full h-full object-cover rounded-[14px]"
+                    fallbackType="avatar"
+                    isAvatar
                   />
                 </div>
                 <div>

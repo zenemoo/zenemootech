@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, Sun, Moon, ArrowLeft, Briefcase, Home } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 interface NavbarProps {
   onBack?: () => void;
@@ -43,10 +44,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
           {/* Logo & Company Name (ZENEMOO) */}
           <a href="/" className="flex items-center gap-3 group shrink-0">
             <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300">
-              <img
+              <ImageWithSkeleton
                 src="/assets/logo.png"
                 alt="ZENEMOO Logo"
                 className="w-full h-full object-cover rounded-full bg-white p-0.5"
+                fallbackType="logo"
+                isAvatar
               />
             </div>
             <span className="text-xl sm:text-2xl font-extrabold tracking-wider font-display text-white light:text-slate-900 group-hover:text-cyan-400 transition-colors">
@@ -91,7 +94,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
               aria-label="Ask Zenemoo AI"
             >
               <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse">
-                <img src="/assets/logo.png" alt="AI" className="w-full h-full object-cover rounded-full bg-white p-0.2" />
+                <ImageWithSkeleton
+                  src="/assets/logo.png"
+                  alt="AI"
+                  className="w-full h-full object-cover rounded-full bg-white p-0.2"
+                  fallbackType="logo"
+                  isAvatar
+                />
                 <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
               </div>
               <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">Zenemoo AI</span>

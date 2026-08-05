@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase, Linkedin, FileText, Mail, Phone, X, Send, Globe, Check, Award, Clock, Download, Maximize2, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
@@ -120,7 +121,13 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
       <header className="sticky top-0 z-50 bg-[#050505]/80 light:bg-white/80 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-4 transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <button onClick={onBack} className="flex items-center gap-3 group cursor-pointer">
-            <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
+            <ImageWithSkeleton
+              src="/assets/logo.png"
+              alt="ZENEMOO Logo"
+              className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md"
+              fallbackType="logo"
+              isAvatar
+            />
             <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
           </button>
 
@@ -170,10 +177,11 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
               <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-6">
                 <div className="flex items-start gap-4">
                   {opportunity.company_logo ? (
-                    <img
+                    <ImageWithSkeleton
                       src={opportunity.company_logo}
                       alt={opportunity.partner_name}
                       className="w-16 h-16 object-contain bg-white p-1.5 rounded-2xl border border-white/10 shrink-0 shadow-lg"
+                      fallbackType="logo"
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
@@ -321,10 +329,11 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 <div className="space-y-3">
                   <div className="glass-panel p-2.5 rounded-3xl border border-white/10 overflow-hidden group shadow-2xl relative bg-black/40">
                     <div className="relative overflow-hidden rounded-2xl cursor-pointer" onClick={() => setIsPreviewOpen(true)}>
-                      <img
+                      <ImageWithSkeleton
                         src={opportunity.poster_url}
                         alt={opportunity.title}
                         className="w-full h-auto max-h-[580px] object-contain rounded-2xl group-hover:scale-[1.01] transition-all duration-300 mx-auto"
+                        fallbackType="default"
                       />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-mono font-bold backdrop-blur-[2px]">
                         <Maximize2 className="w-4 h-4 text-cyan-400" /> Click to Expand Poster
@@ -426,11 +435,12 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
               >
                 <X className="w-6 h-6" />
               </button>
-              <img
+              <ImageWithSkeleton
                 src={opportunity.poster_url}
                 alt={opportunity.title}
                 className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/20"
                 onClick={(e) => e.stopPropagation()}
+                fallbackType="default"
               />
               <button
                 onClick={(e) => {

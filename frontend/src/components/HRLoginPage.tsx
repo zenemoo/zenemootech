@@ -3,6 +3,7 @@ import { Lock, IdCard, ArrowLeft, RefreshCw, Eye, EyeOff, Briefcase } from 'luci
 import { CursorSpotlight } from './CursorSpotlight';
 import { ThreeNeuralBackground } from './ThreeNeuralBackground';
 import { portalAuthApi } from '../services/api';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 interface HRLoginPageProps {
   onSuccessLogin: (userData: any, token: string) => void;
@@ -58,7 +59,13 @@ export const HRLoginPage: React.FC<HRLoginPageProps> = ({ onSuccessLogin, onBack
       {/* Header */}
       <header className="relative z-10 py-6 px-4 sm:px-8 max-w-7xl mx-auto w-full flex items-center justify-between">
         <button onClick={onBackToHome} className="flex items-center gap-3 cursor-pointer group">
-          <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-10 h-10 rounded-full bg-white p-0.5 shadow-md" />
+          <ImageWithSkeleton 
+            src="/assets/logo.png" 
+            alt="Zenemoo Logo" 
+            className="w-10 h-10 rounded-full bg-white p-0.5 shadow-md"
+            fallbackType="logo"
+            isAvatar
+          />
           <span className="font-display font-extrabold text-lg text-white tracking-wider">ZENEMOO</span>
         </button>
 

@@ -30,6 +30,8 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { CursorSpotlight } from './CursorSpotlight';
 import { ThreeNeuralBackground } from './ThreeNeuralBackground';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
+import { ProfilePageSkeleton } from './SkeletonComponents';
 
 interface TeamMemberProfilePageProps {
   slug: string;
@@ -340,13 +342,13 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
               <div className="md:col-span-4 flex flex-col items-center space-y-6">
                 {/* Avatar Photo Card */}
                 <div className="relative w-full max-w-xs aspect-[4/5] rounded-2xl overflow-hidden border-2 border-cyan-500/30 p-1 bg-gradient-to-b from-cyan-500/20 via-purple-500/20 to-transparent shadow-2xl group">
-                  <img
+                  <ImageWithSkeleton
                     src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
-                    }}
+                    fallbackSrc={member.fallback || '/assets/executive.png'}
+                    fallbackType="avatar"
                     alt={member.name}
                     className="w-full h-full object-cover object-top rounded-xl group-hover:scale-105 transition-transform duration-500"
+                    containerClassName="w-full h-full"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
@@ -363,7 +365,12 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
 
                 {/* Micro QR Code Box */}
                 <div className="w-full max-w-xs glass-panel p-4 rounded-2xl border border-white/10 flex items-center gap-4 bg-white/[0.02]">
-                  <img src={profileQrUrl} alt="QR Code" className="w-16 h-16 rounded-lg border border-cyan-500/30 bg-black p-1 shrink-0" />
+                  <ImageWithSkeleton
+                    src={profileQrUrl}
+                    alt="QR Code"
+                    className="w-16 h-16 rounded-lg border border-cyan-500/30 bg-black p-1 shrink-0"
+                    fallbackType="default"
+                  />
                   <div className="space-y-1 font-mono text-[11px]">
                     <div className="text-cyan-300 font-bold flex items-center gap-1">
                       <QrCode className="w-3.5 h-3.5" />

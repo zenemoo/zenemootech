@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield } from 'lucide-react';
 import { subscriberApi } from '../services/api';
+import { ImageWithSkeleton } from './ImageWithSkeleton';
 
 export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -58,10 +59,12 @@ export const Footer: React.FC = () => {
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/25 overflow-hidden">
-                <img
+                <ImageWithSkeleton
                   src="/assets/logo.png"
                   alt="ZENEMOO Logo"
                   className="w-full h-full object-cover rounded-full bg-white p-0.5"
+                  fallbackType="logo"
+                  isAvatar
                 />
               </div>
               <div className="flex flex-col">
