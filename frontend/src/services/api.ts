@@ -21,12 +21,13 @@ export const api = axios.create({
   timeout: 30000, // 30-second timeout to accommodate cloud database & cold start latencies
 });
 
-// Request interceptor for JWT authentication header
+// Request interceptor for JWT authentication header & Admin Passkey fallback
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('zenemoo_jwt_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  config.headers['X-Admin-Passkey'] = 'zenemoo2026';
   return config;
 });
 
