@@ -1,3 +1,4 @@
+import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { generateTeamMemberSummary } from '../services/aiService.js';
 
