@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield } from 'lucide-react';
 import { subscriberApi } from '../services/api';
+import { ZENEMOO_SOCIAL_LINKS } from './SocialData';
 
 export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -109,6 +110,30 @@ export const Footer: React.FC = () => {
                 </div>
                 {errorMsg && <div className="text-[11px] font-mono text-red-400">{errorMsg}</div>}
               </form>
+            </div>
+
+            {/* Official Social Media Section */}
+            <div className="pt-2">
+              <div className="text-xs font-mono uppercase tracking-wider text-slate-300 mb-3">
+                Official Social Media
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {ZENEMOO_SOCIAL_LINKS.map((item) => {
+                  const IconComp = item.icon;
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={item.ariaLabel}
+                      className={`w-11 h-11 rounded-full bg-white/[0.04] border border-white/10 text-slate-300 backdrop-blur-md flex items-center justify-center transition-all duration-250 ease-out hover:scale-110 ${item.hoverBg} ${item.hoverText} ${item.hoverBorder} ${item.hoverShadow} shadow-lg`}
+                    >
+                      <IconComp className="w-5 h-5 transition-transform" />
+                    </a>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

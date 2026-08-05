@@ -24,6 +24,7 @@ import { VerifyOtpPage } from './components/VerifyOtpPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { NotFoundPage } from './components/NotFoundPage';
 
 import { TeamLoginPage } from './components/TeamLoginPage';
@@ -403,10 +404,13 @@ export function App() {
 
       {/* Global Right-Side AI Drawer Panel (Active on all non-admin pages) */}
       {currentRoute !== 'admin' && (
-        <ZenemooAiDrawer
-          isOpen={isAiDrawerOpen}
-          onClose={() => setIsAiDrawerOpen(false)}
-        />
+        <>
+          <ZenemooAiDrawer
+            isOpen={isAiDrawerOpen}
+            onClose={() => setIsAiDrawerOpen(false)}
+          />
+          <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+        </>
       )}
     </>
   );
