@@ -35,6 +35,9 @@ ORGANIZATION:
 - Headquarters: K. Barida, Main Road, Odisha, India — PIN 761031
 - Official Website: https://www.zenemoo.in/
 - Industry: AI Data Services, Multilingual Speech Technology, Data Annotation
+- Government Registration: MSME (Udyam) Registered Micro Enterprise (Ministry of MSME, Govt. of India)
+- Registration Number: UDYAM-OD-11-0124893
+- Major Activity: Services (AI & Data Technology)
 
 KEY LEADERSHIP:
 - Founder & Operations Manager: Prem Prasad Pradhan

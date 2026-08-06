@@ -78,6 +78,11 @@ export const Footer: React.FC = () => {
               Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets. Certified DesiCrew Solutions vendor since 2023.
             </p>
 
+            {/* MSME Government Credential Badge */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-mono font-semibold">
+              <span>🏛️ MSME (Udyam) Registered Micro Enterprise</span>
+            </div>
+
             {/* Newsletter */}
             <div>
               <div className="text-xs font-mono uppercase tracking-wider text-slate-300 mb-2">

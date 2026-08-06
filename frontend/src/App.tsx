@@ -9,6 +9,7 @@ import { Services } from './components/Services';
 import { Languages } from './components/Languages';
 import { Architecture } from './components/Architecture';
 import { Partner } from './components/Partner';
+import { GovernmentRecognition } from './components/GovernmentRecognition';
 import { Team } from './components/Team';
 import { Contact } from './components/Contact';
 import { Footer } from './components/Footer';
@@ -393,6 +394,7 @@ export function App() {
             <AIPlayground />
             <Architecture />
             <Partner />
+            <GovernmentRecognition />
             <Team />
             <Contact />
           </main>
