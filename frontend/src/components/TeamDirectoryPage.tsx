@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, Mail, Search, Sparkles, UserCheck, ArrowRight } from 'lucide-react';
 import { TeamMember, getStoredTeamMembers, getSlugFromName } from '../lib/teamStore';
+import { SeoImage } from '../seo/components/SeoImage';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { CursorSpotlight } from './CursorSpotlight';
@@ -142,12 +143,12 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack, on
                   <div>
                     {/* Profile Image */}
                     <div className="relative h-52 rounded-2xl overflow-hidden mb-4 border border-white/10 group-hover:border-cyan-500/40 transition-colors bg-slate-900">
-                      <img
+                      <SeoImage
                         src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
-                        }}
-                        alt={member.name}
+                        alt={`${member.name}, ${member.designation || member.role} at Zenemoo`}
+                        fallbackSrc={member.fallback || '/assets/executive.png'}
+                        width={300}
+                        height={208}
                         className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#090b12] via-transparent to-transparent opacity-70"></div>

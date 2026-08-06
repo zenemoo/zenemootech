@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Handshake, ExternalLink, Quote, Building, CheckCircle2, Sparkles, Globe2 } from 'lucide-react';
 import { PartnerCompany, getStoredPartners } from '../lib/partnerStore';
+import { SeoImage } from '../seo/components/SeoImage';
 
 export const Partner: React.FC = () => {
   const [partnerList, setPartnerList] = useState<PartnerCompany[]>([]);
@@ -48,10 +49,13 @@ export const Partner: React.FC = () => {
             <div className="lg:col-span-5 text-center lg:text-left space-y-4">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 p-[1px] shadow-xl shadow-emerald-500/20 overflow-hidden">
                 <div className="w-full h-full bg-[#0a0c14] rounded-[15px] flex items-center justify-center p-2">
-                  <img
+                  <SeoImage
                     src="https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png"
-                    alt="DesiCrew Solutions Logo"
-                    className="w-full h-full object-contain rounded-xl"
+                    alt="DesiCrew Solutions Official Enterprise Partner Logo — Zenemoo"
+                    width={80}
+                    height={80}
+                    objectFit="contain"
+                    className="w-full h-full rounded-xl"
                   />
                 </div>
               </div>

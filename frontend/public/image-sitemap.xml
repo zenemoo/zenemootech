@@ -11,9 +11,19 @@
       <image:caption>Official Brand Logo for Zenemoo (Formerly known as QuantumCoders Data Solution)</image:caption>
     </image:image>
     <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
+      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
       <image:title>DesiCrew Enterprise Partner Logo</image:title>
       <image:caption>Certified Enterprise Vendor Partner — DesiCrew Solutions</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg</image:loc>
+      <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager at Zenemoo</image:title>
+      <image:caption>Founder &amp; Operations Lead for Zenemoo Language &amp; AI Data Solutions</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/udyam-qr.png</image:loc>
+      <image:title>Official UDYAM Registration Certificate QR Code — Ministry of MSME, Govt of India</image:title>
+      <image:caption>Zenemoo Official Government MSME Registration Verification QR Code</image:caption>
     </image:image>
   </url>
 
@@ -31,7 +41,12 @@
   <url>
     <loc>https://www.zenemoo.in/team-directory</loc>
     <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
+      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg</image:loc>
+      <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager</image:title>
+      <image:caption>Zenemoo Language Data Team Roster &amp; AI Annotators</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
       <image:title>Zenemoo Specialized Language Data Team Roster</image:title>
       <image:caption>Certified Multilingual Audio &amp; Data Specialists</image:caption>
     </image:image>

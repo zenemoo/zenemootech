@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe, ExternalLink, ShieldCheck, Zap, MessageSquare } from 'lucide-react';
+import { SeoImage } from '../seo/components/SeoImage';
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
@@ -315,9 +316,11 @@ export const Contact: React.FC = () => {
               {/* Founder Header */}
               <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 p-[1.5px] shadow-lg shrink-0 overflow-hidden">
-                  <img
+                  <SeoImage
                     src="https://res.cloudinary.com/rwoe0mm9/image/upload/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg"
-                    alt="Prem Prasad Pradhan - Founder & Vendor Manager"
+                    alt="Prem Prasad Pradhan — Founder & Vendor Manager at Zenemoo"
+                    width={56}
+                    height={56}
                     className="w-full h-full object-cover rounded-[14px]"
                   />
                 </div>

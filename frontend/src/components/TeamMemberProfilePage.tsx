@@ -30,6 +30,7 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { CursorSpotlight } from './CursorSpotlight';
 import { ThreeNeuralBackground } from './ThreeNeuralBackground';
+import { SeoImage } from '../seo/components/SeoImage';
 
 interface TeamMemberProfilePageProps {
   slug: string;
@@ -340,12 +341,13 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
               <div className="md:col-span-4 flex flex-col items-center space-y-6">
                 {/* Avatar Photo Card */}
                 <div className="relative w-full max-w-xs aspect-[4/5] rounded-2xl overflow-hidden border-2 border-cyan-500/30 p-1 bg-gradient-to-b from-cyan-500/20 via-purple-500/20 to-transparent shadow-2xl group">
-                  <img
+                  <SeoImage
                     src={member.image_url || member.image || member.fallback || '/assets/executive.png'}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = member.fallback || '/assets/executive.png';
-                    }}
-                    alt={member.name}
+                    alt={`${member.name} — ${member.designation || member.role} at Zenemoo`}
+                    fallbackSrc={member.fallback || '/assets/executive.png'}
+                    priority={true}
+                    width={320}
+                    height={400}
                     className="w-full h-full object-cover object-top rounded-xl group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />

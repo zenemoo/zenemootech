@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Award, ShieldCheck, CheckCircle2, Copy, Check, ExternalLink, Building2, Calendar, FileText, Landmark } from 'lucide-react';
+import { SeoImage } from '../seo/components/SeoImage';
 
 export const GovernmentRecognition: React.FC = () => {
   const [copied, setCopied] = useState(false);
@@ -134,11 +135,14 @@ export const GovernmentRecognition: React.FC = () => {
 
               {/* Original Untouched QR Code Image */}
               <div className="p-3 bg-white rounded-2xl shadow-xl border border-white/20 hover:scale-105 transition-transform duration-300">
-                <img
+                <SeoImage
                   src="/assets/udyam-qr.png"
                   alt="Official UDYAM Registration Certificate QR Code — Ministry of MSME, Govt of India"
-                  className="w-44 h-44 object-contain rounded-lg"
-                  loading="eager"
+                  width={176}
+                  height={176}
+                  objectFit="contain"
+                  className="w-44 h-44 rounded-lg"
+                  priority={true}
                 />
               </div>
 
