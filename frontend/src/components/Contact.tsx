@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe, ExternalLink } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe, ExternalLink, ShieldCheck, Zap, MessageSquare } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
@@ -129,12 +129,12 @@ export const Contact: React.FC = () => {
   };
 
   return (
-    <section id="contact" className="py-28 relative z-10 bg-[#050507]">
+    <section id="contact" className="py-24 relative z-10 bg-[#050507]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center max-w-3xl mx-auto mb-20">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono mb-4">
-            <Mail className="w-3.5 h-3.5" />
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono mb-4">
+            <Mail className="w-4 h-4" />
             START A PROJECT WITH OUR TEAM
           </div>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-display text-white tracking-tight mb-4">
@@ -145,159 +145,176 @@ export const Contact: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-          {/* Left Column: Contact Form */}
-          <div className="lg:col-span-7 glass-panel rounded-3xl p-8 border border-white/10 relative overflow-hidden">
-            <h3 className="text-2xl font-bold font-display text-white mb-2">Send Us a Project Inquiry</h3>
-            <p className="text-xs font-mono text-slate-400 mb-8">
-              Fill in your requirements and we'll respond within 24 hours with team capacity, timeline, and rate details.
-            </p>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Prem Prasad"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Corporate Email *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="you@company.com"
-                    value={form.email}
-                    onChange={(e) => {
-                      setForm({ ...form, email: e.target.value });
-                      if (emailError) setEmailError('');
-                    }}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
-                  />
-                  {emailError && <div className="text-xs font-mono text-red-400 mt-1">{emailError}</div>}
-                </div>
+        {/* Perfectly Balanced 2-Column Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+          {/* Left Column: Project Inquiry Form (col-span-7) */}
+          <div className="lg:col-span-7 glass-panel rounded-3xl p-6 sm:p-8 border border-white/10 relative overflow-hidden flex flex-col justify-between shadow-2xl shadow-cyan-500/5">
+            <div>
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <h3 className="text-2xl font-bold font-display text-white">Send Us a Project Inquiry</h3>
+                <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] font-semibold">
+                  <Zap className="w-3.5 h-3.5" /> &lt; 2h Response SLA
+                </span>
               </div>
+              <p className="text-xs font-mono text-slate-400 mb-6">
+                Fill in your requirements and our QA team will respond within 2 hours with capacity, timeline, and rate details.
+              </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {/* Country Code Selector + Phone Number */}
-                <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Phone / WhatsApp (Digits Only)</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={countryCode}
-                      onChange={(e) => setCountryCode(e.target.value)}
-                      className="px-3 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-400 shrink-0"
-                    >
-                      {COUNTRY_CODES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.flag} {c.code}
-                        </option>
-                      ))}
-                    </select>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-2">Full Name *</label>
                     <input
-                      type="tel"
-                      placeholder="98000 00000"
-                      value={phoneNumber}
-                      onChange={(e) => {
-                        setPhoneNumber(e.target.value);
-                        if (phoneError) setPhoneError('');
-                      }}
-                      className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm transition-all"
+                      type="text"
+                      required
+                      placeholder="Prem Prasad"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
                     />
                   </div>
-                  {phoneError && <div className="text-xs font-mono text-red-400 mt-1">{phoneError}</div>}
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-2">Corporate Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="you@company.com"
+                      value={form.email}
+                      onChange={(e) => {
+                        setForm({ ...form, email: e.target.value });
+                        if (emailError) setEmailError('');
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
+                    />
+                    {emailError && <div className="text-xs font-mono text-red-400 mt-1">{emailError}</div>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {/* Country Code Selector + Phone Number */}
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-2">Phone / WhatsApp (Digits Only)</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={countryCode}
+                        onChange={(e) => setCountryCode(e.target.value)}
+                        className="px-3 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-400 shrink-0 cursor-pointer"
+                      >
+                        {COUNTRY_CODES.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.flag} {c.code}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="tel"
+                        placeholder="98000 00000"
+                        value={phoneNumber}
+                        onChange={(e) => {
+                          setPhoneNumber(e.target.value);
+                          if (phoneError) setPhoneError('');
+                        }}
+                        className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-sm transition-all"
+                      />
+                    </div>
+                    {phoneError && <div className="text-xs font-mono text-red-400 mt-1">{phoneError}</div>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-2">Company / Organization</label>
+                    <input
+                      type="text"
+                      placeholder="Acme AI Corporation"
+                      value={form.company}
+                      onChange={(e) => setForm({ ...form, company: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-2">Service Required *</label>
+                    <select
+                      value={form.service}
+                      onChange={(e) => setForm({ ...form, service: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400 transition-all cursor-pointer"
+                    >
+                      <option>Audio Transcription</option>
+                      <option>AI Data Collection</option>
+                      <option>Data Annotation</option>
+                      <option>Voice Over</option>
+                      <option>Audio Segmentation</option>
+                      <option>Review &amp; Quality Control</option>
+                      <option>Bulk Data Projects</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-slate-300 mb-2">Language(s) Required</label>
+                    <select
+                      value={form.language}
+                      onChange={(e) => setForm({ ...form, language: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400 transition-all cursor-pointer"
+                    >
+                      <option>Hindi</option>
+                      <option>English</option>
+                      <option>Odia</option>
+                      <option>Bengali</option>
+                      <option>Telugu</option>
+                      <option>Tamil</option>
+                      <option>Multiple Languages</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Company / Organization</label>
-                  <input
-                    type="text"
-                    placeholder="Acme AI Corporation"
-                    value={form.company}
-                    onChange={(e) => setForm({ ...form, company: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
-                  />
+                  <label className="block text-xs font-mono text-slate-300 mb-2">Project Details &amp; Specifications *</label>
+                  <textarea
+                    required
+                    rows={4}
+                    placeholder="We have 50 hours of audio data in Hindi and Odia requiring timestamped verbatim transcription and speaker labeling..."
+                    value={form.message}
+                    onChange={(e) => setForm({ ...form, message: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all resize-none"
+                  ></textarea>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Service Required *</label>
-                  <select
-                    value={form.service}
-                    onChange={(e) => setForm({ ...form, service: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400 transition-all"
-                  >
-                    <option>Audio Transcription</option>
-                    <option>AI Data Collection</option>
-                    <option>Data Annotation</option>
-                    <option>Voice Over</option>
-                    <option>Audio Segmentation</option>
-                    <option>Review &amp; Quality Control</option>
-                    <option>Bulk Data Projects</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-2">Language(s) Required</label>
-                  <select
-                    value={form.language}
-                    onChange={(e) => setForm({ ...form, language: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl bg-[#0d0e15] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400 transition-all"
-                  >
-                    <option>Hindi</option>
-                    <option>English</option>
-                    <option>Odia</option>
-                    <option>Bengali</option>
-                    <option>Telugu</option>
-                    <option>Tamil</option>
-                    <option>Multiple Languages</option>
-                  </select>
-                </div>
-              </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-base transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? (
+                    <>
+                      <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+                      Submitting Project Inquiry...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" />
+                      Submit Project Inquiry
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
 
-              <div>
-                <label className="block text-xs font-mono text-slate-300 mb-2">Project Details &amp; Specifications *</label>
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="We have 50 hours of audio data in Hindi and Odia requiring timestamped verbatim transcription and speaker labeling..."
-                  value={form.message}
-                  onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm transition-all"
-                ></textarea>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-base transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {loading ? (
-                  <>
-                    <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
-                    Submitting Project Inquiry...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5" />
-                    Submit Project Inquiry
-                  </>
-                )}
-              </button>
-            </form>
+            {/* Micro Privacy & Encryption footer inside form panel */}
+            <div className="pt-4 mt-4 border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> 256-Bit Encrypted Transmission
+              </span>
+              <span>🔒 Direct QA Desk Delivery</span>
+            </div>
           </div>
 
-          {/* Right Column: Direct Contact Info Cards */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Founder & Primary Contact Card */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 p-[1.5px] shadow-lg shrink-0 overflow-hidden">
+          {/* Right Column: High-Impact Consolidated Contact Details (col-span-5) */}
+          <div className="lg:col-span-5 flex flex-col justify-between gap-6">
+            {/* Panel A: Founder & Communication Directory */}
+            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-5 shadow-xl">
+              {/* Founder Header */}
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 p-[1.5px] shadow-lg shrink-0 overflow-hidden">
                   <img
                     src="https://res.cloudinary.com/rwoe0mm9/image/upload/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg"
                     alt="Prem Prasad Pradhan - Founder & Vendor Manager"
@@ -307,121 +324,107 @@ export const Contact: React.FC = () => {
                 <div>
                   <div className="text-white font-bold font-display text-base">Prem Prasad Pradhan</div>
                   <div className="text-xs font-mono text-cyan-400">Founder &amp; Vendor Manager</div>
-                  <a href="mailto:prem@zenemoo.in" className="text-xs text-slate-300 hover:text-white hover:underline font-mono">
+                  <a href="mailto:prem@zenemoo.in" className="text-xs text-slate-300 hover:text-cyan-300 hover:underline font-mono">
                     prem@zenemoo.in
                   </a>
                 </div>
               </div>
-            </div>
 
-            {/* Official Contact Email Cards */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4 font-mono text-xs">
-              <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px] mb-2">
-                <Mail className="w-4 h-4" /> Official Enterprise Contact Emails
+              {/* Email Directory Grid */}
+              <div className="space-y-2.5 font-mono text-xs">
+                <div className="text-[11px] text-slate-400 uppercase tracking-wider font-bold flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-cyan-400" /> Official Email Channels
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 uppercase">Primary Inquiry</div>
+                      <a href="mailto:contact@zenemoo.in" className="text-white font-bold hover:text-cyan-300">
+                        contact@zenemoo.in
+                      </a>
+                    </div>
+                    <a
+                      href="mailto:contact@zenemoo.in"
+                      className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold"
+                    >
+                      Mail
+                    </a>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 uppercase">Support Desk</div>
+                      <a href="mailto:support@zenemoo.in" className="text-white font-bold hover:text-purple-300">
+                        support@zenemoo.in
+                      </a>
+                    </div>
+                    <a
+                      href="mailto:support@zenemoo.in"
+                      className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold"
+                    >
+                      Mail
+                    </a>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-400 uppercase">General Inquiries</div>
+                      <a href="mailto:info@zenemoo.in" className="text-white font-bold hover:text-emerald-300">
+                        info@zenemoo.in
+                      </a>
+                    </div>
+                    <a
+                      href="mailto:info@zenemoo.in"
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold"
+                    >
+                      Mail
+                    </a>
+                  </div>
+                </div>
               </div>
 
-              {/* Email 1: Primary Contact */}
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] text-slate-400 uppercase">Primary Contact</div>
-                  <a href="mailto:contact@zenemoo.in" className="text-white font-bold text-sm hover:text-cyan-300">
-                    contact@zenemoo.in
+              {/* Phone & WhatsApp Helpline */}
+              <div className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 font-mono text-xs space-y-2">
+                <div className="text-emerald-400 font-bold uppercase text-[10px] flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5" /> Direct Helpline &amp; WhatsApp
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <a href="tel:+919827775230" className="text-white font-bold text-sm hover:text-emerald-400">
+                    +91 9827775230
+                  </a>
+                  <a
+                    href="https://wa.me/919827775230"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold"
+                  >
+                    WhatsApp
                   </a>
                 </div>
-                <a
-                  href="mailto:contact@zenemoo.in"
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-bold shrink-0"
-                >
-                  Mail
-                </a>
-              </div>
-
-              {/* Email 2: Support */}
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] text-slate-400 uppercase">Client &amp; Contributor Support</div>
-                  <a href="mailto:support@zenemoo.in" className="text-white font-bold text-sm hover:text-cyan-300">
-                    support@zenemoo.in
-                  </a>
-                </div>
-                <a
-                  href="mailto:support@zenemoo.in"
-                  className="px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-bold shrink-0"
-                >
-                  Mail
-                </a>
-              </div>
-
-              {/* Email 3: General Inquiries */}
-              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] text-slate-400 uppercase">General Inquiries</div>
-                  <a href="mailto:info@zenemoo.in" className="text-white font-bold text-sm hover:text-cyan-300">
-                    info@zenemoo.in
-                  </a>
-                </div>
-                <a
-                  href="mailto:info@zenemoo.in"
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold shrink-0"
-                >
-                  Mail
-                </a>
               </div>
             </div>
 
-            {/* Business Hours & Response SLA Box */}
-            <div className="glass-panel rounded-3xl p-6 border border-cyan-500/30 space-y-3 font-mono text-xs bg-cyan-500/10">
-              <div className="text-cyan-300 font-bold uppercase text-[11px] flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-cyan-400" /> Guaranteed Response SLA &amp; Hours
-              </div>
-              <div className="space-y-1.5 text-slate-200">
-                <div>⚡ Guaranteed Response Time: <strong className="text-emerald-400">&lt; 2 Hours Response SLA</strong></div>
-                <div>💼 Business Hours: <strong className="text-white">Mon–Sat 9:00 AM – 7:00 PM IST</strong></div>
-                <div>🌐 Enterprise Projects: <strong className="text-cyan-300">24/7 Dedicated Account Managers</strong></div>
-              </div>
-            </div>
-
-            {/* Phone & WhatsApp Card */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase text-[11px] mb-1">
-                <Phone className="w-4 h-4" /> Phone &amp; WhatsApp Helpline
-              </div>
-              <div className="text-white font-bold text-base flex items-center justify-between gap-3">
-                <a href="tel:+919827775230" className="hover:text-emerald-400 transition-colors">
-                  +91 9827775230
-                </a>
-                <a
-                  href="https://wa.me/919827775230"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold shrink-0"
-                >
-                  WhatsApp
-                </a>
-              </div>
-              <div className="text-slate-400">Available Mon–Sat, 9:00 AM – 7:00 PM IST</div>
-            </div>
-
-            {/* Location & Official Address Card */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4 font-mono text-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px]">
-                  <MapPin className="w-4 h-4" /> Global Delivery Hub / Official Address
-                </div>
+            {/* Panel B: Global Headquarters & Operational SLA */}
+            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4 shadow-xl">
+              <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px] font-mono">
+                <MapPin className="w-4 h-4" /> Global Delivery Hub / Official Address
               </div>
 
-              <div className="space-y-1 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
-                <div className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Official Business Address</div>
+              {/* Address Box */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-1 font-mono text-xs">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Official Business Address</div>
                 <div className="text-slate-100 font-bold text-sm leading-snug">K. Barida, Main Road</div>
                 <div className="text-cyan-300 font-bold text-sm">Odisha, India – 761031</div>
                 <div className="text-slate-400 text-[11px] pt-1">Remote-first team, available nationwide &amp; globally</div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-1">
+              {/* Action Buttons: Copy Address & Google Maps */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-xs">
                 <button
                   type="button"
                   onClick={copyAddress}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-cyan-300 border border-white/10 text-xs font-mono transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-cyan-300 border border-white/10 text-xs transition-colors cursor-pointer"
                 >
                   {addressCopied ? (
                     <>
@@ -438,17 +441,29 @@ export const Contact: React.FC = () => {
                   href="https://www.google.com/maps/search/?api=1&query=K.+Barida,+Main+Road,+Odisha+761031"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-mono transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs transition-colors"
                 >
                   <ExternalLink className="w-3.5 h-3.5" /> Open Google Maps
                 </a>
+              </div>
+
+              {/* Response Hours & SLA Box */}
+              <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 font-mono text-xs space-y-1.5">
+                <div className="text-cyan-300 font-bold text-[11px] flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-cyan-400" /> Guaranteed Response SLA &amp; Hours
+                </div>
+                <div className="text-[11px] text-slate-300 space-y-1">
+                  <div>⚡ Response SLA: <strong className="text-emerald-400">&lt; 2 Hours</strong></div>
+                  <div>💼 Business Hours: <strong className="text-white">Mon–Sat 9:00 AM – 7:00 PM IST</strong></div>
+                  <div>🌐 Enterprise Account: <strong className="text-cyan-300">24/7 Dedicated Managers</strong></div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Sleek Professional Confirmation Modal Popup */}
+      {/* Confirmation Modal Popup */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-cyan-500/20">
@@ -480,7 +495,7 @@ export const Contact: React.FC = () => {
               </div>
               <button
                 onClick={copyTicketId}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-mono transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-mono transition-colors cursor-pointer"
               >
                 {copied ? (
                   <>
@@ -503,7 +518,7 @@ export const Contact: React.FC = () => {
 
             <button
               onClick={closeModal}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 cursor-pointer"
             >
               Done &amp; Close
             </button>

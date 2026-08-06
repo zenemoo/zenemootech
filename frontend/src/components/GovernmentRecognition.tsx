@@ -147,7 +147,7 @@ export const GovernmentRecognition: React.FC = () => {
               </div>
 
               <a
-                href="https://udyamregistration.gov.in/Udyam_Verify.aspx"
+                href="https://udyamregistration.gov.in/verifyudyambarcode.aspx?verifyudrn=8ALy8kAuPjrbzEuC9jfa3MZcqnz4kJ2j3R5CzJKA3BU="
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-semibold transition-colors"
