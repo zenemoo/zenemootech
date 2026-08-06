@@ -240,7 +240,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-purple-400" />
                   <span>Location:</span>
-                  <span className="text-slate-200">Berhampur, Odisha, India</span>
+                  <span className="text-slate-200">K. Barida, Main Road, Odisha, India – 761031</span>
                 </div>
               </div>
             </section>

@@ -179,10 +179,11 @@ export const Footer: React.FC = () => {
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li><a href="#telemetry" className="hover:text-cyan-400 transition-colors">Production Capacity</a></li>
               <li className="pt-2 border-t border-white/5 space-y-1 font-mono text-[11px]">
-                <div className="text-slate-400 font-bold">Official Contact Emails:</div>
+                <div className="text-slate-400 font-bold">Official Contact &amp; Location:</div>
                 <div>Contact: <a href="mailto:contact@zenemoo.in" className="text-cyan-300 hover:underline">contact@zenemoo.in</a></div>
                 <div>Support: <a href="mailto:support@zenemoo.in" className="text-cyan-300 hover:underline">support@zenemoo.in</a></div>
                 <div>General: <a href="mailto:info@zenemoo.in" className="text-cyan-300 hover:underline">info@zenemoo.in</a></div>
+                <div className="text-slate-300 pt-1">📍 Address: K. Barida, Main Road, Odisha, India – 761031</div>
               </li>
             </ul>
           </div>
@@ -342,7 +343,7 @@ export const Footer: React.FC = () => {
                     <div className="space-y-1 text-cyan-400 pt-1">
                       <div>📧 Direct Email: <a href="mailto:prem@zenemoo.in" className="hover:underline text-white font-bold">prem@zenemoo.in</a></div>
                       <div>📧 Team Email: <a href="mailto:contact@zenemoo.in" className="hover:underline text-white font-bold">contact@zenemoo.in</a></div>
-                      <div>📍 Location: Berhampur, Odisha, India</div>
+                      <div>📍 Location: K. Barida, Main Road, Odisha, India – 761031</div>
                     </div>
                   </section>
                 </div>
@@ -400,7 +401,7 @@ export const Footer: React.FC = () => {
                     <div className="space-y-1 text-purple-300 pt-1">
                       <div>📧 Direct Email: <a href="mailto:prem@zenemoo.in" className="hover:underline text-white font-bold">prem@zenemoo.in</a></div>
                       <div>📧 Team Email: <a href="mailto:contact@zenemoo.in" className="hover:underline text-white font-bold">contact@zenemoo.in</a></div>
-                      <div>📍 Location: Berhampur, Odisha, India</div>
+                      <div>📍 Location: K. Barida, Main Road, Odisha, India – 761031</div>
                     </div>
                   </section>
                 </div>

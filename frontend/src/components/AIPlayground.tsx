@@ -45,7 +45,7 @@ export const AIPlayground: React.FC = () => {
       case 'annotate':
         return {
           header: `Zenemo Tech NLP Entity Annotation (${language})`,
-          content: `{\n  "text": "Prem Prasad Pradhan leads Zenemo Tech team in Berhampur, Odisha.",\n  "entities": [\n    { "entity": "Prem Prasad Pradhan", "label": "PER", "confidence": 0.998 },\n    { "entity": "Zenemo Tech", "label": "ORG", "confidence": 0.999 },\n    { "entity": "Berhampur", "label": "LOC", "confidence": 0.995 },\n    { "entity": "Odisha", "label": "LOC", "confidence": 0.997 }\n  ],\n  "sentiment": "POSITIVE",\n  "qc_status": "${qcLevel}"\n}`,
+          content: `{\n  "text": "Prem Prasad Pradhan leads Zenemo Tech team in K. Barida, Main Road, Odisha.",\n  "entities": [\n    { "entity": "Prem Prasad Pradhan", "label": "PER", "confidence": 0.998 },\n    { "entity": "Zenemo Tech", "label": "ORG", "confidence": 0.999 },\n    { "entity": "K. Barida", "label": "LOC", "confidence": 0.995 },\n    { "entity": "Odisha", "label": "LOC", "confidence": 0.997 }\n  ],\n  "sentiment": "POSITIVE",\n  "qc_status": "${qcLevel}"\n}`,
         };
       case 'voice':
         return {

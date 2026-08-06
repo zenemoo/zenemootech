@@ -32,7 +32,7 @@ const VERIFIED_COMPANY_KNOWLEDGE = `
 ORGANIZATION:
 - Legal Name: Zenemoo (formerly QuantumCoders Data Solution)
 - Founded: 2023
-- Headquarters: Berhampur City, Odisha, India — PIN 760001
+- Headquarters: K. Barida, Main Road, Odisha, India — PIN 761031
 - Official Website: https://www.zenemoo.in/
 - Industry: AI Data Services, Multilingual Speech Technology, Data Annotation
 

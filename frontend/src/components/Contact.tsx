@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe, ExternalLink } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
@@ -21,6 +21,7 @@ export const Contact: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [submittedId, setSubmittedId] = useState('');
   const [copied, setCopied] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
@@ -106,6 +107,12 @@ export const Contact: React.FC = () => {
     navigator.clipboard.writeText(submittedId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyAddress = () => {
+    navigator.clipboard.writeText('K. Barida, Main Road, Odisha, India – 761031');
+    setAddressCopied(true);
+    setTimeout(() => setAddressCopied(false), 2000);
   };
 
   const closeModal = () => {
@@ -395,13 +402,47 @@ export const Contact: React.FC = () => {
               <div className="text-slate-400">Available Mon–Sat, 9:00 AM – 7:00 PM IST</div>
             </div>
 
-            {/* Location */}
-            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-3 font-mono text-xs">
-              <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px] mb-1">
-                <MapPin className="w-4 h-4" /> Global Delivery Hub
+            {/* Location & Official Address Card */}
+            <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-4 font-mono text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-[11px]">
+                  <MapPin className="w-4 h-4" /> Global Delivery Hub / Official Address
+                </div>
               </div>
-              <div className="text-slate-200 font-bold">Berhampur, Odisha, India – 760001</div>
-              <div className="text-slate-400">Remote-first team, available nationwide &amp; globally</div>
+
+              <div className="space-y-1 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                <div className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Official Business Address</div>
+                <div className="text-slate-100 font-bold text-sm leading-snug">K. Barida, Main Road</div>
+                <div className="text-cyan-300 font-bold text-sm">Odisha, India – 761031</div>
+                <div className="text-slate-400 text-[11px] pt-1">Remote-first team, available nationwide &amp; globally</div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={copyAddress}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-cyan-300 border border-white/10 text-xs font-mono transition-colors cursor-pointer"
+                >
+                  {addressCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" /> Address Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy Address
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href="https://www.google.com/maps/search/?api=1&query=K.+Barida,+Main+Road,+Odisha+761031"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-mono transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Open Google Maps
+                </a>
+              </div>
             </div>
           </div>
         </div>

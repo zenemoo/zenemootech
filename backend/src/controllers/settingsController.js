@@ -9,7 +9,7 @@ let memorySettings = {
   active_specialists: 20,
   contact_email: 'contact@zenemoo.in',
   contact_phone: '+91 9827775230',
-  location: 'Berhampur, Odisha, India – 760001',
+  location: 'K. Barida, Main Road, Odisha, India – 761031',
 };
 
 export const getSettings = async (req, res, next) => {
