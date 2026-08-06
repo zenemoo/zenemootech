@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import {
-  getOptimizedCloudinaryUrl,
-  buildCloudinarySrcSet,
-} from '../helpers/cloudinary';
-import { sanitizeAltText, DEFAULT_FALLBACK_IMAGE } from '../helpers/imageLoader';
+import { CloudinaryService, ImagePresetType } from '../services/CloudinaryService';
+import { generateContextualAlt } from '../helpers/imageSeo';
+import { DEFAULT_FALLBACK_IMAGE } from '../helpers/imageLoader';
 
 export interface SeoImageProps {
   src: string;
-  alt: string;
+  alt?: string;
   title?: string;
+  preset?: ImagePresetType;
   width?: number | string;
   height?: number | string;
   aspectRatio?: string;
@@ -25,13 +24,14 @@ export interface SeoImageProps {
 
 export const SeoImage: React.FC<SeoImageProps> = ({
   src,
-  alt,
+  alt = 'Zenemoo Enterprise AI Solution',
   title,
+  preset = 'card',
   width,
   height,
   aspectRatio,
   priority = false,
-  sizes = '(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw',
+  sizes,
   objectFit = 'cover',
   className = '',
   fallbackSrc = DEFAULT_FALLBACK_IMAGE,
@@ -41,7 +41,7 @@ export const SeoImage: React.FC<SeoImageProps> = ({
   onClick,
 }) => {
   const [imgSrc, setImgSrc] = useState<string>(() => {
-    return getOptimizedCloudinaryUrl(src, {
+    return CloudinaryService.optimize(src, {
       width: typeof width === 'number' ? width : undefined,
       height: typeof height === 'number' ? height : undefined,
     });
@@ -49,8 +49,9 @@ export const SeoImage: React.FC<SeoImageProps> = ({
 
   const [hasError, setHasError] = useState(false);
 
-  const cleanAlt = sanitizeAltText(alt);
-  const srcSet = !hasError && src?.includes('res.cloudinary.com') ? buildCloudinarySrcSet(src) : undefined;
+  const cleanAlt = generateContextualAlt({ name: alt, category: preset === 'avatar' ? 'team' : preset === 'logo' ? 'logo' : 'hero' });
+  const computedSizes = CloudinaryService.autoSizes(preset, sizes);
+  const srcSet = !hasError && src?.includes('res.cloudinary.com') ? CloudinaryService.srcSet(src) : undefined;
 
   const handleError = () => {
     if (!hasError) {
@@ -69,7 +70,7 @@ export const SeoImage: React.FC<SeoImageProps> = ({
     <img
       src={imgSrc}
       srcSet={srcSet}
-      sizes={srcSet ? sizes : undefined}
+      sizes={srcSet ? computedSizes : undefined}
       alt={cleanAlt}
       title={title || cleanAlt}
       width={width}

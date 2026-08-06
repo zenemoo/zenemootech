@@ -1,6 +1,5 @@
 /**
- * Zenemoo Schema.org Organization Builder
- * Generates official Organization schema with logo ImageObject & credentials.
+ * Zenemoo Schema.org Organization Builder (Expanded Enterprise Specification)
  */
 
 import { buildImageObjectSchema } from './imageObject';
@@ -25,8 +24,14 @@ export const buildOrganizationSchema = () => {
     'logo': logoSchema,
     'image': 'https://www.zenemoo.in/assets/logo.png',
     'description':
-      'Zenemoo is an enterprise AI language and data services company specializing in verbatim transcription, speech data collection, data annotation, and regional speech corpus datasets.',
+      'Zenemoo is an enterprise AI language and data services provider specializing in verbatim transcription, speech data collection, data annotation, and regional speech corpus datasets.',
     'foundingDate': '2023',
+    'founder': {
+      '@type': 'Person',
+      'name': 'Prem Prasad Pradhan',
+      'jobTitle': 'Founder & Vendor Manager',
+      'email': 'prem@zenemoo.in',
+    },
     'identifier': 'UDYAM-OD-11-0124893',
     'hasCredential': {
       '@type': 'EducationalOccupationalCredential',
@@ -38,7 +43,26 @@ export const buildOrganizationSchema = () => {
       },
     },
     'email': 'contact@zenemoo.in',
+    'telephone': '+91 9827775230',
+    'areaServed': ['IN', 'Global'],
     'sameAs': ['https://www.linkedin.com/company/desicrew-solutions'],
+    'contactPoint': [
+      {
+        '@type': 'ContactPoint',
+        'telephone': '+91 9827775230',
+        'contactType': 'customer service',
+        'email': 'support@zenemoo.in',
+        'areaServed': 'IN',
+        'availableLanguage': ['English', 'Odia', 'Hindi'],
+      },
+      {
+        '@type': 'ContactPoint',
+        'contactType': 'sales',
+        'email': 'contact@zenemoo.in',
+        'areaServed': 'Global',
+        'availableLanguage': ['English', 'Odia', 'Hindi'],
+      },
+    ],
     'address': {
       '@type': 'PostalAddress',
       'streetAddress': 'K. Barida, Main Road',
