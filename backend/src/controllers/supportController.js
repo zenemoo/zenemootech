@@ -1,5 +1,5 @@
 import { supabaseService } from '../services/supabaseService.js';
-import { sendBrevoEmail } from '../services/emailService.js';
+import { sendMailViaBrevo } from '../services/emailService.js';
 
 // In-memory fallback array for support tickets
 let memorySupportTickets = [];
@@ -101,7 +101,7 @@ export const createSupportTicket = async (req, res, next) => {
 
     // 3. Dispatch automated email notification to support team
     try {
-      await sendBrevoEmail({
+      await sendMailViaBrevo({
         sender: 'support@zenemoo.in',
         recipients: 'support@zenemoo.in, contact@zenemoo.in',
         subject: `[SUPPORT TICKET ${ticketId}] ${category}: ${subject}`,
