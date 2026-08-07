@@ -1,6 +1,6 @@
 import express from 'express';
 import { createSupportTicket, getSupportTickets, updateTicketStatus } from '../controllers/supportController.js';
-import { verifyToken, verifyRole } from '../middleware/rbacMiddleware.js';
+import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
 
@@ -8,7 +8,7 @@ const router = express.Router();
 router.post('/ticket', createSupportTicket);
 
 // Admin-protected routes to view and update tickets
-router.get('/tickets', verifyToken, verifyRole('admin', 'super_admin', 'administrator'), getSupportTickets);
-router.put('/ticket/:id/status', verifyToken, verifyRole('admin', 'super_admin', 'administrator'), updateTicketStatus);
+router.get('/tickets', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), getSupportTickets);
+router.put('/ticket/:id/status', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), updateTicketStatus);
 
 export default router;
