@@ -36,12 +36,36 @@ export const createSupportTicket = async (req, res, next) => {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Insert into Supabase table support_tickets
+    // 1. Insert into Supabase table support_tickets with column-fallback resilience
     let insertedRecord = null;
     try {
       insertedRecord = await supabaseService.insert('support_tickets', ticketRecord);
     } catch (err) {
       console.warn('Supabase support_tickets insert warning:', err.message);
+      // Fallback: strip optional fields if column cache is missing extra columns
+      const fallbackPayload = {
+        ticket_id: ticketId,
+        user_email: senderEmail,
+        user_name: senderName,
+        user_id: req.user?.id || req.user?.team_member_id || null,
+      };
+      if (subject) fallbackPayload.subject = subject;
+      if (message) fallbackPayload.message = message;
+      if (category) fallbackPayload.category = category;
+
+      try {
+        insertedRecord = await supabaseService.insert('support_tickets', fallbackPayload);
+      } catch (e2) {
+        console.warn('Supabase support_tickets secondary insert warning:', e2.message);
+        // Ultra fallback: minimum fields
+        try {
+          insertedRecord = await supabaseService.insert('support_tickets', {
+            ticket_id: ticketId,
+            user_email: senderEmail,
+            user_name: senderName,
+          });
+        } catch (_) {}
+      }
     }
 
     if (!insertedRecord) {
@@ -51,12 +75,12 @@ export const createSupportTicket = async (req, res, next) => {
 
     memorySupportTickets.unshift(ticketRecord);
 
-    // 2. Insert high-priority Notification into Supabase admin_notifications
+    // 2. Insert high-priority Notification into Supabase notifications & user_notifications
     const notifRecord = {
       type: 'support_ticket',
       category: 'system',
-      title: `🎫 New Support Ticket: ${ticketId}`,
-      message: `[${category}] From ${senderName} (${senderEmail}): "${subject}"`,
+      title: `🎫 Support Ticket: ${ticketId}`,
+      message: `[${category || 'Technical'}] From ${senderName} (${senderEmail}): "${subject}"`,
       ticket_id: ticketId,
       user_email: senderEmail,
       read: false,
@@ -66,7 +90,13 @@ export const createSupportTicket = async (req, res, next) => {
     try {
       await supabaseService.insert('admin_notifications', notifRecord);
     } catch (e) {
-      console.warn('Admin notification insert fallback:', e.message);
+      try {
+        await supabaseService.insert('user_notifications', notifRecord);
+      } catch (e2) {
+        try {
+          await supabaseService.insert('notifications', notifRecord);
+        } catch (e3) {}
+      }
     }
 
     // 3. Dispatch automated email notification to support team
