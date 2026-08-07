@@ -42,6 +42,7 @@ import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
+import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
 import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 
 interface TeamDashboardProps {
@@ -56,6 +57,8 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
   const [searchFilterQuery, setSearchFilterQuery] = useState('');
   const [isVerifyingSession, setIsVerifyingSession] = useState(true);
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   const popoverRef = useRef<HTMLDivElement>(null);
   const userCardRef = useRef<HTMLButtonElement>(null);
@@ -1467,13 +1470,41 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
           <div className="text-center sm:text-left">
             &copy; {new Date().getFullYear()} Zenemoo AI Solutions. Powered by Zenemoo Enterprise AI Platform
           </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span className="hover:text-slate-400 cursor-pointer">Documentation</span>
-            <span className="hover:text-slate-400 cursor-pointer">Support Portal</span>
-            <span className="hover:text-slate-400 cursor-pointer">Privacy &amp; Terms</span>
+          <div className="flex items-center gap-4 text-[11px] font-mono">
+            <button
+              type="button"
+              onClick={() => setIsDocModalOpen(true)}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Documentation
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSupportModalOpen(true)}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Support Portal
+            </button>
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Privacy &amp; Terms
+            </a>
           </div>
         </footer>
       </div>
+
+      <ZenemooDocumentationModal
+        isOpen={isDocModalOpen}
+        onClose={() => setIsDocModalOpen(false)}
+      />
+      <ZenemooSupportPortalModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
     </div>
   );
 };

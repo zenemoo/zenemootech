@@ -10,6 +10,7 @@ import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notifi
 import { supabase } from '../lib/supabaseClient';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
+import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -46,6 +47,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [notifCategoryTab, setNotifCategoryTab] = useState<'all' | 'unread' | 'security' | 'system' | 'applications' | 'partners' | 'newsletter' | 'contacts' | 'audit'>('all');
   
   const [sessionStartTime] = useState(() => Date.now());
@@ -5929,13 +5932,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             <p className="font-bold text-slate-400">© 2026 Zenemoo AI Solutions</p>
             <p className="text-[10px]">Powered by Zenemoo Enterprise AI Platform • Automatic Reordering Engine</p>
           </div>
-          <div className="flex items-center gap-4 mt-4 md:mt-0 justify-center">
-            <a href="https://www.zenemoo.in" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Documentation</a>
-            <a href="https://www.zenemoo.in" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Support Portal</a>
-            <a href="https://www.zenemoo.in" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Privacy &amp; Terms</a>
+          <div className="flex items-center gap-4 mt-4 md:mt-0 justify-center font-mono text-[11px]">
+            <button
+              type="button"
+              onClick={() => setIsDocModalOpen(true)}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Documentation
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSupportModalOpen(true)}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Support Portal
+            </button>
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Privacy &amp; Terms
+            </a>
           </div>
         </footer>
       </div>
+
+      {/* FOOTER INTERACTIVE MODALS */}
+      <ZenemooDocumentationModal
+        isOpen={isDocModalOpen}
+        onClose={() => setIsDocModalOpen(false)}
+      />
+      <ZenemooSupportPortalModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+        showToast={(msg, type) => addToast(msg, '', type)}
+      />
 
       {/* 6. ADMINISTRATOR PROFILE DRAWER (Slide-Over Panel) */}
       <AnimatePresence>
