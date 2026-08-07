@@ -51,24 +51,21 @@ export const sendEmail = async (req, res, next) => {
       });
 
       // Encrypt sensitive fields before saving to Supabase
-      const memoryRecord = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      const payload = {
         user_id: req.user?.id || req.user?.team_member_id || null,
-        user_email: (req.user?.email || fromSender).toLowerCase().trim(),
+        user_email: (req.user?.email || fromSender).toLowerCase(),
         sender: fromSender,
         recipients: encrypt(parsedTo),
         cc: encrypt(parseRecipients(cc)),
         bcc: encrypt(parseRecipients(bcc)),
         subject: encrypt(subject),
         html: encrypt(safeHtml),
-        attachments_meta: attachmentsMeta,
+        attachments_meta: attachmentsMeta, // Metadata only (image: "yes", pdf: "no"). NO binary files stored.
         status: 'sent',
         message_id: sendResult.messageId || `msg_${Date.now()}`,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-
-      const payload = { ...memoryRecord };
 
       let insertedRecord = null;
       try {
@@ -83,11 +80,11 @@ export const sendEmail = async (req, res, next) => {
           } catch (_) {}
         }
         if (!insertedRecord) {
-          insertedRecord = memoryRecord;
+          payload.id = `temp_${Date.now()}`;
+          insertedRecord = payload;
         }
       }
-      // Always store memory record with full user_id and user_email intact
-      memoryHistory.unshift(memoryRecord);
+      memoryHistory.unshift(payload);
 
       // Return decrypted response to user UI
       return res.json({
@@ -95,7 +92,7 @@ export const sendEmail = async (req, res, next) => {
         message: 'Email sent successfully via Brevo SMTP.',
         messageId: sendResult.messageId,
         entry: {
-          id: insertedRecord?.id || memoryRecord.id,
+          id: insertedRecord?.id || Date.now(),
           sender: fromSender,
           recipients: parsedTo,
           cc: parseRecipients(cc),
@@ -112,7 +109,7 @@ export const sendEmail = async (req, res, next) => {
 
       const failedPayload = {
         user_id: req.user?.id || req.user?.team_member_id || null,
-        user_email: (req.user?.email || fromSender).toLowerCase().trim(),
+        user_email: (req.user?.email || fromSender).toLowerCase(),
         sender: fromSender,
         recipients: encrypt(parsedTo),
         cc: encrypt(parseRecipients(cc)),
@@ -126,11 +123,12 @@ export const sendEmail = async (req, res, next) => {
         updated_at: new Date().toISOString(),
       };
 
-      memoryHistory.unshift({ ...failedPayload, id: `failed_${Date.now()}` });
-
       try {
         await supabaseService.insert('email_history', failedPayload);
-      } catch (e) {}
+      } catch (e) {
+        failedPayload.id = `temp_${Date.now()}`;
+      }
+      memoryHistory.unshift(failedPayload);
 
       return res.status(500).json({
         success: false,
@@ -152,8 +150,8 @@ export const sendEmail = async (req, res, next) => {
 export const getEmailHistory = async (req, res, next) => {
   try {
     const userRole = (req.user?.role || '').toLowerCase();
-    const userEmail = (req.user?.email || '').toLowerCase().trim();
-    const userId = String(req.user?.id || req.user?.team_member_id || '').trim();
+    const userEmail = (req.user?.email || '').toLowerCase();
+    const userId = req.user?.id || req.user?.team_member_id;
     const isSuperAdmin =
       userRole === 'admin' ||
       userRole === 'super_admin' ||
@@ -193,24 +191,21 @@ export const getEmailHistory = async (req, res, next) => {
       }
     }
 
-    // Decrypt and filter logs strictly by sender account (user_email / user_id)
+    // Decrypt and filter logs strictly by role/owner
     const filteredLogs = uniqueLogs.filter((log) => {
       if (isSuperAdmin) return true; // Super Admin sees all global enterprise history logs
       
-      const logUserEmail = (log.user_email || '').toLowerCase().trim();
-      const logUserId = String(log.user_id || '').trim();
-      const logSender = (log.sender || '').toLowerCase().trim();
+      // All non-admin staff (HR, Marketing Lead, PM, Tech Lead, etc.) see ONLY emails dispatched from their own user account
+      const logUserEmail = (log.user_email || '').toLowerCase();
+      const logUserId = String(log.user_id || '');
+      const currentUserId = String(userId || '');
+      const currentUserEmail = userEmail.toLowerCase();
+      const logSender = (log.sender || '').toLowerCase();
 
-      // If log has user_email, compare strictly against logged-in user email
-      if (logUserEmail) {
-        return logUserEmail === userEmail;
-      }
-      // If log has user_id, compare strictly against logged-in user ID
-      if (logUserId && userId && logUserId !== 'null' && userId !== 'null') {
-        return logUserId === userId;
-      }
-      // Fallback for legacy logs: sender email must strictly equal logged-in account email
-      return logSender === userEmail;
+      return (
+        (currentUserEmail && (logUserEmail === currentUserEmail || logSender === currentUserEmail)) ||
+        (currentUserId && currentUserId !== 'null' && logUserId === currentUserId)
+      );
     });
 
     const decryptedLogs = filteredLogs.map((log) => {
