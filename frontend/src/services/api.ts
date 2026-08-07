@@ -218,6 +218,14 @@ export const emailApi = {
   deleteDraft: (id: string) => api.delete(`/email/drafts/${encodeURIComponent(id)}`),
 };
 
+// Zenemoo Support Portal APIs
+export const supportApi = {
+  createTicket: (data: { category: string; subject: string; message: string; user_email?: string; user_name?: string }) =>
+    api.post('/support/ticket', data),
+  getTickets: () => api.get('/support/tickets'),
+  updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
+};
+
 // Unified Portal Authentication APIs (Team Member, HR, Admin)
 export const portalAuthApi = {
   portalLogin: (email: string, password: string, expectedRole?: string) =>

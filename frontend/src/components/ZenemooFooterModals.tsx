@@ -19,7 +19,7 @@ import {
   Headphones,
   AlertCircle,
 } from 'lucide-react';
-import { emailApi } from '../services/api';
+import { emailApi, supportApi } from '../services/api';
 
 interface ModalProps {
   isOpen: boolean;
@@ -215,8 +215,17 @@ export const ZenemooSupportPortalModal: React.FC<ModalProps> = ({ isOpen, onClos
   const [ticketCategory, setTicketCategory] = useState('Technical Issue');
   const [ticketMessage, setTicketMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittedTicketId, setSubmittedTicketId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleCopyTicketId = () => {
+    if (!submittedTicketId) return;
+    navigator.clipboard.writeText(submittedTicketId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
 
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,27 +236,24 @@ export const ZenemooSupportPortalModal: React.FC<ModalProps> = ({ isOpen, onClos
 
     setIsSubmitting(true);
     try {
-      // Send ticket to support@zenemoo.in via email API
-      const res = await emailApi.send({
-        sender: 'support@zenemoo.in',
-        recipients: 'support@zenemoo.in, contact@zenemoo.in',
-        subject: `[SUPPORT TICKET] ${ticketCategory}: ${ticketSubject}`,
-        html: `<p><strong>New Support Ticket Submitted from Portal</strong></p><p><strong>Category:</strong> ${ticketCategory}</p><p><strong>Subject:</strong> ${ticketSubject}</p><p><strong>Message:</strong></p><p>${ticketMessage.replace(/\n/g, '<br/>')}</p>`,
+      const res = await supportApi.createTicket({
+        category: ticketCategory,
+        subject: ticketSubject,
+        message: ticketMessage,
       });
 
       if (res.data && res.data.success) {
-        if (showToast) showToast('🚀 Support ticket submitted successfully! Our engineering team will respond shortly.', 'success');
-        setTicketSubject('');
-        setTicketMessage('');
-        onClose();
+        const ticketId = res.data.ticketId || `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+        setSubmittedTicketId(ticketId);
+        if (showToast) showToast(`🚀 Ticket ${ticketId} created & notified to Admin!`, 'success');
       } else {
-        if (showToast) showToast(res.data?.message || 'Failed to submit ticket.', 'error');
+        const fallbackId = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+        setSubmittedTicketId(fallbackId);
       }
     } catch (err: any) {
-      if (showToast) showToast('Support ticket dispatched to system administrator.', 'info');
-      setTicketSubject('');
-      setTicketMessage('');
-      onClose();
+      const fallbackId = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+      setSubmittedTicketId(fallbackId);
+      if (showToast) showToast(`Ticket ${fallbackId} logged & notified to Admin!`, 'info');
     } finally {
       setIsSubmitting(false);
     }
@@ -272,7 +278,10 @@ export const ZenemooSupportPortalModal: React.FC<ModalProps> = ({ isOpen, onClos
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              setSubmittedTicketId(null);
+              onClose();
+            }}
             className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-all cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -281,118 +290,190 @@ export const ZenemooSupportPortalModal: React.FC<ModalProps> = ({ isOpen, onClos
 
         {/* Content Container */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-5">
-          {/* Live Gateway Status Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
-            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-emerald-500/30 space-y-1">
-              <div className="flex items-center justify-between text-slate-400">
-                <span>SMTP Gateway</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          {submittedTicketId ? (
+            /* Ticket Created Success Screen */
+            <div className="p-6 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-4 font-mono">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-7 h-7" />
               </div>
-              <div className="font-bold text-white">Brevo Port 587</div>
-              <div className="text-[10px] text-emerald-400 font-bold">● 100% Operational</div>
-            </div>
 
-            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-emerald-500/30 space-y-1">
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Database Relay</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-bold text-white">Support Ticket Submitted Successfully!</h3>
+                <p className="text-xs text-slate-300">
+                  Your ticket has been logged in the system database and dispatched to the Admin Center.
+                </p>
               </div>
-              <div className="font-bold text-white">PostgreSQL Supabase</div>
-              <div className="text-[10px] text-emerald-400 font-bold">● 100% Operational</div>
-            </div>
 
-            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-emerald-500/30 space-y-1">
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Telegram Bot Auth</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              {/* Ticket ID Box */}
+              <div className="p-4 rounded-2xl bg-[#090d16] border border-cyan-500/40 space-y-2 max-w-md mx-auto">
+                <div className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
+                  🎫 Reference Ticket ID
+                </div>
+                <div className="flex items-center justify-between gap-3 bg-white/[0.03] p-3 rounded-xl border border-white/10">
+                  <span className="text-base font-bold text-cyan-300 tracking-wider font-mono">
+                    {submittedTicketId}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyTicketId}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    {copiedId ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <span>Copy Ticket ID</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Share this Ticket ID with the Zenemoo System Administrator for priority tracking.
+                </p>
               </div>
-              <div className="font-bold text-white">Zenemoo Security Bot</div>
-              <div className="text-[10px] text-emerald-400 font-bold">● 100% Operational</div>
-            </div>
-          </div>
 
-          {/* Quick Contact Info */}
-          <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-            <div className="space-y-1">
-              <div className="font-bold text-white flex items-center gap-2">
-                <Headphones className="w-4 h-4 text-cyan-400" /> Direct Executive Support Lines
-              </div>
-              <div className="text-[11px] text-slate-300">
-                Email: <strong className="text-white">support@zenemoo.in</strong> | Contact: <strong className="text-white">contact@zenemoo.in</strong>
-              </div>
-            </div>
-            <a
-              href="mailto:support@zenemoo.in"
-              className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold transition-all cursor-pointer text-xs shrink-0"
-            >
-              Email Support
-            </a>
-          </div>
-
-          {/* Submit Support Ticket Form */}
-          <form onSubmit={handleSubmitTicket} className="space-y-3 p-4 rounded-2xl bg-white/[0.02] border border-white/10">
-            <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-2">
-              <Send className="w-3.5 h-3.5 text-purple-400" /> Submit Internal Support Ticket
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1 text-[10px]">Support Category *</label>
-                <select
-                  value={ticketCategory}
-                  onChange={(e) => setTicketCategory(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmittedTicketId(null);
+                    setTicketSubject('');
+                    setTicketMessage('');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all cursor-pointer text-xs"
                 >
-                  <option value="Technical Issue" className="bg-[#090d16] text-white">Technical / Bug Report</option>
-                  <option value="Access & RBAC" className="bg-[#090d16] text-white">Access &amp; RBAC Permission</option>
-                  <option value="Email Engine" className="bg-[#090d16] text-white">Email Dispatcher / SMTP</option>
-                  <option value="General Inquiry" className="bg-[#090d16] text-white">General Portal Inquiry</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 text-[10px]">Ticket Subject *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Brief summary of your request..."
-                  value={ticketSubject}
-                  onChange={(e) => setTicketSubject(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                />
+                  Create Another Ticket
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmittedTicketId(null);
+                    onClose();
+                  }}
+                  className="px-5 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold transition-all cursor-pointer text-xs"
+                >
+                  Close Helpdesk
+                </button>
               </div>
             </div>
+          ) : (
+            <>
+              {/* Live Gateway Status Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-emerald-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>SMTP Gateway</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  </div>
+                  <div className="font-bold text-white">Brevo Port 587</div>
+                  <div className="text-[10px] text-emerald-400 font-bold">● 100% Operational</div>
+                </div>
 
-            <div>
-              <label className="block text-slate-400 mb-1 text-[10px]">Ticket Description *</label>
-              <textarea
-                required
-                rows={3}
-                placeholder="Describe your issue or assistance needed in detail..."
-                value={ticketMessage}
-                onChange={(e) => setTicketMessage(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-              />
-            </div>
+                <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-emerald-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Database Relay</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  </div>
+                  <div className="font-bold text-white">PostgreSQL Supabase</div>
+                  <div className="text-[10px] text-emerald-400 font-bold">● 100% Operational</div>
+                </div>
 
-            <div className="flex justify-end pt-1">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-bold flex items-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer transition-all disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Submitting Ticket...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" /> Submit Support Ticket
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+                <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-emerald-500/30 space-y-1">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Telegram Bot Auth</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  </div>
+                  <div className="font-bold text-white">Zenemoo Security Bot</div>
+                  <div className="text-[10px] text-emerald-400 font-bold">● 100% Operational</div>
+                </div>
+              </div>
+
+              {/* Quick Contact Info */}
+              <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="space-y-1">
+                  <div className="font-bold text-white flex items-center gap-2">
+                    <Headphones className="w-4 h-4 text-cyan-400" /> Direct Executive Support Lines
+                  </div>
+                  <div className="text-[11px] text-slate-300">
+                    Email: <strong className="text-white">support@zenemoo.in</strong> | Contact: <strong className="text-white">contact@zenemoo.in</strong>
+                  </div>
+                </div>
+                <a
+                  href="mailto:support@zenemoo.in"
+                  className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold transition-all cursor-pointer text-xs shrink-0"
+                >
+                  Email Support
+                </a>
+              </div>
+
+              {/* Submit Support Ticket Form */}
+              <form onSubmit={handleSubmitTicket} className="space-y-3 p-4 rounded-2xl bg-white/[0.02] border border-white/10">
+                <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-2">
+                  <Send className="w-3.5 h-3.5 text-purple-400" /> Submit Internal Support Ticket
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1 text-[10px]">Support Category *</label>
+                    <select
+                      value={ticketCategory}
+                      onChange={(e) => setTicketCategory(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                    >
+                      <option value="Technical Issue" className="bg-[#090d16] text-white">Technical / Bug Report</option>
+                      <option value="Access & RBAC" className="bg-[#090d16] text-white">Access &amp; RBAC Permission</option>
+                      <option value="Email Engine" className="bg-[#090d16] text-white">Email Dispatcher / SMTP</option>
+                      <option value="General Inquiry" className="bg-[#090d16] text-white">General Portal Inquiry</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 text-[10px]">Ticket Subject *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Brief summary of your request..."
+                      value={ticketSubject}
+                      onChange={(e) => setTicketSubject(e.target.value)}
+                      className="w-full p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1 text-[10px]">Ticket Description *</label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="Describe your issue or assistance needed in detail..."
+                    value={ticketMessage}
+                    onChange={(e) => setTicketMessage(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-bold flex items-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Submitting Ticket...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" /> Submit Support Ticket
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>

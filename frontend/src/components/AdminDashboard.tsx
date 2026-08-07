@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi } from '../services/api';
+import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
@@ -14,7 +14,7 @@ import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooF
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets';
   isStandaloneEmailView?: boolean;
 }
 
@@ -204,7 +204,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory'>((initialTab as any) || 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets'>((initialTab as any) || 'team');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -273,6 +273,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       if (sA !== sB) return sA - sB;
       return (a.name || '').localeCompare(b.name || '');
     });
+  };
+
+  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+
+  const loadSupportTickets = async () => {
+    try {
+      const res = await supportApi.getTickets();
+      if (res.data && res.data.success && Array.isArray(res.data.data)) {
+        setSupportTickets(res.data.data);
+      }
+    } catch (err) {}
   };
 
   const loadRbacUsers = async () => {
@@ -698,6 +709,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           setIsAuthenticated(true);
           const fallbackExpiry = Date.now() + 30 * 60 * 1000;
           localStorage.setItem('zenemoo_jwt_expiry', fallbackExpiry.toString());
+          loadSupportTickets();
         }
       } finally {
         setIsCheckingSession(false);
@@ -1770,6 +1782,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       items: [
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Bell },
         { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
+        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
         { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
       ],
@@ -4594,6 +4607,90 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3.6: ENTERPRISE SUPPORT TICKETS MANAGEMENT */}
+        {activeTab === 'support-tickets' && (
+          <div className="space-y-6">
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
+                  <LifeBuoy className="w-5 h-5 text-cyan-400" /> Enterprise Support Tickets Registry
+                </h3>
+                <p className="text-xs font-mono text-slate-400 mt-1">
+                  Internal helpdesk support tickets dispatched from HR, Team Member, and Guest portals.
+                </p>
+              </div>
+              <button
+                onClick={loadSupportTickets}
+                className="px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all shrink-0"
+              >
+                <RefreshCw className="w-4 h-4" /> Refresh Tickets ({supportTickets.length})
+              </button>
+            </div>
+
+            {supportTickets.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3 font-mono">
+                <LifeBuoy className="w-10 h-10 text-slate-500 mx-auto" />
+                <h4 className="text-base font-bold text-white">No Support Tickets Logged Yet</h4>
+                <p className="text-xs text-slate-400">
+                  Tickets submitted via the Support Portal footer helpdesk will be stored and alerted here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 font-mono">
+                {supportTickets.map((t, idx) => (
+                  <div
+                    key={t.ticket_id || t.id || idx}
+                    className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 hover:border-cyan-500/30 transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-xs">
+                          🎫 {t.ticket_id || t.id}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase">
+                          {t.category || 'Technical Issue'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(t.created_at || t.createdAt || Date.now()).toLocaleString()}
+                        </span>
+                        <select
+                          value={t.status || 'Open'}
+                          onChange={async (e) => {
+                            const newStatus = e.target.value;
+                            try {
+                              await supportApi.updateStatus(t.ticket_id || t.id, newStatus);
+                              await loadSupportTickets();
+                              showStatus(`Updated ticket ${t.ticket_id || t.id} status to ${newStatus}`);
+                            } catch (err) {}
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-white/[0.05] border border-white/10 text-white font-mono text-[11px] focus:outline-none focus:border-cyan-400 cursor-pointer"
+                        >
+                          <option value="Open" className="bg-[#090d16] text-amber-300">● Open</option>
+                          <option value="In Progress" className="bg-[#090d16] text-cyan-300">● In Progress</option>
+                          <option value="Resolved" className="bg-[#090d16] text-emerald-300">● Resolved</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-xs text-slate-400">
+                        Submitted by: <strong className="text-white">{t.user_name || 'Staff Member'}</strong> (<span className="text-cyan-300">{t.user_email}</span>)
+                      </div>
+                      <div className="font-bold text-white text-sm tracking-wide pt-1">{t.subject}</div>
+                      <div className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                        {t.message}
+                      </div>
                     </div>
                   </div>
                 ))}

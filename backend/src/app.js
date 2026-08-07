@@ -20,6 +20,7 @@ import emailRoutes from './routes/emailRoutes.js';
 import userManagementRoutes from './routes/userManagementRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import teamDirectoryRoutes from './routes/teamDirectoryRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -69,6 +70,7 @@ app.use('/api/media', uploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/directory', teamDirectoryRoutes);
+app.use('/api/support', supportRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
@@ -91,6 +93,7 @@ app.use('/upload', uploadRoutes);
 app.use('/media', uploadRoutes);
 app.use('/ai', aiRoutes);
 app.use('/email', emailRoutes);
+app.use('/support', supportRoutes);
 
 // Global 404 Route Handler
 app.use('*', (req, res) => {
