@@ -1761,37 +1761,81 @@ ${customPara}
                   <p className="text-xs">Emails sent from your portal session will be recorded here.</p>
                 </div>
               ) : (
-                historyLogs.map((log, idx) => (
-                  <div
-                    key={log.id || idx}
-                    className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2 hover:border-cyan-500/30 transition-all"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/5 pb-2">
-                      <div className="font-bold text-cyan-300 text-xs truncate">
-                        From: {log.sender} &bull; To: {Array.isArray(log.recipients) ? log.recipients.join(', ') : log.recipients}
-                      </div>
-                      <span className="text-[10px] text-slate-400">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </span>
-                    </div>
+                historyLogs.map((log, idx) => {
+                  const r = (userProfile?.role || '').toLowerCase();
+                  const isPrivileged = r === 'admin' || r === 'super_admin' || r === 'hr' || Boolean(userProfile?.isSuperAdmin);
 
-                    <div className="font-bold text-white text-xs">{log.subject}</div>
+                  const maskEmailAddress = (emailStr: string) => {
+                    if (!emailStr) return '';
+                    if (isPrivileged) return emailStr;
+                    const parts = emailStr.split('@');
+                    if (parts.length !== 2) return emailStr;
+                    const local = parts[0];
+                    const domain = parts[1];
+                    const maskedLocal = local.length <= 3 ? local[0] + '***' : local.slice(0, 3) + '***';
+                    const domainParts = domain.split('.');
+                    const dName = domainParts[0];
+                    const ext = domainParts.slice(1).join('.');
+                    const maskedDomain = dName.length <= 3 ? dName[0] + '***' : dName.slice(0, 2) + '***';
+                    return `${maskedLocal}@${maskedDomain}.${ext}`;
+                  };
 
+                  const maskTextPreview = (textStr: string) => {
+                    if (!textStr) return '';
+                    if (isPrivileged) return textStr;
+                    const clean = textStr.replace(/<[^>]*>/g, '').trim();
+                    if (clean.length <= 4) return clean[0] + '***';
+                    return clean.slice(0, 2) + '***' + clean.slice(-1);
+                  };
+
+                  const displaySender = maskEmailAddress(log.sender || '');
+                  const displayRecipients = Array.isArray(log.recipients)
+                    ? log.recipients.map(maskEmailAddress).join(', ')
+                    : maskEmailAddress(log.recipients || '');
+                  const displaySubject = isPrivileged ? (log.subject || '(No Subject)') : maskTextPreview(log.subject || 'Subject');
+                  const displayHtml = isPrivileged
+                    ? (log.html || '<p>(No content)</p>')
+                    : `<p>${maskTextPreview(log.html || 'Content')}</p>`;
+
+                  const realAttachments = Array.isArray(log.attachments_meta)
+                    ? log.attachments_meta.filter(
+                        (a: any) => a && typeof a === 'object' && !a._sender_account_email && (a.name || a.filename || a.type || a.content)
+                      )
+                    : [];
+
+                  return (
                     <div
-                      dangerouslySetInnerHTML={{ __html: log.html || '<p>(No preview content)</p>' }}
-                      className="text-[11px] text-slate-300 line-clamp-2 max-h-12 overflow-hidden text-ellipsis [&_p]:m-0"
-                    />
+                      key={log.id || log.messageId || idx}
+                      className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2 hover:border-cyan-500/30 transition-all font-mono"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/5 pb-2">
+                        <div className="font-bold text-cyan-300 text-xs truncate">
+                          From: <span className="text-white">{displaySender}</span> &bull; To: <span className="text-white">{displayRecipients}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 shrink-0">
+                          {new Date(log.createdAt).toLocaleString()}
+                        </span>
+                      </div>
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
-                        ✓ {log.status || 'SENT'}
-                      </span>
-                      {log.attachments_meta && log.attachments_meta.length > 0 && (
-                        <span className="text-cyan-400">📎 {log.attachments_meta.length} Attachment(s)</span>
-                      )}
+                      <div className="space-y-1">
+                        <div className="font-bold text-white text-xs">{displaySubject}</div>
+                        <div
+                          dangerouslySetInnerHTML={{ __html: displayHtml }}
+                          className="text-[11px] text-slate-300 line-clamp-2 max-h-12 overflow-hidden text-ellipsis [&_p]:m-0"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-white/5">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+                          ✓ {log.status || 'SENT'}
+                        </span>
+                        {realAttachments.length > 0 && (
+                          <span className="text-cyan-400 font-bold">📎 {realAttachments.length} Attachment(s)</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

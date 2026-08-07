@@ -198,12 +198,12 @@ export const getEmailHistory = async (req, res, next) => {
 
     if (!Array.isArray(dbLogs)) dbLogs = [];
 
-    // Merge DB logs and memory history logs deduplicated
+    // Merge DB logs and memory history logs deduplicated by message_id or timestamp
     const combined = [...dbLogs, ...memoryHistory];
     const seenKeys = new Set();
     const uniqueLogs = [];
     for (const log of combined) {
-      const key = log.id || log.message_id || `${log.sender}_${log.created_at}`;
+      const key = log.message_id || (log.id ? String(log.id) : null) || `${log.sender}_${log.subject}_${log.created_at}`;
       if (key && !seenKeys.has(key)) {
         seenKeys.add(key);
         uniqueLogs.push(log);
@@ -238,15 +238,22 @@ export const getEmailHistory = async (req, res, next) => {
       const subject = decrypt(log.subject);
       const html = decrypt(log.html);
 
+      // Clean up attachments_meta to only include actual file attachments
+      const realAttachments = Array.isArray(log.attachments_meta)
+        ? log.attachments_meta.filter(
+            (a) => a && typeof a === 'object' && !a._sender_account_email && (a.name || a.filename || a.type || a.content)
+          )
+        : [];
+
       return {
-        id: log.id,
+        id: log.id || log.message_id,
         sender: log.sender || 'contact@zenemoo.in',
         recipients: Array.isArray(recipients) ? recipients : [recipients],
         cc: Array.isArray(cc) ? cc : [],
         bcc: Array.isArray(bcc) ? bcc : [],
         subject: subject || '(No Subject)',
         html: html || '',
-        attachments_meta: log.attachments_meta || [],
+        attachments_meta: realAttachments,
         status: log.status || 'sent',
         messageId: log.message_id,
         errorMessage: log.error_message,
