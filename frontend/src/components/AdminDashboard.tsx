@@ -2118,7 +2118,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-white/10 bg-[#0a0b10]/95 backdrop-blur-xl shadow-2xl p-4 space-y-3 z-50 overflow-hidden"
+                      className="fixed inset-x-2 top-16 max-w-sm mx-auto sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 rounded-2xl border border-white/10 bg-[#0a0b10]/95 backdrop-blur-xl shadow-2xl p-4 space-y-3 z-50 overflow-hidden font-sans"
                     >
                       {/* Dropdown Header */}
                       <div className="flex items-center justify-between pb-2.5 border-b border-white/10 font-mono text-[10px]">
@@ -2136,17 +2136,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                               onClick={handleMarkAllNotificationsRead}
                               className="text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer transition-colors"
                             >
-                              Mark All as Read
+                              Mark All Read
                             </button>
                           )}
                           <button
                             onClick={() => {
-                              setActiveTab('telemetry');
+                              setActiveTab('notifications-admin');
                               setIsNotificationsOpen(false);
                             }}
                             className="text-slate-400 hover:text-white hover:underline cursor-pointer transition-colors"
                           >
-                            View Activity History
+                            View All
                           </button>
                         </div>
                       </div>
@@ -2203,12 +2203,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <div className="pt-2 border-t border-white/10 text-center">
                         <button
                           onClick={() => {
-                            setActiveTab('telemetry');
+                            setActiveTab('notifications-admin');
                             setIsNotificationsOpen(false);
                           }}
                           className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 font-bold hover:underline cursor-pointer w-full text-center py-1 flex items-center justify-center gap-1"
                         >
-                          View All Notifications →
+                          View All Notifications in Main Panel &rarr;
                         </button>
                       </div>
                     </motion.div>
