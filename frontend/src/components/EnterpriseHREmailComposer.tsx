@@ -510,24 +510,68 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     }
   };
 
+  // Dynamic Signatures Generator (User Profile + Team Roster + Company Link)
+  const getDynamicSignatures = () => {
+    const list: HRSignature[] = [];
+
+    // 1. Current Logged-in User Profile Signature (Top Default)
+    if (userProfile && (userProfile.name || userProfile.email)) {
+      list.push({
+        id: 'current_user',
+        name: userProfile.name || selectedSender || 'Zenemoo Team Member',
+        title: userProfile.designation || 'Specialist',
+        department: userProfile.department || 'Operations',
+        email: selectedSender || userProfile.email || 'contact@zenemoo.in',
+        phone: userProfile.phone || userProfile.personal_mobile || '+91 (080) 4920-1000',
+      });
+    }
+
+    // 2. Team Roster Signatures (Dynamically Fetched from Database)
+    if (Array.isArray(rosterMembers) && rosterMembers.length > 0) {
+      rosterMembers.forEach((m: any) => {
+        if (m.name && m.email && (!userProfile || m.email !== userProfile.email)) {
+          list.push({
+            id: `roster_${m.id || m.email}`,
+            name: m.name,
+            title: m.designation || 'Specialist',
+            department: m.department || 'Engineering',
+            email: m.email || 'contact@zenemoo.in',
+            phone: m.phone || '+91 (080) 4920-1000',
+          });
+        }
+      });
+    }
+
+    // 3. Fallback Presets
+    PRESET_SIGNATURES.forEach((p) => {
+      if (!list.some((existing) => existing.email === p.email)) {
+        list.push(p);
+      }
+    });
+
+    return list;
+  };
+
+  const dynamicSignatures = getDynamicSignatures();
+
   const handleApplyTemplate = (template: HRTemplate) => {
     setSubject(template.subject);
-    const sig = PRESET_SIGNATURES.find((s) => s.id === selectedSignatureId) || PRESET_SIGNATURES[0];
+    const sig = dynamicSignatures.find((s) => s.id === selectedSignatureId) || dynamicSignatures[0];
     let fullHtml = template.body;
     if (sig) {
-      fullHtml += `<br/><hr/><p style="color:#06b6d4; font-weight:bold; margin-bottom:2px;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | ${sig.email}</p>`;
+      fullHtml += `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-family: sans-serif;"><p style="color:#06b6d4; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#06b6d4; text-decoration:none;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
     }
     setHtmlContent(fullHtml);
     setIsTemplateModalOpen(false);
-    showToast(`Template "${template.name}" applied!`, 'success');
+    showToast(`Template "${template.name}" applied with signature!`, 'success');
   };
 
   const handleAppendSignature = () => {
-    const sig = PRESET_SIGNATURES.find((s) => s.id === selectedSignatureId) || PRESET_SIGNATURES[0];
+    const sig = dynamicSignatures.find((s) => s.id === selectedSignatureId) || dynamicSignatures[0];
     if (!sig) return;
-    const sigHtml = `<br/><div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1);"><p style="color:#06b6d4; font-weight:bold; margin-bottom:2px;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | ${sig.email}</p></div>`;
+    const sigHtml = `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-family: sans-serif;"><p style="color:#06b6d4; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#06b6d4; text-decoration:none;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
     setHtmlContent((prev) => prev + sigHtml);
-    showToast(`Signature for ${sig.name} appended.`, 'success');
+    showToast(`Signature for ${sig.name} appended!`, 'success');
   };
 
   // AI Email Generator Simulation
@@ -1149,11 +1193,11 @@ ${customPara}
               <select
                 value={selectedSignatureId}
                 onChange={(e) => setSelectedSignatureId(e.target.value)}
-                className="bg-white/[0.04] border border-white/10 text-cyan-300 text-[11px] font-mono rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
+                className="bg-white/[0.04] border border-white/10 text-cyan-300 text-[11px] font-mono rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[160px] sm:max-w-[220px] truncate"
               >
-                {PRESET_SIGNATURES.map((sig) => (
+                {dynamicSignatures.map((sig) => (
                   <option key={sig.id} value={sig.id} className="bg-[#090d16] text-white">
-                    {sig.name}
+                    {sig.name} ({sig.title})
                   </option>
                 ))}
               </select>
