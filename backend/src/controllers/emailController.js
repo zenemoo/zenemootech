@@ -195,18 +195,16 @@ export const getEmailHistory = async (req, res, next) => {
     const filteredLogs = uniqueLogs.filter((log) => {
       if (isSuperAdmin) return true; // Super Admin sees all global enterprise history logs
       
-      // All other staff (HR, Marketing Lead, PM, Tech Lead, etc.) see ONLY emails they sent
-      const logSender = (log.sender || '').toLowerCase();
+      // All non-admin staff (HR, Marketing Lead, PM, Tech Lead, etc.) see ONLY emails dispatched from their own user account
       const logUserEmail = (log.user_email || '').toLowerCase();
       const logUserId = String(log.user_id || '');
       const currentUserId = String(userId || '');
       const currentUserEmail = userEmail.toLowerCase();
+      const logSender = (log.sender || '').toLowerCase();
 
       return (
-        logSender === currentUserEmail ||
-        logUserEmail === currentUserEmail ||
-        (currentUserId && logUserId === currentUserId) ||
-        (req.user?.allowed_senders && String(req.user.allowed_senders).toLowerCase().includes(logSender))
+        (currentUserEmail && (logUserEmail === currentUserEmail || logSender === currentUserEmail)) ||
+        (currentUserId && currentUserId !== 'null' && logUserId === currentUserId)
       );
     });
 

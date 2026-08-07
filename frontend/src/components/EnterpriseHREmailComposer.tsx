@@ -510,53 +510,86 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     }
   };
 
-  // Dynamic Signatures Generator (User Profile + Team Roster + Company Link)
-  const getDynamicSignatures = () => {
-    const list: HRSignature[] = [];
+  // Dynamic Sender-based Signature Generator (derives signature from selected FROM email)
+  const getSignatureForSender = (senderEmail: string) => {
+    const cleanSender = (senderEmail || '').toLowerCase();
 
-    // 1. Current Logged-in User Profile Signature (Top Default)
-    if (userProfile && (userProfile.name || userProfile.email)) {
-      list.push({
-        id: 'current_user',
-        name: userProfile.name || selectedSender || 'Zenemoo Team Member',
+    // 1. Check if matching roster member exists
+    const rosterMatch = Array.isArray(rosterMembers)
+      ? rosterMembers.find((m) => m.email && m.email.toLowerCase() === cleanSender)
+      : null;
+
+    if (rosterMatch) {
+      return {
+        name: rosterMatch.name,
+        title: rosterMatch.designation || 'Specialist',
+        department: rosterMatch.department || 'Operations',
+        email: cleanSender,
+      };
+    }
+
+    // 2. Check if logged-in user profile matches
+    if (userProfile && userProfile.email && userProfile.email.toLowerCase() === cleanSender) {
+      return {
+        name: userProfile.name || 'Enterprise User',
         title: userProfile.designation || 'Specialist',
         department: userProfile.department || 'Operations',
-        email: selectedSender || userProfile.email || 'contact@zenemoo.in',
-        phone: userProfile.phone || userProfile.personal_mobile || '+91 (080) 4920-1000',
-      });
+        email: cleanSender,
+      };
     }
 
-    // 2. Team Roster Signatures (Dynamically Fetched from Database)
-    if (Array.isArray(rosterMembers) && rosterMembers.length > 0) {
-      rosterMembers.forEach((m: any) => {
-        if (m.name && m.email && (!userProfile || m.email !== userProfile.email)) {
-          list.push({
-            id: `roster_${m.id || m.email}`,
-            name: m.name,
-            title: m.designation || 'Specialist',
-            department: m.department || 'Engineering',
-            email: m.email || 'contact@zenemoo.in',
-            phone: m.phone || '+91 (080) 4920-1000',
-          });
-        }
-      });
+    // 3. Preset fallbacks for official corporate emails
+    if (cleanSender.includes('support')) {
+      return {
+        name: 'Zenemoo Support Team',
+        title: 'Enterprise Customer Operations',
+        department: 'Client Partner Support',
+        email: cleanSender,
+      };
     }
 
-    // 3. Fallback Presets
-    PRESET_SIGNATURES.forEach((p) => {
-      if (!list.some((existing) => existing.email === p.email)) {
-        list.push(p);
-      }
-    });
+    if (cleanSender.includes('prem')) {
+      return {
+        name: 'Prem Prasad Pradhan',
+        title: 'Founder & CEO',
+        department: 'Leadership & AI Platform',
+        email: cleanSender,
+      };
+    }
 
-    return list;
+    if (cleanSender.includes('info') || cleanSender.includes('contact') || cleanSender.includes('noreply')) {
+      return {
+        name: userProfile?.name || 'Zenemoo Enterprise Team',
+        title: userProfile?.designation || 'Corporate Operations',
+        department: userProfile?.department || 'Executive Office',
+        email: cleanSender,
+      };
+    }
+
+    if (cleanSender.includes('hr') || cleanSender.includes('careers')) {
+      return {
+        name: userProfile?.name || 'Zenemoo HR Team',
+        title: userProfile?.designation || 'Human Resources & Talent Lead',
+        department: userProfile?.department || 'People & Culture',
+        email: cleanSender,
+      };
+    }
+
+    // 4. Dynamic Fallback using userProfile or email prefix
+    const nameFromEmail = cleanSender.split('@')[0].replace(/[._-]/g, ' ');
+    const formattedName = nameFromEmail.replace(/\b\w/g, (l) => l.toUpperCase());
+
+    return {
+      name: userProfile?.name || formattedName || 'Zenemoo Executive',
+      title: userProfile?.designation || 'Enterprise Specialist',
+      department: userProfile?.department || 'Operations',
+      email: cleanSender,
+    };
   };
-
-  const dynamicSignatures = getDynamicSignatures();
 
   const handleApplyTemplate = (template: HRTemplate) => {
     setSubject(template.subject);
-    const sig = dynamicSignatures.find((s) => s.id === selectedSignatureId) || dynamicSignatures[0];
+    const sig = getSignatureForSender(selectedSender);
     let fullHtml = template.body;
     if (sig) {
       fullHtml += `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-family: sans-serif;"><p style="color:#06b6d4; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#06b6d4; text-decoration:none;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
@@ -567,11 +600,11 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   };
 
   const handleAppendSignature = () => {
-    const sig = dynamicSignatures.find((s) => s.id === selectedSignatureId) || dynamicSignatures[0];
+    const sig = getSignatureForSender(selectedSender);
     if (!sig) return;
     const sigHtml = `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-family: sans-serif;"><p style="color:#06b6d4; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#06b6d4; text-decoration:none;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
     setHtmlContent((prev) => prev + sigHtml);
-    showToast(`Signature for ${sig.name} appended!`, 'success');
+    showToast(`Signature for ${sig.name} (${sig.email}) appended!`, 'success');
   };
 
   // AI Email Generator Simulation
@@ -1181,7 +1214,6 @@ ${customPara}
             className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-emerald-400"
           />
         </div>
-
         {/* Row F: Responsive Formatting Toolbar & Editor */}
         <div className="space-y-2 w-full max-w-full">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1189,69 +1221,56 @@ ${customPara}
               Email Body Content *
             </label>
             <div className="flex items-center gap-2 font-mono text-xs">
-              <label className="text-[10px] text-slate-400">Signature:</label>
-              <select
-                value={selectedSignatureId}
-                onChange={(e) => setSelectedSignatureId(e.target.value)}
-                className="bg-white/[0.04] border border-white/10 text-cyan-300 text-[11px] font-mono rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[160px] sm:max-w-[220px] truncate"
-              >
-                {dynamicSignatures.map((sig) => (
-                  <option key={sig.id} value={sig.id} className="bg-[#090d16] text-white">
-                    {sig.name} ({sig.title})
-                  </option>
-                ))}
-              </select>
               <button
                 type="button"
                 onClick={handleAppendSignature}
-                className="text-[10px] font-bold text-cyan-400 hover:underline cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+                title={`Insert dynamic signature for ${selectedSender}`}
               >
-                + Insert
+                <span>+ Insert Signature ({selectedSender.split('@')[0]})</span>
               </button>
             </div>
           </div>
 
           {/* Adaptive Scrollable Formatting Toolbar (Zero Overflow on 320px) */}
-          <div className="p-2 rounded-t-2xl bg-white/[0.06] border border-white/10 border-b-0 flex items-center gap-1 overflow-x-auto whitespace-nowrap scrollbar-none max-w-full">
+          <div className="w-full bg-[#090d16] border border-white/10 rounded-xl p-1.5 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-white/20">
             <button
               type="button"
               onClick={() => execFormatCommand('bold')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
-              title="Bold"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
+              title="Bold (Ctrl+B)"
             >
-              <Bold className="w-4 h-4" />
+              <Bold className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('italic')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
-              title="Italic"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
+              title="Italic (Ctrl+I)"
             >
-              <Italic className="w-4 h-4" />
+              <Italic className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('underline')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
-              title="Underline"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
+              title="Underline (Ctrl+U)"
             >
-              <Underline className="w-4 h-4" />
+              <Underline className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('strikeThrough')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Strikethrough"
             >
-              <Strikethrough className="w-4 h-4" />
+              <Strikethrough className="w-3.5 h-3.5" />
             </button>
-
-            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
-
+            <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
               onClick={() => execFormatCommand('formatBlock', '<h2>')}
-              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer font-bold text-xs shrink-0"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white text-[10px] font-bold transition-all cursor-pointer shrink-0"
               title="Heading 2"
             >
               H2
@@ -1259,7 +1278,7 @@ ${customPara}
             <button
               type="button"
               onClick={() => execFormatCommand('formatBlock', '<h3>')}
-              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer font-bold text-xs shrink-0"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white text-[10px] font-bold transition-all cursor-pointer shrink-0"
               title="Heading 3"
             >
               H3
@@ -1267,93 +1286,84 @@ ${customPara}
             <button
               type="button"
               onClick={() => execFormatCommand('formatBlock', '<p>')}
-              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer text-xs shrink-0"
-              title="Normal Paragraph"
+              className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white text-[10px] font-bold transition-all cursor-pointer shrink-0"
+              title="Paragraph"
             >
               P
             </button>
-
-            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
-
+            <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
               onClick={() => execFormatCommand('insertUnorderedList')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Bullet List"
             >
-              <List className="w-4 h-4" />
+              <List className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('insertOrderedList')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Numbered List"
             >
-              <ListOrdered className="w-4 h-4" />
+              <ListOrdered className="w-3.5 h-3.5" />
             </button>
-
-            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
-
+            <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
               onClick={() => execFormatCommand('justifyLeft')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Align Left"
             >
-              <AlignLeft className="w-4 h-4" />
+              <AlignLeft className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('justifyCenter')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Align Center"
             >
-              <AlignCenter className="w-4 h-4" />
+              <AlignCenter className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('justifyRight')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Align Right"
             >
-              <AlignRight className="w-4 h-4" />
+              <AlignRight className="w-3.5 h-3.5" />
             </button>
-
-            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
-
+            <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
               onClick={() => {
-                const url = prompt('Enter link URL:');
+                const url = prompt('Enter Hyperlink URL:', 'https://');
                 if (url) execFormatCommand('createLink', url);
               }}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Insert Link"
             >
-              <Link className="w-4 h-4" />
+              <Link className="w-3.5 h-3.5 text-cyan-400" />
             </button>
             <button
               type="button"
               onClick={() => execFormatCommand('insertHorizontalRule')}
-              className="p-2 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer shrink-0"
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Horizontal Line"
             >
-              <Minus className="w-4 h-4" />
+              <Minus className="w-3.5 h-3.5 text-slate-400" />
             </button>
-
-            <span className="w-px h-4 bg-white/10 mx-1 shrink-0" />
-
             <button
               type="button"
               onClick={() => execFormatCommand('removeFormat')}
-              className="px-2 py-1 rounded-lg hover:bg-white/10 text-red-400 hover:text-red-300 cursor-pointer text-xs shrink-0"
+              className="px-2 py-1 rounded-lg hover:bg-red-500/20 text-red-400 text-[10px] font-bold transition-all cursor-pointer shrink-0 ml-auto"
               title="Clear Formatting"
             >
               Clear
             </button>
           </div>
 
-          {/* Editable HTML Content Area */}
+          {/* WYSIWYG Content Editable Area */}
           <div
             ref={editorRef}
             contentEditable
