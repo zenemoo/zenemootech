@@ -71,11 +71,20 @@ export const sendEmail = async (req, res, next) => {
       try {
         insertedRecord = await supabaseService.insert('email_history', payload);
       } catch (dbErr) {
-        console.warn('Supabase email_history insert warning (using fallback memory):', dbErr.message);
-        payload.id = `temp_${Date.now()}`;
-        memoryHistory.unshift(payload);
-        insertedRecord = payload;
+        console.warn('Supabase email_history insert warning:', dbErr.message);
+        if (dbErr.message?.includes('PGRST204') || dbErr.message?.includes('column')) {
+          delete payload.user_id;
+          delete payload.user_email;
+          try {
+            insertedRecord = await supabaseService.insert('email_history', payload);
+          } catch (_) {}
+        }
+        if (!insertedRecord) {
+          payload.id = `temp_${Date.now()}`;
+          insertedRecord = payload;
+        }
       }
+      memoryHistory.unshift(payload);
 
       // Return decrypted response to user UI
       return res.json({
@@ -118,8 +127,8 @@ export const sendEmail = async (req, res, next) => {
         await supabaseService.insert('email_history', failedPayload);
       } catch (e) {
         failedPayload.id = `temp_${Date.now()}`;
-        memoryHistory.unshift(failedPayload);
       }
+      memoryHistory.unshift(failedPayload);
 
       return res.status(500).json({
         success: false,
@@ -143,7 +152,13 @@ export const getEmailHistory = async (req, res, next) => {
     const userRole = (req.user?.role || '').toLowerCase();
     const userEmail = (req.user?.email || '').toLowerCase();
     const userId = req.user?.id || req.user?.team_member_id;
-    const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const isSuperAdmin =
+      userRole === 'admin' ||
+      userRole === 'super_admin' ||
+      userRole === 'administrator' ||
+      userEmail === 'mr.prem2006@gmail.com' ||
+      userEmail === 'zenemootech@gmail.com' ||
+      userEmail === 'contact@zenemoo.in';
     const hasEmailAccess = Boolean(req.user?.email_access || isSuperAdmin || userRole === 'hr');
 
     // Users without email permission cannot view history
@@ -159,16 +174,28 @@ export const getEmailHistory = async (req, res, next) => {
     try {
       dbLogs = await supabaseService.selectAll('email_history', 'created_at', false);
     } catch (e) {
-      dbLogs = memoryHistory;
+      dbLogs = [];
     }
 
-    if (!Array.isArray(dbLogs)) dbLogs = memoryHistory;
+    if (!Array.isArray(dbLogs)) dbLogs = [];
+
+    // Merge DB logs and memory history logs deduplicated
+    const combined = [...dbLogs, ...memoryHistory];
+    const seenKeys = new Set();
+    const uniqueLogs = [];
+    for (const log of combined) {
+      const key = log.id || log.message_id || `${log.sender}_${log.created_at}`;
+      if (key && !seenKeys.has(key)) {
+        seenKeys.add(key);
+        uniqueLogs.push(log);
+      }
+    }
 
     // Decrypt and filter logs strictly by role/owner
-    const filteredLogs = dbLogs.filter((log) => {
+    const filteredLogs = uniqueLogs.filter((log) => {
       if (isSuperAdmin) return true; // Super Admin sees all global enterprise history logs
       
-      // Members with email_access (HR, Marketing, PM, Tech Lead, etc.) see ONLY emails they sent
+      // Members with email_access see ONLY emails they sent
       const senderEmail = (log.sender || log.user_email || '').toLowerCase();
       const logUserId = log.user_id || log.user_email;
       return (
