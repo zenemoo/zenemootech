@@ -253,6 +253,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [adminNotifDateFilter, setAdminNotifDateFilter] = useState('all');
   const [expandedNotifIds, setExpandedNotifIds] = useState<{ [key: string]: boolean }>({});
 
+  const sortRbacUsers = (users: any[]) => {
+    const roleRank: Record<string, number> = {
+      admin: 1,
+      project_manager: 2,
+      pm: 2,
+      hr: 3,
+      team_member: 4,
+    };
+    return [...users].sort((a, b) => {
+      const rA = roleRank[(a.role || '').toLowerCase()] || 99;
+      const rB = roleRank[(b.role || '').toLowerCase()] || 99;
+      if (rA !== rB) return rA - rB;
+      const sA = a.status === 'active' ? 0 : 1;
+      const sB = b.status === 'active' ? 0 : 1;
+      if (sA !== sB) return sA - sB;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  };
+
   const loadRbacUsers = async () => {
     try {
       const res = await userManagementApi.getUsers();
@@ -265,9 +284,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           seenTeamIds.add(key);
           return true;
         });
-        setRbacUsers(deduped);
-        // Overwrite localStorage with clean, deduplicated API data
-        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(deduped));
+        const sorted = sortRbacUsers(deduped);
+        setRbacUsers(sorted);
+        // Overwrite localStorage with clean, sorted & deduplicated API data
+        localStorage.setItem('zenemoo_rbac_users', JSON.stringify(sorted));
         return;
       }
     } catch (err) {}
@@ -284,7 +304,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           seenTeamIds.add(key);
           return true;
         });
-        setRbacUsers(deduped);
+        const sorted = sortRbacUsers(deduped);
+        setRbacUsers(sorted);
       }
     } catch (e) {}
   };
@@ -370,6 +391,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       }
     } catch (err: any) {
       alert('Status update failed.');
+    }
+  };
+
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+
+  const handleUpdateUserRole = async (user: any, newRole: string) => {
+    try {
+      const res = await userManagementApi.updateUser(user.id, { role: newRole });
+      if (res.data && res.data.success) {
+        showStatus(`Promoted/Updated ${user.name} role to '${newRole.toUpperCase()}' without modifying password or personal data!`);
+        await loadRbacUsers();
+      }
+    } catch (err: any) {
+      alert('Role update failed.');
     }
   };
 
@@ -2532,15 +2567,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           </td>
 
                           <td className="py-3.5 px-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              user.role === 'admin'
-                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                                : user.role === 'hr'
-                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            }`}>
-                              {user.role}
-                            </span>
+                            <select
+                              value={user.role || 'team_member'}
+                              onChange={(e) => handleUpdateUserRole(user, e.target.value)}
+                              className={`px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase border bg-black/80 cursor-pointer outline-none transition-all ${
+                                user.role === 'admin'
+                                  ? 'text-purple-300 border-purple-500/50 bg-purple-500/20'
+                                  : user.role === 'project_manager' || user.role === 'pm'
+                                  ? 'text-amber-300 border-amber-500/50 bg-amber-500/20'
+                                  : user.role === 'hr'
+                                  ? 'text-cyan-300 border-cyan-500/50 bg-cyan-500/20'
+                                  : 'text-emerald-300 border-emerald-500/50 bg-emerald-500/20'
+                              }`}
+                              title="Click to upgrade/change role without altering password or personal data"
+                            >
+                              <option value="team_member" className="bg-slate-900 text-emerald-300">Team Member</option>
+                              <option value="hr" className="bg-slate-900 text-cyan-300">HR Manager</option>
+                              <option value="project_manager" className="bg-slate-900 text-amber-300">Project Manager</option>
+                              <option value="admin" className="bg-slate-900 text-purple-300">Super Admin</option>
+                            </select>
                           </td>
 
                           <td className="py-3.5 px-4">
@@ -2572,6 +2617,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <button
+                                onClick={() => setEditingUser(user)}
+                                className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                                title="Edit Role & Permissions"
+                              >
+                                <Edit className="w-3 h-3" /> Edit
+                              </button>
+                              <button
                                 onClick={() => handleResetUserPassword(user.id, user.name)}
                                 className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold cursor-pointer"
                                 title="Reset password to Team@123"
@@ -2594,6 +2646,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 </table>
               </div>
             </div>
+
+            {/* EDIT MEMBER ACCESS & PERMISSIONS MODAL */}
+            {editingUser && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 font-mono text-xs">
+                <div className="w-full max-w-md bg-[#0c0d12] border border-cyan-500/40 rounded-3xl p-6 space-y-5 shadow-2xl relative">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-3">
+                      <img src={editingUser.image_url || '/assets/executive.png'} alt={editingUser.name} className="w-9 h-9 rounded-full object-cover border border-cyan-400" />
+                      <div>
+                        <h3 className="text-sm font-bold text-white">Edit Access: {editingUser.name}</h3>
+                        <p className="text-[10px] text-slate-400">{editingUser.email} &bull; {editingUser.employee_id}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setEditingUser(null)} className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Role Selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-300 block">Assigned Enterprise Role</label>
+                      <select
+                        value={editingUser.role || 'team_member'}
+                        onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white font-bold outline-none focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value="team_member" className="bg-slate-900 text-emerald-300">Team Member</option>
+                        <option value="hr" className="bg-slate-900 text-cyan-300">HR Manager</option>
+                        <option value="project_manager" className="bg-slate-900 text-amber-300">Project Manager</option>
+                        <option value="admin" className="bg-slate-900 text-purple-300">Super Admin</option>
+                      </select>
+                    </div>
+
+                    {/* Account Status */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-300 block">Account Status</label>
+                      <select
+                        value={editingUser.status || 'active'}
+                        onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white font-bold outline-none focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value="active" className="bg-slate-900 text-emerald-300">ACTIVE (Login Allowed)</option>
+                        <option value="disabled" className="bg-slate-900 text-red-400">DISABLED (Login Blocked)</option>
+                      </select>
+                    </div>
+
+                    {/* Email Access Permission Toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.03] border border-white/10">
+                      <div>
+                        <div className="font-bold text-white text-xs">Company Email Access</div>
+                        <div className="text-[10px] text-slate-400">Allows sending emails from portal composer</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser({ ...editingUser, email_access: !editingUser.email_access })}
+                        className={`px-3 py-1 rounded-xl text-[10px] font-bold cursor-pointer transition-all ${
+                          editingUser.email_access ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40' : 'bg-white/5 text-slate-400 border border-white/10'
+                        }`}
+                      >
+                        {editingUser.email_access ? '✓ Granted' : '✕ Disabled'}
+                      </button>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 text-[10px] text-cyan-300 flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 shrink-0 text-cyan-400" />
+                      <span>Updates access permissions instantly. Passwords and personal roster details remain unchanged.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                    <button
+                      onClick={() => setEditingUser(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await userManagementApi.updateUser(editingUser.id, {
+                            role: editingUser.role,
+                            status: editingUser.status,
+                            email_access: editingUser.email_access,
+                          });
+                          if (res.data && res.data.success) {
+                            showStatus(`Updated user access permissions for ${editingUser.name} successfully!`);
+                            await loadRbacUsers();
+                            setEditingUser(null);
+                          }
+                        } catch (err: any) {
+                          alert('Failed to update user permissions.');
+                        }
+                      }}
+                      className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-lg"
+                    >
+                      <Save className="w-4 h-4" /> Save Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pending Profile Updates Approval Queue */}
             {pendingApprovals.length > 0 && (

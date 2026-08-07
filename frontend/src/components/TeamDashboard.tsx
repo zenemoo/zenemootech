@@ -36,19 +36,21 @@ import {
   ShieldAlert,
   Server,
   Users,
+  Mail,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
+import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
 import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 
 interface TeamDashboardProps {
-  initialUserData: any;
+  initialUserData?: any;
   onLogout: () => void;
 }
 
 export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password' | 'notifications' | 'directory'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password' | 'notifications' | 'directory' | 'email'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
@@ -562,6 +564,42 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
                   Notification Center ({unreadCount})
+                </div>
+              )}
+            </div>
+
+            {/* ITEM 4.5: Company Email Dispatcher */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  setActiveTab('email');
+                  setIsMobileSidebarOpen(false);
+                }}
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
+                  isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                } ${
+                  activeTab === 'email'
+                    ? 'bg-purple-500/10 text-purple-300 font-bold border-l-2 border-purple-400 shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Mail className="w-4 h-4 text-purple-400 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">Email Dispatcher</span>}
+                </div>
+                {!isSidebarCollapsed && (
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                    profile?.email_access
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'bg-white/5 text-slate-500 border border-white/10'
+                  }`}>
+                    {profile?.email_access ? 'Active' : 'Locked'}
+                  </span>
+                )}
+              </button>
+              {isSidebarCollapsed && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
+                  Email Dispatcher ({profile?.email_access ? 'Allowed' : 'No Access'})
                 </div>
               )}
             </div>
@@ -1206,6 +1244,37 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
           {/* TAB 5: ENTERPRISE TEAM DIRECTORY */}
           {activeTab === 'directory' && (
             <EnterpriseTeamDirectory userRole="team" showToast={showToast} />
+          )}
+
+          {/* TAB 6: COMPANY EMAIL DISPATCHER */}
+          {activeTab === 'email' && (
+            profile?.email_access ? (
+              <EnterpriseHREmailComposer
+                showToast={showToast}
+                userProfile={profile}
+                onEmailSentSuccess={() => fetchNotifications()}
+              />
+            ) : (
+              <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-6 text-center font-mono">
+                <div className="w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center mx-auto text-purple-400">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <div className="max-w-md mx-auto space-y-2">
+                  <h3 className="text-base font-bold text-white font-display">Company Email Dispatcher Locked</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Your account currently does not have active <span className="text-purple-300 font-bold">Email Permission</span> granted.
+                  </p>
+                </div>
+                <div className="p-4 rounded-2xl bg-purple-500/5 border border-purple-500/20 text-xs text-purple-300 max-w-md mx-auto space-y-1">
+                  <div className="font-bold flex items-center justify-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-purple-400" /> Super Admin Authorization Required
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    To request email sending permission, contact your Super Administrator. They can enable <span className="text-cyan-300 font-bold">Email Permission</span> with 1 click in the RBAC User Accounts registry!
+                  </p>
+                </div>
+              </div>
+            )
           )}
         </main>
 

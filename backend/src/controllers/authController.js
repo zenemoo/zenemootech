@@ -869,7 +869,12 @@ export const portalLogin = async (req, res, next) => {
     if (expectedRole) {
       const reqRole = expectedRole.toLowerCase();
       const userRole = (userAccount.role || 'team_member').toLowerCase();
-      if (userRole !== 'admin' && userRole !== reqRole) {
+      const isAllowedPortal =
+        userRole === 'admin' ||
+        userRole === reqRole ||
+        (reqRole === 'team_member' && (userRole === 'project_manager' || userRole === 'pm'));
+
+      if (!isAllowedPortal) {
         return res.status(403).json({
           success: false,
           message: `403 Access Denied: This Employee ID is assigned role '${userAccount.role.toUpperCase()}' and cannot access the ${expectedRole.toUpperCase()} portal.`,
