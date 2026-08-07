@@ -936,6 +936,7 @@ export const portalLogin = async (req, res, next) => {
         role: userAccount.role || 'team_member',
         email_access: Boolean(userAccount.email_access),
         notification_access: Boolean(userAccount.notification_access),
+        allowed_senders: userAccount.allowed_senders || '',
         password_changed: isPassChanged,
         temporary_password: isTempPassword,
         // Single Source of Truth fields from Team Roster
@@ -1050,6 +1051,7 @@ export const getMeProfile = async (req, res, next) => {
         role: userAccount?.role || role,
         email_access: Boolean(userAccount?.email_access ?? req.user?.email_access),
         notification_access: Boolean(userAccount?.notification_access ?? true),
+        allowed_senders: userAccount?.allowed_senders || req.user?.allowed_senders || '',
         password_changed: isPassChanged,
         temporary_password: isTempPassword,
         name: teamMember?.name || cleanEmail.split('@')[0],
