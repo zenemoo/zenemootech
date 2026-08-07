@@ -2723,6 +2723,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       </button>
                     </div>
 
+                    {/* Custom Allowed Sender Emails Input (Shown when email_access is enabled) */}
+                    {editingUser.email_access && (
+                      <div className="space-y-1.5 p-3 rounded-2xl bg-purple-500/5 border border-purple-500/20">
+                        <label className="text-[11px] font-bold text-purple-300 block">Allowed Sender Email Aliases (comma-separated)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. hr@zenemoo.in, sangita@zenemoo.in"
+                          value={editingUser.allowed_senders || ''}
+                          onChange={(e) => setEditingUser({ ...editingUser, allowed_senders: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white font-mono text-xs outline-none focus:border-purple-400 placeholder:text-slate-500"
+                        />
+                        <p className="text-[9.5px] text-slate-400">Assign specific company sender email addresses for this user to dispatch emails from.</p>
+                      </div>
+                    )}
+
                     <div className="p-3 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 text-[10px] text-cyan-300 flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 shrink-0 text-cyan-400" />
                       <span>Updates access permissions instantly. Passwords and personal roster details remain unchanged.</span>
@@ -2743,6 +2758,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                             role: editingUser.role,
                             status: editingUser.status,
                             email_access: editingUser.email_access,
+                            allowed_senders: editingUser.allowed_senders || '',
                           });
                           if (res.data && res.data.success) {
                             showStatus(`Updated user access permissions for ${editingUser.name} successfully!`);

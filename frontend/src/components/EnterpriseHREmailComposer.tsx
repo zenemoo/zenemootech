@@ -290,17 +290,20 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const [rosterMembers, setRosterMembers] = useState<any[]>([]);
   const [activePickerField, setActivePickerField] = useState<'to' | 'cc' | 'bcc' | null>(null);
 
-  // Authorized Senders based on role
+  // Authorized Senders based on role and RBAC permissions
   const getAuthorizedSenders = () => {
     const role = (userProfile?.role || '').toLowerCase();
     const userEmail = (userProfile?.email || '').toLowerCase();
+    const isSuperAdmin = role === 'admin' || role === 'super_admin' || Boolean(userProfile?.isSuperAdmin);
     const senders = new Set<string>();
 
-    if (role === 'admin') {
-      senders.add('contact@zenemoo.in');
+    if (isSuperAdmin) {
+      senders.add('noreply@zenemoo.in');
       senders.add('info@zenemoo.in');
-      senders.add('hr@zenemoo.in');
       senders.add('support@zenemoo.in');
+      senders.add('prem@zenemoo.in');
+      senders.add('contact@zenemoo.in');
+      senders.add('hr@zenemoo.in');
       senders.add('careers@zenemoo.in');
     } else if (role === 'hr') {
       senders.add('hr@zenemoo.in');
@@ -308,9 +311,24 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       senders.add('info@zenemoo.in');
     }
 
+    // Add custom assigned allowed senders from user profile if configured in RBAC
+    if (userProfile?.allowed_senders) {
+      const customList = Array.isArray(userProfile.allowed_senders)
+        ? userProfile.allowed_senders
+        : String(userProfile.allowed_senders).split(/[,;\s]+/);
+      customList.forEach((em: string) => {
+        const clean = em.trim().toLowerCase();
+        if (clean && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+          senders.add(clean);
+        }
+      });
+    }
+
     if (userEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
       senders.add(userEmail);
-    } else if (senders.size === 0) {
+    }
+
+    if (senders.size === 0) {
       senders.add('contact@zenemoo.in');
     }
 

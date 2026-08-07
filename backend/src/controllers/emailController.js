@@ -137,15 +137,17 @@ export const sendEmail = async (req, res, next) => {
   }
 };
 
-// GET /api/email/history - Fetch email logs from Supabase and decrypt fields (Role isolated)
+// GET /api/email/history - Fetch email logs from Supabase and decrypt fields (Role & Email Access isolated)
 export const getEmailHistory = async (req, res, next) => {
   try {
     const userRole = (req.user?.role || '').toLowerCase();
     const userEmail = (req.user?.email || '').toLowerCase();
     const userId = req.user?.id || req.user?.team_member_id;
+    const isSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const hasEmailAccess = Boolean(req.user?.email_access || isSuperAdmin || userRole === 'hr');
 
-    // Team Members (Other Members): Email history hidden completely
-    if (userRole !== 'admin' && userRole !== 'hr') {
+    // Users without email permission cannot view history
+    if (!hasEmailAccess) {
       return res.json({
         success: true,
         count: 0,
@@ -162,19 +164,18 @@ export const getEmailHistory = async (req, res, next) => {
 
     if (!Array.isArray(dbLogs)) dbLogs = memoryHistory;
 
-    // Decrypt and filter logs strictly by role
+    // Decrypt and filter logs strictly by role/owner
     const filteredLogs = dbLogs.filter((log) => {
-      if (userRole === 'admin') return true; // Admin sees all enterprise logs
-      if (userRole === 'hr') {
-        const senderEmail = (log.sender || log.user_email || '').toLowerCase();
-        const logUserId = log.user_id || log.user_email;
-        return (
-          senderEmail === userEmail ||
-          logUserId === userId ||
-          logUserId === userEmail
-        );
-      }
-      return false;
+      if (isSuperAdmin) return true; // Super Admin sees all global enterprise history logs
+      
+      // Members with email_access (HR, Marketing, PM, Tech Lead, etc.) see ONLY emails they sent
+      const senderEmail = (log.sender || log.user_email || '').toLowerCase();
+      const logUserId = log.user_id || log.user_email;
+      return (
+        senderEmail === userEmail ||
+        logUserId === userId ||
+        logUserId === userEmail
+      );
     });
 
     const decryptedLogs = filteredLogs.map((log) => {

@@ -229,6 +229,7 @@ export const getUsers = async (req, res, next) => {
         status: account.status || 'active',
         email_access: Boolean(account.email_access),
         notification_access: Boolean(account.notification_access),
+        allowed_senders: account.allowed_senders || '',
         last_login: account.last_login,
         password_changed: Boolean(account.password_changed),
         created_at: account.created_at,
@@ -257,12 +258,12 @@ export const getUsers = async (req, res, next) => {
 
 /**
  * 4. PUT /api/users/:id
- * Admin updates role, status, email_access, notification_access
+ * Admin updates role, status, email_access, notification_access, allowed_senders
  */
 export const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { role, status, email_access, notification_access } = req.body;
+    const { role, status, email_access, notification_access, allowed_senders } = req.body;
 
     const payload = {
       updated_at: new Date().toISOString(),
@@ -271,11 +272,18 @@ export const updateUser = async (req, res, next) => {
     if (status !== undefined) payload.status = status.toLowerCase();
     if (email_access !== undefined) payload.email_access = Boolean(email_access);
     if (notification_access !== undefined) payload.notification_access = Boolean(notification_access);
+    if (allowed_senders !== undefined) payload.allowed_senders = Array.isArray(allowed_senders) ? allowed_senders.join(', ') : String(allowed_senders);
 
     let updatedRecord = null;
     try {
       updatedRecord = await supabaseService.update('user_accounts', id, payload);
     } catch (e) {
+      if (e.message?.includes('PGRST204') || e.message?.includes('column')) {
+        delete payload.allowed_senders;
+        try {
+          updatedRecord = await supabaseService.update('user_accounts', id, payload);
+        } catch (_) {}
+      }
       const idx = memoryUserAccounts.findIndex((u) => u.id === id);
       if (idx !== -1) {
         memoryUserAccounts[idx] = { ...memoryUserAccounts[idx], ...payload };
