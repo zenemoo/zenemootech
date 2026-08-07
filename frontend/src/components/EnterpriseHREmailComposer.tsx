@@ -35,8 +35,9 @@ import {
   Check,
   ChevronDown,
   Wand2,
+  Users,
 } from 'lucide-react';
-import { emailApi } from '../services/api';
+import { emailApi, userManagementApi } from '../services/api';
 
 interface EnterpriseHREmailComposerProps {
   showToast: (text: string, type: 'success' | 'error') => void;
@@ -285,10 +286,56 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
 
-  // Auto-fill sender if user email is authorized
+  // Roster Quick Picker State
+  const [rosterMembers, setRosterMembers] = useState<any[]>([]);
+  const [activePickerField, setActivePickerField] = useState<'to' | 'cc' | 'bcc' | null>(null);
+
+  // Authorized Senders based on role
+  const getAuthorizedSenders = () => {
+    const role = (userProfile?.role || '').toLowerCase();
+    const userEmail = (userProfile?.email || '').toLowerCase();
+    const senders = new Set<string>();
+
+    if (role === 'admin') {
+      senders.add('contact@zenemoo.in');
+      senders.add('info@zenemoo.in');
+      senders.add('hr@zenemoo.in');
+      senders.add('support@zenemoo.in');
+      senders.add('careers@zenemoo.in');
+    } else if (role === 'hr') {
+      senders.add('hr@zenemoo.in');
+      senders.add('careers@zenemoo.in');
+      senders.add('info@zenemoo.in');
+    }
+
+    if (userEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+      senders.add(userEmail);
+    } else if (senders.size === 0) {
+      senders.add('contact@zenemoo.in');
+    }
+
+    return Array.from(senders);
+  };
+
+  const authorizedSenders = getAuthorizedSenders();
+
+  // Load team roster members on initial mount
   useEffect(() => {
-    if (userProfile && userProfile.email && AUTHORIZED_SENDER_EMAILS.includes(userProfile.email)) {
-      setSelectedSender(userProfile.email);
+    const loadRoster = async () => {
+      try {
+        const res = await userManagementApi.searchRoster('');
+        if (res.data && res.data.success && Array.isArray(res.data.data)) {
+          setRosterMembers(res.data.data.filter((m: any) => m.email));
+        }
+      } catch (e) {}
+    };
+    loadRoster();
+  }, []);
+
+  // Auto-fill initial default sender
+  useEffect(() => {
+    if (authorizedSenders.length > 0 && !authorizedSenders.includes(selectedSender)) {
+      setSelectedSender(authorizedSenders[0]);
     }
   }, [userProfile]);
 
@@ -298,6 +345,9 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       editorRef.current.innerHTML = htmlContent;
     }
   }, [htmlContent]);
+
+  // User-scoped localStorage draft key
+  const draftKey = `zenemoo_email_draft_${userProfile?.id || userProfile?.email || 'default'}`;
 
   // Auto-Save Draft to LocalStorage
   useEffect(() => {
@@ -312,17 +362,17 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
           htmlContent,
           updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
-        localStorage.setItem('zenemoo_hr_email_draft', JSON.stringify(draftData));
+        localStorage.setItem(draftKey, JSON.stringify(draftData));
         setLastSavedTime(draftData.updatedAt);
       }
     }, 5000);
     return () => clearTimeout(timer);
-  }, [selectedSender, toChips, ccChips, bccChips, subject, htmlContent]);
+  }, [selectedSender, toChips, ccChips, bccChips, subject, htmlContent, draftKey]);
 
   // Load Saved Draft on initial mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('zenemoo_hr_email_draft');
+      const saved = localStorage.getItem(draftKey);
       if (saved) {
         const d = JSON.parse(saved);
         if (d.toChips) setToChips(d.toChips);
@@ -333,7 +383,20 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         if (d.updatedAt) setLastSavedTime(d.updatedAt);
       }
     } catch (e) {}
-  }, []);
+  }, [draftKey]);
+
+  const handleDiscardDraft = () => {
+    setToChips([]);
+    setCcChips([]);
+    setBccChips([]);
+    setSubject('');
+    setHtmlContent('');
+    if (editorRef.current) editorRef.current.innerHTML = '';
+    setAttachments([]);
+    localStorage.removeItem(draftKey);
+    setLastSavedTime(null);
+    showToast('Draft discarded and cleared.', 'success');
+  };
 
   // Helper to validate email syntax
   const isValidEmail = (email: string) => {
@@ -649,6 +712,7 @@ ${customPara}
         setHtmlContent('');
         if (editorRef.current) editorRef.current.innerHTML = '';
         setAttachments([]);
+        localStorage.removeItem(draftKey);
         localStorage.removeItem('zenemoo_hr_email_draft');
         setLastSavedTime(null);
         onEmailSentSuccess();
@@ -672,9 +736,19 @@ ${customPara}
               <Mail className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-emerald-400 shrink-0" /> HR Enterprise Email Composer
             </h2>
             {lastSavedTime && (
-              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-400 text-[10px]">
-                Draft saved {lastSavedTime}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-mono">
+                  Draft saved {lastSavedTime}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleDiscardDraft}
+                  className="px-2.5 py-1 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-mono font-bold cursor-pointer transition-all"
+                  title="Discard current draft"
+                >
+                  Discard Draft
+                </button>
+              </div>
             )}
           </div>
           <p className="text-[11px] text-slate-400">Compose and dispatch verified company communications via Brevo SMTP.</p>
@@ -722,7 +796,7 @@ ${customPara}
                 onChange={(e) => setSelectedSender(e.target.value)}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-emerald-300 font-mono text-xs focus:outline-none focus:border-emerald-400 appearance-none cursor-pointer pr-10"
               >
-                {AUTHORIZED_SENDER_EMAILS.map((email) => (
+                {authorizedSenders.map((email) => (
                   <option key={email} value={email} className="bg-[#090d16] text-white">
                     {email}
                   </option>
@@ -734,7 +808,7 @@ ${customPara}
 
           <div className="sm:col-span-2 flex items-end justify-between gap-2 flex-wrap">
             <span className="text-[10px] sm:text-[11px] text-slate-400 mb-1">
-              Permissions: <strong className="text-emerald-400">Authorized HR Dispatcher</strong>
+              Sender Access: <strong className="text-emerald-400">{userProfile?.role || 'Staff Member'}</strong>
             </span>
             <div className="flex items-center gap-3 mb-1 font-mono text-xs">
               {!showCC && (
@@ -759,11 +833,46 @@ ${customPara}
           </div>
         </div>
 
-        {/* Row B: TO Recipient Chips Input */}
-        <div className="w-full">
-          <label className="block text-slate-300 font-bold mb-1.5 text-[10px] sm:text-[11px] uppercase tracking-wider">
-            To Recipients *
-          </label>
+        {/* Row B: TO Recipient Chips Input & Quick Picker */}
+        <div className="w-full relative">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
+              To Recipients *
+            </label>
+            {rosterMembers.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActivePickerField(activePickerField === 'to' ? null : 'to')}
+                className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Users className="w-3 h-3" /> Select Team Member ▾
+              </button>
+            )}
+          </div>
+
+          {activePickerField === 'to' && (
+            <div className="absolute right-0 top-7 z-30 w-72 bg-[#090d16] border border-emerald-500/40 rounded-2xl p-2 shadow-2xl space-y-1 max-h-56 overflow-y-auto">
+              <div className="text-[10px] text-slate-400 px-2 py-1 border-b border-white/10 font-bold uppercase">
+                Enterprise Team Roster
+              </div>
+              {rosterMembers.map((m) => (
+                <div
+                  key={m.id || m.email}
+                  onClick={() => {
+                    if (m.email && !toChips.includes(m.email)) {
+                      setToChips([...toChips, m.email]);
+                    }
+                    setActivePickerField(null);
+                  }}
+                  className="p-2 rounded-xl hover:bg-white/[0.08] cursor-pointer space-y-0.5"
+                >
+                  <div className="font-bold text-white text-xs truncate">{m.name}</div>
+                  <div className="text-[10px] text-emerald-300 truncate">{m.email}</div>
+                  <div className="text-[9px] text-slate-400 truncate">{m.designation || m.department || 'Team Member'}</div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-emerald-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
             {toChips.map((email, idx) => (
               <span
@@ -796,20 +905,55 @@ ${customPara}
 
         {/* Row C: CC Recipient Chips Input */}
         {showCC && (
-          <div className="w-full">
+          <div className="w-full relative">
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">CC Recipients</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCC(false);
-                  setCcChips([]);
-                }}
-                className="text-[10px] text-slate-400 hover:text-red-400 cursor-pointer"
-              >
-                Remove CC
-              </button>
+              <div className="flex items-center gap-3">
+                {rosterMembers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActivePickerField(activePickerField === 'cc' ? null : 'cc')}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Users className="w-3 h-3" /> Select Member ▾
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCC(false);
+                    setCcChips([]);
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-red-400 cursor-pointer"
+                >
+                  Remove CC
+                </button>
+              </div>
             </div>
+
+            {activePickerField === 'cc' && (
+              <div className="absolute right-0 top-7 z-30 w-72 bg-[#090d16] border border-cyan-500/40 rounded-2xl p-2 shadow-2xl space-y-1 max-h-56 overflow-y-auto">
+                <div className="text-[10px] text-slate-400 px-2 py-1 border-b border-white/10 font-bold uppercase">
+                  Select CC Recipient
+                </div>
+                {rosterMembers.map((m) => (
+                  <div
+                    key={m.id || m.email}
+                    onClick={() => {
+                      if (m.email && !ccChips.includes(m.email)) {
+                        setCcChips([...ccChips, m.email]);
+                      }
+                      setActivePickerField(null);
+                    }}
+                    className="p-2 rounded-xl hover:bg-white/[0.08] cursor-pointer space-y-0.5"
+                  >
+                    <div className="font-bold text-white text-xs truncate">{m.name}</div>
+                    <div className="text-[10px] text-cyan-300 truncate">{m.email}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
               {ccChips.map((email, idx) => (
                 <span
@@ -843,20 +987,55 @@ ${customPara}
 
         {/* Row D: BCC Recipient Chips Input */}
         {showBCC && (
-          <div className="w-full">
+          <div className="w-full relative">
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">BCC Recipients</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBCC(false);
-                  setBccChips([]);
-                }}
-                className="text-[10px] text-slate-400 hover:text-red-400 cursor-pointer"
-              >
-                Remove BCC
-              </button>
+              <div className="flex items-center gap-3">
+                {rosterMembers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActivePickerField(activePickerField === 'bcc' ? null : 'bcc')}
+                    className="text-[10px] text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Users className="w-3 h-3" /> Select Member ▾
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBCC(false);
+                    setBccChips([]);
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-red-400 cursor-pointer"
+                >
+                  Remove BCC
+                </button>
+              </div>
             </div>
+
+            {activePickerField === 'bcc' && (
+              <div className="absolute right-0 top-7 z-30 w-72 bg-[#090d16] border border-purple-500/40 rounded-2xl p-2 shadow-2xl space-y-1 max-h-56 overflow-y-auto">
+                <div className="text-[10px] text-slate-400 px-2 py-1 border-b border-white/10 font-bold uppercase">
+                  Select BCC Recipient
+                </div>
+                {rosterMembers.map((m) => (
+                  <div
+                    key={m.id || m.email}
+                    onClick={() => {
+                      if (m.email && !bccChips.includes(m.email)) {
+                        setBccChips([...bccChips, m.email]);
+                      }
+                      setActivePickerField(null);
+                    }}
+                    className="p-2 rounded-xl hover:bg-white/[0.08] cursor-pointer space-y-0.5"
+                  >
+                    <div className="font-bold text-white text-xs truncate">{m.name}</div>
+                    <div className="text-[10px] text-purple-300 truncate">{m.email}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-purple-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
               {bccChips.map((email, idx) => (
                 <span
@@ -1083,6 +1262,23 @@ ${customPara}
                 setHtmlContent(editorRef.current.innerHTML);
               }
             }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const text = e.clipboardData.getData('text/plain');
+              const formattedHtml = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\r\n/g, '\n')
+                .replace(/\n{2,}/g, '</p><p style="margin-top:12px; margin-bottom:12px;">')
+                .replace(/\n/g, '<br/>');
+              const wrap = `<p style="margin-top:0; margin-bottom:12px;">${formattedHtml}</p>`;
+              document.execCommand('insertHTML', false, wrap);
+              if (editorRef.current) {
+                setHtmlContent(editorRef.current.innerHTML);
+              }
+            }}
+            style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}
             className="w-full min-h-[180px] sm:min-h-[220px] max-h-[360px] overflow-y-auto p-3.5 sm:p-4 rounded-b-2xl bg-white/[0.03] border border-white/10 text-white font-sans text-xs sm:text-sm focus:outline-none focus:border-emerald-400 leading-relaxed overflow-x-hidden"
           />
         </div>

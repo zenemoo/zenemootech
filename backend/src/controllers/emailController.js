@@ -52,6 +52,8 @@ export const sendEmail = async (req, res, next) => {
 
       // Encrypt sensitive fields before saving to Supabase
       const payload = {
+        user_id: req.user?.id || req.user?.team_member_id || null,
+        user_email: (req.user?.email || fromSender).toLowerCase(),
         sender: fromSender,
         recipients: encrypt(parsedTo),
         cc: encrypt(parseRecipients(cc)),
@@ -75,7 +77,7 @@ export const sendEmail = async (req, res, next) => {
         insertedRecord = payload;
       }
 
-      // Return decrypted response to admin UI
+      // Return decrypted response to user UI
       return res.json({
         success: true,
         message: 'Email sent successfully via Brevo SMTP.',
@@ -97,6 +99,8 @@ export const sendEmail = async (req, res, next) => {
       console.error('Brevo SMTP Send Error:', sendErr.message);
 
       const failedPayload = {
+        user_id: req.user?.id || req.user?.team_member_id || null,
+        user_email: (req.user?.email || fromSender).toLowerCase(),
         sender: fromSender,
         recipients: encrypt(parsedTo),
         cc: encrypt(parseRecipients(cc)),
@@ -133,9 +137,22 @@ export const sendEmail = async (req, res, next) => {
   }
 };
 
-// GET /api/email/history - Fetch email logs from Supabase and decrypt fields for Admin
+// GET /api/email/history - Fetch email logs from Supabase and decrypt fields (Role isolated)
 export const getEmailHistory = async (req, res, next) => {
   try {
+    const userRole = (req.user?.role || '').toLowerCase();
+    const userEmail = (req.user?.email || '').toLowerCase();
+    const userId = req.user?.id || req.user?.team_member_id;
+
+    // Team Members (Other Members): Email history hidden completely
+    if (userRole !== 'admin' && userRole !== 'hr') {
+      return res.json({
+        success: true,
+        count: 0,
+        data: [],
+      });
+    }
+
     let dbLogs = [];
     try {
       dbLogs = await supabaseService.selectAll('email_history', 'created_at', false);
@@ -145,8 +162,22 @@ export const getEmailHistory = async (req, res, next) => {
 
     if (!Array.isArray(dbLogs)) dbLogs = memoryHistory;
 
-    // Decrypt all encrypted payload fields
-    const decryptedLogs = dbLogs.map((log) => {
+    // Decrypt and filter logs strictly by role
+    const filteredLogs = dbLogs.filter((log) => {
+      if (userRole === 'admin') return true; // Admin sees all enterprise logs
+      if (userRole === 'hr') {
+        const senderEmail = (log.sender || log.user_email || '').toLowerCase();
+        const logUserId = log.user_id || log.user_email;
+        return (
+          senderEmail === userEmail ||
+          logUserId === userId ||
+          logUserId === userEmail
+        );
+      }
+      return false;
+    });
+
+    const decryptedLogs = filteredLogs.map((log) => {
       const recipients = decrypt(log.recipients, true);
       const cc = decrypt(log.cc, true);
       const bcc = decrypt(log.bcc, true);
@@ -199,9 +230,13 @@ export const deleteEmailHistory = async (req, res, next) => {
   }
 };
 
-// GET /api/email/drafts - Fetch encrypted drafts from Supabase and decrypt for Admin
+// GET /api/email/drafts - Fetch encrypted drafts belonging strictly to the current user
 export const getEmailDrafts = async (req, res, next) => {
   try {
+    const userRole = (req.user?.role || '').toLowerCase();
+    const userEmail = (req.user?.email || '').toLowerCase();
+    const userId = req.user?.id || req.user?.team_member_id;
+
     let dbDrafts = [];
     try {
       dbDrafts = await supabaseService.selectAll('email_drafts', 'created_at', false);
@@ -211,7 +246,19 @@ export const getEmailDrafts = async (req, res, next) => {
 
     if (!Array.isArray(dbDrafts)) dbDrafts = memoryDrafts;
 
-    const decryptedDrafts = dbDrafts.map((draft) => {
+    // Filter drafts strictly by owner
+    const userDrafts = dbDrafts.filter((draft) => {
+      if (userRole === 'admin') return true;
+      const draftEmail = (draft.sender || draft.user_email || '').toLowerCase();
+      const draftUserId = draft.user_id || draft.user_email;
+      return (
+        draftEmail === userEmail ||
+        draftUserId === userId ||
+        draftUserId === userEmail
+      );
+    });
+
+    const decryptedDrafts = userDrafts.map((draft) => {
       const recipients = decrypt(draft.recipients, true);
       const cc = decrypt(draft.cc, true);
       const bcc = decrypt(draft.bcc, true);
@@ -246,8 +293,12 @@ export const getEmailDrafts = async (req, res, next) => {
 export const saveEmailDraft = async (req, res, next) => {
   try {
     const { id, sender, recipients, cc, bcc, subject, html, attachments = [] } = req.body;
+    const userId = req.user?.id || req.user?.team_member_id || null;
+    const userEmail = (req.user?.email || sender || 'contact@zenemoo.in').toLowerCase();
 
     const payload = {
+      user_id: userId,
+      user_email: userEmail,
       sender: sender || 'contact@zenemoo.in',
       recipients: encrypt(parseRecipients(recipients)),
       cc: encrypt(parseRecipients(cc)),

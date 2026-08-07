@@ -15,12 +15,12 @@ const router = Router();
 router.get('/diagnose', runEmailDiagnostics);
 router.post('/diagnose', runEmailDiagnostics);
 
-// Email operations (Permitted for Admin or HR with email_access=true)
+// Email operations (Permitted for Admin, HR, or authorized members with email_access=true)
 router.post('/send', verifyToken, requireEmailAccess, sendEmail);
-router.get('/history', getEmailHistory);
+router.get('/history', verifyToken, requireEmailAccess, getEmailHistory);
 router.delete('/history/:id', verifyToken, requireEmailAccess, deleteEmailHistory);
 
-router.get('/drafts', getEmailDrafts);
+router.get('/drafts', verifyToken, requireEmailAccess, getEmailDrafts);
 router.post('/drafts', verifyToken, requireEmailAccess, saveEmailDraft);
 router.delete('/drafts/:id', verifyToken, requireEmailAccess, deleteEmailDraft);
 
