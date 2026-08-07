@@ -4646,14 +4646,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             </div>
 
             {/* Email Engine Sub-Tabs Bar */}
-            <div className="glass-panel p-2 rounded-2xl border border-white/10 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="glass-panel p-2 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 w-full">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => setEmailSubTab('history')}
-                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                     emailSubTab === 'history'
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}
                 >
                   <History className="w-4 h-4" /> Sent Logs & History ({emailLogs.length})
@@ -4661,41 +4661,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                 <button
                   onClick={() => setEmailSubTab('compose')}
-                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                     emailSubTab === 'compose'
                       ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-lg shadow-purple-500/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}
                 >
                   <Plus className="w-4 h-4" /> Compose Email
                 </button>
-
-                <button
-                  onClick={() => setEmailSubTab('drafts')}
-                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                    emailSubTab === 'drafts'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-lg shadow-amber-500/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <FileText className="w-4 h-4" /> Saved Drafts ({emailDrafts.length})
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    window.history.pushState(null, '', '/email');
-                    window.dispatchEvent(new Event('popstate'));
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold hover:bg-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer text-xs"
-                  title="Open standalone email portal"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" /> Open Standalone (/email)
-                </button>
-                <div className="text-[11px] font-mono text-cyan-400/80 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 hidden sm:block">
-                  Authentication: Brevo SMTP TLS 1.3
-                </div>
               </div>
             </div>
 
