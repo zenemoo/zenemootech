@@ -50,17 +50,27 @@ export const sendEmail = async (req, res, next) => {
         attachments,
       });
 
+      const currentUserEmail = (req.user?.email || fromSender).toLowerCase();
+      const currentUserId = req.user?.id || req.user?.team_member_id || null;
+
+      // Embed account identity inside attachments_meta so it is ALWAYS persisted in Supabase DB
+      const safeMeta = Array.isArray(attachmentsMeta) ? [...attachmentsMeta] : [];
+      safeMeta.push({
+        _sender_account_email: currentUserEmail,
+        _sender_account_id: currentUserId,
+      });
+
       // Encrypt sensitive fields before saving to Supabase
       const payload = {
-        user_id: req.user?.id || req.user?.team_member_id || null,
-        user_email: (req.user?.email || fromSender).toLowerCase(),
+        user_id: currentUserId,
+        user_email: currentUserEmail,
         sender: fromSender,
         recipients: encrypt(parsedTo),
         cc: encrypt(parseRecipients(cc)),
         bcc: encrypt(parseRecipients(bcc)),
         subject: encrypt(subject),
         html: encrypt(safeHtml),
-        attachments_meta: attachmentsMeta, // Metadata only (image: "yes", pdf: "no"). NO binary files stored.
+        attachments_meta: safeMeta, // Metadata + embedded sender account info
         status: 'sent',
         message_id: sendResult.messageId || `msg_${Date.now()}`,
         created_at: new Date().toISOString(),
@@ -107,16 +117,25 @@ export const sendEmail = async (req, res, next) => {
     } catch (sendErr) {
       console.error('Brevo SMTP Send Error:', sendErr.message);
 
+      const currentUserEmail = (req.user?.email || fromSender).toLowerCase();
+      const currentUserId = req.user?.id || req.user?.team_member_id || null;
+
+      const safeMeta = Array.isArray(attachmentsMeta) ? [...attachmentsMeta] : [];
+      safeMeta.push({
+        _sender_account_email: currentUserEmail,
+        _sender_account_id: currentUserId,
+      });
+
       const failedPayload = {
-        user_id: req.user?.id || req.user?.team_member_id || null,
-        user_email: (req.user?.email || fromSender).toLowerCase(),
+        user_id: currentUserId,
+        user_email: currentUserEmail,
         sender: fromSender,
         recipients: encrypt(parsedTo),
         cc: encrypt(parseRecipients(cc)),
         bcc: encrypt(parseRecipients(bcc)),
         subject: encrypt(subject),
         html: encrypt(safeHtml),
-        attachments_meta: attachmentsMeta,
+        attachments_meta: safeMeta,
         status: 'failed',
         error_message: sendErr.message || 'SMTP Handshake Failed',
         created_at: new Date().toISOString(),
@@ -195,15 +214,19 @@ export const getEmailHistory = async (req, res, next) => {
     const filteredLogs = uniqueLogs.filter((log) => {
       if (isSuperAdmin) return true; // Super Admin sees all global enterprise history logs
       
-      // All non-admin staff (HR, Marketing Lead, PM, Tech Lead, etc.) see ONLY emails dispatched from their own user account
-      const logUserEmail = (log.user_email || '').toLowerCase();
-      const logUserId = String(log.user_id || '');
+      // Extract embedded sender account identity if user_email column is missing in Supabase
+      const embeddedMeta = Array.isArray(log.attachments_meta)
+        ? log.attachments_meta.find((m) => m && typeof m === 'object' && m._sender_account_email)
+        : null;
+
+      const logUserEmail = (log.user_email || embeddedMeta?._sender_account_email || '').toLowerCase();
+      const logUserId = String(log.user_id || embeddedMeta?._sender_account_id || '');
       const currentUserId = String(userId || '');
       const currentUserEmail = userEmail.toLowerCase();
-      const logSender = (log.sender || '').toLowerCase();
 
+      // STRICT ISOLATION: Must match logged-in user account email or account ID!
       return (
-        (currentUserEmail && (logUserEmail === currentUserEmail || logSender === currentUserEmail)) ||
+        (currentUserEmail && logUserEmail === currentUserEmail) ||
         (currentUserId && currentUserId !== 'null' && logUserId === currentUserId)
       );
     });
