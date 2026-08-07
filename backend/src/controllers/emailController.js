@@ -195,13 +195,34 @@ export const getEmailHistory = async (req, res, next) => {
     const filteredLogs = uniqueLogs.filter((log) => {
       if (isSuperAdmin) return true; // Super Admin sees all global enterprise history logs
       
-      // All non-admin staff (HR, Marketing Lead, PM, Tech Lead, etc.) see ONLY emails dispatched from their own user account
       const logUserEmail = (log.user_email || '').toLowerCase();
       const logUserId = String(log.user_id || '');
       const currentUserId = String(userId || '');
       const currentUserEmail = userEmail.toLowerCase();
       const logSender = (log.sender || '').toLowerCase();
 
+      // HR Role: HR sees all HR dispatched emails PLUS all Admin/Corporate dispatched emails
+      if (userRole === 'hr') {
+        const isAdminOrCorporateSender =
+          logUserEmail.includes('admin') ||
+          logUserEmail === 'mr.prem2006@gmail.com' ||
+          logUserEmail === 'zenemootech@gmail.com' ||
+          logSender.includes('info@') ||
+          logSender.includes('contact@') ||
+          logSender.includes('support@') ||
+          logSender.includes('prem@') ||
+          logSender.includes('noreply@');
+
+        const isHrSender =
+          logUserEmail === currentUserEmail ||
+          logSender.includes('hr@') ||
+          logSender.includes('careers@') ||
+          (currentUserId && currentUserId !== 'null' && logUserId === currentUserId);
+
+        return isAdminOrCorporateSender || isHrSender;
+      }
+
+      // Other team members (Marketing Lead, PM, Tech Lead, etc.): ONLY see emails dispatched from their own user account
       return (
         (currentUserEmail && (logUserEmail === currentUserEmail || logSender === currentUserEmail)) ||
         (currentUserId && currentUserId !== 'null' && logUserId === currentUserId)

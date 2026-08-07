@@ -4859,8 +4859,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                             </div>
 
                             {/* Email Snippet */}
-                            <p className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 line-clamp-2 leading-relaxed font-sans">
-                              {log.html?.replace(/<[^>]+>/g, '') || ''}
+                            <p className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 line-clamp-2 leading-relaxed font-sans font-normal">
+                              {log.html
+                                ? log.html
+                                    .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|tr)>/gi, ' ')
+                                    .replace(/<br\s*\/?>/gi, ' ')
+                                    .replace(/<[^>]+>/g, '')
+                                    .replace(/\s+/g, ' ')
+                                    .trim()
+                                : ''}
                             </p>
 
                             <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between pt-1">
