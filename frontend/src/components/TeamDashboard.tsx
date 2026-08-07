@@ -55,6 +55,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
   const [searchFilterQuery, setSearchFilterQuery] = useState('');
+  const [isVerifyingSession, setIsVerifyingSession] = useState(true);
 
   const popoverRef = useRef<HTMLDivElement>(null);
   const userCardRef = useRef<HTMLButtonElement>(null);
@@ -68,6 +69,28 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
       return {};
     }
   });
+
+  const getPortalRoleInfo = (role?: string) => {
+    const r = (role || profile?.role || '').toLowerCase();
+    if (r === 'marketing_lead' || r === 'marketing') {
+      return { label: 'Marketing Portal', badge: 'Marketing Specialist', color: 'text-pink-400' };
+    }
+    if (r === 'project_manager' || r === 'pm') {
+      return { label: 'Project Management', badge: 'Project Manager', color: 'text-amber-400' };
+    }
+    if (r === 'tech_lead') {
+      return { label: 'Tech & Engineering', badge: 'Engineering Lead', color: 'text-blue-400' };
+    }
+    if (r === 'ai_specialist') {
+      return { label: 'Data & AI Portal', badge: 'AI Specialist', color: 'text-purple-400' };
+    }
+    if (r === 'qa_lead') {
+      return { label: 'QA Operations', badge: 'Quality Assurance Lead', color: 'text-yellow-400' };
+    }
+    return { label: 'Team Portal', badge: 'Team Member', color: 'text-cyan-400' };
+  };
+
+  const roleInfo = getPortalRoleInfo(profile?.role);
 
   const [cooldownInfo, setCooldownInfo] = useState<any>({});
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
@@ -194,9 +217,11 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
       console.warn('Failed to fetch profile:', err);
       if (err.response?.status === 401 || err.response?.status === 403) {
         onLogout();
+        return;
       }
     } finally {
       setIsLoadingProfile(false);
+      setIsVerifyingSession(false);
     }
   };
 
@@ -385,6 +410,23 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
     window.dispatchEvent(new Event('popstate'));
   };
 
+  if (isVerifyingSession) {
+    return (
+      <div className="h-screen w-screen bg-[#050505] text-slate-100 flex flex-col items-center justify-center font-mono space-y-4 select-none">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center shadow-2xl animate-pulse">
+            <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-10 h-10 object-cover" />
+          </div>
+          <RefreshCw className="w-5 h-5 animate-spin text-cyan-400 absolute -top-1 -right-1" />
+        </div>
+        <div className="text-center space-y-1">
+          <div className="text-sm font-bold text-white tracking-widest uppercase">ZENEMOO ENTERPRISE PORTAL</div>
+          <div className="text-xs text-cyan-400 animate-pulse">Verifying Session &amp; Permissions...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen overflow-hidden bg-[#050505] text-slate-100 flex flex-col md:flex-row selection:bg-cyan-500/30 selection:text-cyan-200 relative">
       {/* Toast Notification */}
@@ -422,7 +464,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
             {!isSidebarCollapsed && (
               <div className="truncate">
                 <div className="font-display font-extrabold text-xs text-white tracking-wider truncate">ZENEMOO</div>
-                <div className="text-[9px] font-mono text-cyan-400 truncate">Team Portal</div>
+                <div className={`text-[9px] font-mono font-bold truncate ${roleInfo.color}`}>{roleInfo.label}</div>
               </div>
             )}
           </div>
@@ -910,6 +952,67 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
               </div>
             </div>
           </div>
+
+          {/* Role-Specific Portal Overview Section */}
+          {((profile?.role || '').toLowerCase() === 'marketing_lead' || (profile?.role || '').toLowerCase() === 'marketing') && (
+            <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-pink-500/30 space-y-4 shadow-xl bg-pink-500/5 font-mono text-xs">
+              <div className="flex items-center justify-between border-b border-pink-500/20 pb-3">
+                <h3 className="text-sm font-bold text-pink-300 flex items-center gap-2 font-display">
+                  <Sparkles className="w-4 h-4 text-pink-400" /> Marketing &amp; Growth Workspace
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 text-[10px] font-bold border border-pink-500/40">
+                  Marketing Staff Active
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-black/40 border border-pink-500/20 space-y-1">
+                  <div className="text-[10px] text-slate-400 uppercase">Active Campaigns</div>
+                  <div className="text-lg font-bold text-white">4 Live Campaigns</div>
+                  <div className="text-[10px] text-pink-400">Zenemoo AI &amp; Social Growth</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-black/40 border border-pink-500/20 space-y-1">
+                  <div className="text-[10px] text-slate-400 uppercase">Monthly Lead Acquisition</div>
+                  <div className="text-lg font-bold text-pink-300">+248 Enterprise Leads</div>
+                  <div className="text-[10px] text-emerald-400">↑ 18% vs last month</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-black/40 border border-pink-500/20 space-y-1">
+                  <div className="text-[10px] text-slate-400 uppercase">Content Calendar</div>
+                  <div className="text-lg font-bold text-white">12 Assets Scheduled</div>
+                  <div className="text-[10px] text-slate-400">LinkedIn &amp; Press Releases</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {((profile?.role || '').toLowerCase() === 'project_manager' || (profile?.role || '').toLowerCase() === 'pm') && (
+            <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-amber-500/30 space-y-4 shadow-xl bg-amber-500/5 font-mono text-xs">
+              <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
+                <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2 font-display">
+                  <Briefcase className="w-4 h-4 text-amber-400" /> Project Management Workspace
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                  Sprint Manager Active
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-black/40 border border-amber-500/20 space-y-1">
+                  <div className="text-[10px] text-slate-400 uppercase">Active Sprint</div>
+                  <div className="text-lg font-bold text-white">Sprint 24 &bull; In Progress</div>
+                  <div className="text-[10px] text-amber-400">82% Story Points Completed</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-black/40 border border-amber-500/20 space-y-1">
+                  <div className="text-[10px] text-slate-400 uppercase">Milestones On Track</div>
+                  <div className="text-lg font-bold text-emerald-400">6 / 6 Milestones</div>
+                  <div className="text-[10px] text-emerald-400">On Time Delivery</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-black/40 border border-amber-500/20 space-y-1">
+                  <div className="text-[10px] text-slate-400 uppercase">Team Velocity</div>
+                  <div className="text-lg font-bold text-amber-300">42 pts / week</div>
+                  <div className="text-[10px] text-slate-400">High Capacity Utilization</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* TAB 1: OVERVIEW & MY PROFILE */}
           {activeTab === 'overview' && (

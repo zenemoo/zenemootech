@@ -872,7 +872,7 @@ export const portalLogin = async (req, res, next) => {
       const isAllowedPortal =
         userRole === 'admin' ||
         userRole === reqRole ||
-        (reqRole === 'team_member' && (userRole === 'project_manager' || userRole === 'pm'));
+        (reqRole === 'team_member' && userRole !== 'hr');
 
       if (!isAllowedPortal) {
         return res.status(403).json({

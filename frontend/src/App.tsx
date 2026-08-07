@@ -102,15 +102,12 @@ export function App() {
         hash === '#team-dashboard'
       ) {
         matchedRoute = 'team-dashboard';
-      } else if (
-        path === '/team-login' || hash === '#team-login' || hash === '#/team-login' ||
-        path === '/pm-login' || hash === '#pm-login' || hash === '#/pm-login' ||
-        path === '/project-login' || hash === '#project-login'
-      ) {
+      } else if (path === '/team-login' || hash === '#team-login' || hash === '#/team-login') {
         const token = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_token');
         const expiry = typeof window !== 'undefined' && localStorage.getItem('zenemoo_jwt_expiry');
         const isNotExpired = !expiry || parseInt(expiry, 10) > Date.now();
-        if (token && isNotExpired && portalUser && (portalUser.role === 'team_member' || portalUser.role === 'project_manager' || portalUser.role === 'pm' || portalUser.role === 'admin')) {
+        const role = (portalUser?.role || '').toLowerCase();
+        if (token && isNotExpired && portalUser && role !== 'hr') {
           matchedRoute = 'team-dashboard';
         } else {
           matchedRoute = 'team-login';

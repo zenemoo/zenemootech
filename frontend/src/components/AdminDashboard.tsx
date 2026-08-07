@@ -2461,11 +2461,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         className="w-full px-3.5 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
                       >
                         <option value="team_member">Team Member (/team-login)</option>
-                        <option value="hr">HR Operations (/hr-login)</option>
-                        <option value="admin">Administrator (/portal)</option>
-                        <option value="manager">Project Manager (Future Ready)</option>
-                        <option value="finance">Finance Lead (Future Ready)</option>
-                        <option value="qa_lead">QA Lead (Future Ready)</option>
+                        <option value="hr">HR Manager (/hr-login)</option>
+                        <option value="project_manager">Project Manager (/team-login)</option>
+                        <option value="marketing_lead">Marketing Lead (/team-login)</option>
+                        <option value="tech_lead">Tech Lead (/team-login)</option>
+                        <option value="ai_specialist">Data &amp; AI Specialist (/team-login)</option>
+                        <option value="qa_lead">QA Lead (/team-login)</option>
                       </select>
                     </div>
 
@@ -2571,12 +2572,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                               value={user.role || 'team_member'}
                               onChange={(e) => handleUpdateUserRole(user, e.target.value)}
                               className={`px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase border bg-black/80 cursor-pointer outline-none transition-all ${
-                                user.role === 'admin'
-                                  ? 'text-purple-300 border-purple-500/50 bg-purple-500/20'
+                                user.role === 'marketing_lead' || user.role === 'marketing'
+                                  ? 'text-pink-300 border-pink-500/50 bg-pink-500/20'
                                   : user.role === 'project_manager' || user.role === 'pm'
                                   ? 'text-amber-300 border-amber-500/50 bg-amber-500/20'
+                                  : user.role === 'tech_lead'
+                                  ? 'text-blue-300 border-blue-500/50 bg-blue-500/20'
+                                  : user.role === 'ai_specialist'
+                                  ? 'text-purple-300 border-purple-500/50 bg-purple-500/20'
                                   : user.role === 'hr'
                                   ? 'text-cyan-300 border-cyan-500/50 bg-cyan-500/20'
+                                  : user.role === 'qa_lead'
+                                  ? 'text-yellow-300 border-yellow-500/50 bg-yellow-500/20'
                                   : 'text-emerald-300 border-emerald-500/50 bg-emerald-500/20'
                               }`}
                               title="Click to upgrade/change role without altering password or personal data"
@@ -2584,7 +2591,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                               <option value="team_member" className="bg-slate-900 text-emerald-300">Team Member</option>
                               <option value="hr" className="bg-slate-900 text-cyan-300">HR Manager</option>
                               <option value="project_manager" className="bg-slate-900 text-amber-300">Project Manager</option>
-                              <option value="admin" className="bg-slate-900 text-purple-300">Super Admin</option>
+                              <option value="marketing_lead" className="bg-slate-900 text-pink-300">Marketing Lead</option>
+                              <option value="tech_lead" className="bg-slate-900 text-blue-300">Tech Lead</option>
+                              <option value="ai_specialist" className="bg-slate-900 text-purple-300">Data &amp; AI Specialist</option>
+                              <option value="qa_lead" className="bg-slate-900 text-yellow-300">QA Lead</option>
                             </select>
                           </td>
 
@@ -2676,7 +2686,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         <option value="team_member" className="bg-slate-900 text-emerald-300">Team Member</option>
                         <option value="hr" className="bg-slate-900 text-cyan-300">HR Manager</option>
                         <option value="project_manager" className="bg-slate-900 text-amber-300">Project Manager</option>
-                        <option value="admin" className="bg-slate-900 text-purple-300">Super Admin</option>
+                        <option value="marketing_lead" className="bg-slate-900 text-pink-300">Marketing Lead</option>
+                        <option value="tech_lead" className="bg-slate-900 text-blue-300">Tech Lead</option>
+                        <option value="ai_specialist" className="bg-slate-900 text-purple-300">Data &amp; AI Specialist</option>
+                        <option value="qa_lead" className="bg-slate-900 text-yellow-300">QA Lead</option>
                       </select>
                     </div>
 
