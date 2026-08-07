@@ -1225,9 +1225,9 @@ ${customPara}
                 type="button"
                 onClick={handleAppendSignature}
                 className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
-                title={`Insert dynamic signature for ${selectedSender}`}
+                title={`Insert dynamic signature for ${selectedSender || 'selected sender'}`}
               >
-                <span>+ Insert Signature ({selectedSender.split('@')[0]})</span>
+                <span>+ Insert Signature ({(selectedSender || 'contact@zenemoo.in').split('@')[0] || 'sender'})</span>
               </button>
             </div>
           </div>
