@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
@@ -5919,20 +5920,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         </AnimatePresence>
 
         {/* CANDIDATE APPLICATIONS TABLE MODAL VIEW */}
-        <AnimatePresence>
-          {selectedOppForApps && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
-            >
+        {selectedOppForApps &&
+          createPortal(
+            <AnimatePresence>
               <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-6xl w-full my-auto space-y-6 max-h-[92vh] overflow-y-auto shadow-2xl shadow-cyan-500/10 bg-[#090d16]/95"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[99999] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
               >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-6xl w-full my-auto space-y-6 max-h-[92vh] overflow-y-auto shadow-2xl shadow-cyan-500/10 bg-[#090d16]"
+                >
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
                   <div>
@@ -6191,8 +6193,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 )}
               </motion.div>
             </motion.div>
-          )}
-        </AnimatePresence>
+          </AnimatePresence>,
+          document.body
+        )}
         </main>
         
         {/* 5. CORPORATE FOOTER LAYOUT */}
