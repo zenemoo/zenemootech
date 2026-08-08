@@ -78,6 +78,47 @@ export const submitContact = async (req, res, next) => {
     const cleanCompany = (company || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
     const cleanService = (service || 'Audio Transcription').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
+    // CLOUDFLARE TURNSTILE ANTI-BOT SERVER-SIDE VERIFICATION
+    const turnstileToken = req.body.turnstileToken || req.body.turnstile_token || req.body['cf-turnstile-response'];
+    const turnstileSecret = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAEKG_sx7PnsrKH6dRojjixiRQWo';
+
+    if (!turnstileToken) {
+      console.warn('[TURNSTILE VERIFICATION FAILED]: Turnstile token is missing from contact submission request.');
+      return res.status(400).json({
+        success: false,
+        message: 'Anti-bot verification required. Please complete the security check before submitting.',
+      });
+    }
+
+    try {
+      const userIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+      const verifyFormData = new URLSearchParams();
+      verifyFormData.append('secret', turnstileSecret);
+      verifyFormData.append('response', turnstileToken);
+      if (userIp) verifyFormData.append('remoteip', String(userIp).split(',')[0].trim());
+
+      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        body: verifyFormData,
+      });
+
+      const verifyData = await verifyRes.json();
+      console.log(`[TURNSTILE VERIFICATION]: success = ${verifyData.success} | error-codes = ${JSON.stringify(verifyData['error-codes'] || [])}`);
+
+      if (!verifyData.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Anti-bot security check failed or token expired. Please complete the verification and try again.',
+        });
+      }
+    } catch (cfErr) {
+      console.error('[TURNSTILE API ERROR]:', cfErr.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Anti-bot verification service unavailable. Please try submitting again.',
+      });
+    }
+
     const year = new Date().getFullYear();
     const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
     const generatedCode = inquiry_code || inquiry_id || req.body.code || `ZNM-${year}-${randomHex}`;
@@ -130,7 +171,7 @@ export const submitContact = async (req, res, next) => {
       created_at: contactPayload.created_at,
     }).catch((err) => console.warn('[Contact Confirmation Email Dispatch Note]', err.message));
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Contact inquiry submitted successfully',
       data: savedRecord,
@@ -142,12 +183,8 @@ export const submitContact = async (req, res, next) => {
 
 export const getContacts = async (req, res, next) => {
   try {
-    const data = await supabaseService.selectAll('contacts', 'created_at', false);
-    res.json({
-      success: true,
-      count: data.length,
-      data,
-    });
+    const data = await supabaseService.select('contacts');
+    res.json({ success: true, data: data || [] });
   } catch (err) {
     next(err);
   }
@@ -156,38 +193,9 @@ export const getContacts = async (req, res, next) => {
 export const updateContact = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, notes } = req.body;
-    if (!id) {
-      return res.status(400).json({ success: false, message: 'Inquiry ID is required' });
-    }
-
-    const updatePayload = {};
-    if (status !== undefined) updatePayload.status = status;
-    if (notes !== undefined) updatePayload.notes = notes;
-
-    const updated = await supabaseService.update('contacts', id, updatePayload);
-
-    res.json({
-      success: true,
-      message: 'Contact inquiry updated successfully',
-      data: updated,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const deleteContact = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ success: false, message: 'Inquiry ID is required' });
-    }
-    await supabaseService.delete('contacts', id);
-    res.json({
-      success: true,
-      message: 'Contact inquiry deleted successfully',
-    });
+    const updates = req.body;
+    const data = await supabaseService.update('contacts', id, updates);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

@@ -4,6 +4,7 @@ import { SeoImage } from '../seo/components/SeoImage';
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
 import { contactApi } from '../services/api';
+import { TurnstileWidget } from './TurnstileWidget';
 
 const COUNTRY_CODES = [
   { code: '+91', country: 'India 🇮🇳', flag: '🇮🇳', len: 10 },
@@ -25,6 +26,8 @@ export const Contact: React.FC = () => {
   const [addressCopied, setAddressCopied] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileError, setTurnstileError] = useState('');
 
   const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -73,6 +76,12 @@ export const Contact: React.FC = () => {
       }
     }
 
+    // 3. Anti-Bot Turnstile Verification Check
+    if (!turnstileToken) {
+      setTurnstileError('Please complete the anti-bot verification check before submitting.');
+      return;
+    }
+
     setLoading(true);
     const inquiryId = generateInquiryId();
     setSubmittedId(inquiryId);
@@ -84,24 +93,38 @@ export const Contact: React.FC = () => {
       email: trimmedEmail,
       phone: fullPhone,
       inquiry_id: inquiryId,
+      turnstileToken,
     };
 
     try {
       await saveContactInquiry(payload);
-    } catch (err) {
-      console.warn('Contact submit warning:', err);
+
+      confetti({
+        particleCount: 90,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#06b6d4', '#3b82f6', '#a855f7'],
+      });
+
+      setShowModal(true);
+      setForm({
+        name: '',
+        email: '',
+        company: '',
+        service: 'Audio Transcription',
+        language: 'Hindi',
+        message: '',
+      });
+      setPhoneNumber('');
+      setTurnstileToken('');
+      setTurnstileError('');
+    } catch (err: any) {
+      console.error('Contact submit error:', err);
+      setTurnstileError(err.message || 'Verification failed. Please try again.');
+      setTurnstileToken('');
     } finally {
       setLoading(false);
     }
-
-    confetti({
-      particleCount: 90,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#06b6d4', '#3b82f6', '#a855f7'],
-    });
-
-    setShowModal(true);
   };
 
   const copyTicketId = () => {
@@ -280,10 +303,33 @@ export const Contact: React.FC = () => {
                   ></textarea>
                 </div>
 
+                {/* Cloudflare Turnstile Anti-Bot Security Widget */}
+                <div className="py-2 flex flex-col items-center justify-center">
+                  <TurnstileWidget
+                    onVerify={(token) => {
+                      setTurnstileToken(token);
+                      setTurnstileError('');
+                    }}
+                    onExpire={() => {
+                      setTurnstileToken('');
+                      setTurnstileError('Verification expired. Please check the box again.');
+                    }}
+                    onError={() => {
+                      setTurnstileToken('');
+                      setTurnstileError('Security verification error. Please retry.');
+                    }}
+                  />
+                  {turnstileError && (
+                    <div className="text-xs font-mono text-rose-400 text-center mt-1 animate-pulse">
+                      ⚠️ {turnstileError}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-base transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  disabled={loading || !turnstileToken}
+                  className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-base transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {loading ? (
                     <>

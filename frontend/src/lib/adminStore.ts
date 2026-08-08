@@ -412,41 +412,19 @@ export const getContactInquiries = async (): Promise<ContactInquiry[]> => {
 
 // Submit a new contact inquiry to Express Backend API -> Supabase DB
 export const saveContactInquiry = async (
-  inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'>
+  inquiry: Omit<ContactInquiry, 'id' | 'created_at' | 'status'> & { turnstileToken?: string }
 ): Promise<ContactInquiry | null> => {
   try {
     const res = await contactApi.submit(inquiry);
     if (res.data && res.data.data) {
       return res.data.data as ContactInquiry;
     }
-  } catch (err) {
-    console.warn('Backend contact submit fallback to direct Supabase insert:', err);
-    // Direct Supabase fallback insert
-    try {
-      const { data, error } = await supabase.from('contacts').insert([
-        {
-          name: inquiry.name,
-          email: inquiry.email,
-          phone: inquiry.phone || '',
-          company: inquiry.company || '',
-          service: inquiry.service || 'Data Solutions',
-          language: inquiry.language || 'Hindi',
-          inquiry_code: (inquiry as any).inquiry_id || `ZNM-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          notes: (inquiry as any).notes || '',
-          message: inquiry.message,
-          status: 'unread',
-          created_at: new Date().toISOString(),
-        }
-      ]).select().single();
-
-      if (!error && data) {
-        return data as ContactInquiry;
-      }
-    } catch (dbErr) {
-      console.error('Supabase direct insert fallback error:', dbErr);
-    }
+    return res.data as any;
+  } catch (err: any) {
+    const errorMsg = err.response?.data?.message || err.message || 'Contact inquiry submission failed.';
+    console.error('Contact submission API error:', errorMsg);
+    throw new Error(errorMsg);
   }
-  return null;
 };
 
 // Update contact inquiry status ('read' / 'unread') or internal notes
