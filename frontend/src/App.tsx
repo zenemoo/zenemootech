@@ -62,14 +62,17 @@ export function App() {
 
       // Check if path or hash matches secret private admin route
       const hasActiveAdminToken = typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
+      const isForgotPasswordRoute = path.includes('forgot-password') || hash.includes('forgot-password');
+
       const isSecretAdminRoute =
-        path === `/${secretEnvRoute}` ||
+        !isForgotPasswordRoute &&
+        (path === `/${secretEnvRoute}` ||
         path === '/portal/9KqvA2Nz8' ||
         hash === `#${secretEnvRoute}` ||
         hash === '#portal/9KqvA2Nz8' ||
         hash === '#manage/portal/x93LmK/admin' ||
         hash === '#portal-9KqvA2Nz8' ||
-        (hasActiveAdminToken && (path.startsWith('/portal') || hash.includes('portal') || path === '/admin'));
+        (hasActiveAdminToken && (path.startsWith('/portal') || hash.includes('portal') || path === '/admin')));
 
       let matchedRoute:
         | 'home'
