@@ -87,6 +87,13 @@ export const EXPORT_CONFIGS = {
   },
 };
 
+// Section ID Aliases mapping
+EXPORT_CONFIGS['rbac'] = EXPORT_CONFIGS['users-rbac'];
+EXPORT_CONFIGS['directory'] = EXPORT_CONFIGS['team-directory'];
+EXPORT_CONFIGS['team'] = EXPORT_CONFIGS['team-roster'];
+EXPORT_CONFIGS['subscribers'] = EXPORT_CONFIGS['newsletter'];
+EXPORT_CONFIGS['inquiries'] = EXPORT_CONFIGS['contact-inquiries'];
+
 /**
  * Empty/Null Column Logic helper:
  * Determines if a column is considered empty across all records in dataset.

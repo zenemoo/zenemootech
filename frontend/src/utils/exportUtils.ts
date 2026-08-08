@@ -86,6 +86,12 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionExportMeta> = {
   },
 };
 
+EXPORT_SECTION_METADATA['rbac'] = EXPORT_SECTION_METADATA['users-rbac'];
+EXPORT_SECTION_METADATA['directory'] = EXPORT_SECTION_METADATA['team-directory'];
+EXPORT_SECTION_METADATA['team'] = EXPORT_SECTION_METADATA['team-roster'];
+EXPORT_SECTION_METADATA['subscribers'] = EXPORT_SECTION_METADATA['newsletter'];
+EXPORT_SECTION_METADATA['inquiries'] = EXPORT_SECTION_METADATA['contact-inquiries'];
+
 /**
  * Empty Column Detector:
  * Returns true if an entire column is empty (null, undefined, "", or whitespace-only) for every record in dataset.
@@ -107,10 +113,8 @@ export const isColumnEmpty = (dataset: any[], key: string): boolean => {
 export const getAvailableNonEmptyColumns = (dataset: any[], defaultCols: ColumnOption[]): ColumnOption[] => {
   if (!Array.isArray(dataset) || dataset.length === 0) return defaultCols;
 
-  // First check predefined columns
   const filteredPredefined = defaultCols.filter((col) => !isColumnEmpty(dataset, col.key));
 
-  // Dynamically inspect any additional keys present in dataset
   const existingKeys = new Set(defaultCols.map((c) => c.key));
   const dynamicCols: ColumnOption[] = [];
 
@@ -160,7 +164,11 @@ export const formatValue = (val: any, key = ''): string => {
 /**
  * Trigger browser file download.
  */
-export const triggerFileDownload = (blob: Blob | ArrayBuffer | string, filename: string, mimeType = 'text/csv;charset=utf-8;') => {
+export const triggerFileDownload = (
+  blob: Blob | ArrayBuffer | string,
+  filename: string,
+  mimeType = 'text/csv;charset=utf-8;'
+) => {
   const blobObj = blob instanceof Blob ? blob : new Blob([blob], { type: mimeType });
   const url = URL.createObjectURL(blobObj);
   const link = document.createElement('a');
@@ -178,7 +186,7 @@ export const triggerFileDownload = (blob: Blob | ArrayBuffer | string, filename:
 export const generateClientCSV = (dataset: any[], columns: ColumnOption[], sectionTitle: string) => {
   const bom = '\uFEFF';
   const headers = columns.map((c) => c.label);
-  
+
   const escapeCell = (val: any, key: string) => {
     const str = formatValue(val, key);
     if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
@@ -198,7 +206,11 @@ export const generateClientCSV = (dataset: any[], columns: ColumnOption[], secti
 /**
  * Client-Side Excel (.xlsx) Generator using ExcelJS
  */
-export const generateClientExcel = async (dataset: any[], columns: ColumnOption[], sectionTitle: string): Promise<ArrayBuffer> => {
+export const generateClientExcel = async (
+  dataset: any[],
+  columns: ColumnOption[],
+  sectionTitle: string
+): Promise<ArrayBuffer> => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(sectionTitle.substring(0, 31));
 
@@ -276,9 +288,49 @@ export const generateClientExcel = async (dataset: any[], columns: ColumnOption[
 };
 
 /**
- * Client-Side PDF Generator using jsPDF & autoTable
+ * Render non-ASCII text (Odia, Hindi, Bengali, Tamil, Telugu, emojis) to Canvas DataURL
+ * so that jsPDF can embed it pixel-perfectly without unicode box/garbled errors.
  */
-export const generateClientPDF = (dataset: any[], columns: ColumnOption[], sectionTitle: string): ArrayBuffer => {
+const renderTextToCanvasDataUrl = (
+  text: string,
+  fontSize = 10,
+  textColor = '#1e293b',
+  bold = false
+): { dataUrl: string; width: number; height: number } => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { dataUrl: '', width: 0, height: 0 };
+
+  const fontStyle = `${bold ? 'bold' : 'normal'} ${fontSize * 2}px "Noto Sans", "Segoe UI", Roboto, Arial, sans-serif`;
+  ctx.font = fontStyle;
+
+  const metrics = ctx.measureText(text);
+  const textWidth = Math.ceil(metrics.width) + 8;
+  const textHeight = Math.ceil(fontSize * 2.6);
+
+  canvas.width = textWidth;
+  canvas.height = textHeight;
+
+  ctx.font = fontStyle;
+  ctx.fillStyle = textColor;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 4, textHeight / 2);
+
+  return {
+    dataUrl: canvas.toDataURL('image/png'),
+    width: textWidth / 2,
+    height: textHeight / 2,
+  };
+};
+
+/**
+ * Multilingual Client-Side PDF Generator
+ */
+export const generateClientPDF = async (
+  dataset: any[],
+  columns: ColumnOption[],
+  sectionTitle: string
+): Promise<ArrayBuffer> => {
   const isLandscape = columns.length > 5;
   const doc = new jsPDF({
     orientation: isLandscape ? 'landscape' : 'portrait',
@@ -290,6 +342,11 @@ export const generateClientPDF = (dataset: any[], columns: ColumnOption[], secti
 
   const tableHeaders = [columns.map((c) => c.label)];
   const tableRows = dataset.map((row) => columns.map((c) => formatValue(row[c.key], c.key)));
+
+  // Detect if dataset contains non-ASCII characters (Indian scripts, Odia, Hindi, emojis, etc.)
+  const hasNonAscii = dataset.some((row) =>
+    columns.some((c) => /[^\x00-\x7F]/.test(formatValue(row[c.key], c.key)))
+  );
 
   autoTable(doc, {
     head: tableHeaders,
@@ -316,6 +373,28 @@ export const generateClientPDF = (dataset: any[], columns: ColumnOption[], secti
       overflow: 'linebreak',
       cellPadding: 6,
     },
+    didDrawCell: (cellData) => {
+      // If cell contains non-ASCII text, render via Canvas image to ensure Odia/Hindi/Telugu/Tamil render perfectly
+      if (hasNonAscii && cellData.section === 'body' && cellData.cell.raw) {
+        const textVal = String(cellData.cell.raw);
+        if (/[^\x00-\x7F]/.test(textVal)) {
+          try {
+            const { dataUrl, width, height } = renderTextToCanvasDataUrl(textVal, 8, '#1e293b');
+            if (dataUrl && width > 0) {
+              // Clear cell default text area and draw crisp canvas image
+              doc.setFillColor(cellData.row.index % 2 === 0 ? 255 : 248, cellData.row.index % 2 === 0 ? 255 : 250, cellData.row.index % 2 === 0 ? 255 : 252);
+              doc.rect(cellData.cell.x + 2, cellData.cell.y + 2, cellData.cell.width - 4, cellData.cell.height - 4, 'F');
+
+              const drawW = Math.min(width, cellData.cell.width - 6);
+              const drawH = Math.min(height, cellData.cell.height - 4);
+              const posY = cellData.cell.y + (cellData.cell.height - drawH) / 2;
+
+              doc.addImage(dataUrl, 'PNG', cellData.cell.x + 4, posY, drawW, drawH);
+            }
+          } catch (_) {}
+        }
+      }
+    },
     didDrawPage: (data) => {
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(14);
@@ -332,7 +411,13 @@ export const generateClientPDF = (dataset: any[], columns: ColumnOption[], secti
       doc.setTextColor(100, 116, 139);
       doc.text(`Exported on: ${formattedDate}`, 30, 58);
 
-      const pageCount = typeof doc.getNumberOfPages === 'function' ? doc.getNumberOfPages() : ((doc.internal as any).getNumberOfPages ? (doc.internal as any).getNumberOfPages() : 1);
+      const pageCount =
+        typeof doc.getNumberOfPages === 'function'
+          ? doc.getNumberOfPages()
+          : (doc.internal as any).getNumberOfPages
+          ? (doc.internal as any).getNumberOfPages()
+          : 1;
+
       const pageWidth = (doc.internal.pageSize as any).width || doc.internal.pageSize.getWidth();
       const pageHeight = (doc.internal.pageSize as any).height || doc.internal.pageSize.getHeight();
 
