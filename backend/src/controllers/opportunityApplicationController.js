@@ -1,6 +1,54 @@
 import { supabase } from '../config/supabase.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
 import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js';
+import { sendMailViaBrevo } from '../services/emailService.js';
+import { generateApplicationConfirmationHtml } from '../services/applicationEmailTemplate.js';
+
+/**
+ * Asynchronously sends confirmation email to applicant upon successful Opportunity Application submission
+ */
+export const sendApplicationConfirmationEmail = async (appData) => {
+  const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
+
+  const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
+  const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
+  const subject = `Application Received — ${opportunity_title || 'Program Opportunity'} | ${applicant_id}`;
+
+  const htmlContent = generateApplicationConfirmationHtml(appData);
+
+  console.log(`📧 Sending candidate application confirmation email: to = ${applicant_email} | app_id = ${applicant_id}`);
+
+  try {
+    const result = await sendMailViaBrevo({
+      sender,
+      recipients: applicant_email,
+      cc: ccRecipient,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`✅ Application confirmation status: sent (app_id = ${applicant_id})`);
+
+    // Update email_status in Supabase if record ID exists (safely ignored if column missing)
+    if (id) {
+      try {
+        await supabase.from('opportunity_applications').update({ email_status: 'sent' }).eq('id', id);
+      } catch (_) {}
+    }
+
+    return result;
+  } catch (err) {
+    console.error(`❌ Application confirmation status: failed (app_id = ${applicant_id}) - ${err.message}`);
+
+    if (id) {
+      try {
+        await supabase.from('opportunity_applications').update({ email_status: 'failed' }).eq('id', id);
+      } catch (_) {}
+    }
+
+    return { success: false, error: err.message };
+  }
+};
 
 // 1. GET ALL APPLICATIONS (Filtered by opportunity_id if provided)
 export const getApplications = async (req, res) => {
@@ -64,6 +112,7 @@ export const submitApplication = async (req, res) => {
       status: 'pending',
       admin_notes: '',
       sync_status: 'pending',
+      email_status: 'pending',
       created_at: new Date().toISOString(),
     };
 
@@ -83,12 +132,17 @@ export const submitApplication = async (req, res) => {
 
     // Asynchronously dispatch Telegram notification to administrators (non-blocking)
     sendApplicationNotification({
-      applicant_name,
-      applicant_email,
-      applicant_phone,
-      opportunity_title: opportunity_title || 'Program Opportunity',
+      applicant_name: cleanName,
+      applicant_email: cleanEmail,
+      applicant_phone: cleanPhone,
+      opportunity_title: cleanTitle,
       qualification: answers?.qualification || answers?.degree || 'Relevant Qualification Uploaded',
     }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
+
+    // Asynchronously dispatch Confirmation Email to applicant + CC to mr.prem2006@gmail.com (non-blocking / fail-safe)
+    sendApplicationConfirmationEmail(savedRecord).catch((err) => {
+      console.warn('[Application Confirmation Email Dispatch Note]:', err.message);
+    });
 
     return res.status(201).json({ status: 'success', data: savedRecord });
   } catch (err) {
