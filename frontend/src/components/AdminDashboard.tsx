@@ -4274,20 +4274,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <span className="text-sm font-bold text-white block font-mono">Supabase "contacts"</span>
                   <span className="text-[10px] font-mono text-emerald-400 block">Connection Active</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <ExportButton
-                    sectionId="contact-inquiries"
-                    dataset={inquiries}
-                    showToast={(msg, type) => addToast(msg, type)}
-                  />
-                  <button
-                    onClick={handleRefreshInquiries}
-                    className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
-                  </button>
-                </div>
+                <button
+                  onClick={handleRefreshInquiries}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                </button>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 pt-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2 font-display">
+                <MessageSquare className="w-4 h-4 text-cyan-400" /> Contact Inquiries Registry ({inquiries.length})
+              </h3>
+              <ExportButton
+                sectionId="contact-inquiries"
+                dataset={inquiries}
+                showToast={(msg, type) => addToast(msg, type)}
+              />
             </div>
 
             {inquiries.length === 0 ? (
@@ -4524,25 +4528,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <span className="text-sm font-bold text-white block font-mono">Supabase Sync</span>
                   <span className="text-[10px] font-mono text-purple-400 block">Pull live submissions</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <ExportButton
-                    sectionId="newsletter"
-                    dataset={subscribers}
-                    showToast={(msg, type) => addToast(msg, type)}
-                  />
-                  <button
-                    onClick={loadSubscribers}
-                    className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
-                  </button>
-                </div>
+                <button
+                  onClick={loadSubscribers}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                </button>
               </div>
             </div>
 
-            {/* Add New Subscriber Form */}
+            {/* Add New Subscriber Header Bar */}
             <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-4">
-              <h4 className="text-sm font-bold font-display text-white">Add New Newsletter Subscriber</h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div>
+                  <h4 className="text-sm font-bold font-display text-white">Add New Newsletter Subscriber</h4>
+                  <p className="text-xs font-mono text-slate-400 mt-0.5">Manual subscriber enrollment &amp; data export</p>
+                </div>
+                <ExportButton
+                  sectionId="newsletter"
+                  dataset={subscribers}
+                  showToast={(msg, type) => addToast(msg, type)}
+                />
+              </div>
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
