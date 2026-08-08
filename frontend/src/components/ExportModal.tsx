@@ -215,7 +215,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Glassmorphic Modal Content rendered directly to document.body via Portal
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 overflow-y-auto font-mono text-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 overflow-y-auto font-mono text-xs animate-in fade-in duration-200">
       <div
         className="w-full max-w-2xl bg-[#090d16]/95 border border-cyan-500/30 rounded-3xl p-5 sm:p-8 space-y-6 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl relative my-auto max-h-[92vh] flex flex-col"
         role="dialog"
