@@ -148,26 +148,35 @@ export const submitCandidateApplication = async (
   return fallbackApp;
 };
 
-// Update status directly in Supabase and trigger Sheets sync
+// Update status directly via API / Supabase and return fresh application list with updated email status
 export const updateCandidateApplicationStatus = async (
   id: string,
   updates: { status?: 'pending' | 'shortlisted' | 'accepted' | 'rejected'; admin_notes?: string }
 ): Promise<CandidateApplication[]> => {
+  let backendRecord: CandidateApplication | null = null;
+
   try {
-    if (id && id.includes('-')) {
-      await supabase.from('opportunity_applications').update(updates).eq('id', id);
+    const res = await opportunityApplicationApi.update(id, updates);
+    if (res.data && res.data.data) {
+      backendRecord = res.data.data;
     }
   } catch (e) {}
 
-  try {
-    await opportunityApplicationApi.update(id, updates);
-  } catch (e) {}
+  if (!backendRecord) {
+    try {
+      if (id && id.includes('-')) {
+        await supabase.from('opportunity_applications').update(updates).eq('id', id);
+      }
+    } catch (e) {}
+  }
 
+  // Update local storage cache
   let localList = getLocalApplications();
-  localList = localList.map((app) => (app.id === id ? { ...app, ...updates } : app));
+  localList = localList.map((app) => (app.id === id ? { ...app, ...updates, ...(backendRecord || {}) } : app));
   saveLocalApplications(localList);
 
-  return getStoredCandidateApplications();
+  // Fetch live applications directly from Supabase / API to ensure acceptance_email_status is fresh
+  return await getStoredCandidateApplications();
 };
 
 // Delete application directly from Supabase

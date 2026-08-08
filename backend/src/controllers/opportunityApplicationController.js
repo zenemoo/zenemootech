@@ -60,14 +60,35 @@ export const sendApplicationConfirmationEmail = async (appData) => {
 /**
  * IDEMPOTENT APPLICATION ACCEPTANCE EMAIL DISPATCH
  * Guarantees that EXACTLY ONE acceptance email is sent per accepted candidate application.
+ * Uses true database-level atomic claim to prevent concurrent race condition duplicates.
  */
 export const sendApplicationAcceptanceEmail = async (appData, isForceResend = false) => {
   const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
 
-  // 1. Idempotency Safeguard: If already sent and not explicit admin retry, abort immediately!
+  // 1. In-Memory Idempotency Safeguard
   if (!isForceResend && (appData.acceptance_email_status === 'sent' || appData.acceptance_email_status === 'sending')) {
     console.log(`[ACCEPTANCE EMAIL] Aborting dispatch: Application ${applicant_id || id} acceptance_email_status is already '${appData.acceptance_email_status}'.`);
     return { success: true, message: 'Acceptance email already delivered.' };
+  }
+
+  // 2. True Database-Level Atomic Lock Claim
+  if (id && !isForceResend) {
+    try {
+      const { data: claimedData, error: claimError } = await supabase
+        .from('opportunity_applications')
+        .update({ acceptance_email_status: 'sending' })
+        .eq('id', id)
+        .neq('acceptance_email_status', 'sent')
+        .neq('acceptance_email_status', 'sending')
+        .select();
+
+      if (claimError || !claimedData || claimedData.length === 0) {
+        console.log(`[ACCEPTANCE EMAIL] Atomic claim check failed: Row locked or already claimed by another request for App ID ${applicant_id || id}. Aborting duplicate send.`);
+        return { success: true, message: 'Already claimed by another process or already sent.' };
+      }
+    } catch (claimEx) {
+      console.warn('[ACCEPTANCE EMAIL] Database atomic claim exception note:', claimEx.message);
+    }
   }
 
   const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
@@ -79,13 +100,6 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
   console.log(`🎉 [ACCEPTANCE EMAIL] Applicant: ${applicant_name} <${applicant_email}>`);
   console.log(`🎉 [ACCEPTANCE EMAIL] Application ID: ${applicant_id || id}`);
   console.log(`====================================================`);
-
-  // Claim sending state to prevent concurrent race condition duplicates
-  if (id) {
-    try {
-      await supabase.from('opportunity_applications').update({ acceptance_email_status: 'sending' }).eq('id', id);
-    } catch (_) {}
-  }
 
   const sentAtIso = new Date().toISOString();
   const htmlContent = generateApplicationAcceptanceHtml({
@@ -116,7 +130,7 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
       } catch (_) {}
     }
 
-    return { ...result, success: true };
+    return { ...result, success: true, messageId: result.messageId };
   } catch (err) {
     console.error(`💥 [ACCEPTANCE EMAIL] FAILED for ${applicant_email} (App ID: ${applicant_id || id}): ${err.message}`);
 
@@ -342,7 +356,7 @@ export const updateApplication = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    const updatedRecord = data[0];
+    const updatedRecord = data[0] || { id, ...updates };
 
     // Sync updated status to Google Sheets row asynchronously
     if (updatedRecord) {
@@ -351,11 +365,20 @@ export const updateApplication = async (req, res) => {
       });
     }
 
-    // IDEMPOTENT TRIGGER: If transitioning to ACCEPTED and acceptance email not yet sent, trigger email ONCE
+    // IDEMPOTENT TRIGGER: If transitioning to ACCEPTED and acceptance email not yet sent, trigger email and await delivery so response contains acceptance_email_status = 'sent'
     if (isTransitionToAccepted && updatedRecord && updatedRecord.acceptance_email_status !== 'sent') {
-      sendApplicationAcceptanceEmail(updatedRecord).catch((err) => {
+      try {
+        const emailResult = await sendApplicationAcceptanceEmail(updatedRecord);
+        if (emailResult && emailResult.success !== false) {
+          updatedRecord.acceptance_email_status = 'sent';
+          updatedRecord.acceptance_email_sent_at = new Date().toISOString();
+        } else if (emailResult && emailResult.error) {
+          updatedRecord.acceptance_email_status = 'failed';
+          updatedRecord.acceptance_email_error = emailResult.error;
+        }
+      } catch (err) {
         console.warn('[Application Acceptance Email Trigger Note]:', err.message);
-      });
+      }
     }
 
     return res.json({ status: 'success', data: updatedRecord });
