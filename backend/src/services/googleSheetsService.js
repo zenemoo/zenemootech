@@ -81,10 +81,11 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
         },
       };
 
-      const res = await fetch(appsScriptUrl, {
+      const res = await fetch(appsScriptUrl.trim(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload),
+        redirect: 'follow',
       });
 
       const resText = await res.text();
@@ -97,7 +98,7 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
         await updateAppDbSyncStatus(applicationRecord.id, 'synced');
         return { success: true, message: resJson.message || `Synced ${applicantId} via Apps Script`, updated: resJson.updated };
       } else {
-        const errMsg = resJson.message || `Apps Script returned HTTP ${res.status}`;
+        const errMsg = resJson.message || (res.status === 404 ? 'Apps Script URL returned 404. Ensure script is deployed with "Who has access: Anyone".' : `Apps Script HTTP ${res.status}`);
         await updateAppDbSyncStatus(applicationRecord.id, 'failed', errMsg);
         return { success: false, message: errMsg };
       }
