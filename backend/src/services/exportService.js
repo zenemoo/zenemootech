@@ -3,23 +3,23 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabaseService } from './supabaseService.js';
 
-// Centralized Export Configurations for the 5 admin sections
+// Centralized Export Configurations for all admin sections
 export const EXPORT_CONFIGS = {
   'users-rbac': {
     id: 'users-rbac',
     sectionName: 'Users, Access & RBAC',
     allowedRoles: ['super_admin', 'admin', 'administrator'],
-    tableName: 'user_management',
+    tableName: 'user_accounts',
     defaultColumns: [
       { key: 'name', label: 'Name' },
       { key: 'email', label: 'Email' },
-      { key: 'role', label: 'Role' },
-      { key: 'status', label: 'Status' },
+      { key: 'employee_id', label: 'Employee ID' },
+      { key: 'designation', label: 'Designation' },
       { key: 'department', label: 'Department' },
-      { key: 'team_member_id', label: 'Member ID' },
-      { key: 'phone', label: 'Phone' },
+      { key: 'role', label: 'Assigned Role' },
+      { key: 'status', label: 'Account Status' },
+      { key: 'email_access', label: 'Email Permission' },
       { key: 'created_at', label: 'Created At' },
-      { key: 'last_login', label: 'Last Login' },
     ],
   },
   'team-directory': {
@@ -31,7 +31,7 @@ export const EXPORT_CONFIGS = {
       { key: 'name', label: 'Name' },
       { key: 'role', label: 'Job Title / Role' },
       { key: 'department', label: 'Department' },
-      { key: 'email', label: 'Email' },
+      { key: 'email', label: 'Email Address' },
       { key: 'status', label: 'Status' },
       { key: 'location', label: 'Location' },
       { key: 'employee_id', label: 'Employee ID' },
@@ -44,15 +44,17 @@ export const EXPORT_CONFIGS = {
     id: 'team-roster',
     sectionName: 'Team Roster',
     allowedRoles: ['super_admin', 'admin', 'administrator', 'hr'],
-    tableName: 'team_roster',
+    tableName: 'team',
     defaultColumns: [
-      { key: 'name', label: 'Name' },
-      { key: 'role', label: 'Role' },
+      { key: 'position', label: 'Pos #' },
+      { key: 'name', label: 'Member Name' },
+      { key: 'designation', label: 'Designation / Role' },
       { key: 'department', label: 'Department' },
-      { key: 'shift', label: 'Shift / Schedule' },
-      { key: 'status', label: 'Availability Status' },
-      { key: 'contact_number', label: 'Contact Phone' },
+      { key: 'status', label: 'Status' },
       { key: 'email', label: 'Email' },
+      { key: 'employee_id', label: 'Employee ID' },
+      { key: 'badge', label: 'Badge' },
+      { key: 'joining_date', label: 'Joining Date' },
       { key: 'created_at', label: 'Logged At' },
     ],
   },
@@ -95,15 +97,38 @@ EXPORT_CONFIGS['subscribers'] = EXPORT_CONFIGS['newsletter'];
 EXPORT_CONFIGS['inquiries'] = EXPORT_CONFIGS['contact-inquiries'];
 
 /**
- * Empty/Null Column Logic helper:
- * Determines if a column is considered empty across all records in dataset.
- * Empty = null, undefined, empty string "", or whitespace-only ("  ").
- * Non-empty values include 0, false, "0", "No", etc.
+ * Helper: Extract value for a record using primary key and aliases
+ */
+export const getRecordValue = (record, key) => {
+  if (!record || typeof record !== 'object') return null;
+
+  let val = record[key];
+
+  // Key Aliases Fallback
+  if (val === undefined || val === null) {
+    if (key === 'role') val = record.role || record.designation || record.position || record.badge;
+    else if (key === 'designation') val = record.designation || record.role || record.position;
+    else if (key === 'name') val = record.name || record.user_name || record.full_name;
+    else if (key === 'email') val = record.email || record.user_email;
+    else if (key === 'employee_id') val = record.employee_id || record.team_member_id || record.id;
+    else if (key === 'status') val = record.status || (record.subscribed !== undefined ? (record.subscribed ? 'Active' : 'Unsubscribed') : 'Active');
+    else if (key === 'email_access') val = record.email_access !== undefined ? (record.email_access ? 'Granted' : 'Restricted') : null;
+    else if (key === 'subscribed_at' || key === 'created_at') val = record.subscribed_at || record.created_at || record.createdAt || record.joining_date;
+  }
+
+  return val;
+};
+
+/**
+ * Empty Column Logic helper:
+ * Returns true ONLY if 100% of records have null, undefined, "", or whitespace-only for the key.
+ * If dataset is empty or undefined, returns false (retains column definitions).
+ * Preserves 0, false, "0", "No".
  */
 export const isColumnEmpty = (dataset, key) => {
-  if (!Array.isArray(dataset) || dataset.length === 0) return true;
+  if (!Array.isArray(dataset) || dataset.length === 0) return false;
   return dataset.every((record) => {
-    const val = record[key];
+    const val = getRecordValue(record, key);
     if (val === null || val === undefined) return true;
     if (typeof val === 'string' && val.trim() === '') return true;
     return false;
@@ -114,8 +139,11 @@ export const isColumnEmpty = (dataset, key) => {
  * Filter out completely empty columns from dataset and list of column definitions.
  */
 export const filterNonEmptyColumns = (dataset, columns) => {
-  if (!Array.isArray(columns)) return [];
-  return columns.filter((col) => !isColumnEmpty(dataset, col.key));
+  if (!Array.isArray(columns) || columns.length === 0) return [];
+  if (!Array.isArray(dataset) || dataset.length === 0) return columns;
+
+  const filtered = columns.filter((col) => !isColumnEmpty(dataset, col.key));
+  return filtered.length > 0 ? filtered : columns;
 };
 
 /**
@@ -133,8 +161,7 @@ export const formatFieldValue = (val, key = '') => {
       return String(val);
     }
   }
-  
-  // Format date strings if matching date keys
+
   if (typeof val === 'string' && (key.includes('at') || key.includes('date'))) {
     const d = new Date(val);
     if (!isNaN(d.getTime()) && val.length > 10) {
@@ -149,9 +176,10 @@ export const formatFieldValue = (val, key = '') => {
  * Generate UTF-8 CSV with BOM for Excel compatibility.
  */
 export const generateCSV = (dataset, selectedColumns, sectionTitle = 'Data Export') => {
-  const bom = '\uFEFF'; // UTF-8 BOM
-  const headers = selectedColumns.map((col) => col.label || col.key);
-  
+  const bom = '\uFEFF';
+  const cols = Array.isArray(selectedColumns) && selectedColumns.length > 0 ? selectedColumns : EXPORT_CONFIGS['contact-inquiries'].defaultColumns;
+  const headers = cols.map((col) => col.label || col.key);
+
   const escapeCsvCell = (cellValue) => {
     const str = formatFieldValue(cellValue);
     if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
@@ -161,8 +189,8 @@ export const generateCSV = (dataset, selectedColumns, sectionTitle = 'Data Expor
   };
 
   const headerRow = headers.map((h) => escapeCsvCell(h)).join(',');
-  const dataRows = dataset.map((row) =>
-    selectedColumns.map((col) => escapeCsvCell(row[col.key])).join(',')
+  const dataRows = (dataset || []).map((row) =>
+    cols.map((col) => escapeCsvCell(getRecordValue(row, col.key), col.key)).join(',')
   );
 
   return bom + [headerRow, ...dataRows].join('\r\n');
@@ -178,29 +206,29 @@ export const generateExcel = async (dataset, selectedColumns, sectionTitle = 'Da
   workbook.created = new Date();
 
   const worksheet = workbook.addWorksheet(sectionTitle.substring(0, 31));
+  const cols = Array.isArray(selectedColumns) && selectedColumns.length > 0 ? selectedColumns : EXPORT_CONFIGS['contact-inquiries'].defaultColumns;
 
   // Metadata block in first rows
-  worksheet.mergeCells('A1', `${String.fromCharCode(65 + Math.min(selectedColumns.length - 1, 10))}1`);
+  worksheet.mergeCells('A1', `${String.fromCharCode(65 + Math.min(cols.length - 1, 10))}1`);
   const titleCell = worksheet.getCell('A1');
   titleCell.value = 'ZENEMOO ENTERPRISE';
   titleCell.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF06B6D4' } };
 
-  worksheet.mergeCells('A2', `${String.fromCharCode(65 + Math.min(selectedColumns.length - 1, 10))}2`);
+  worksheet.mergeCells('A2', `${String.fromCharCode(65 + Math.min(cols.length - 1, 10))}2`);
   const subTitleCell = worksheet.getCell('A2');
   subTitleCell.value = `${sectionTitle.toUpperCase()} - DATA EXPORT`;
   subTitleCell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF334155' } };
 
-  worksheet.mergeCells('A3', `${String.fromCharCode(65 + Math.min(selectedColumns.length - 1, 10))}3`);
+  worksheet.mergeCells('A3', `${String.fromCharCode(65 + Math.min(cols.length - 1, 10))}3`);
   const dateCell = worksheet.getCell('A3');
   const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
   dateCell.value = `Exported on: ${formattedDate}`;
   dateCell.font = { name: 'Arial', size: 9, italic: true, color: { argb: 'FF64748B' } };
 
-  // Empty row before headers
   worksheet.addRow([]);
 
   // Table Headers
-  const headerLabels = selectedColumns.map((col) => col.label || col.key);
+  const headerLabels = cols.map((col) => col.label || col.key);
   const headerRow = worksheet.addRow(headerLabels);
   headerRow.height = 24;
 
@@ -217,16 +245,13 @@ export const generateExcel = async (dataset, selectedColumns, sectionTitle = 'Da
     };
   });
 
-  // Freeze header row below row 5
   worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 5 }];
-
-  // Enable autofilter on header row
-  const lastColLetter = String.fromCharCode(65 + Math.max(0, selectedColumns.length - 1));
+  const lastColLetter = String.fromCharCode(65 + Math.max(0, cols.length - 1));
   worksheet.autoFilter = `A5:${lastColLetter}5`;
 
   // Data rows
-  dataset.forEach((row, rIdx) => {
-    const rowValues = selectedColumns.map((col) => formatFieldValue(row[col.key], col.key));
+  (dataset || []).forEach((row, rIdx) => {
+    const rowValues = cols.map((col) => formatFieldValue(getRecordValue(row, col.key), col.key));
     const addedRow = worksheet.addRow(rowValues);
     addedRow.height = 20;
 
@@ -245,13 +270,12 @@ export const generateExcel = async (dataset, selectedColumns, sectionTitle = 'Da
     });
   });
 
-  // Calculate & set column widths dynamically
   worksheet.columns.forEach((column, i) => {
-    const colDef = selectedColumns[i];
+    const colDef = cols[i];
     let maxLength = colDef ? (colDef.label || colDef.key).length : 12;
-    dataset.forEach((row) => {
+    (dataset || []).forEach((row) => {
       if (colDef) {
-        const valStr = formatFieldValue(row[colDef.key], colDef.key);
+        const valStr = formatFieldValue(getRecordValue(row, colDef.key), colDef.key);
         if (valStr.length > maxLength) {
           maxLength = Math.min(valStr.length, 50);
         }
@@ -268,7 +292,8 @@ export const generateExcel = async (dataset, selectedColumns, sectionTitle = 'Da
  * Generate PDF file using jsPDF & autoTable.
  */
 export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Export') => {
-  const isLandscape = selectedColumns.length > 5;
+  const cols = Array.isArray(selectedColumns) && selectedColumns.length > 0 ? selectedColumns : EXPORT_CONFIGS['contact-inquiries'].defaultColumns;
+  const isLandscape = cols.length > 5;
   const doc = new jsPDF({
     orientation: isLandscape ? 'landscape' : 'portrait',
     unit: 'pt',
@@ -277,9 +302,9 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
 
   const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
 
-  const tableHeaders = [selectedColumns.map((col) => col.label || col.key)];
-  const tableRows = dataset.map((row) =>
-    selectedColumns.map((col) => formatFieldValue(row[col.key], col.key))
+  const tableHeaders = [cols.map((col) => col.label || col.key)];
+  const tableRows = (dataset || []).map((row) =>
+    cols.map((col) => formatFieldValue(getRecordValue(row, col.key), col.key))
   );
 
   autoTable(doc, {
@@ -308,7 +333,6 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
       cellPadding: 6,
     },
     didDrawPage: (data) => {
-      // Header on every page
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(14);
       doc.setTextColor(6, 182, 212);
@@ -324,7 +348,6 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
       doc.setTextColor(100, 116, 139);
       doc.text(`Exported on: ${formattedDate}`, 30, 58);
 
-      // Footer on every page
       const pageCount = typeof doc.getNumberOfPages === 'function' ? doc.getNumberOfPages() : (doc.internal.getNumberOfPages ? doc.internal.getNumberOfPages() : 1);
       const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();

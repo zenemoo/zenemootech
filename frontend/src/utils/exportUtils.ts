@@ -20,13 +20,13 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionExportMeta> = {
     defaultColumns: [
       { key: 'name', label: 'Name' },
       { key: 'email', label: 'Email' },
-      { key: 'role', label: 'Role' },
-      { key: 'status', label: 'Status' },
+      { key: 'employee_id', label: 'Employee ID' },
+      { key: 'designation', label: 'Designation' },
       { key: 'department', label: 'Department' },
-      { key: 'team_member_id', label: 'Member ID' },
-      { key: 'phone', label: 'Phone' },
+      { key: 'role', label: 'Assigned Role' },
+      { key: 'status', label: 'Account Status' },
+      { key: 'email_access', label: 'Email Permission' },
       { key: 'created_at', label: 'Created At' },
-      { key: 'last_login', label: 'Last Login' },
     ],
   },
   'team-directory': {
@@ -36,7 +36,7 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionExportMeta> = {
       { key: 'name', label: 'Name' },
       { key: 'role', label: 'Job Title / Role' },
       { key: 'department', label: 'Department' },
-      { key: 'email', label: 'Email' },
+      { key: 'email', label: 'Email Address' },
       { key: 'status', label: 'Status' },
       { key: 'location', label: 'Location' },
       { key: 'employee_id', label: 'Employee ID' },
@@ -49,13 +49,15 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionExportMeta> = {
     sectionId: 'team-roster',
     sectionName: 'Team Roster',
     defaultColumns: [
-      { key: 'name', label: 'Name' },
-      { key: 'role', label: 'Role' },
+      { key: 'position', label: 'Pos #' },
+      { key: 'name', label: 'Member Name' },
+      { key: 'designation', label: 'Designation / Role' },
       { key: 'department', label: 'Department' },
-      { key: 'shift', label: 'Shift / Schedule' },
-      { key: 'status', label: 'Availability Status' },
-      { key: 'contact_number', label: 'Contact Phone' },
+      { key: 'status', label: 'Status' },
       { key: 'email', label: 'Email' },
+      { key: 'employee_id', label: 'Employee ID' },
+      { key: 'badge', label: 'Badge' },
+      { key: 'joining_date', label: 'Joining Date' },
       { key: 'created_at', label: 'Logged At' },
     ],
   },
@@ -93,14 +95,36 @@ EXPORT_SECTION_METADATA['subscribers'] = EXPORT_SECTION_METADATA['newsletter'];
 EXPORT_SECTION_METADATA['inquiries'] = EXPORT_SECTION_METADATA['contact-inquiries'];
 
 /**
+ * Helper: Extract value for a record using primary key and aliases
+ */
+export const getRecordValue = (record: any, key: string): any => {
+  if (!record || typeof record !== 'object') return null;
+
+  let val = record[key];
+
+  if (val === undefined || val === null) {
+    if (key === 'role') val = record.role || record.designation || record.position || record.badge;
+    else if (key === 'designation') val = record.designation || record.role || record.position;
+    else if (key === 'name') val = record.name || record.user_name || record.full_name;
+    else if (key === 'email') val = record.email || record.user_email;
+    else if (key === 'employee_id') val = record.employee_id || record.team_member_id || record.id;
+    else if (key === 'status') val = record.status || (record.subscribed !== undefined ? (record.subscribed ? 'Active' : 'Unsubscribed') : 'Active');
+    else if (key === 'email_access') val = record.email_access !== undefined ? (record.email_access ? 'Granted' : 'Restricted') : null;
+    else if (key === 'subscribed_at' || key === 'created_at') val = record.subscribed_at || record.created_at || record.createdAt || record.joining_date;
+  }
+
+  return val;
+};
+
+/**
  * Empty Column Detector:
- * Returns true if an entire column is empty (null, undefined, "", or whitespace-only) for every record in dataset.
- * Does NOT treat 0, false, "0", "No" as empty.
+ * Returns true ONLY if 100% of records have null, undefined, "", or whitespace-only for key.
+ * Returns false if dataset is empty or undefined.
  */
 export const isColumnEmpty = (dataset: any[], key: string): boolean => {
-  if (!Array.isArray(dataset) || dataset.length === 0) return true;
+  if (!Array.isArray(dataset) || dataset.length === 0) return false;
   return dataset.every((record) => {
-    const val = record[key];
+    const val = getRecordValue(record, key);
     if (val === null || val === undefined) return true;
     if (typeof val === 'string' && val.trim() === '') return true;
     return false;
@@ -114,14 +138,13 @@ export const getAvailableNonEmptyColumns = (dataset: any[], defaultCols: ColumnO
   if (!Array.isArray(dataset) || dataset.length === 0) return defaultCols;
 
   const filteredPredefined = defaultCols.filter((col) => !isColumnEmpty(dataset, col.key));
-
   const existingKeys = new Set(defaultCols.map((c) => c.key));
   const dynamicCols: ColumnOption[] = [];
 
   dataset.forEach((row) => {
     if (row && typeof row === 'object') {
       Object.keys(row).forEach((k) => {
-        if (!existingKeys.has(k) && !k.startsWith('_') && k !== 'password' && k !== 'token') {
+        if (!existingKeys.has(k) && !k.startsWith('_') && k !== 'password' && k !== 'token' && k !== 'password_hash') {
           if (!isColumnEmpty(dataset, k)) {
             existingKeys.add(k);
             const label = k.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
@@ -132,7 +155,8 @@ export const getAvailableNonEmptyColumns = (dataset: any[], defaultCols: ColumnO
     }
   });
 
-  return [...filteredPredefined, ...dynamicCols];
+  const result = [...filteredPredefined, ...dynamicCols];
+  return result.length > 0 ? result : defaultCols;
 };
 
 /**
@@ -185,7 +209,8 @@ export const triggerFileDownload = (
  */
 export const generateClientCSV = (dataset: any[], columns: ColumnOption[], sectionTitle: string) => {
   const bom = '\uFEFF';
-  const headers = columns.map((c) => c.label);
+  const cols = Array.isArray(columns) && columns.length > 0 ? columns : EXPORT_SECTION_METADATA['contact-inquiries'].defaultColumns;
+  const headers = cols.map((c) => c.label);
 
   const escapeCell = (val: any, key: string) => {
     const str = formatValue(val, key);
@@ -196,8 +221,8 @@ export const generateClientCSV = (dataset: any[], columns: ColumnOption[], secti
   };
 
   const headerLine = headers.map((h) => escapeCell(h, '')).join(',');
-  const rowLines = dataset.map((row) =>
-    columns.map((c) => escapeCell(row[c.key], c.key)).join(',')
+  const rowLines = (dataset || []).map((row) =>
+    cols.map((c) => escapeCell(getRecordValue(row, c.key), c.key)).join(',')
   );
 
   return bom + [headerLine, ...rowLines].join('\r\n');
@@ -213,19 +238,20 @@ export const generateClientExcel = async (
 ): Promise<ArrayBuffer> => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(sectionTitle.substring(0, 31));
+  const cols = Array.isArray(columns) && columns.length > 0 ? columns : EXPORT_SECTION_METADATA['contact-inquiries'].defaultColumns;
 
   // Metadata block
-  worksheet.mergeCells('A1', `${String.fromCharCode(65 + Math.min(columns.length - 1, 10))}1`);
+  worksheet.mergeCells('A1', `${String.fromCharCode(65 + Math.min(cols.length - 1, 10))}1`);
   const tCell = worksheet.getCell('A1');
   tCell.value = 'ZENEMOO ENTERPRISE';
   tCell.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF06B6D4' } };
 
-  worksheet.mergeCells('A2', `${String.fromCharCode(65 + Math.min(columns.length - 1, 10))}2`);
+  worksheet.mergeCells('A2', `${String.fromCharCode(65 + Math.min(cols.length - 1, 10))}2`);
   const subCell = worksheet.getCell('A2');
   subCell.value = `${sectionTitle.toUpperCase()} - DATA EXPORT`;
   subCell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF334155' } };
 
-  worksheet.mergeCells('A3', `${String.fromCharCode(65 + Math.min(columns.length - 1, 10))}3`);
+  worksheet.mergeCells('A3', `${String.fromCharCode(65 + Math.min(cols.length - 1, 10))}3`);
   const dCell = worksheet.getCell('A3');
   const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
   dCell.value = `Exported on: ${formattedDate}`;
@@ -234,7 +260,7 @@ export const generateClientExcel = async (
   worksheet.addRow([]);
 
   // Header Row
-  const headerLabels = columns.map((c) => c.label);
+  const headerLabels = cols.map((c) => c.label);
   const headerRow = worksheet.addRow(headerLabels);
   headerRow.height = 24;
 
@@ -250,12 +276,12 @@ export const generateClientExcel = async (
   });
 
   worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 5 }];
-  const lastColLetter = String.fromCharCode(65 + Math.max(0, columns.length - 1));
+  const lastColLetter = String.fromCharCode(65 + Math.max(0, cols.length - 1));
   worksheet.autoFilter = `A5:${lastColLetter}5`;
 
   // Data rows
-  dataset.forEach((row, rIdx) => {
-    const rowVals = columns.map((c) => formatValue(row[c.key], c.key));
+  (dataset || []).forEach((row, rIdx) => {
+    const rowVals = cols.map((c) => formatValue(getRecordValue(row, c.key), c.key));
     const addedRow = worksheet.addRow(rowVals);
     addedRow.height = 20;
 
@@ -273,11 +299,11 @@ export const generateClientExcel = async (
   });
 
   worksheet.columns.forEach((column, i) => {
-    const colDef = columns[i];
+    const colDef = cols[i];
     let maxLen = colDef ? colDef.label.length : 12;
-    dataset.forEach((row) => {
+    (dataset || []).forEach((row) => {
       if (colDef) {
-        const valStr = formatValue(row[colDef.key], colDef.key);
+        const valStr = formatValue(getRecordValue(row, colDef.key), colDef.key);
         if (valStr.length > maxLen) maxLen = Math.min(valStr.length, 50);
       }
     });
@@ -289,7 +315,6 @@ export const generateClientExcel = async (
 
 /**
  * Render non-ASCII text (Odia, Hindi, Bengali, Tamil, Telugu, emojis) to Canvas DataURL
- * so that jsPDF can embed it pixel-perfectly without unicode box/garbled errors.
  */
 const renderTextToCanvasDataUrl = (
   text: string,
@@ -331,7 +356,8 @@ export const generateClientPDF = async (
   columns: ColumnOption[],
   sectionTitle: string
 ): Promise<ArrayBuffer> => {
-  const isLandscape = columns.length > 5;
+  const cols = Array.isArray(columns) && columns.length > 0 ? columns : EXPORT_SECTION_METADATA['contact-inquiries'].defaultColumns;
+  const isLandscape = cols.length > 5;
   const doc = new jsPDF({
     orientation: isLandscape ? 'landscape' : 'portrait',
     unit: 'pt',
@@ -340,12 +366,11 @@ export const generateClientPDF = async (
 
   const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
 
-  const tableHeaders = [columns.map((c) => c.label)];
-  const tableRows = dataset.map((row) => columns.map((c) => formatValue(row[c.key], c.key)));
+  const tableHeaders = [cols.map((c) => c.label)];
+  const tableRows = (dataset || []).map((row) => cols.map((c) => formatValue(getRecordValue(row, c.key), c.key)));
 
-  // Detect if dataset contains non-ASCII characters (Indian scripts, Odia, Hindi, emojis, etc.)
-  const hasNonAscii = dataset.some((row) =>
-    columns.some((c) => /[^\x00-\x7F]/.test(formatValue(row[c.key], c.key)))
+  const hasNonAscii = (dataset || []).some((row) =>
+    cols.some((c) => /[^\x00-\x7F]/.test(formatValue(getRecordValue(row, c.key), c.key)))
   );
 
   autoTable(doc, {
@@ -374,14 +399,12 @@ export const generateClientPDF = async (
       cellPadding: 6,
     },
     didDrawCell: (cellData) => {
-      // If cell contains non-ASCII text, render via Canvas image to ensure Odia/Hindi/Telugu/Tamil render perfectly
       if (hasNonAscii && cellData.section === 'body' && cellData.cell.raw) {
         const textVal = String(cellData.cell.raw);
         if (/[^\x00-\x7F]/.test(textVal)) {
           try {
             const { dataUrl, width, height } = renderTextToCanvasDataUrl(textVal, 8, '#1e293b');
             if (dataUrl && width > 0) {
-              // Clear cell default text area and draw crisp canvas image
               doc.setFillColor(cellData.row.index % 2 === 0 ? 255 : 248, cellData.row.index % 2 === 0 ? 255 : 250, cellData.row.index % 2 === 0 ? 255 : 252);
               doc.rect(cellData.cell.x + 2, cellData.cell.y + 2, cellData.cell.width - 4, cellData.cell.height - 4, 'F');
 

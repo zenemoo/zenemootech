@@ -1,12 +1,98 @@
 import {
   EXPORT_CONFIGS,
   filterNonEmptyColumns,
+  getRecordValue,
   generateCSV,
   generateExcel,
   generatePDF,
 } from '../services/exportService.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { supabase } from '../config/supabase.js';
+
+/**
+ * Fetch authorized section records from Supabase database with resilience fallbacks
+ */
+export const fetchSectionDataset = async (section, clientData = []) => {
+  const config = EXPORT_CONFIGS[section];
+  if (!config) return Array.isArray(clientData) ? clientData : [];
+
+  let dbData = [];
+
+  try {
+    if (section === 'users-rbac' || section === 'rbac') {
+      try {
+        const userAccounts = await supabaseService.selectAll('user_accounts');
+        let roster = [];
+        try {
+          roster = await supabaseService.selectAll('team');
+        } catch (_) {}
+
+        if (Array.isArray(userAccounts) && userAccounts.length > 0) {
+          const rosterMap = new Map((roster || []).map((m) => [m.id, m]));
+          dbData = userAccounts.map((acc) => {
+            const m = rosterMap.get(acc.team_member_id) || {};
+            return {
+              id: acc.id,
+              team_member_id: acc.team_member_id,
+              name: m.name || acc.name || 'User Account',
+              email: acc.email || m.email || '',
+              employee_id: m.employee_id || (m.id ? `ZNM-${m.id.substring(0, 5).toUpperCase()}` : ''),
+              designation: m.designation || 'Specialist',
+              department: m.department || 'Engineering',
+              role: acc.role || 'team_member',
+              status: acc.status || 'active',
+              email_access: acc.email_access ? 'Granted' : 'Restricted',
+              created_at: acc.created_at || m.created_at || new Date().toISOString(),
+            };
+          });
+        }
+      } catch (e) {}
+    } else if (section === 'team-directory' || section === 'directory') {
+      try {
+        dbData = await supabaseService.selectAll('team_directory', 'created_at', false);
+      } catch (e) {
+        try {
+          dbData = await supabaseService.selectAll('team', 'position', true);
+        } catch (e2) {}
+      }
+    } else if (section === 'team-roster' || section === 'team') {
+      try {
+        dbData = await supabaseService.selectAll('team', 'position', true);
+      } catch (e) {
+        try {
+          dbData = await supabaseService.selectAll('team_roster', 'created_at', false);
+        } catch (e2) {}
+      }
+    } else if (section === 'newsletter' || section === 'subscribers') {
+      try {
+        dbData = await supabaseService.selectAll('newsletter_subscribers', 'created_at', false);
+      } catch (e) {
+        try {
+          dbData = await supabaseService.selectAll('subscribers', 'created_at', false);
+        } catch (e2) {}
+      }
+    } else if (section === 'contact-inquiries' || section === 'inquiries') {
+      try {
+        dbData = await supabaseService.selectAll('contact_inquiries', 'created_at', false);
+      } catch (e) {
+        try {
+          dbData = await supabaseService.selectAll('contacts', 'created_at', false);
+        } catch (e2) {}
+      }
+    }
+  } catch (err) {
+    console.warn(`[Export Dataset Fetch Warning for ${section}]:`, err.message);
+  }
+
+  // Fallback to client-passed active dataset if DB returns empty
+  if (!Array.isArray(dbData) || dbData.length === 0) {
+    if (Array.isArray(clientData) && clientData.length > 0) {
+      return clientData;
+    }
+  }
+
+  return Array.isArray(dbData) && dbData.length > 0 ? dbData : (Array.isArray(clientData) ? clientData : []);
+};
 
 export const handleExportData = async (req, res, next) => {
   try {
@@ -38,44 +124,26 @@ export const handleExportData = async (req, res, next) => {
     if (scope === 'filtered' && Array.isArray(data) && data.length > 0) {
       dataset = data;
     } else {
-      try {
-        dataset = await supabaseService.selectAll(config.tableName, 'created_at', false);
-      } catch (err) {
-        console.warn(`[Export Supabase Warning] Could not fetch ${config.tableName}:`, err.message);
-        // Fallback fetch without order clause
-        try {
-          if (supabase) {
-            const { data: dbData } = await supabase.from(config.tableName).select('*');
-            dataset = dbData || [];
-          }
-        } catch (e2) {
-          dataset = Array.isArray(data) ? data : [];
-        }
-      }
+      dataset = await fetchSectionDataset(section, data);
     }
 
     if (!Array.isArray(dataset)) dataset = [];
 
     // 3. Dynamic Column Inspection & Empty Column Filtering
-    // Get full list of candidate columns from config or data structure
     let candidateColumns = config.defaultColumns;
-    
-    // Filter out columns that are 100% empty (null, undefined, "", whitespace-only) across dataset
     const nonEmptyCandidateCols = filterNonEmptyColumns(dataset, candidateColumns);
 
-    // If specific columns requested, filter to match those requested keys
     let selectedColumns = nonEmptyCandidateCols;
     if (Array.isArray(columns) && columns.length > 0) {
       const colKeySet = new Set(columns);
       selectedColumns = nonEmptyCandidateCols.filter((col) => colKeySet.has(col.key));
     }
 
-    // If no valid non-empty columns selected, fallback to non-empty candidates
     if (selectedColumns.length === 0) {
-      selectedColumns = nonEmptyCandidateCols;
+      selectedColumns = config.defaultColumns;
     }
 
-    // 4. File Naming Construction (Zenemoo - Section Name - YYYY-MM-DD.ext)
+    // 4. File Naming Construction
     const todayStr = new Date().toISOString().split('T')[0];
     const cleanSectionName = config.sectionName.replace(/[^a-zA-Z0-9\s&_-]/g, '').trim();
     const targetFormat = (format || 'csv').toLowerCase();
@@ -119,7 +187,6 @@ export const handleExportData = async (req, res, next) => {
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
       return res.send(buffer);
     } else {
-      // Default to CSV
       const csvString = generateCSV(dataset, selectedColumns, config.sectionName);
       const filename = `Zenemoo - ${cleanSectionName} - ${todayStr}.csv`;
 
