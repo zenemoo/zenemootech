@@ -12,6 +12,8 @@ export interface CandidateApplication {
   answers: Record<string, any>;
   status: 'pending' | 'shortlisted' | 'accepted' | 'rejected';
   admin_notes?: string;
+  sync_status?: 'synced' | 'pending' | 'failed' | string;
+  sync_error?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -89,6 +91,7 @@ export const submitCandidateApplication = async (
     answers: appData.answers || {},
     status: 'pending',
     admin_notes: '',
+    sync_status: 'pending',
     created_at: new Date().toISOString(),
   };
 
@@ -98,12 +101,31 @@ export const submitCandidateApplication = async (
       const saved = data[0] as CandidateApplication;
       localList.unshift(saved);
       saveLocalApplications(localList);
+
+      // Trigger backend submission to ensure async Google Sheets sync is executed
+      try {
+        await opportunityApplicationApi.submit(appData);
+      } catch (_) {}
+
       return saved;
     } else if (error) {
       console.error('Supabase insert application error:', error.message);
     }
   } catch (err: any) {
     console.warn('Direct Supabase submit application error:', err.message);
+  }
+
+  // Fallback submit via Express API
+  try {
+    const res = await opportunityApplicationApi.submit(appData);
+    if (res.data && res.data.data) {
+      const saved = res.data.data as CandidateApplication;
+      localList.unshift(saved);
+      saveLocalApplications(localList);
+      return saved;
+    }
+  } catch (apiErr: any) {
+    console.warn('Express submit application note:', apiErr.message);
   }
 
   const fallbackApp: CandidateApplication = {
@@ -117,7 +139,7 @@ export const submitCandidateApplication = async (
   return fallbackApp;
 };
 
-// Update status directly in Supabase
+// Update status directly in Supabase and trigger Sheets sync
 export const updateCandidateApplicationStatus = async (
   id: string,
   updates: { status?: 'pending' | 'shortlisted' | 'accepted' | 'rejected'; admin_notes?: string }
@@ -126,6 +148,10 @@ export const updateCandidateApplicationStatus = async (
     if (id && id.includes('-')) {
       await supabase.from('opportunity_applications').update(updates).eq('id', id);
     }
+  } catch (e) {}
+
+  try {
+    await opportunityApplicationApi.update(id, updates);
   } catch (e) {}
 
   let localList = getLocalApplications();
@@ -143,8 +169,44 @@ export const deleteCandidateApplication = async (id: string): Promise<CandidateA
     }
   } catch (e) {}
 
+  try {
+    await opportunityApplicationApi.delete(id);
+  } catch (e) {}
+
   let localList = getLocalApplications().filter((app) => app.id !== id);
   saveLocalApplications(localList);
 
   return getStoredCandidateApplications();
+};
+
+// Manually resync single application to Google Sheets
+export const resyncSingleCandidateApplication = async (id: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const res = await opportunityApplicationApi.resyncSingle(id);
+    return {
+      success: res.data?.status === 'success',
+      message: res.data?.message || 'Resynced to Google Sheets',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.response?.data?.error || err.message || 'Resync failed',
+    };
+  }
+};
+
+// Manually resync all applications for an opportunity to Google Sheets
+export const resyncOpportunityApplicationsBulk = async (opportunityId: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const res = await opportunityApplicationApi.resyncAll(opportunityId);
+    return {
+      success: res.data?.status === 'success',
+      message: res.data?.message || `Resynced applications to Google Sheets`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.response?.data?.error || err.message || 'Bulk resync failed',
+    };
+  }
 };

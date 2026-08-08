@@ -86,6 +86,19 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionExportMeta> = {
       { key: 'created_at', label: 'Received At' },
     ],
   },
+  'candidate-applications': {
+    sectionId: 'candidate-applications',
+    sectionName: 'Candidate Applications',
+    defaultColumns: [
+      { key: 'applicant_id', label: 'Applicant ID' },
+      { key: 'applicant_name', label: 'Applicant Name' },
+      { key: 'applicant_email', label: 'Email Address' },
+      { key: 'applicant_phone', label: 'Contact Phone' },
+      { key: 'opportunity_title', label: 'Program Opportunity' },
+      { key: 'status', label: 'Status' },
+      { key: 'created_at', label: 'Application Date' },
+    ],
+  },
 };
 
 EXPORT_SECTION_METADATA['rbac'] = EXPORT_SECTION_METADATA['users-rbac'];
@@ -93,6 +106,8 @@ EXPORT_SECTION_METADATA['directory'] = EXPORT_SECTION_METADATA['team-directory']
 EXPORT_SECTION_METADATA['team'] = EXPORT_SECTION_METADATA['team-roster'];
 EXPORT_SECTION_METADATA['subscribers'] = EXPORT_SECTION_METADATA['newsletter'];
 EXPORT_SECTION_METADATA['inquiries'] = EXPORT_SECTION_METADATA['contact-inquiries'];
+EXPORT_SECTION_METADATA['opportunity-applications'] = EXPORT_SECTION_METADATA['candidate-applications'];
+EXPORT_SECTION_METADATA['applications'] = EXPORT_SECTION_METADATA['candidate-applications'];
 
 /**
  * Helper: Extract value for a record using primary key and aliases

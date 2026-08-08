@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
-import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication } from '../lib/opportunityApplicationStore';
+import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
 import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
@@ -5911,7 +5911,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-5xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
                   <div>
                     <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
                       <FileSpreadsheet className="w-5 h-5 text-cyan-400" /> Candidate Applications Table
@@ -5920,12 +5920,96 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       Program: <span className="text-white font-bold">{selectedOppForApps.title}</span> ({selectedOppForApps.partner_name})
                     </p>
                   </div>
-                  <button
-                    onClick={() => setSelectedOppForApps(null)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Open Google Sheet Link */}
+                    <a
+                      href="https://docs.google.com/spreadsheets/d/1TRWH_zKjTtEiUAmQSS0XsA6_OtKc57FtMaDMeoIfjMs/edit?usp=sharing"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                      title="Open Zenemoo Google Sheet in new tab"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Open Google Sheet
+                    </a>
+
+                    {/* Sync All Applications to Google Sheets */}
+                    <button
+                      onClick={() => {
+                        const count = allCandidateApps.filter((a) => a.opportunity_id === selectedOppForApps.id).length;
+                        showConfirm(
+                          'Sync All Applications to Google Sheets',
+                          `Do you want to sync all ${count} candidate applications for "${selectedOppForApps.title}" to Google Sheets?`,
+                          async () => {
+                            showStatus('Synchronizing applications to Google Sheets...');
+                            const result = await resyncOpportunityApplicationsBulk(selectedOppForApps.id);
+                            const updated = await getStoredCandidateApplications(selectedOppForApps.id);
+                            setAllCandidateApps(updated);
+                            showStatus(result.message);
+                          },
+                          { confirmText: `Sync ${count} Applications`, intent: 'info' }
+                        );
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                      title="Bulk sync candidate applications to Google Sheets"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Sync All
+                    </button>
+
+                    {/* Export Applications Button */}
+                    <ExportButton
+                      sectionId="candidate-applications"
+                      dataset={allCandidateApps
+                        .filter((a) => a.opportunity_id === selectedOppForApps.id)
+                        .map((app) => {
+                          const flat: Record<string, any> = {
+                            applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
+                            applicant_name: app.applicant_name,
+                            applicant_email: app.applicant_email,
+                            applicant_phone: app.applicant_phone,
+                            opportunity_title: app.opportunity_title,
+                            status: app.status.toUpperCase(),
+                            created_at: app.created_at || new Date().toISOString(),
+                          };
+                          if (app.answers && typeof app.answers === 'object') {
+                            Object.entries(app.answers).forEach(([k, v]) => {
+                              flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                            });
+                          }
+                          return flat;
+                        })}
+                      filteredDataset={allCandidateApps
+                        .filter((a) => a.opportunity_id === selectedOppForApps.id)
+                        .filter((a) => appStatusFilter === 'all' || a.status === appStatusFilter)
+                        .map((app) => {
+                          const flat: Record<string, any> = {
+                            applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
+                            applicant_name: app.applicant_name,
+                            applicant_email: app.applicant_email,
+                            applicant_phone: app.applicant_phone,
+                            opportunity_title: app.opportunity_title,
+                            status: app.status.toUpperCase(),
+                            created_at: app.created_at || new Date().toISOString(),
+                          };
+                          if (app.answers && typeof app.answers === 'object') {
+                            Object.entries(app.answers).forEach(([k, v]) => {
+                              flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                            });
+                          }
+                          return flat;
+                        })}
+                      label="Export Applications"
+                      className="px-3.5 py-1.5 text-xs"
+                      showToast={(msg) => showStatus(msg)}
+                    />
+
+                    <button
+                      onClick={() => setSelectedOppForApps(null)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer ml-1"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Filter Bar */}
@@ -5935,7 +6019,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <select
                       value={appStatusFilter}
                       onChange={(e) => setAppStatusFilter(e.target.value as any)}
-                      className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-bold focus:outline-none"
+                      className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-bold focus:outline-none cursor-pointer"
                     >
                       <option value="all" className="bg-slate-900">ALL APPLICATIONS</option>
                       <option value="pending" className="bg-slate-900">PENDING</option>
@@ -5968,6 +6052,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           <th className="p-3.5">Applicant Name</th>
                           <th className="p-3.5">Contact Info</th>
                           <th className="p-3.5">Custom Form Answers</th>
+                          <th className="p-3.5">Sheets Sync</th>
                           <th className="p-3.5">Status</th>
                           <th className="p-3.5">Date</th>
                           <th className="p-3.5 text-right">Actions</th>
@@ -5995,6 +6080,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                       <span className="text-emerald-300">{String(val)}</span>
                                     </div>
                                   ))}
+                                </div>
+                              </td>
+                              <td className="p-3.5 font-mono text-[11px]">
+                                <div className="flex items-center gap-1.5">
+                                  {app.sync_status === 'synced' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]" title="Synced to Google Sheets">
+                                      <CheckCircle2 className="w-3 h-3" /> Synced
+                                    </span>
+                                  ) : app.sync_status === 'failed' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/30 font-bold text-[10px]" title={app.sync_error || 'Google Sheets sync failed'}>
+                                      <XCircle className="w-3 h-3" /> Failed
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold text-[10px]" title="Sync Pending">
+                                      <Clock className="w-3 h-3" /> Pending
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={async () => {
+                                      showStatus(`Resyncing candidate ${app.applicant_name} to Google Sheets...`);
+                                      const res = await resyncSingleCandidateApplication(app.id);
+                                      const updatedList = await getStoredCandidateApplications(selectedOppForApps.id);
+                                      setAllCandidateApps(updatedList);
+                                      showStatus(res.message);
+                                    }}
+                                    className="p-1 rounded bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 border border-white/10 text-[10px] cursor-pointer"
+                                    title="Manual Resync to Google Sheets"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                  </button>
                                 </div>
                               </td>
                               <td className="p-3.5">

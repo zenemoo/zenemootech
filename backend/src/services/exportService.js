@@ -87,6 +87,21 @@ export const EXPORT_CONFIGS = {
       { key: 'created_at', label: 'Received At' },
     ],
   },
+  'candidate-applications': {
+    id: 'candidate-applications',
+    sectionName: 'Candidate Applications',
+    allowedRoles: ['super_admin', 'admin', 'administrator', 'hr'],
+    tableName: 'opportunity_applications',
+    defaultColumns: [
+      { key: 'applicant_id', label: 'Applicant ID' },
+      { key: 'applicant_name', label: 'Applicant Name' },
+      { key: 'applicant_email', label: 'Email Address' },
+      { key: 'applicant_phone', label: 'Contact Phone' },
+      { key: 'opportunity_title', label: 'Program Opportunity' },
+      { key: 'status', label: 'Status' },
+      { key: 'created_at', label: 'Application Date' },
+    ],
+  },
 };
 
 // Section ID Aliases mapping
@@ -95,6 +110,8 @@ EXPORT_CONFIGS['directory'] = EXPORT_CONFIGS['team-directory'];
 EXPORT_CONFIGS['team'] = EXPORT_CONFIGS['team-roster'];
 EXPORT_CONFIGS['subscribers'] = EXPORT_CONFIGS['newsletter'];
 EXPORT_CONFIGS['inquiries'] = EXPORT_CONFIGS['contact-inquiries'];
+EXPORT_CONFIGS['opportunity-applications'] = EXPORT_CONFIGS['candidate-applications'];
+EXPORT_CONFIGS['applications'] = EXPORT_CONFIGS['candidate-applications'];
 
 /**
  * Helper: Extract value for a record using primary key and aliases

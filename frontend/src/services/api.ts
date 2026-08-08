@@ -161,6 +161,8 @@ export const opportunityApplicationApi = {
   submit: (data: any) => api.post('/opportunity-applications', data),
   update: (id: string, data: any) => api.put(`/opportunity-applications/${id}`, data),
   delete: (id: string) => api.delete(`/opportunity-applications/${id}`),
+  resyncSingle: (id: string) => api.post(`/opportunity-applications/${id}/resync`),
+  resyncAll: (opportunityId: string) => api.post(`/opportunity-applications/opportunity/${opportunityId}/resync-all`),
 };
 
 // Contact APIs
