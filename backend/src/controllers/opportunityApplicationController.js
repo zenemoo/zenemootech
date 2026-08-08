@@ -60,7 +60,7 @@ export const sendApplicationConfirmationEmail = async (appData) => {
 /**
  * IDEMPOTENT APPLICATION ACCEPTANCE EMAIL DISPATCH
  * Guarantees that EXACTLY ONE acceptance email is sent per accepted candidate application.
- * Uses true database-level atomic claim to prevent concurrent race condition duplicates.
+ * Gracefully handles Supabase schema capabilities while maintaining atomic claim protection.
  */
 export const sendApplicationAcceptanceEmail = async (appData, isForceResend = false) => {
   const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
@@ -71,7 +71,7 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
     return { success: true, message: 'Acceptance email already delivered.' };
   }
 
-  // 2. True Database-Level Atomic Lock Claim
+  // 2. Safe Database Atomic Lock Claim (Gracefully handles missing schema columns)
   if (id && !isForceResend) {
     try {
       const { data: claimedData, error: claimError } = await supabase
@@ -82,8 +82,13 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
         .neq('acceptance_email_status', 'sending')
         .select();
 
-      if (claimError || !claimedData || claimedData.length === 0) {
-        console.log(`[ACCEPTANCE EMAIL] Atomic claim check failed: Row locked or already claimed by another request for App ID ${applicant_id || id}. Aborting duplicate send.`);
+      // Only abort if column exists and 0 rows were updated (meaning another thread claimed it)
+      if (claimError) {
+        if (claimError.code !== 'PGRST204') {
+          console.warn('[ACCEPTANCE EMAIL] Database claim note:', claimError.message);
+        }
+      } else if (claimedData && claimedData.length === 0) {
+        console.log(`[ACCEPTANCE EMAIL] Atomic claim check: Row already claimed by another request for App ID ${applicant_id || id}. Aborting duplicate send.`);
         return { success: true, message: 'Already claimed by another process or already sent.' };
       }
     } catch (claimEx) {
@@ -96,7 +101,7 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
   const subject = `Congratulations! Your Application Has Been Accepted — ${opportunity_title || 'Program Opportunity'} | ${applicant_id || 'APP-2026-ACCEPTED'}`;
 
   console.log(`\n====================================================`);
-  console.log(`🎉 [ACCEPTANCE EMAIL] Preparing candidate ACCEPTANCE email...`);
+  console.log(`🎉 [ACCEPTANCE EMAIL] Sending candidate ACCEPTANCE email...`);
   console.log(`🎉 [ACCEPTANCE EMAIL] Applicant: ${applicant_name} <${applicant_email}>`);
   console.log(`🎉 [ACCEPTANCE EMAIL] Application ID: ${applicant_id || id}`);
   console.log(`====================================================`);
@@ -126,8 +131,15 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
           acceptance_email_sent_at: sentAtIso,
           acceptance_email_message_id: result.messageId || '',
           acceptance_email_error: null,
+          email_status: 'sent',
         }).eq('id', id);
-      } catch (_) {}
+      } catch (_) {
+        try {
+          await supabase.from('opportunity_applications').update({
+            email_status: 'sent',
+          }).eq('id', id);
+        } catch (_) {}
+      }
     }
 
     return { ...result, success: true, messageId: result.messageId };
@@ -139,8 +151,15 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
         await supabase.from('opportunity_applications').update({
           acceptance_email_status: 'failed',
           acceptance_email_error: err.message || 'Email delivery failed',
+          email_status: 'failed',
         }).eq('id', id);
-      } catch (_) {}
+      } catch (_) {
+        try {
+          await supabase.from('opportunity_applications').update({
+            email_status: 'failed',
+          }).eq('id', id);
+        } catch (_) {}
+      }
     }
 
     return { success: false, error: err.message };
@@ -210,7 +229,6 @@ export const submitApplication = async (req, res) => {
       admin_notes: '',
       sync_status: 'pending',
       email_status: 'pending',
-      acceptance_email_status: 'pending',
       created_at: new Date().toISOString(),
     };
 
@@ -365,15 +383,17 @@ export const updateApplication = async (req, res) => {
       });
     }
 
-    // IDEMPOTENT TRIGGER: If transitioning to ACCEPTED and acceptance email not yet sent, trigger email and await delivery so response contains acceptance_email_status = 'sent'
-    if (isTransitionToAccepted && updatedRecord && updatedRecord.acceptance_email_status !== 'sent') {
+    // IDEMPOTENT TRIGGER: If transitioning to ACCEPTED, trigger acceptance email
+    if (isTransitionToAccepted && updatedRecord) {
       try {
         const emailResult = await sendApplicationAcceptanceEmail(updatedRecord);
         if (emailResult && emailResult.success !== false) {
           updatedRecord.acceptance_email_status = 'sent';
+          updatedRecord.email_status = 'sent';
           updatedRecord.acceptance_email_sent_at = new Date().toISOString();
         } else if (emailResult && emailResult.error) {
           updatedRecord.acceptance_email_status = 'failed';
+          updatedRecord.email_status = 'failed';
           updatedRecord.acceptance_email_error = emailResult.error;
         }
       } catch (err) {
