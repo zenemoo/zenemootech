@@ -1,4 +1,5 @@
 import { supabaseService } from '../services/supabaseService.js';
+import { supabase } from '../config/supabase.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 
 // In-memory fallback array for support tickets
@@ -142,7 +143,16 @@ export const getSupportTickets = async (req, res, next) => {
     try {
       dbTickets = await supabaseService.selectAll('support_tickets', 'created_at', false);
     } catch (e) {
-      dbTickets = [];
+      console.warn('Supabase selectAll support_tickets ordered fetch warning:', e.message);
+      try {
+        if (supabase) {
+          const { data } = await supabase.from('support_tickets').select('*');
+          dbTickets = data || [];
+        }
+      } catch (e2) {
+        console.warn('Supabase support_tickets fallback fetch warning:', e2.message);
+        dbTickets = [];
+      }
     }
 
     if (!Array.isArray(dbTickets)) dbTickets = [];
@@ -188,8 +198,16 @@ export const updateTicketStatus = async (req, res, next) => {
 
     // Update in Supabase
     try {
-      await supabaseService.update('support_tickets', { ticket_id: id }, { status, updated_at: new Date().toISOString() });
-    } catch (e) {}
+      if (supabase) {
+        if (typeof id === 'string' && id.startsWith('TKT-')) {
+          await supabase.from('support_tickets').update({ status, updated_at: new Date().toISOString() }).eq('ticket_id', id);
+        } else {
+          await supabase.from('support_tickets').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase ticket status update warning:', e.message);
+    }
 
     return res.json({
       success: true,

@@ -226,6 +226,21 @@ export const supportApi = {
   updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
 };
 
+// Data Export System APIs
+export const exportApi = {
+  exportData: (payload: {
+    section: string;
+    format: 'csv' | 'xlsx' | 'pdf';
+    columns?: string[];
+    data?: any[];
+    scope?: 'all' | 'filtered';
+  }) =>
+    api.post('/admin/export', payload, {
+      responseType: 'blob',
+      timeout: 30000,
+    }),
+};
+
 // Unified Portal Authentication APIs (Team Member, HR, Admin)
 export const portalAuthApi = {
   portalLogin: (email: string, password: string, expectedRole?: string) =>

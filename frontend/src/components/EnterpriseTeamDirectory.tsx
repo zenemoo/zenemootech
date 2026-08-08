@@ -29,6 +29,7 @@ import {
   Download,
 } from 'lucide-react';
 import { directoryApi, pendingProfileUpdatesApi } from '../services/api';
+import { ExportButton } from './ExportButton';
 
 export interface PendingPhotoRequest {
   id: string;
@@ -235,7 +236,13 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <ExportButton
+              sectionId="team-directory"
+              dataset={members}
+              filteredDataset={filteredMembers}
+              showToast={showToast}
+            />
             <span className="px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold text-xs">
               {filteredMembers.length} Members
             </span>

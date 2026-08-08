@@ -21,6 +21,7 @@ import userManagementRoutes from './routes/userManagementRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import teamDirectoryRoutes from './routes/teamDirectoryRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
+import exportRoutes from './routes/exportRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -71,6 +72,8 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/directory', teamDirectoryRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/admin', exportRoutes);
+app.use('/api/export', exportRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);

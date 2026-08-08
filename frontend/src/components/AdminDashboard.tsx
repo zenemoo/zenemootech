@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabaseClient';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
 import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
+import { ExportButton } from './ExportButton';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -811,6 +812,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       await loadEmailDrafts();
       await loadRbacUsers();
       await loadAdminNotifications();
+      await loadSupportTickets();
 
       // Fetch authenticated user profile and connection metadata
       try {
@@ -862,6 +864,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_companies' }, async () => {
         await loadPartnersData();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, async () => {
+        await loadSupportTickets();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit_logs' }, async () => {
         try {
           const resLogs = await authApi.getAuditLogs();
@@ -885,6 +890,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         if (resLogs?.data?.success) {
           setRecentLogs(resLogs.data.logs || []);
         }
+        await loadSupportTickets();
       } catch (err) {}
     }, 15000);
 
@@ -2535,9 +2541,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-cyan-400" /> Active User Accounts &amp; Permissions Registry
                 </h3>
-                <button onClick={loadRbacUsers} className="text-cyan-400 hover:underline flex items-center gap-1">
-                  <RefreshCw className="w-3.5 h-3.5" /> Refresh List
-                </button>
+                <div className="flex items-center gap-3">
+                  <ExportButton
+                    sectionId="users-rbac"
+                    dataset={rbacUsers}
+                    showToast={(msg, type) => addToast(msg, type)}
+                  />
+                  <button onClick={loadRbacUsers} className="text-cyan-400 hover:underline flex items-center gap-1">
+                    <RefreshCw className="w-3.5 h-3.5" /> Refresh List
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -3376,6 +3389,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <option value="Quality">Quality Control</option>
                   </select>
                 </div>
+
+                <ExportButton
+                  sectionId="team-roster"
+                  dataset={teamList}
+                  filteredDataset={filteredTeam}
+                  showToast={(msg, type) => addToast(msg, type)}
+                />
 
                 <button
                   onClick={loadTeamData}
@@ -4230,12 +4250,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <span className="text-sm font-bold text-white block font-mono">Supabase "contacts"</span>
                   <span className="text-[10px] font-mono text-emerald-400 block">Connection Active</span>
                 </div>
-                <button
-                  onClick={handleRefreshInquiries}
-                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                  <ExportButton
+                    sectionId="contact-inquiries"
+                    dataset={inquiries}
+                    showToast={(msg, type) => addToast(msg, type)}
+                  />
+                  <button
+                    onClick={handleRefreshInquiries}
+                    className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -4473,12 +4500,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <span className="text-sm font-bold text-white block font-mono">Supabase Sync</span>
                   <span className="text-[10px] font-mono text-purple-400 block">Pull live submissions</span>
                 </div>
-                <button
-                  onClick={loadSubscribers}
-                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                  <ExportButton
+                    sectionId="newsletter"
+                    dataset={subscribers}
+                    showToast={(msg, type) => addToast(msg, type)}
+                  />
+                  <button
+                    onClick={loadSubscribers}
+                    className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                  </button>
+                </div>
               </div>
             </div>
 
