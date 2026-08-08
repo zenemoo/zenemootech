@@ -3,6 +3,7 @@ import { sendApplicationNotification } from '../services/telegramNotificationSer
 import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { generateApplicationConfirmationHtml } from '../services/applicationEmailTemplate.js';
+import { generateApplicationAcceptanceHtml } from '../services/applicationAcceptanceEmailTemplate.js';
 
 /**
  * Asynchronously sends confirmation email to applicant upon successful Opportunity Application submission
@@ -21,7 +22,6 @@ export const sendApplicationConfirmationEmail = async (appData) => {
   console.log(`[APPLICATION EMAIL] CC Recipient: ${ccRecipient}`);
   console.log(`[APPLICATION EMAIL] Sender (FROM): ${sender}`);
   console.log(`[APPLICATION EMAIL] Application ID: ${applicant_id || id}`);
-  console.log(`[APPLICATION EMAIL] Opportunity: ${opportunity_title}`);
   console.log(`====================================================`);
 
   const htmlContent = generateApplicationConfirmationHtml(appData);
@@ -35,14 +35,8 @@ export const sendApplicationConfirmationEmail = async (appData) => {
       html: htmlContent,
     });
 
-    console.log(`\n====================================================`);
-    console.log(`[APPLICATION EMAIL] SUCCESS: Email accepted by provider!`);
-    console.log(`[APPLICATION EMAIL] Execution Path: ${result.executionPath || 'Brevo/Nodemailer'}`);
-    console.log(`[APPLICATION EMAIL] Message ID: ${result.messageId || 'N/A'}`);
-    console.log(`[APPLICATION EMAIL] Elapsed Time: ${result.elapsedTimeMs || 0}ms`);
-    console.log(`====================================================\n`);
+    console.log(`[APPLICATION EMAIL] SUCCESS: Confirmation email accepted by provider! Message ID: ${result.messageId || 'N/A'}`);
 
-    // Update email_status in Supabase if record ID exists (safely ignored if column missing)
     if (id) {
       try {
         await supabase.from('opportunity_applications').update({ email_status: 'sent' }).eq('id', id);
@@ -51,14 +45,87 @@ export const sendApplicationConfirmationEmail = async (appData) => {
 
     return result;
   } catch (err) {
-    console.error(`\n====================================================`);
-    console.error(`[APPLICATION EMAIL] FAILED for ${applicant_email} (App ID: ${applicant_id || id}):`);
-    console.error(`[APPLICATION EMAIL] Reason: ${err.message || JSON.stringify(err)}`);
-    console.error(`====================================================\n`);
+    console.error(`[APPLICATION EMAIL] FAILED for ${applicant_email} (App ID: ${applicant_id || id}): ${err.message}`);
 
     if (id) {
       try {
         await supabase.from('opportunity_applications').update({ email_status: 'failed' }).eq('id', id);
+      } catch (_) {}
+    }
+
+    return { success: false, error: err.message };
+  }
+};
+
+/**
+ * IDEMPOTENT APPLICATION ACCEPTANCE EMAIL DISPATCH
+ * Guarantees that EXACTLY ONE acceptance email is sent per accepted candidate application.
+ */
+export const sendApplicationAcceptanceEmail = async (appData, isForceResend = false) => {
+  const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
+
+  // 1. Idempotency Safeguard: If already sent and not explicit admin retry, abort immediately!
+  if (!isForceResend && (appData.acceptance_email_status === 'sent' || appData.acceptance_email_status === 'sending')) {
+    console.log(`[ACCEPTANCE EMAIL] Aborting dispatch: Application ${applicant_id || id} acceptance_email_status is already '${appData.acceptance_email_status}'.`);
+    return { success: true, message: 'Acceptance email already delivered.' };
+  }
+
+  const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
+  const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
+  const subject = `Congratulations! Your Application Has Been Accepted — ${opportunity_title || 'Program Opportunity'} | ${applicant_id || 'APP-2026-ACCEPTED'}`;
+
+  console.log(`\n====================================================`);
+  console.log(`🎉 [ACCEPTANCE EMAIL] Preparing candidate ACCEPTANCE email...`);
+  console.log(`🎉 [ACCEPTANCE EMAIL] Applicant: ${applicant_name} <${applicant_email}>`);
+  console.log(`🎉 [ACCEPTANCE EMAIL] Application ID: ${applicant_id || id}`);
+  console.log(`====================================================`);
+
+  // Claim sending state to prevent concurrent race condition duplicates
+  if (id) {
+    try {
+      await supabase.from('opportunity_applications').update({ acceptance_email_status: 'sending' }).eq('id', id);
+    } catch (_) {}
+  }
+
+  const sentAtIso = new Date().toISOString();
+  const htmlContent = generateApplicationAcceptanceHtml({
+    ...appData,
+    acceptance_email_sent_at: sentAtIso,
+  });
+
+  try {
+    const result = await sendMailViaBrevo({
+      sender,
+      recipients: applicant_email,
+      cc: ccRecipient,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`🎉 [ACCEPTANCE EMAIL] SUCCESS: Acceptance email delivered! Message ID: ${result.messageId || 'N/A'}`);
+
+    // Update database record with definitive 'sent' state and metadata
+    if (id) {
+      try {
+        await supabase.from('opportunity_applications').update({
+          acceptance_email_status: 'sent',
+          acceptance_email_sent_at: sentAtIso,
+          acceptance_email_message_id: result.messageId || '',
+          acceptance_email_error: null,
+        }).eq('id', id);
+      } catch (_) {}
+    }
+
+    return { ...result, success: true };
+  } catch (err) {
+    console.error(`💥 [ACCEPTANCE EMAIL] FAILED for ${applicant_email} (App ID: ${applicant_id || id}): ${err.message}`);
+
+    if (id) {
+      try {
+        await supabase.from('opportunity_applications').update({
+          acceptance_email_status: 'failed',
+          acceptance_email_error: err.message || 'Email delivery failed',
+        }).eq('id', id);
       } catch (_) {}
     }
 
@@ -129,6 +196,7 @@ export const submitApplication = async (req, res) => {
       admin_notes: '',
       sync_status: 'pending',
       email_status: 'pending',
+      acceptance_email_status: 'pending',
       created_at: new Date().toISOString(),
     };
 
@@ -139,7 +207,6 @@ export const submitApplication = async (req, res) => {
 
     if (error) {
       console.warn('[Supabase Application Insert Note]:', error.message);
-      // Fallback: try fetching existing record if inserted by client SDK
       const { data: existingData } = await supabase
         .from('opportunity_applications')
         .select('*')
@@ -159,10 +226,7 @@ export const submitApplication = async (req, res) => {
       savedRecord = newRecord;
     }
 
-    console.log(`\n====================================================`);
-    console.log(`📥 Candidate application processed: App ID = ${savedRecord.applicant_id}`);
-    console.log(`👤 Applicant: ${cleanName} | Email: ${cleanEmail}`);
-    console.log(`====================================================`);
+    console.log(`📥 Candidate application processed: App ID = ${savedRecord.applicant_id} | Email = ${cleanEmail}`);
 
     // Asynchronously trigger Google Sheets synchronization (non-blocking)
     syncApplicationToGoogleSheet(savedRecord).catch((err) => {
@@ -178,7 +242,7 @@ export const submitApplication = async (req, res) => {
       qualification: answers?.qualification || answers?.degree || 'Relevant Qualification Uploaded',
     }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
 
-    // Asynchronously dispatch Confirmation Email to applicant + CC to mr.prem2006@gmail.com (non-blocking / fail-safe)
+    // Asynchronously dispatch Confirmation Email to applicant (non-blocking / fail-safe)
     sendApplicationConfirmationEmail(savedRecord).catch((err) => {
       console.warn('[Application Confirmation Email Dispatch Note]:', err.message);
     });
@@ -225,11 +289,47 @@ export const sendConfirmationEmailEndpoint = async (req, res) => {
   }
 };
 
-// 4. UPDATE APPLICATION STATUS OR ADMIN NOTES
+// 4. MANUAL RESEND ACCEPTANCE EMAIL ENDPOINT (ADMIN EXPLICIT RETRY)
+export const resendAcceptanceEmailEndpoint = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Application ID is required' });
+    }
+
+    const { data: appRecord, error } = await supabase.from('opportunity_applications').select('*').eq('id', id).single();
+    if (error || !appRecord) {
+      return res.status(404).json({ error: 'Application record not found.' });
+    }
+
+    // Force resend explicit administrative action
+    const result = await sendApplicationAcceptanceEmail(appRecord, true);
+    return res.json({
+      status: result.success !== false ? 'success' : 'failed',
+      message: result.error ? `Acceptance email resend failed: ${result.error}` : 'Acceptance email resent successfully.',
+      result,
+    });
+  } catch (err) {
+    console.error('resendAcceptanceEmailEndpoint exception:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// 5. UPDATE APPLICATION STATUS OR ADMIN NOTES WITH TRANSITION-BASED ACCEPTANCE EMAIL DISPATCH
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = { ...req.body, updated_at: new Date().toISOString() };
+
+    // Fetch existing application record before applying update to detect status transition
+    const { data: existingData } = await supabase.from('opportunity_applications').select('*').eq('id', id);
+    const existingRecord = existingData && existingData.length > 0 ? existingData[0] : null;
+
+    const oldStatus = (existingRecord?.status || '').toLowerCase();
+    const newStatus = (req.body.status || '').toLowerCase();
+
+    // Check if status is transitioning to ACCEPTED
+    const isTransitionToAccepted = oldStatus !== 'accepted' && newStatus === 'accepted';
 
     const { data, error } = await supabase
       .from('opportunity_applications')
@@ -251,6 +351,13 @@ export const updateApplication = async (req, res) => {
       });
     }
 
+    // IDEMPOTENT TRIGGER: If transitioning to ACCEPTED and acceptance email not yet sent, trigger email ONCE
+    if (isTransitionToAccepted && updatedRecord && updatedRecord.acceptance_email_status !== 'sent') {
+      sendApplicationAcceptanceEmail(updatedRecord).catch((err) => {
+        console.warn('[Application Acceptance Email Trigger Note]:', err.message);
+      });
+    }
+
     return res.json({ status: 'success', data: updatedRecord });
   } catch (err) {
     console.error('updateApplication controller exception:', err.message);
@@ -258,7 +365,7 @@ export const updateApplication = async (req, res) => {
   }
 };
 
-// 5. DELETE APPLICATION
+// 6. DELETE APPLICATION
 export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -273,7 +380,7 @@ export const deleteApplication = async (req, res) => {
   }
 };
 
-// 6. MANUAL RESYNC SINGLE APPLICATION TO GOOGLE SHEETS
+// 7. MANUAL RESYNC SINGLE APPLICATION TO GOOGLE SHEETS
 export const resyncApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -295,7 +402,7 @@ export const resyncApplication = async (req, res) => {
   }
 };
 
-// 7. BULK RESYNC ALL APPLICATIONS FOR AN OPPORTUNITY TO GOOGLE SHEETS
+// 8. BULK RESYNC ALL APPLICATIONS FOR AN OPPORTUNITY TO GOOGLE SHEETS
 export const resyncOpportunityApplications = async (req, res) => {
   try {
     const { opportunity_id } = req.params;

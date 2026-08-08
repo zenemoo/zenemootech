@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi } from '../lib/opportunityStore';
-import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk } from '../lib/opportunityApplicationStore';
+import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk, resendCandidateAcceptanceEmail } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
 import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi } from '../services/api';
 import { supabase } from '../lib/supabaseClient';
@@ -6168,6 +6168,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                   <option value="accepted" className="bg-slate-900 text-emerald-400">ACCEPTED</option>
                                   <option value="rejected" className="bg-slate-900 text-red-400">REJECTED</option>
                                 </select>
+
+                                {app.status === 'accepted' && (
+                                  <div className="mt-1 flex items-center gap-1.5 font-mono text-[9px]">
+                                    {app.acceptance_email_status === 'sent' ? (
+                                      <span className="text-emerald-400 font-medium flex items-center gap-1" title={app.acceptance_email_sent_at ? `Sent on ${new Date(app.acceptance_email_sent_at).toLocaleString()}` : 'Email Sent'}>
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-400" /> ✓ Email Sent
+                                      </span>
+                                    ) : app.acceptance_email_status === 'sending' ? (
+                                      <span className="text-blue-400 font-medium flex items-center gap-1">
+                                        <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" /> Sending Email...
+                                      </span>
+                                    ) : app.acceptance_email_status === 'failed' ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-red-400 font-medium flex items-center gap-1" title={app.acceptance_email_error || 'Delivery failed'}>
+                                          <AlertCircle className="w-3 h-3 text-red-400" /> Email Failed
+                                        </span>
+                                        <button
+                                          onClick={() => {
+                                            showConfirm(
+                                              'Resend Acceptance Email',
+                                              `Are you sure you want to resend the acceptance email to candidate "${app.applicant_name}" (${app.applicant_email})?`,
+                                              async () => {
+                                                const res = await resendCandidateAcceptanceEmail(app.id);
+                                                if (res.success) {
+                                                  showStatus(`Resent acceptance email to ${app.applicant_email}`);
+                                                  const updatedList = await getStoredCandidateApplications();
+                                                  setAllCandidateApps(updatedList);
+                                                } else {
+                                                  showStatus(`Acceptance email resend failed: ${res.message}`);
+                                                }
+                                              },
+                                              { confirmText: 'Resend Acceptance Email', intent: 'info' }
+                                            );
+                                          }}
+                                          className="px-1.5 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 cursor-pointer font-sans"
+                                        >
+                                          Retry
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 font-medium flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-slate-400" /> Email Pending
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               <td className="p-3.5 text-[10px] text-slate-400">
                                 {app.created_at ? new Date(app.created_at).toLocaleDateString() : 'Today'}

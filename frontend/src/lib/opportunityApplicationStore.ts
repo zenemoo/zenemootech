@@ -14,6 +14,11 @@ export interface CandidateApplication {
   admin_notes?: string;
   sync_status?: 'synced' | 'pending' | 'failed' | string;
   sync_error?: string;
+  email_status?: 'sent' | 'pending' | 'failed' | string;
+  acceptance_email_status?: 'sent' | 'pending' | 'sending' | 'failed' | string;
+  acceptance_email_sent_at?: string;
+  acceptance_email_message_id?: string;
+  acceptance_email_error?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -195,6 +200,22 @@ export const resyncSingleCandidateApplication = async (id: string): Promise<{ su
     return {
       success: false,
       message: err.response?.data?.error || err.message || 'Resync failed',
+    };
+  }
+};
+
+// Manually resend acceptance email for an application (Explicit Admin Retry)
+export const resendCandidateAcceptanceEmail = async (id: string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const res = await opportunityApplicationApi.resendAcceptance(id);
+    return {
+      success: res.data?.status === 'success',
+      message: res.data?.message || 'Acceptance email resent successfully',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.response?.data?.error || err.message || 'Resend failed',
     };
   }
 };
