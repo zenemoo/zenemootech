@@ -1,5 +1,63 @@
 import { supabaseService } from '../services/supabaseService.js';
 import { sendContactNotification } from '../services/telegramNotificationService.js';
+import { sendMailViaBrevo } from '../services/emailService.js';
+import { generateContactConfirmationHtml } from '../services/contactEmailTemplate.js';
+
+/**
+ * Asynchronously sends confirmation email to user upon successful Contact Inquiry submission
+ */
+export const sendContactConfirmationEmail = async (inquiryData) => {
+  const { id, inquiry_code, name, email, phone, company, service, language, message, created_at } = inquiryData;
+
+  const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
+  const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
+  const subject = `Zenemoo — Contact Inquiry Received | Ticket #${inquiry_code}`;
+
+  const htmlContent = generateContactConfirmationHtml({
+    inquiry_code,
+    name,
+    email,
+    phone,
+    company,
+    service,
+    language,
+    message,
+    created_at,
+  });
+
+  console.log(`📧 Sending confirmation email: to = ${email} | ticket = #${inquiry_code}`);
+
+  try {
+    const result = await sendMailViaBrevo({
+      sender,
+      recipients: email,
+      cc: ccRecipient,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`✅ Email confirmation status: sent (ticket = #${inquiry_code})`);
+
+    // Update email_status in Supabase if record ID exists (safely ignored if column missing)
+    if (id) {
+      try {
+        await supabaseService.update('contacts', id, { email_status: 'sent' });
+      } catch (_) {}
+    }
+
+    return result;
+  } catch (err) {
+    console.error(`❌ Email confirmation status: failed (ticket = #${inquiry_code}) - ${err.message}`);
+
+    if (id) {
+      try {
+        await supabaseService.update('contacts', id, { email_status: 'failed' });
+      } catch (_) {}
+    }
+
+    return { success: false, error: err.message };
+  }
+};
 
 export const submitContact = async (req, res, next) => {
   try {
@@ -18,12 +76,12 @@ export const submitContact = async (req, res, next) => {
     const cleanMessage = (message || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 3000);
     const cleanPhone = (phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
     const cleanCompany = (company || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
-    const cleanService = (service || 'Data Solutions').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    const cleanService = (service || 'Audio Transcription').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
     const year = new Date().getFullYear();
     const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
     const generatedCode = inquiry_code || inquiry_id || req.body.code || `ZNM-${year}-${randomHex}`;
-    const selectedLanguage = language || lang || req.body.languages || 'Hindi';
+    const selectedLanguage = language || lang || req.body.languages || 'Odia';
 
     const contactPayload = {
       name: cleanName,
@@ -36,20 +94,41 @@ export const submitContact = async (req, res, next) => {
       notes: notes || '',
       message: cleanMessage,
       status: 'unread',
+      email_status: 'pending',
       created_at: new Date().toISOString(),
     };
 
+    // 1. Save inquiry to Supabase database (Source of truth)
     const savedRecord = await supabaseService.insert('contacts', contactPayload);
 
-    // Asynchronously dispatch Telegram notification to all active administrators (non-blocking)
+    console.log(`\n====================================================`);
+    console.log(`📥 Contact inquiry received: ticket = #${generatedCode}`);
+    console.log(`👤 Name: ${cleanName} | Email: ${cleanEmail}`);
+    console.log(`====================================================`);
+
+    // 2. Asynchronously dispatch Telegram notification to all active administrators (non-blocking)
     sendContactNotification({
-      name,
-      email,
-      phone,
-      company,
-      subject: service || 'Data Solutions Inquiry',
-      message,
+      name: cleanName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      company: cleanCompany,
+      subject: cleanService,
+      message: cleanMessage,
     }).catch((err) => console.warn('[Telegram Contact Notification Note]', err.message));
+
+    // 3. Asynchronously dispatch Confirmation Email to applicant + CC to mr.prem2006@gmail.com (non-blocking / fail-safe)
+    sendContactConfirmationEmail({
+      id: savedRecord?.id,
+      inquiry_code: generatedCode,
+      name: cleanName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      company: cleanCompany,
+      service: cleanService,
+      language: selectedLanguage,
+      message: cleanMessage,
+      created_at: contactPayload.created_at,
+    }).catch((err) => console.warn('[Contact Confirmation Email Dispatch Note]', err.message));
 
     res.status(201).json({
       success: true,
