@@ -2055,6 +2055,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         )}
       </AnimatePresence>
 
+      {/* Global Top Floating Status Toast Notification */}
+      <AnimatePresence>
+        {statusMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -30, scale: 0.95 }}
+            className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] max-w-md w-auto px-5 py-3 rounded-2xl bg-[#090d16]/95 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold shadow-2xl shadow-cyan-500/20 backdrop-blur-2xl flex items-center gap-3 pointer-events-auto"
+          >
+            <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shrink-0">
+              <Sparkles className="w-4 h-4 animate-spin" />
+            </div>
+            <span className="leading-snug">{statusMessage}</span>
+            <button
+              onClick={() => setStatusMessage('')}
+              className="ml-2 p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 3. RIGHT VIEWPORT MAIN VIEW */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-[#030304]">
         {/* Sticky Header Bar */}
@@ -5537,13 +5560,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+              className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
             >
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
-                className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
+                className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-2xl w-full my-auto space-y-6 max-h-[92vh] overflow-y-auto shadow-2xl shadow-purple-500/10 bg-[#090d16]/95"
               >
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
                   <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
@@ -5902,13 +5925,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+              className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
             >
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
-                className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-5xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
+                className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-6xl w-full my-auto space-y-6 max-h-[92vh] overflow-y-auto shadow-2xl shadow-cyan-500/10 bg-[#090d16]/95"
               >
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
