@@ -26,6 +26,7 @@ import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { SubscribeModal } from './components/SubscribeModal';
 import { NotFoundPage } from './components/NotFoundPage';
 
 import { TeamLoginPage } from './components/TeamLoginPage';
@@ -413,6 +414,7 @@ export function App() {
             onClose={() => setIsAiDrawerOpen(false)}
           />
           <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+          <SubscribeModal />
         </>
       )}
     </>

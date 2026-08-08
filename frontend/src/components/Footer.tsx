@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield, Send } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { subscriberApi } from '../services/api';
 import { ZENEMOO_SOCIAL_LINKS } from './SocialData';
@@ -9,11 +8,6 @@ export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [modalEmail, setModalEmail] = useState('');
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalSuccess, setModalSuccess] = useState(false);
-  const [modalError, setModalError] = useState('');
   const [subscribedEmail, setSubscribedEmail] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -25,9 +19,6 @@ export const Footer: React.FC = () => {
       const hash = window.location.hash;
       if (hash === '#privacy') setLegalModal('privacy');
       if (hash === '#terms') setLegalModal('terms');
-      if (hash === '#subscribe' || hash === '#dispatch' || hash === '#newsletter') {
-        setShowSubscribeModal(true);
-      }
     };
     handleHash();
     window.addEventListener('hashchange', handleHash);
@@ -58,31 +49,6 @@ export const Footer: React.FC = () => {
       setEmail('');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleModalSubscribe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setModalError('');
-    const trimmedEmail = modalEmail.trim().toLowerCase();
-
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setModalError('Please enter a valid email address');
-      return;
-    }
-
-    setModalLoading(true);
-
-    try {
-      await subscriberApi.subscribe(trimmedEmail);
-      setSubscribedEmail(trimmedEmail);
-      setModalSuccess(true);
-    } catch (err: any) {
-      console.warn('Subscription modal warning:', err);
-      setSubscribedEmail(trimmedEmail);
-      setModalSuccess(true);
-    } finally {
-      setModalLoading(false);
     }
   };
 
@@ -122,20 +88,18 @@ export const Footer: React.FC = () => {
 
             {/* Newsletter */}
             <div>
-              <button
-                type="button"
-                onClick={() => {
-                  setModalEmail('');
-                  setModalSuccess(false);
-                  setModalError('');
-                  setShowSubscribeModal(true);
+              <a
+                href="#subscribe"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.hash = 'subscribe';
                 }}
-                className="text-xs font-mono uppercase tracking-wider text-slate-300 hover:text-cyan-400 mb-2 flex items-center gap-1.5 transition-colors cursor-pointer group"
-                title="Click to open Subscribe to Zenemoo Dispatch popup"
+                className="text-xs font-mono uppercase tracking-wider text-slate-300 hover:text-cyan-400 font-bold mb-2 inline-flex items-center gap-1.5 transition-colors cursor-pointer group"
+                title="Open Shareable Subscribe Box"
               >
                 <span>Subscribe to Zenemoo Dispatch</span>
-                <ArrowRight className="w-3 h-3 text-cyan-400 group-hover:translate-x-1 transition-transform" />
-              </button>
+                <span className="text-[10px] text-cyan-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform font-bold">↗</span>
+              </a>
               <form onSubmit={handleSubscribe} className="space-y-2 max-w-sm">
                 <div className="flex gap-2">
                   <input
@@ -295,99 +259,6 @@ export const Footer: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* DEDICATED SUBSCRIBE TO ZENEMOO DISPATCH MODAL */}
-      {showSubscribeModal &&
-        createPortal(
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-black/90 backdrop-blur-2xl animate-fade-in overflow-y-auto">
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full my-auto relative space-y-6 shadow-2xl shadow-cyan-500/20 bg-[#090d16] text-slate-200">
-              {/* Close Button */}
-              <button
-                onClick={() => setShowSubscribeModal(false)}
-                className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              {!modalSuccess ? (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/10">
-                      <Send className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold font-display text-white leading-tight">
-                        Subscribe to Zenemoo Dispatch
-                      </h3>
-                      <p className="text-xs font-mono text-cyan-300 mt-0.5">
-                        Official Updates &amp; AI Release Roster
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="text-xs font-mono text-slate-300 leading-relaxed bg-white/[0.03] p-3 rounded-xl border border-white/5">
-                    Join our official distribution list to receive dataset release notifications, language production benchmarks, and enterprise AI platform updates.
-                  </p>
-
-                  <form onSubmit={handleModalSubscribe} className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-mono text-slate-400 font-bold uppercase tracking-wider block">
-                        Work / Personal Email Address
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="you@company.com"
-                        value={modalEmail}
-                        onChange={(e) => {
-                          setModalEmail(e.target.value);
-                          if (modalError) setModalError('');
-                        }}
-                        className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 font-mono shadow-inner"
-                      />
-                      {modalError && <div className="text-[11px] font-mono text-red-400 pt-0.5">{modalError}</div>}
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={modalLoading}
-                      className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-black font-bold text-xs font-mono transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {modalLoading ? (
-                        <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
-                      ) : (
-                        <>
-                          <Send className="w-3.5 h-3.5" /> Join Dispatch Roster
-                        </>
-                      )}
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <div className="space-y-5 text-center py-2">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <h3 className="text-xl font-bold font-display text-white">🎉 Thank You for Subscribing!</h3>
-                    <p className="text-xs font-mono text-slate-300 leading-relaxed pt-1">
-                      We've registered <span className="text-cyan-400 font-semibold">{subscribedEmail}</span> for the official <span className="text-white font-semibold">Zenemoo Dispatch</span> newsletter.
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => setShowSubscribeModal(false)}
-                    className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
-                  >
-                    Done
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>,
-          document.body
-        )}
 
       {/* LEGAL DEDICATED PRIVACY POLICY & TERMS MODAL */}
       {legalModal && (
