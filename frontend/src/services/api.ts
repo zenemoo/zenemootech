@@ -159,6 +159,7 @@ export const opportunityApi = {
 export const opportunityApplicationApi = {
   getAll: (opportunity_id?: string) => api.get('/opportunity-applications', { params: { opportunity_id } }),
   submit: (data: any) => api.post('/opportunity-applications', data),
+  sendConfirmation: (data: any) => api.post('/opportunity-applications/send-confirmation', data),
   update: (id: string, data: any) => api.put(`/opportunity-applications/${id}`, data),
   delete: (id: string) => api.delete(`/opportunity-applications/${id}`),
   resyncSingle: (id: string) => api.post(`/opportunity-applications/${id}/resync`),

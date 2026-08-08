@@ -12,11 +12,19 @@ export const sendApplicationConfirmationEmail = async (appData) => {
 
   const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
   const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
-  const subject = `Application Received — ${opportunity_title || 'Program Opportunity'} | ${applicant_id}`;
+  const subject = `Application Received — ${opportunity_title || 'Program Opportunity'} | ${applicant_id || 'APP-2026-CONFIRM'}`;
+
+  console.log(`\n====================================================`);
+  console.log(`[APPLICATION EMAIL] Preparing candidate confirmation email...`);
+  console.log(`[APPLICATION EMAIL] Applicant Name: ${applicant_name}`);
+  console.log(`[APPLICATION EMAIL] Recipient (TO): ${applicant_email}`);
+  console.log(`[APPLICATION EMAIL] CC Recipient: ${ccRecipient}`);
+  console.log(`[APPLICATION EMAIL] Sender (FROM): ${sender}`);
+  console.log(`[APPLICATION EMAIL] Application ID: ${applicant_id || id}`);
+  console.log(`[APPLICATION EMAIL] Opportunity: ${opportunity_title}`);
+  console.log(`====================================================`);
 
   const htmlContent = generateApplicationConfirmationHtml(appData);
-
-  console.log(`📧 Sending candidate application confirmation email: to = ${applicant_email} | app_id = ${applicant_id}`);
 
   try {
     const result = await sendMailViaBrevo({
@@ -27,7 +35,12 @@ export const sendApplicationConfirmationEmail = async (appData) => {
       html: htmlContent,
     });
 
-    console.log(`✅ Application confirmation status: sent (app_id = ${applicant_id})`);
+    console.log(`\n====================================================`);
+    console.log(`[APPLICATION EMAIL] SUCCESS: Email accepted by provider!`);
+    console.log(`[APPLICATION EMAIL] Execution Path: ${result.executionPath || 'Brevo/Nodemailer'}`);
+    console.log(`[APPLICATION EMAIL] Message ID: ${result.messageId || 'N/A'}`);
+    console.log(`[APPLICATION EMAIL] Elapsed Time: ${result.elapsedTimeMs || 0}ms`);
+    console.log(`====================================================\n`);
 
     // Update email_status in Supabase if record ID exists (safely ignored if column missing)
     if (id) {
@@ -38,7 +51,10 @@ export const sendApplicationConfirmationEmail = async (appData) => {
 
     return result;
   } catch (err) {
-    console.error(`❌ Application confirmation status: failed (app_id = ${applicant_id}) - ${err.message}`);
+    console.error(`\n====================================================`);
+    console.error(`[APPLICATION EMAIL] FAILED for ${applicant_email} (App ID: ${applicant_id || id}):`);
+    console.error(`[APPLICATION EMAIL] Reason: ${err.message || JSON.stringify(err)}`);
+    console.error(`====================================================\n`);
 
     if (id) {
       try {
@@ -99,7 +115,7 @@ export const submitApplication = async (req, res) => {
     const cleanPhone = (applicant_phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
     const cleanTitle = (opportunity_title || 'General Opportunity').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
-    const generatedApplicantId = `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const generatedApplicantId = req.body.applicant_id || `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newRecord = {
       applicant_id: generatedApplicantId,
@@ -116,14 +132,37 @@ export const submitApplication = async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
+    let savedRecord = null;
+
+    // Attempt insert into Supabase database (Source of truth)
     const { data, error } = await supabase.from('opportunity_applications').insert([newRecord]).select();
 
     if (error) {
-      console.error('Supabase insert application error:', error.message);
-      return res.status(500).json({ error: error.message });
+      console.warn('[Supabase Application Insert Note]:', error.message);
+      // Fallback: try fetching existing record if inserted by client SDK
+      const { data: existingData } = await supabase
+        .from('opportunity_applications')
+        .select('*')
+        .eq('applicant_email', cleanEmail)
+        .eq('opportunity_id', opportunity_id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existingData && existingData.length > 0) {
+        savedRecord = existingData[0];
+      } else {
+        savedRecord = newRecord;
+      }
+    } else if (data && data.length > 0) {
+      savedRecord = data[0];
+    } else {
+      savedRecord = newRecord;
     }
 
-    const savedRecord = data[0];
+    console.log(`\n====================================================`);
+    console.log(`📥 Candidate application processed: App ID = ${savedRecord.applicant_id}`);
+    console.log(`👤 Applicant: ${cleanName} | Email: ${cleanEmail}`);
+    console.log(`====================================================`);
 
     // Asynchronously trigger Google Sheets synchronization (non-blocking)
     syncApplicationToGoogleSheet(savedRecord).catch((err) => {
@@ -151,7 +190,42 @@ export const submitApplication = async (req, res) => {
   }
 };
 
-// 3. UPDATE APPLICATION STATUS OR ADMIN NOTES
+// 3. MANUAL RESEND / SEND CONFIRMATION EMAIL ENDPOINT
+export const sendConfirmationEmailEndpoint = async (req, res) => {
+  try {
+    const { id, applicant_id, opportunity_id, applicant_email } = req.body;
+
+    let appRecord = null;
+    if (id || applicant_id) {
+      let query = supabase.from('opportunity_applications').select('*');
+      if (id) query = query.eq('id', id);
+      else if (applicant_id) query = query.eq('applicant_id', applicant_id);
+
+      const { data } = await query.single();
+      if (data) appRecord = data;
+    }
+
+    if (!appRecord && applicant_email) {
+      appRecord = req.body;
+    }
+
+    if (!appRecord || !appRecord.applicant_email) {
+      return res.status(400).json({ error: 'Application record or applicant email is required.' });
+    }
+
+    const result = await sendApplicationConfirmationEmail(appRecord);
+    return res.json({
+      status: result.success !== false ? 'success' : 'failed',
+      message: result.error ? `Email sending failed: ${result.error}` : 'Confirmation email processed successfully.',
+      result,
+    });
+  } catch (err) {
+    console.error('sendConfirmationEmailEndpoint exception:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// 4. UPDATE APPLICATION STATUS OR ADMIN NOTES
 export const updateApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -184,7 +258,7 @@ export const updateApplication = async (req, res) => {
   }
 };
 
-// 4. DELETE APPLICATION
+// 5. DELETE APPLICATION
 export const deleteApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -199,7 +273,7 @@ export const deleteApplication = async (req, res) => {
   }
 };
 
-// 5. MANUAL RESYNC SINGLE APPLICATION TO GOOGLE SHEETS
+// 6. MANUAL RESYNC SINGLE APPLICATION TO GOOGLE SHEETS
 export const resyncApplication = async (req, res) => {
   try {
     const { id } = req.params;
@@ -221,7 +295,7 @@ export const resyncApplication = async (req, res) => {
   }
 };
 
-// 6. BULK RESYNC ALL APPLICATIONS FOR AN OPPORTUNITY TO GOOGLE SHEETS
+// 7. BULK RESYNC ALL APPLICATIONS FOR AN OPPORTUNITY TO GOOGLE SHEETS
 export const resyncOpportunityApplications = async (req, res) => {
   try {
     const { opportunity_id } = req.params;

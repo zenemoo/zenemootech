@@ -102,10 +102,14 @@ export const submitCandidateApplication = async (
       localList.unshift(saved);
       saveLocalApplications(localList);
 
-      // Trigger backend submission to ensure async Google Sheets sync is executed
+      // Trigger backend submission & email confirmation dispatch to ensure async Google Sheets sync and email delivery are executed
       try {
-        await opportunityApplicationApi.submit(appData);
-      } catch (_) {}
+        await opportunityApplicationApi.submit({ ...appData, applicant_id: saved.applicant_id || dbRecord.applicant_id });
+      } catch (e1) {
+        try {
+          await opportunityApplicationApi.sendConfirmation(saved);
+        } catch (_) {}
+      }
 
       return saved;
     } else if (error) {
