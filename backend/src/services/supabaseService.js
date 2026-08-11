@@ -14,6 +14,10 @@ export const supabaseService = {
     return data || [];
   },
 
+  async select(table, orderBy = 'created_at', ascending = true) {
+    return this.selectAll(table, orderBy, ascending);
+  },
+
   async selectById(table, id) {
     if (!supabase) {
       throw new Error('Supabase client is not initialized.');

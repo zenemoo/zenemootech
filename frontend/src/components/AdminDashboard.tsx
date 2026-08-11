@@ -4544,11 +4544,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <h4 className="text-sm font-bold font-display text-white">Add New Newsletter Subscriber</h4>
                   <p className="text-xs font-mono text-slate-400 mt-0.5">Manual subscriber enrollment &amp; data export</p>
                 </div>
-                <ExportButton
-                  sectionId="newsletter"
-                  dataset={subscribers}
-                  showToast={(msg, type) => addToast(msg, type)}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!subscribers || subscribers.length === 0) {
+                        addToast('No subscriber emails available to copy.', 'warning');
+                        return;
+                      }
+                      const emailList = subscribers.map((s) => s.email).filter(Boolean).join(', ');
+                      navigator.clipboard.writeText(emailList).then(() => {
+                        addToast(`Copied ${subscribers.length} subscriber email(s) to clipboard!`, 'success');
+                      }).catch(() => {
+                        addToast('Failed to copy emails to clipboard.', 'error');
+                      });
+                    }}
+                    disabled={subscribers.length === 0}
+                    className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Copy all subscriber emails to clipboard (comma-separated for easy emailing)"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Copy All Emails ({subscribers.length})</span>
+                  </button>
+                  <ExportButton
+                    sectionId="newsletter"
+                    dataset={subscribers}
+                    showToast={(msg, type) => addToast(msg, type)}
+                  />
+                </div>
               </div>
               <form
                 onSubmit={async (e) => {
@@ -4646,8 +4669,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
                     <div className="flex gap-1.5 shrink-0">
                       <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(sub.email);
+                          addToast(`Copied ${sub.email} to clipboard!`, 'success');
+                        }}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 cursor-pointer"
+                        title="Copy Email Address"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => setEditingSub({ id: sub.id, email: sub.email })}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10"
+                        className="p-2 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 cursor-pointer"
                         title="Edit Subscriber"
                       >
                         <Edit className="w-3.5 h-3.5" />

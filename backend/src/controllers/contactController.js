@@ -183,7 +183,7 @@ export const submitContact = async (req, res, next) => {
 
 export const getContacts = async (req, res, next) => {
   try {
-    const data = await supabaseService.select('contacts');
+    const data = await supabaseService.selectAll('contacts', 'created_at', false);
     res.json({ success: true, data: data || [] });
   } catch (err) {
     next(err);
