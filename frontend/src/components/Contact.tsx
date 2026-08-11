@@ -41,6 +41,15 @@ export const Contact: React.FC = () => {
     message: '',
   });
 
+  const [submittedDetails, setSubmittedDetails] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    company: '',
+    service: '',
+    language: '',
+  });
+
   const generateInquiryId = () => {
     const year = new Date().getFullYear();
     const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -98,6 +107,15 @@ export const Contact: React.FC = () => {
 
     try {
       await saveContactInquiry(payload);
+
+      setSubmittedDetails({
+        name: form.name,
+        email: trimmedEmail,
+        phone: fullPhone,
+        company: form.company,
+        service: form.service,
+        language: form.language,
+      });
 
       confetti({
         particleCount: 90,
@@ -559,10 +577,10 @@ export const Contact: React.FC = () => {
             </div>
 
             <div className="text-xs font-mono text-slate-300 space-y-1 text-left bg-white/[0.03] p-3.5 rounded-xl border border-white/5">
-              <div><span className="text-slate-500">Name:</span> <strong className="text-white">{form.name}</strong></div>
-              <div><span className="text-slate-500">Email:</span> <strong className="text-cyan-300">{form.email}</strong></div>
-              {phoneNumber && <div><span className="text-slate-500">Phone:</span> <strong className="text-white">{countryCode} {phoneNumber}</strong></div>}
-              <div><span className="text-slate-500">Service:</span> <strong className="text-white">{form.service}</strong></div>
+              <div><span className="text-slate-500">Name:</span> <strong className="text-white">{submittedDetails.name}</strong></div>
+              <div><span className="text-slate-500">Email:</span> <strong className="text-cyan-300">{submittedDetails.email}</strong></div>
+              {submittedDetails.phone && <div><span className="text-slate-500">Phone:</span> <strong className="text-white">{submittedDetails.phone}</strong></div>}
+              <div><span className="text-slate-500">Service:</span> <strong className="text-white">{submittedDetails.service}</strong></div>
             </div>
 
             <button
