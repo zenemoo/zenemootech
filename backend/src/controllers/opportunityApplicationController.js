@@ -12,7 +12,7 @@ export const sendApplicationConfirmationEmail = async (appData) => {
   const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
 
   const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
-  const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
+  const ccRecipient = process.env.EMAIL_CC || null;
   const subject = `Application Received — ${opportunity_title || 'Program Opportunity'} | ${applicant_id || 'APP-2026-CONFIRM'}`;
 
   console.log(`\n====================================================`);
@@ -97,7 +97,7 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
   }
 
   const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
-  const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
+  const ccRecipient = process.env.EMAIL_CC || null;
   const subject = `Congratulations! Your Application Has Been Accepted — ${opportunity_title || 'Program Opportunity'} | ${applicant_id || 'APP-2026-ACCEPTED'}`;
 
   console.log(`\n====================================================`);

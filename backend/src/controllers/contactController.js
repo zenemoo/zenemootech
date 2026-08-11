@@ -10,7 +10,7 @@ export const sendContactConfirmationEmail = async (inquiryData) => {
   const { id, inquiry_code, name, email, phone, company, service, language, message, created_at } = inquiryData;
 
   const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
-  const ccRecipient = process.env.EMAIL_CC || 'mr.prem2006@gmail.com';
+  const ccRecipient = process.env.EMAIL_CC || null;
   const subject = `Zenemoo — Contact Inquiry Received | Ticket #${inquiry_code}`;
 
   const htmlContent = generateContactConfirmationHtml({
