@@ -316,7 +316,7 @@ export const submitApplication = async (req, res) => {
   }
 };
 
-// 3. MANUAL RESEND / SEND CONFIRMATION EMAIL ENDPOINT
+// 3. MANUAL RESEND / SEND CONFIRMATION EMAIL ENDPOINT (Triggers Confirmation Email + Telegram Alert + Sheets Sync)
 export const sendConfirmationEmailEndpoint = async (req, res) => {
   try {
     const { id, applicant_id, opportunity_id, applicant_email } = req.body;
@@ -340,6 +340,21 @@ export const sendConfirmationEmailEndpoint = async (req, res) => {
     }
 
     const result = await sendApplicationConfirmationEmail(appRecord);
+
+    // Asynchronously trigger Google Sheets sync if pending
+    syncApplicationToGoogleSheet(appRecord).catch((err) => {
+      console.warn('[Google Sheets Post-Confirmation Sync Note]:', err.message);
+    });
+
+    // Asynchronously dispatch Telegram notification to administrators
+    sendApplicationNotification({
+      applicant_name: appRecord.applicant_name,
+      applicant_email: appRecord.applicant_email,
+      applicant_phone: appRecord.applicant_phone,
+      opportunity_title: appRecord.opportunity_title,
+      qualification: appRecord.answers?.qualification || appRecord.answers?.degree || 'Relevant Qualification Uploaded',
+    }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
+
     return res.json({
       status: result.success !== false ? 'success' : 'failed',
       message: result.error ? `Email sending failed: ${result.error}` : 'Confirmation email processed successfully.',

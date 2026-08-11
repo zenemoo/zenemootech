@@ -147,6 +147,14 @@ export const submitCandidateApplication = async (
       const saved = data[0] as CandidateApplication;
       localList.unshift(saved);
       saveLocalApplications(localList);
+
+      // Asynchronously trigger backend confirmation email dispatch, Telegram alert, and Google Sheets sync
+      try {
+        opportunityApplicationApi.sendConfirmation(saved).catch((err) => {
+          console.warn('[Post-insert confirmation trigger note]:', err.message);
+        });
+      } catch (_) {}
+
       return saved;
     } else if (error) {
       if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
