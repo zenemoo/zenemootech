@@ -200,3 +200,13 @@ export const updateContact = async (req, res, next) => {
     next(err);
   }
 };
+
+export const deleteContact = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await supabaseService.delete('contacts', id);
+    res.json({ success: true, message: 'Contact inquiry deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
