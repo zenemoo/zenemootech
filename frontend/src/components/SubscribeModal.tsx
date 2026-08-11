@@ -148,9 +148,26 @@ export const SubscribeModal: React.FC<SubscribeModalProps> = ({ isOpen: propIsOp
 
               {errorMsg && <div className="text-xs font-mono text-red-400">{errorMsg}</div>}
 
-              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 pt-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Zero spam. Direct database record. Unsubscribe anytime.</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] font-mono text-slate-400 pt-2 border-t border-white/5 mt-2">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Zero spam. Direct database record.</span>
+                </div>
+                <div>
+                  Want to stop receiving Zenemoo Dispatch?{' '}
+                  <a
+                    href="/unsubscribe"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleClose();
+                      window.history.pushState(null, '', '/unsubscribe');
+                      window.dispatchEvent(new Event('popstate'));
+                    }}
+                    className="text-cyan-400 hover:text-cyan-300 underline font-semibold cursor-pointer"
+                  >
+                    Unsubscribe
+                  </a>
+                </div>
               </div>
             </form>
           </div>

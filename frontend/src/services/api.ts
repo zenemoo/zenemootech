@@ -180,6 +180,7 @@ export const subscriberApi = {
   getAll: () => api.get('/subscribers'),
   subscribe: (email: string | string[]) => api.post('/subscribers', { email }),
   subscribeBulk: (emails: string | string[]) => api.post('/subscribers/bulk', { emails }),
+  unsubscribe: (email: string) => api.post('/subscribers/unsubscribe', { email }),
   update: (id: string, email: string) => api.put(`/subscribers/${id}`, { email }),
   delete: (id: string) => api.delete(`/subscribers/${id}`),
 };

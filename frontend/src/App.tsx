@@ -27,6 +27,7 @@ import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { SubscribeModal } from './components/SubscribeModal';
+import { UnsubscribePage } from './components/UnsubscribePage';
 import { NotFoundPage } from './components/NotFoundPage';
 
 import { TeamLoginPage } from './components/TeamLoginPage';
@@ -36,7 +37,7 @@ import { HRDashboard } from './components/HRDashboard';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | '404'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -92,6 +93,7 @@ export function App() {
         | 'forgot-password-verify'
         | 'forgot-password-reset'
         | 'zenemooai'
+        | 'unsubscribe'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -157,6 +159,8 @@ export function App() {
         matchedRoute = 'privacy';
       } else if (path === '/terms' || hash === '#terms' || hash === '#terms-and-conditions' || hash === '#terms-conditions') {
         matchedRoute = 'terms';
+      } else if (path === '/unsubscribe' || path === '/unsubscribe/' || hash === '#unsubscribe' || hash === '#/unsubscribe') {
+        matchedRoute = 'unsubscribe';
       } else if (
         path === '/opportunities' ||
         path === '/projects' ||
@@ -377,6 +381,8 @@ export function App() {
             setCurrentRoute('opportunities');
           }}
         />
+      ) : currentRoute === 'unsubscribe' ? (
+        <UnsubscribePage />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

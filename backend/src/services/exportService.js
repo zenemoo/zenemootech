@@ -67,6 +67,7 @@ export const EXPORT_CONFIGS = {
       { key: 'email', label: 'Email Address' },
       { key: 'status', label: 'Subscription Status' },
       { key: 'subscribed_at', label: 'Subscribed At' },
+      { key: 'unsubscribed_at', label: 'Unsubscribed At' },
       { key: 'source', label: 'Subscription Source' },
       { key: 'created_at', label: 'Created At' },
     ],
