@@ -205,7 +205,7 @@ export const submitApplication = async (req, res) => {
       return res.status(400).json({ error: 'Missing required applicant fields' });
     }
 
-    // Input Validation & XSS/HTML Sanitization
+    // Input Validation & Email Normalization (trim + lowercase)
     const cleanEmail = (applicant_email || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: 'Please enter a valid applicant email address.' });
@@ -215,6 +215,43 @@ export const submitApplication = async (req, res) => {
     const cleanPhone = (applicant_phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
     const cleanTitle = (opportunity_title || 'General Opportunity').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
+    // Verify opportunity exists & is accepting applications
+    try {
+      const { data: oppRecord } = await supabase
+        .from('opportunities')
+        .select('id, title, status')
+        .eq('id', opportunity_id)
+        .maybeSingle();
+
+      if (oppRecord && oppRecord.status === 'stopped') {
+        return res.status(400).json({
+          success: false,
+          error: 'Onboarding for this opportunity has been stopped.',
+        });
+      }
+    } catch (oppErr) {
+      console.warn('[Opportunity check note]:', oppErr.message);
+    }
+
+    // SERVER-SIDE DUPLICATE CHECK BEFORE INSERT
+    // Check if an application already exists with the same opportunity_id and normalized email
+    const { data: existingApps, error: checkError } = await supabase
+      .from('opportunity_applications')
+      .select('id, applicant_id, created_at')
+      .eq('opportunity_id', opportunity_id)
+      .ilike('applicant_email', cleanEmail)
+      .limit(1);
+
+    if (!checkError && existingApps && existingApps.length > 0) {
+      console.log(`[DUPLICATE BLOCKED] Applicant "${cleanEmail}" already applied for opportunity "${opportunity_id}". Existing App ID: ${existingApps[0].applicant_id || existingApps[0].id}`);
+      return res.status(409).json({
+        success: false,
+        code: 'DUPLICATE_APPLICATION',
+        message: 'You have already applied for this opportunity using this email address.',
+      });
+    }
+
+    // Generate Applicant ID ONLY AFTER duplicate check passes
     const generatedApplicantId = req.body.applicant_id || `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newRecord = {
@@ -232,33 +269,26 @@ export const submitApplication = async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
-    let savedRecord = null;
-
     // Attempt insert into Supabase database (Source of truth)
     const { data, error } = await supabase.from('opportunity_applications').insert([newRecord]).select();
 
     if (error) {
-      console.warn('[Supabase Application Insert Note]:', error.message);
-      const { data: existingData } = await supabase
-        .from('opportunity_applications')
-        .select('*')
-        .eq('applicant_email', cleanEmail)
-        .eq('opportunity_id', opportunity_id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (existingData && existingData.length > 0) {
-        savedRecord = existingData[0];
-      } else {
-        savedRecord = newRecord;
+      // Catch duplicate constraint error if database unique constraint triggers in a race condition
+      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
+        console.log(`[DUPLICATE BLOCKED DB CONSTRAINT] Race condition caught constraint for "${cleanEmail}" on "${opportunity_id}".`);
+        return res.status(409).json({
+          success: false,
+          code: 'DUPLICATE_APPLICATION',
+          message: 'You have already applied for this opportunity using this email address.',
+        });
       }
-    } else if (data && data.length > 0) {
-      savedRecord = data[0];
-    } else {
-      savedRecord = newRecord;
+      console.error('Supabase insert application error:', error.message);
+      return res.status(500).json({ error: error.message });
     }
 
-    console.log(`📥 Candidate application processed: App ID = ${savedRecord.applicant_id} | Email = ${cleanEmail}`);
+    const savedRecord = data && data.length > 0 ? data[0] : newRecord;
+
+    console.log(`📥 New candidate application processed: App ID = ${savedRecord.applicant_id} | Email = ${cleanEmail}`);
 
     // Asynchronously trigger Google Sheets synchronization (non-blocking)
     syncApplicationToGoogleSheet(savedRecord).catch((err) => {

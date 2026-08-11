@@ -22,6 +22,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
 
   useEffect(() => {
     getStoredOpportunities().then((list) => {
@@ -61,6 +62,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
     e.preventDefault();
     if (!opportunity) return;
     setIsSubmitting(true);
+    setIsDuplicate(false);
 
     try {
       const result = await submitCandidateApplication({
@@ -74,7 +76,11 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 
       setSubmittedAppId(result.applicant_id || result.id);
     } catch (err: any) {
-      alert('Application submission failed: ' + (err.message || 'Error'));
+      if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
+        setIsDuplicate(true);
+      } else {
+        alert('Application submission failed: ' + (err.message || 'Error processing application.'));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -475,7 +481,59 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </button>
               </div>
 
-              {submittedAppId ? (
+              {isDuplicate ? (
+                <div className="text-center py-6 px-2 space-y-6 font-mono text-xs">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
+                    <ShieldAlert className="w-8 h-8" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold uppercase text-[10px] tracking-widest inline-block">
+                      Application Record Found
+                    </div>
+                    <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">
+                      Application Already Received
+                    </h4>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-300 space-y-3 font-sans text-sm text-left leading-relaxed shadow-inner">
+                    <p>
+                      Thank you for your interest in <strong className="text-cyan-400">{opportunity.title}</strong>.
+                    </p>
+                    <p>
+                      We found that an application has already been submitted using <strong className="text-white font-mono">{applicantEmail.trim().toLowerCase()}</strong> for this opportunity.
+                    </p>
+                    <p className="text-slate-400 text-xs">
+                      You do not need to submit another application. Our recruitment operations team processes each unique application thoroughly.
+                    </p>
+                  </div>
+
+                  <div className="pt-2 space-y-3">
+                    <p className="text-slate-400 text-xs font-sans">
+                      If you believe this is an error or need assistance, please contact:
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                      <a
+                        href="mailto:info@zenemoo.in?subject=Application%20Inquiry%20-%20Zenemoo"
+                        className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-95 text-white font-bold font-mono text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+                      >
+                        <Mail className="w-4 h-4" /> Contact Zenemoo (info@zenemoo.in)
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsApplyModalOpen(false);
+                          setIsDuplicate(false);
+                        }}
+                        className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-bold font-mono text-xs transition-all cursor-pointer"
+                      >
+                        Close Window
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : submittedAppId ? (
                 <div className="text-center py-8 space-y-4 font-mono text-xs">
                   <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-2xl font-bold">
                     ✓
@@ -494,6 +552,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                     onClick={() => {
                       setIsApplyModalOpen(false);
                       setSubmittedAppId(null);
+                      setIsDuplicate(false);
                     }}
                     className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-bold cursor-pointer"
                   >

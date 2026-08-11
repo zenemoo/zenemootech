@@ -79,54 +79,20 @@ export const getStoredCandidateApplications = async (opportunity_id?: string): P
   return localList;
 };
 
-// Submit candidate application directly to Supabase
+// Submit candidate application directly to Supabase / Backend API with Duplicate Protection
 export const submitCandidateApplication = async (
   appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'>
 ): Promise<CandidateApplication> => {
   let localList = getLocalApplications();
-  const generatedId = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  const dbRecord = {
-    applicant_id: appData.applicant_id || generatedId,
-    opportunity_id: appData.opportunity_id,
-    opportunity_title: appData.opportunity_title || 'General Opportunity',
-    applicant_name: appData.applicant_name,
-    applicant_email: appData.applicant_email,
-    applicant_phone: appData.applicant_phone,
-    answers: appData.answers || {},
-    status: 'pending',
-    admin_notes: '',
-    sync_status: 'pending',
-    created_at: new Date().toISOString(),
+  const cleanEmail = (appData.applicant_email || '').trim().toLowerCase();
+  const normalizedAppData = {
+    ...appData,
+    applicant_email: cleanEmail,
   };
 
+  // Primary Method: Submit via Express API Backend (Enforces server-side duplicate protection & notifications)
   try {
-    const { data, error } = await supabase.from('opportunity_applications').insert([dbRecord]).select();
-    if (!error && data && data.length > 0) {
-      const saved = data[0] as CandidateApplication;
-      localList.unshift(saved);
-      saveLocalApplications(localList);
-
-      // Trigger backend submission & email confirmation dispatch to ensure async Google Sheets sync and email delivery are executed
-      try {
-        await opportunityApplicationApi.submit({ ...appData, applicant_id: saved.applicant_id || dbRecord.applicant_id });
-      } catch (e1) {
-        try {
-          await opportunityApplicationApi.sendConfirmation(saved);
-        } catch (_) {}
-      }
-
-      return saved;
-    } else if (error) {
-      console.error('Supabase insert application error:', error.message);
-    }
-  } catch (err: any) {
-    console.warn('Direct Supabase submit application error:', err.message);
-  }
-
-  // Fallback submit via Express API
-  try {
-    const res = await opportunityApplicationApi.submit(appData);
+    const res = await opportunityApplicationApi.submit(normalizedAppData);
     if (res.data && res.data.data) {
       const saved = res.data.data as CandidateApplication;
       localList.unshift(saved);
@@ -134,12 +100,80 @@ export const submitCandidateApplication = async (
       return saved;
     }
   } catch (apiErr: any) {
-    console.warn('Express submit application note:', apiErr.message);
+    const responseData = apiErr.response?.data;
+    if (responseData?.code === 'DUPLICATE_APPLICATION' || apiErr.response?.status === 409) {
+      const dupError = new Error(responseData?.message || 'You have already applied for this opportunity using this email address.') as any;
+      dupError.code = 'DUPLICATE_APPLICATION';
+      dupError.isDuplicate = true;
+      throw dupError;
+    }
+    console.warn('Express submit application note, trying direct Supabase fallback:', apiErr.message);
   }
 
+  // Fallback Method: Direct Supabase client insert (When backend API is unreachable)
+  // MUST perform client-side pre-check for duplicates before inserting
+  try {
+    const { data: existingApps } = await supabase
+      .from('opportunity_applications')
+      .select('id, applicant_id')
+      .eq('opportunity_id', normalizedAppData.opportunity_id)
+      .ilike('applicant_email', cleanEmail)
+      .limit(1);
+
+    if (existingApps && existingApps.length > 0) {
+      const dupError = new Error('You have already applied for this opportunity using this email address.') as any;
+      dupError.code = 'DUPLICATE_APPLICATION';
+      dupError.isDuplicate = true;
+      throw dupError;
+    }
+
+    const generatedId = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const dbRecord = {
+      applicant_id: normalizedAppData.applicant_id || generatedId,
+      opportunity_id: normalizedAppData.opportunity_id,
+      opportunity_title: normalizedAppData.opportunity_title || 'General Opportunity',
+      applicant_name: normalizedAppData.applicant_name,
+      applicant_email: cleanEmail,
+      applicant_phone: normalizedAppData.applicant_phone,
+      answers: normalizedAppData.answers || {},
+      status: 'pending',
+      admin_notes: '',
+      sync_status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase.from('opportunity_applications').insert([dbRecord]).select();
+    if (!error && data && data.length > 0) {
+      const saved = data[0] as CandidateApplication;
+      localList.unshift(saved);
+      saveLocalApplications(localList);
+      return saved;
+    } else if (error) {
+      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
+        const dupError = new Error('You have already applied for this opportunity using this email address.') as any;
+        dupError.code = 'DUPLICATE_APPLICATION';
+        dupError.isDuplicate = true;
+        throw dupError;
+      }
+      console.error('Supabase insert application error:', error.message);
+    }
+  } catch (err: any) {
+    if (err.code === 'DUPLICATE_APPLICATION' || err.isDuplicate) {
+      throw err;
+    }
+    console.warn('Direct Supabase submit application error:', err.message);
+  }
+
+  const generatedId = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
   const fallbackApp: CandidateApplication = {
     id: `app_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    ...dbRecord,
+    applicant_id: normalizedAppData.applicant_id || generatedId,
+    opportunity_id: normalizedAppData.opportunity_id,
+    opportunity_title: normalizedAppData.opportunity_title || 'General Opportunity',
+    applicant_name: normalizedAppData.applicant_name,
+    applicant_email: cleanEmail,
+    applicant_phone: normalizedAppData.applicant_phone,
+    answers: normalizedAppData.answers || {},
     status: 'pending',
   };
 
