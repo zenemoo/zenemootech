@@ -215,6 +215,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
+  // Bulk Subscriber Batch Processing Result State
+  const [subBatchResult, setSubBatchResult] = useState<{
+    addedCount: number;
+    skippedCount: number;
+    invalidCount: number;
+    addedEmails: string[];
+    skippedEmails: string[];
+    invalidEmails: string[];
+  } | null>(null);
+
   // Team State
   const [teamList, setTeamList] = useState<TeamMember[]>([]);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
@@ -4576,33 +4586,175 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!newSubEmail || !newSubEmail.includes('@')) return;
+                  if (!newSubEmail || !newSubEmail.trim()) return;
+                  setSubBatchResult(null);
                   try {
-                    await subscriberApi.subscribe(newSubEmail);
+                    const res = await subscriberApi.subscribe(newSubEmail);
+                    const resData = res.data;
+                    if (resData.summary) {
+                      setSubBatchResult(resData.summary);
+                      if (resData.summary.addedCount > 0) {
+                        addToast(`Enrolled ${resData.summary.addedCount} new subscriber(s)!`, 'success');
+                      }
+                      if (resData.summary.skippedCount > 0) {
+                        addToast(`${resData.summary.skippedCount} email(s) were already registered in your database and skipped.`, 'warning');
+                      }
+                    } else {
+                      addToast(resData.message || 'Subscriber processed successfully', 'success');
+                    }
                     setNewSubEmail('');
                     await loadSubscribers();
-                    showStatus('Subscriber added successfully!');
                   } catch (err: any) {
-                    showStatus(err.response?.data?.message || 'Error adding subscriber');
+                    const errSummary = err.response?.data?.summary;
+                    if (errSummary) {
+                      setSubBatchResult(errSummary);
+                    }
+                    addToast(err.response?.data?.message || 'Error processing subscriber emails', 'error');
                   }
                 }}
-                className="flex gap-3 max-w-lg"
+                className="space-y-3"
               >
-                <input
-                  type="email"
-                  required
-                  placeholder="subscriber@company.com"
-                  value={newSubEmail}
-                  onChange={(e) => setNewSubEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
-                />
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs shrink-0 flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" /> Add Email
-                </button>
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                    <label className="text-xs font-mono text-slate-300 font-semibold flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                      Paste Email Address(es) (Single or Bulk / Copy-Pasted):
+                    </label>
+                    {(() => {
+                      if (!newSubEmail) return null;
+                      const rawTokens = newSubEmail.split(/[,\s\n\r;]+/);
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                      const set = new Set<string>();
+                      for (let t of rawTokens) {
+                        const clean = t.trim().toLowerCase().replace(/^["'<\(\[]+|["'>\)\],.]+$/g, '').trim();
+                        if (clean && emailRegex.test(clean)) {
+                          set.add(clean);
+                        }
+                      }
+                      return set.size > 0 ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[11px] font-bold">
+                          ⚡ {set.size} Valid Email{set.size > 1 ? 's' : ''} Detected
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
+                  <textarea
+                    rows={3}
+                    placeholder="Paste single or multiple email addresses separated by commas, spaces, or line breaks (e.g. user1@company.com, user2@company.com)..."
+                    value={newSubEmail}
+                    onChange={(e) => setNewSubEmail(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 placeholder-slate-500 transition-all resize-y min-h-[85px]"
+                  ></textarea>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-mono text-slate-400">
+                    💡 Supports multi-line copy-paste from Excel/Notepad or comma-separated lists. Duplicates will be safely skipped.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {newSubEmail && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewSubEmail('');
+                          setSubBatchResult(null);
+                        }}
+                        className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-mono text-xs transition-all cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={!newSubEmail.trim()}
+                      className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs shrink-0 flex items-center gap-1.5 transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" /> Add Subscriber(s)
+                    </button>
+                  </div>
+                </div>
               </form>
+
+              {/* Batch Processing Result Breakdown Card */}
+              {subBatchResult && (
+                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3 font-mono text-xs animate-fade-in mt-3">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <span className="font-bold text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Batch Processing Summary
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSubBatchResult(null)}
+                      className="text-slate-400 hover:text-white text-[11px] cursor-pointer"
+                    >
+                      ✕ Close Summary
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      <div className="text-[10px] text-emerald-300/80 uppercase font-bold">New Emails Added</div>
+                      <div className="text-lg font-black">{subBatchResult.addedCount}</div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                      <div className="text-[10px] text-amber-300/80 uppercase font-bold">Already Subscribed (Skipped)</div>
+                      <div className="text-lg font-black">{subBatchResult.skippedCount}</div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                      <div className="text-[10px] text-rose-300/80 uppercase font-bold">Invalid Format (Skipped)</div>
+                      <div className="text-lg font-black">{subBatchResult.invalidCount}</div>
+                    </div>
+                  </div>
+
+                  {subBatchResult.skippedEmails && subBatchResult.skippedEmails.length > 0 && (
+                    <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1">
+                      <div className="text-amber-300 font-bold text-[11px]">
+                        ⚠️ Already Registered in Database ({subBatchResult.skippedEmails.length}):
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {subBatchResult.skippedEmails.map((email) => (
+                          <span key={email} className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[11px]">
+                            {email}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="text-[10px] text-slate-400 pt-0.5">
+                        These emails were already present in your database. Remaining new emails were enrolled successfully without interrupting the batch.
+                      </div>
+                    </div>
+                  )}
+
+                  {subBatchResult.addedEmails && subBatchResult.addedEmails.length > 0 && (
+                    <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 space-y-1">
+                      <div className="text-emerald-400 font-bold text-[11px]">
+                        ✅ Successfully Enrolled ({subBatchResult.addedEmails.length}):
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {subBatchResult.addedEmails.map((email) => (
+                          <span key={email} className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[11px]">
+                            {email}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {subBatchResult.invalidEmails && subBatchResult.invalidEmails.length > 0 && (
+                    <div className="p-3 rounded-lg bg-rose-500/5 border border-rose-500/20 space-y-1">
+                      <div className="text-rose-400 font-bold text-[11px]">
+                        🚫 Invalid Email Format ({subBatchResult.invalidEmails.length}):
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {subBatchResult.invalidEmails.map((email) => (
+                          <span key={email} className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-300 border border-rose-500/30 text-[11px]">
+                            {email}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Editing Subscriber Modal */}

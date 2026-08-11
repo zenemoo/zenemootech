@@ -10,6 +10,7 @@ const router = Router();
 
 router.get('/', getSubscribers);
 router.post('/', subscribeNewsletter);
+router.post('/bulk', subscribeNewsletter);
 router.put('/:id', updateSubscriber);
 router.delete('/:id', deleteSubscriber);
 
