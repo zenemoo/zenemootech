@@ -19,7 +19,8 @@ import {
   Clock,
   Globe,
   UserCheck,
-  HelpCircle
+  HelpCircle,
+  MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getPublicOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
@@ -392,7 +393,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                   </button>
                 </div>
               ) : submittedRef ? (
-                <div className="text-center py-8 space-y-5 font-mono text-xs">
+                <div className="text-center py-6 space-y-5 font-mono text-xs">
                   <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-3xl font-bold shadow-xl shadow-emerald-500/10">
                     <CheckCircle2 className="w-10 h-10 text-emerald-400" />
                   </div>
@@ -403,11 +404,39 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     </p>
                   </div>
 
+                  {/* Application ID Box */}
                   <div className="p-5 rounded-2xl bg-slate-900 border border-cyan-500/30 text-cyan-300 text-center space-y-1 shadow-inner">
                     <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Your Official Application ID</div>
                     <div className="text-2xl font-extrabold font-mono text-white tracking-widest">{submittedRef}</div>
                     <p className="text-[11px] text-slate-400 pt-1">Please retain this ID for your application records.</p>
                   </div>
+
+                  {/* CONDITIONAL WHATSAPP GROUP LINK SECTION */}
+                  {applyingOpportunity.whatsapp_group_url && applyingOpportunity.whatsapp_group_url.trim().length > 0 && (
+                    <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3.5 shadow-xl relative overflow-hidden">
+                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
+                        <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES — Official WhatsApp Group
+                      </div>
+                      <p className="text-slate-200 text-xs font-sans leading-relaxed">
+                        Please join the official WhatsApp group for <strong className="text-white">{applyingOpportunity.title}</strong> to receive:
+                      </p>
+                      <ul className="text-xs font-sans text-slate-300 space-y-1.5 list-disc pl-5">
+                        <li>Project updates &amp; announcements</li>
+                        <li>Onboarding instructions &amp; guidelines</li>
+                        <li>Direct project coordinator support</li>
+                      </ul>
+                      <div className="pt-2">
+                        <a
+                          href={applyingOpportunity.whatsapp_group_url.trim()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                        >
+                          <MessageCircle className="w-4 h-4" /> Join WhatsApp Group →
+                        </a>
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     onClick={() => {
@@ -415,7 +444,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                       setSubmittedRef(null);
                       setIsDuplicate(false);
                     }}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-extrabold text-xs font-mono cursor-pointer shadow-lg shadow-emerald-500/20"
+                    className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"
                   >
                     Done / Return to Portal
                   </button>
@@ -424,7 +453,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                 <form onSubmit={handleSubmitApplicationForm} className="space-y-6 font-mono text-xs">
                   {/* Submission Error Banner */}
                   {submissionError && (
-                    <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 flex items-start gap-2.5">
+                    <div className="p-4 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-200 flex items-start gap-2.5 shadow-md">
                       <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                       <div>
                         <div className="font-bold">Submission Error:</div>
@@ -434,45 +463,45 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                   )}
 
                   {/* SECTION 01: APPLICANT INFORMATION */}
-                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
-                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/5">
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-3 shadow-md">
+                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/10">
                       <UserCheck className="w-4 h-4 text-cyan-400" /> 01. Applicant Information
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 mb-1 font-bold">Full Legal Name *</label>
+                      <label className="block text-slate-200 mb-1 font-bold">Full Legal Name *</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Rahul Sharma"
                         value={applicantName}
                         onChange={(e) => setApplicantName(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-sans"
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-300 mb-1 font-bold">Email Address *</label>
+                        <label className="block text-slate-200 mb-1 font-bold">Email Address *</label>
                         <input
                           type="email"
                           required
                           placeholder="you@domain.com"
                           value={applicantEmail}
                           onChange={(e) => setApplicantEmail(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-slate-300 mb-1 font-bold">WhatsApp / Phone *</label>
+                        <label className="block text-slate-200 mb-1 font-bold">WhatsApp / Phone *</label>
                         <input
                           type="tel"
                           required
                           placeholder="+91 9827775230"
                           value={applicantPhone}
                           onChange={(e) => setApplicantPhone(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
                         />
                       </div>
                     </div>
@@ -480,8 +509,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
 
                   {/* SECTION 02: PROGRAM SPECIFIC QUESTIONS */}
                   {applyingOpportunity.custom_questions && applyingOpportunity.custom_questions.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
-                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/5">
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-4 shadow-md">
+                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/10">
                         <Sparkles className="w-4 h-4 text-cyan-400" /> 02. Project-Specific Questions ({applyingOpportunity.custom_questions.length})
                       </div>
 
@@ -489,8 +518,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                         const parsedOptions = parseQuestionOptions(q.options);
 
                         return (
-                          <div key={q.id} className="space-y-1.5 p-3 rounded-xl bg-black/40 border border-white/5">
-                            <label className="block text-slate-200 mb-1 font-bold">
+                          <div key={q.id} className="space-y-1.5 p-3.5 rounded-xl bg-slate-950/80 border border-white/10">
+                            <label className="block text-slate-200 mb-1 font-bold leading-snug">
                               {q.label} {q.required && <span className="text-red-400">*</span>}
                             </label>
 
@@ -501,29 +530,29 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                 placeholder="Enter your detailed answer..."
                                 value={customAnswers[q.label] || ''}
                                 onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-sans"
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
                               />
                             ) : q.type === 'select' ? (
                               <select
                                 required={q.required}
                                 value={customAnswers[q.label] || ''}
                                 onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-bold cursor-pointer"
+                                className="w-full px-3 py-2.5 rounded-xl bg-[#0d1220] border border-white/20 text-white font-mono font-bold text-xs sm:text-sm focus:outline-none focus:border-cyan-400 cursor-pointer shadow-inner"
                               >
-                                <option value="">-- Select Option --</option>
+                                <option value="" className="bg-[#0d1220] text-slate-300">-- Select Option --</option>
                                 {parsedOptions.map((opt, optIdx) => (
-                                  <option key={optIdx} value={opt} className="bg-slate-900 text-white">
+                                  <option key={optIdx} value={opt} className="bg-[#0d1220] text-white">
                                     {opt}
                                   </option>
                                 ))}
                               </select>
                             ) : q.type === 'multiselect' ? (
-                              <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-white/15">
+                              <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-white/20">
                                 {parsedOptions.map((opt, optIdx) => {
                                   const selectedArr: string[] = customAnswers[q.label] || [];
                                   const isChecked = selectedArr.includes(opt);
                                   return (
-                                    <label key={optIdx} className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                    <label key={optIdx} className="flex items-center gap-2.5 text-slate-200 cursor-pointer text-xs font-mono">
                                       <input
                                         type="checkbox"
                                         checked={isChecked}
@@ -533,7 +562,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                             : selectedArr.filter((i) => i !== opt);
                                           setCustomAnswers({ ...customAnswers, [q.label]: newArr });
                                         }}
-                                        className="rounded border-white/20 bg-slate-900 text-cyan-500"
+                                        className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer"
                                       />
                                       <span>{opt}</span>
                                     </label>
@@ -541,37 +570,37 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                 })}
                               </div>
                             ) : q.type === 'yesno' ? (
-                              <div className="flex items-center gap-4 pt-1">
-                                <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-mono text-xs">
+                              <div className="flex items-center gap-5 pt-1">
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-mono text-xs">
                                   <input
                                     type="radio"
                                     name={q.id}
                                     value="Yes"
                                     checked={customAnswers[q.label] === 'Yes'}
                                     onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                    className="text-cyan-500"
+                                    className="w-4 h-4 text-cyan-400 bg-slate-950 border-white/30 focus:ring-0 cursor-pointer"
                                   />
                                   <span>Yes</span>
                                 </label>
-                                <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-mono text-xs">
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-mono text-xs">
                                   <input
                                     type="radio"
                                     name={q.id}
                                     value="No"
                                     checked={customAnswers[q.label] === 'No'}
                                     onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                    className="text-cyan-500"
+                                    className="w-4 h-4 text-cyan-400 bg-slate-950 border-white/30 focus:ring-0 cursor-pointer"
                                   />
                                   <span>No</span>
                                 </label>
                               </div>
                             ) : q.type === 'checkbox' ? (
-                              <label className="flex items-center gap-2 text-slate-300 cursor-pointer font-mono text-xs pt-1">
+                              <label className="flex items-center gap-2.5 text-slate-200 cursor-pointer font-mono text-xs pt-1">
                                 <input
                                   type="checkbox"
                                   checked={!!customAnswers[q.label]}
                                   onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.checked })}
-                                  className="rounded border-white/20 text-cyan-500"
+                                  className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer"
                                 />
                                 <span>I agree / confirm</span>
                               </label>
@@ -592,7 +621,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                 placeholder="Your answer..."
                                 value={customAnswers[q.label] || ''}
                                 onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-sans"
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
                               />
                             )}
                           </div>
@@ -602,7 +631,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                   )}
 
                   {/* SECTION 03: MANDATORY TERMS & CONDITIONS AGREEMENT */}
-                  <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-3">
+                  <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 space-y-3 shadow-md">
                     <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-cyan-500/20">
                       <FileCheck2 className="w-4 h-4 text-cyan-400" /> 03. Mandatory Terms &amp; Conditions Agreement
                     </div>
@@ -615,7 +644,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                           setTermsAccepted(e.target.checked);
                           if (e.target.checked) setTermsError('');
                         }}
-                        className="rounded border-white/20 bg-slate-950 text-cyan-500 focus:ring-0 mt-0.5 w-4 h-4 shrink-0"
+                        className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 mt-0.5 shrink-0 cursor-pointer"
                       />
                       <span className="text-xs font-mono leading-relaxed">
                         I have read and agree to the <strong className="text-cyan-300">Terms &amp; Conditions</strong> and confirm that all submitted details are accurate.
@@ -627,7 +656,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                         href="/terms"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 font-bold"
+                        className="text-cyan-300 hover:text-cyan-200 underline font-bold transition-all flex items-center gap-1"
                       >
                         [ Read Terms &amp; Conditions ] <ExternalLink className="w-3 h-3" />
                       </a>
@@ -636,7 +665,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
 
                     {/* Inline Validation Error State */}
                     {termsError && (
-                      <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 font-bold text-xs flex items-center gap-2 animate-shake">
+                      <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold text-xs flex items-center gap-2 animate-shake shadow-md">
                         <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
                         <span>{termsError}</span>
                       </div>
@@ -648,14 +677,14 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     <button
                       type="button"
                       onClick={() => setApplyingOpportunity(null)}
-                      className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer"
+                      className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 text-xs sm:text-sm font-mono font-bold cursor-pointer transition-all"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="px-7 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-extrabold shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="px-7 py-3 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 font-extrabold text-xs sm:text-sm font-mono shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                     >
                       <Send className="w-4 h-4" /> {isSubmitting ? 'Submitting Application...' : 'Submit Application →'}
                     </button>
