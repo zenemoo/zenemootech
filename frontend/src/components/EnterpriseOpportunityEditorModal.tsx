@@ -117,6 +117,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
   // Custom Form Builder
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>([]);
+  const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
 
   // AI Assistant State
   const [aiTone, setAiTone] = useState<'professional' | 'friendly' | 'corporate' | 'recruitment'>('recruitment');
@@ -233,8 +234,6 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
     }
   }, [opportunity, isOpen]);
 
-  if (!isOpen) return null;
-
   // Cloudinary Upload Handlers
   const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -269,8 +268,6 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   };
 
   // Custom Question Form Builder Actions
-  const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
-
   const handleAddQuestion = () => {
     const newQ: CustomQuestion = {
       id: `q_${Date.now()}`,
