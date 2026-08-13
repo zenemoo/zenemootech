@@ -481,6 +481,9 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
     }
   };
 
+  // Absolutely no hooks below this line! Safe early return when modal is closed
+  if (!isOpen) return null;
+
   return createPortal(
     <div className="fixed inset-0 z-[99999] w-full h-full min-h-screen bg-[#080c14] text-slate-100 flex flex-col overflow-hidden font-sans">
       {/* ========================================================================= */}
