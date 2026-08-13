@@ -126,8 +126,10 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   const [aiOutput, setAiOutput] = useState('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
-  // Saving state
+  // Saving & Mode State
   const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const isEditMode = Boolean(opportunity && opportunity.id);
 
   // Initialize form state when editing or opening
   useEffect(() => {
@@ -469,7 +471,12 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
       };
 
       await onSave(payload);
-      showToast(`Program Opportunity "${title}" ${targetStatus === 'draft' ? 'saved as draft' : 'published'} successfully!`, 'success');
+      const actionMsg = isEditMode
+        ? targetStatus === 'draft' ? 'saved as draft' : 'updated'
+        : targetStatus === 'draft' ? 'saved as draft' : 'published';
+      showToast(`Program Opportunity "${title}" ${actionMsg} successfully!`, 'success');
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
       onClose();
     } catch (err: any) {
       showToast(`Save failed: ${err.message}`, 'error');
@@ -492,14 +499,14 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
             <Briefcase className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl font-bold font-display text-white flex items-center gap-2">
-              <span>{opportunity ? 'Edit Program Opportunity' : 'Add New Program Opportunity'}</span>
-              <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                Enterprise Admin
+            <h2 className="text-lg sm:text-xl font-bold font-display text-white flex items-center gap-2 flex-wrap">
+              <span>{isEditMode ? 'Edit Program Opportunity' : 'Add New Program Opportunity'}</span>
+              <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                {isEditMode ? `EDIT MODE (ID: ${opportunity?.id})` : 'CREATE MODE'}
               </span>
             </h2>
             <p className="text-xs font-mono text-slate-400">
-              Configure program metadata, branding CDN, social links, custom questions & AI generation
+              Configure program metadata, branding CDN, social links, custom questions &amp; AI generation
             </p>
           </div>
         </div>
@@ -528,18 +535,24 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
             className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
           >
             <Save className="w-4 h-4 text-amber-400" />
-            <span>Save Draft</span>
+            <span>{isEditMode ? 'Save Changes as Draft' : 'Save Draft'}</span>
           </button>
 
-          {/* Publish Opportunity */}
+          {/* Primary Action Button (Update Opportunity vs Publish Opportunity) */}
           <button
             type="button"
             disabled={isSaving}
-            onClick={() => handleSaveForm('active')}
+            onClick={() => handleSaveForm(status || 'active')}
             className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold text-xs font-mono flex items-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer active:scale-95 disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
-            <span>{isSaving ? 'Publishing...' : 'Publish Opportunity'}</span>
+            <span>
+              {isSaving
+                ? isEditMode ? '⟳ Updating Opportunity...' : '⟳ Publishing Opportunity...'
+                : justSaved
+                ? '✓ Updated'
+                : isEditMode ? 'Update Opportunity' : 'Publish Opportunity'}
+            </span>
           </button>
 
           {/* Close Workspace */}

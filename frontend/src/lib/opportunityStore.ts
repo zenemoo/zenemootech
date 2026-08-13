@@ -257,7 +257,7 @@ export const getPublicOpportunities = async (): Promise<OpportunityProgram[]> =>
 export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgram>): Promise<OpportunityProgram[]> => {
   let localList = getLocalOpportunities();
 
-  const isUUID = opportunity.id && opportunity.id.includes('-');
+  const isExistingRecord = Boolean(opportunity.id);
 
   // Normalize questions & array fields before constructing payload
   const rawQuestions = Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [];
@@ -328,7 +328,7 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
 
   try {
     let resError;
-    if (isUUID) {
+    if (isExistingRecord) {
       const { error } = await supabase
         .from('opportunities')
         .update(fullPayload)
@@ -342,8 +342,8 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     }
 
     if (resError) {
-      console.warn('Primary Supabase save failed, attempting core payload insert:', resError.message);
-      if (isUUID) {
+      console.warn('Primary Supabase save failed, attempting core payload update/insert:', resError.message);
+      if (isExistingRecord) {
         await supabase.from('opportunities').update(corePayload).eq('id', opportunity.id);
       } else {
         await supabase.from('opportunities').insert([{ ...corePayload, created_at: new Date().toISOString() }]);
@@ -357,8 +357,8 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
   }
 
   // Fallback LocalStorage update
-  if (opportunity.id && (opportunity.id.startsWith('op_') || localList.some((op) => op.id === opportunity.id))) {
-    localList = localList.map((op) => (op.id === opportunity.id ? normalizeOpportunity({ ...op, ...fullPayload }) : op));
+  if (isExistingRecord) {
+    localList = localList.map((op) => (op.id === opportunity.id ? normalizeOpportunity({ ...op, ...fullPayload, id: opportunity.id }) : op));
   } else {
     const newRecord: OpportunityProgram = normalizeOpportunity({
       id: `op_${Date.now()}`,

@@ -6020,7 +6020,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           onClose={() => setEditingOpportunity(null)}
           opportunity={editingOpportunity}
           onSave={async (payload) => {
-            const updated = await saveOpportunityToApi(payload);
+            const finalPayload = {
+              ...(editingOpportunity?.id ? { id: editingOpportunity.id } : {}),
+              ...payload,
+            };
+            const updated = await saveOpportunityToApi(finalPayload);
             setOpportunitiesList(updated);
             setEditingOpportunity(null);
           }}
