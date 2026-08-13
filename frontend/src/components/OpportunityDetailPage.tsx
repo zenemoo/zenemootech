@@ -63,9 +63,48 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [sharedCopied, setSharedCopied] = useState(false);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [existingApp, setExistingApp] = useState<CandidateApplication | null>(null);
   const [submissionError, setSubmissionError] = useState('');
+
+  const handleShareProject = async () => {
+    if (!opportunity) return;
+    const pageUrl = window.location.href;
+    const shareTitle = `ZENEMOO Opportunity: ${opportunity.title}`;
+    const shareText = `🚀 ZENEMOO Program Opportunity:
+📌 ${opportunity.title} (Partner: ${opportunity.partner_name})
+💼 Work Mode: ${opportunity.work_mode || 'Remote WFH'}
+${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` : ''}Apply now on Zenemoo: ${pageUrl}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: pageUrl,
+        });
+        return;
+      } catch (_) {}
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareText);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = shareText;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setSharedCopied(true);
+      setTimeout(() => setSharedCopied(false), 2000);
+    } catch (e) {
+      console.warn('Share copy failed:', e);
+    }
+  };
 
   useEffect(() => {
     getStoredOpportunities().then((list) => {
@@ -604,31 +643,6 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 )}
               </div>
 
-              {/* Sticky Apply Button */}
-              <button
-                disabled={!isActive}
-                onClick={handleOpenApplyModal}
-                className={`w-full py-4 px-6 rounded-2xl font-extrabold text-sm font-mono shadow-2xl flex items-center justify-center gap-2 transition-all ${
-                  isActive
-                    ? 'bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 cursor-pointer shadow-emerald-500/20 hover:scale-[1.01]'
-                    : 'bg-white/[0.04] border border-white/10 text-slate-500 cursor-not-allowed'
-                }`}
-              >
-                {isActive ? (
-                  <>
-                    Apply Now &amp; Open Application <ArrowRight className="w-4 h-4" />
-                  </>
-                ) : isStopped ? (
-                  <>
-                    Applications Closed <Lock className="w-4 h-4" />
-                  </>
-                ) : (
-                  <>
-                    Applications Open Soon <Clock className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-
               {/* COMMUNICATION & OFFICIAL LINKS ON RIGHT COLUMN */}
               {hasPublicCommLinks && (
                 <div className="glass-panel p-6 rounded-3xl border border-cyan-500/30 space-y-4 shadow-2xl bg-[#090d16]/90">
@@ -789,6 +803,48 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                   </div>
                 </div>
               )}
+
+              {/* SHARE PROJECT OPPORTUNITY BUTTON (Above Apply button) */}
+              <button
+                type="button"
+                onClick={handleShareProject}
+                className="w-full py-3.5 px-5 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/10 active:scale-[0.98]"
+              >
+                {sharedCopied ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" /> Professional Share Link &amp; Details Copied!
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4 text-cyan-400" /> Share Project Opportunity
+                  </>
+                )}
+              </button>
+
+              {/* APPLY NOW BUTTON AT FULL END */}
+              <button
+                disabled={!isActive}
+                onClick={handleOpenApplyModal}
+                className={`w-full py-4 px-6 rounded-2xl font-extrabold text-sm font-mono shadow-2xl flex items-center justify-center gap-2 transition-all ${
+                  isActive
+                    ? 'bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 cursor-pointer shadow-emerald-500/20 hover:scale-[1.01]'
+                    : 'bg-white/[0.04] border border-white/10 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                {isActive ? (
+                  <>
+                    Apply Now &amp; Open Application <ArrowRight className="w-4 h-4" />
+                  </>
+                ) : isStopped ? (
+                  <>
+                    Applications Closed <Lock className="w-4 h-4" />
+                  </>
+                ) : (
+                  <>
+                    Applications Open Soon <Clock className="w-4 h-4" />
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
