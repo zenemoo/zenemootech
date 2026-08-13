@@ -497,38 +497,6 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                   )}
                 </div>
               )}
-
-              {/* Communication Links */}
-              {hasSocialOrCommLinks && (
-                <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 space-y-4">
-                  <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
-                    <Share2 className="w-4 h-4 text-cyan-400" /> Communication &amp; Official Links
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    {opportunity.linkedin_post_url && (
-                      <a
-                        href={opportunity.linkedin_post_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2.5 rounded-2xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-                      >
-                        <Linkedin className="w-4 h-4 text-blue-400" /> LinkedIn Announcement
-                      </a>
-                    )}
-
-                    {opportunity.pdf_link && (
-                      <a
-                        href={opportunity.pdf_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2.5 rounded-2xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-                      >
-                        <FileText className="w-4 h-4 text-purple-400" /> Download PDF Guidelines
-                      </a>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* RIGHT COLUMN: 4 COLS */}
@@ -569,28 +537,69 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Stats Card */}
-              <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4 font-mono text-xs">
+              {/* RIGHT-SIDE PROJECT DETAILS CARD */}
+              <div className="glass-panel p-6 rounded-3xl border border-white/15 space-y-4 font-mono text-xs shadow-2xl bg-[#090d16]/90">
+                <div className="text-xs font-mono text-cyan-400 font-bold uppercase tracking-wider pb-2 border-b border-white/10 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-cyan-400" /> Project Specifications
+                </div>
+
+                {/* Status */}
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                  <span className="text-slate-400">Status:</span>
+                  <span className="text-slate-400 font-bold">Status</span>
                   <span
-                    className={`font-bold uppercase ${
-                      isActive ? 'text-emerald-400' : isStopped ? 'text-red-400' : 'text-amber-400'
+                    className={`font-extrabold uppercase px-3 py-1 rounded-full text-[10px] tracking-wider ${
+                      isActive
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : isStopped
+                        ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     }`}
                   >
                     {isActive ? opportunity.badge || 'ACTIVE' : isStopped ? '🔴 CLOSED' : 'COMING SOON'}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                  <span className="text-slate-400">Work Mode:</span>
-                  <span className="text-cyan-300 font-bold uppercase">{opportunity.work_mode || 'Remote WFH'}</span>
-                </div>
-
-                {opportunity.payment_info && (
+                {/* Work Mode */}
+                {opportunity.work_mode && (
                   <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <span className="text-slate-400">Compensation:</span>
-                    <span className="text-emerald-300 font-bold">{opportunity.payment_info}</span>
+                    <span className="text-slate-400 font-bold">Work Mode</span>
+                    <span className="text-cyan-300 font-extrabold uppercase">{opportunity.work_mode}</span>
+                  </div>
+                )}
+
+                {/* Working Hours / Daily Commitment */}
+                {(opportunity.working_hours || opportunity.availability_requirement) && (
+                  <div className="space-y-1 pb-3 border-b border-white/10">
+                    <span className="text-slate-400 font-bold block">Working Hours / Commitment</span>
+                    <span className="text-white font-sans font-medium text-xs block leading-relaxed bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                      {opportunity.working_hours || opportunity.availability_requirement}
+                    </span>
+                  </div>
+                )}
+
+                {/* Compensation / Payment Information */}
+                {opportunity.payment_info && (
+                  <div className="space-y-1 pb-3 border-b border-white/10">
+                    <span className="text-slate-400 font-bold block">Compensation</span>
+                    <span className="text-emerald-300 font-sans font-bold text-xs block leading-relaxed bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20">
+                      {opportunity.payment_info}
+                    </span>
+                  </div>
+                )}
+
+                {/* Payment Frequency */}
+                {opportunity.payment_frequency && (
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <span className="text-slate-400 font-bold">Payment Frequency</span>
+                    <span className="text-purple-300 font-extrabold uppercase">{opportunity.payment_frequency}</span>
+                  </div>
+                )}
+
+                {/* Project Duration */}
+                {opportunity.project_duration && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-bold">Project Duration</span>
+                    <span className="text-amber-300 font-extrabold">{opportunity.project_duration}</span>
                   </div>
                 )}
               </div>
@@ -599,9 +608,9 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
               <button
                 disabled={!isActive}
                 onClick={handleOpenApplyModal}
-                className={`w-full py-4 px-6 rounded-2xl font-bold text-sm font-mono shadow-2xl flex items-center justify-center gap-2 transition-all ${
+                className={`w-full py-4 px-6 rounded-2xl font-extrabold text-sm font-mono shadow-2xl flex items-center justify-center gap-2 transition-all ${
                   isActive
-                    ? 'bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black cursor-pointer shadow-emerald-500/20 hover:scale-[1.02]'
+                    ? 'bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 cursor-pointer shadow-emerald-500/20 hover:scale-[1.01]'
                     : 'bg-white/[0.04] border border-white/10 text-slate-500 cursor-not-allowed'
                 }`}
               >
@@ -619,6 +628,171 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                   </>
                 )}
               </button>
+
+              {/* COMMUNICATION & OFFICIAL LINKS ON RIGHT COLUMN */}
+              {hasSocialOrCommLinks && (
+                <div className="glass-panel p-6 rounded-3xl border border-cyan-500/30 space-y-4 shadow-2xl bg-[#090d16]/90">
+                  <h3 className="text-xs font-mono uppercase font-bold text-cyan-300 flex items-center gap-2 pb-2 border-b border-white/10">
+                    <Share2 className="w-4 h-4 text-cyan-400" /> Communication &amp; Official Links
+                  </h3>
+
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    {opportunity.whatsapp_group_url && opportunity.whatsapp_group_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.whatsapp_group_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4 text-emerald-400" /> Join WhatsApp Group
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.whatsapp_channel_url && opportunity.whatsapp_channel_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.whatsapp_channel_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4 text-teal-400" /> WhatsApp Channel
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-teal-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.linkedin_post_url && opportunity.linkedin_post_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.linkedin_post_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Linkedin className="w-4 h-4 text-blue-400" /> LinkedIn Announcement
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-blue-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.pdf_link && opportunity.pdf_link.trim().length > 0 && (
+                      <a
+                        href={opportunity.pdf_link.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-purple-400" /> Download PDF Guidelines
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-purple-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.facebook_post_url && opportunity.facebook_post_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.facebook_post_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-blue-400" /> Facebook Post
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-blue-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.instagram_url && opportunity.instagram_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.instagram_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Share2 className="w-4 h-4 text-rose-400" /> Instagram Announcement
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.telegram_url && opportunity.telegram_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.telegram_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Send className="w-4 h-4 text-sky-400" /> Telegram Channel
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-sky-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.youtube_url && opportunity.youtube_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.youtube_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-red-400" /> YouTube Video
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-red-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.other_social_url && opportunity.other_social_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.other_social_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <ExternalLink className="w-4 h-4 text-cyan-400" /> Official Partner Link
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-cyan-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.contact_support_url && opportunity.contact_support_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.contact_support_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-emerald-400" /> Contact Support
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {opportunity.application_post_url && opportunity.application_post_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.application_post_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-indigo-400" /> Application Details Post
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-indigo-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
