@@ -4,7 +4,7 @@ import { opportunityApi } from '../services/api';
 export interface CustomQuestion {
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'select';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'multiselect' | 'yesno' | 'email' | 'phone' | 'date' | 'checkbox';
   options?: string[];
   required: boolean;
 }
@@ -21,7 +21,7 @@ export interface OpportunityProgram {
   title: string;
   partner_name: string;
   badge?: string;
-  status: 'active' | 'stopped' | 'coming_soon';
+  status: 'active' | 'stopped' | 'coming_soon' | 'draft';
   description: string;
   company_logo?: string;
   poster_url?: string;
@@ -35,6 +35,39 @@ export interface OpportunityProgram {
   contact_details?: OpportunityContactDetails;
   custom_questions?: CustomQuestion[];
   action_url: string;
+
+  // Communication links
+  whatsapp_group_url?: string;
+  whatsapp_channel_url?: string;
+  telegram_url?: string;
+  contact_support_url?: string;
+
+  // Social & Promotion links
+  facebook_post_url?: string;
+  instagram_url?: string;
+  youtube_url?: string;
+  other_social_url?: string;
+  application_post_url?: string;
+
+  // Project details & requirements
+  about_project?: string;
+  what_you_will_do?: string[];
+  experience_requirements?: string;
+  equipment_requirements?: string;
+  internet_requirements?: string;
+  working_hours?: string;
+  project_duration?: string;
+  payment_info?: string;
+  payment_frequency?: string;
+  work_mode?: 'remote' | 'hybrid' | 'onsite' | string;
+  availability_requirement?: string;
+
+  // Highlights & Benefits
+  project_highlights?: string[];
+  benefits?: string[];
+  why_join?: string;
+  important_notes?: string;
+
   created_at?: string;
   updated_at?: string;
 }
@@ -79,6 +112,9 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
         requirements: Array.isArray(op.requirements) ? op.requirements : [],
         language_skills: Array.isArray(op.language_skills) ? op.language_skills : [],
         eligibility_criteria: Array.isArray(op.eligibility_criteria) ? op.eligibility_criteria : [],
+        what_you_will_do: Array.isArray(op.what_you_will_do) ? op.what_you_will_do : [],
+        project_highlights: Array.isArray(op.project_highlights) ? op.project_highlights : [],
+        benefits: Array.isArray(op.benefits) ? op.benefits : [],
         contact_details: op.contact_details || {},
         custom_questions: Array.isArray(op.custom_questions) ? op.custom_questions : [],
       }));
@@ -111,7 +147,7 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
 
   const isUUID = opportunity.id && opportunity.id.includes('-');
   
-  const fullPayload = {
+  const fullPayload: Record<string, any> = {
     title: opportunity.title || 'New Opportunity Program',
     partner_name: opportunity.partner_name || 'Partner Company',
     badge: opportunity.badge || 'ACTIVE',
@@ -131,6 +167,32 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     action_url: opportunity.action_url || '#desicrew-contributors',
     position: opportunity.position || localList.length + 1,
     updated_at: new Date().toISOString(),
+
+    // Extended fields
+    whatsapp_group_url: opportunity.whatsapp_group_url || '',
+    whatsapp_channel_url: opportunity.whatsapp_channel_url || '',
+    telegram_url: opportunity.telegram_url || '',
+    contact_support_url: opportunity.contact_support_url || '',
+    facebook_post_url: opportunity.facebook_post_url || '',
+    instagram_url: opportunity.instagram_url || '',
+    youtube_url: opportunity.youtube_url || '',
+    other_social_url: opportunity.other_social_url || '',
+    application_post_url: opportunity.application_post_url || '',
+    about_project: opportunity.about_project || '',
+    what_you_will_do: Array.isArray(opportunity.what_you_will_do) ? opportunity.what_you_will_do : [],
+    experience_requirements: opportunity.experience_requirements || '',
+    equipment_requirements: opportunity.equipment_requirements || '',
+    internet_requirements: opportunity.internet_requirements || '',
+    working_hours: opportunity.working_hours || '',
+    project_duration: opportunity.project_duration || '',
+    payment_info: opportunity.payment_info || '',
+    payment_frequency: opportunity.payment_frequency || '',
+    work_mode: opportunity.work_mode || 'remote',
+    availability_requirement: opportunity.availability_requirement || '',
+    project_highlights: Array.isArray(opportunity.project_highlights) ? opportunity.project_highlights : [],
+    benefits: Array.isArray(opportunity.benefits) ? opportunity.benefits : [],
+    why_join: opportunity.why_join || '',
+    important_notes: opportunity.important_notes || '',
   };
 
   const corePayload = {

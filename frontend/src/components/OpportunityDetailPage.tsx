@@ -1,5 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase, Linkedin, FileText, Mail, Phone, X, Send, Globe, Check, Award, Clock, Download, Maximize2, Image as ImageIcon } from 'lucide-react';
+import {
+  ArrowLeft,
+  Sparkles,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  ShieldAlert,
+  Briefcase,
+  Linkedin,
+  FileText,
+  Mail,
+  Phone,
+  X,
+  Send,
+  Globe,
+  Check,
+  Award,
+  Clock,
+  Download,
+  Maximize2,
+  MessageCircle,
+  Share2,
+  DollarSign,
+  Zap,
+  Layers,
+  HelpCircle
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
 import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
@@ -114,6 +140,20 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 
   const isActive = opportunity.status === 'active';
 
+  // Check if any optional communication / social links exist
+  const hasSocialOrCommLinks = Boolean(
+    opportunity.whatsapp_group_url ||
+    opportunity.whatsapp_channel_url ||
+    opportunity.telegram_url ||
+    opportunity.linkedin_post_url ||
+    opportunity.facebook_post_url ||
+    opportunity.instagram_url ||
+    opportunity.youtube_url ||
+    opportunity.other_social_url ||
+    opportunity.application_post_url ||
+    opportunity.pdf_link
+  );
+
   return (
     <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Ambient Lighting */}
@@ -154,7 +194,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold uppercase text-[10px] tracking-widest flex items-center gap-1.5">
-                <Globe className="w-3 h-3 text-cyan-400" /> Remote WFH Opportunity
+                <Globe className="w-3 h-3 text-cyan-400" /> {opportunity.work_mode ? opportunity.work_mode.toUpperCase() : 'REMOTE WFH'}
               </span>
               <span
                 className={`px-3 py-1 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider ${
@@ -204,7 +244,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-cyan-400" /> Program Scope &amp; Executive Overview
                   </h3>
-                  <p className="text-sm sm:text-base text-slate-300 light:text-slate-600 font-sans leading-relaxed">
+                  <p className="text-sm sm:text-base text-slate-300 light:text-slate-600 font-sans leading-relaxed whitespace-pre-wrap">
                     {opportunity.description}
                   </p>
                 </div>
@@ -248,47 +288,96 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Program Highlights */}
-              {opportunity.features && opportunity.features.length > 0 && (
-                <div className="glass-panel p-8 rounded-3xl border border-purple-500/30 space-y-4">
-                  <h3 className="text-sm font-mono uppercase font-bold text-purple-300 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-purple-400" /> Key Deliverables &amp; Highlights
-                  </h3>
-                  <div className="space-y-2.5 font-mono text-xs text-slate-300">
-                    {opportunity.features.map((feat, idx) => (
-                      <div key={idx} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.02]">
-                        <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></div>
-                        <span>{feat}</span>
+              {/* Project Highlights & Benefits */}
+              {((opportunity.project_highlights && opportunity.project_highlights.length > 0) || (opportunity.benefits && opportunity.benefits.length > 0)) && (
+                <div className="glass-panel p-8 rounded-3xl border border-purple-500/30 space-y-6">
+                  {opportunity.project_highlights && opportunity.project_highlights.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-mono uppercase font-bold text-purple-300 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-purple-400" /> Project Highlights
+                      </h3>
+                      <div className="space-y-2 font-mono text-xs text-slate-300">
+                        {opportunity.project_highlights.map((feat, idx) => (
+                          <div key={idx} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.02]">
+                            <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></div>
+                            <span>{feat}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {opportunity.benefits && opportunity.benefits.length > 0 && (
+                    <div className="space-y-3 pt-4 border-t border-white/10">
+                      <h3 className="text-sm font-mono uppercase font-bold text-emerald-400 flex items-center gap-2">
+                        <Award className="w-4 h-4 text-emerald-400" /> Candidate Benefits
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs text-slate-200">
+                        {opportunity.benefits.map((ben, idx) => (
+                          <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-2.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{ben}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* External Links & Guidelines */}
-              <div className="flex flex-wrap items-center gap-4">
-                {opportunity.linkedin_post_url && (
-                  <a
-                    href={opportunity.linkedin_post_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-5 py-3 rounded-2xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-                  >
-                    <Linkedin className="w-4 h-4 text-blue-400" /> Official LinkedIn Announcement
-                  </a>
-                )}
+              {/* Communication & Social Links Section (ONLY RENDER IF FILLED) */}
+              {hasSocialOrCommLinks && (
+                <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 space-y-4">
+                  <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
+                    <Share2 className="w-4 h-4 text-cyan-400" /> Communication &amp; Official Project Links
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    {opportunity.whatsapp_group_url && (
+                      <a
+                        href={opportunity.whatsapp_group_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-400" /> Join WhatsApp Group
+                      </a>
+                    )}
 
-                {opportunity.pdf_link && (
-                  <a
-                    href={opportunity.pdf_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-5 py-3 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-                  >
-                    <FileText className="w-4 h-4 text-emerald-400" /> Download PDF Guidelines
-                  </a>
-                )}
-              </div>
+                    {opportunity.whatsapp_channel_url && (
+                      <a
+                        href={opportunity.whatsapp_channel_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-400" /> WhatsApp Channel
+                      </a>
+                    )}
+
+                    {opportunity.linkedin_post_url && (
+                      <a
+                        href={opportunity.linkedin_post_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-2xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
+                      >
+                        <Linkedin className="w-4 h-4 text-blue-400" /> LinkedIn Announcement
+                      </a>
+                    )}
+
+                    {opportunity.pdf_link && (
+                      <a
+                        href={opportunity.pdf_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-2xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
+                      >
+                        <FileText className="w-4 h-4 text-purple-400" /> Download PDF Guidelines
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Direct Opportunity Contact Info */}
               {opportunity.contact_details && (opportunity.contact_details.email || opportunity.contact_details.phone) && (
@@ -374,13 +463,22 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <span className="text-slate-400">Work Mode:</span>
-                  <span className="text-cyan-300 font-bold">Flexible Remote WFH</span>
+                  <span className="text-cyan-300 font-bold uppercase">{opportunity.work_mode || 'Remote WFH'}</span>
                 </div>
 
-                <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                  <span className="text-slate-400">Quality Standard:</span>
-                  <span className="text-purple-300 font-bold">99%+ Accuracy SLA</span>
-                </div>
+                {opportunity.payment_info && (
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <span className="text-slate-400">Compensation:</span>
+                    <span className="text-emerald-300 font-bold">{opportunity.payment_info}</span>
+                  </div>
+                )}
+
+                {opportunity.working_hours && (
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <span className="text-slate-400">Working Hours:</span>
+                    <span className="text-purple-300 font-bold">{opportunity.working_hours}</span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Questions Required:</span>
@@ -636,9 +734,67 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                                 </option>
                               ))}
                             </select>
+                          ) : q.type === 'multiselect' ? (
+                            <div className="space-y-2 p-3 rounded-xl bg-white/[0.02] border border-white/10">
+                              {q.options?.map((opt, optIdx) => {
+                                const selectedArr: string[] = customAnswers[q.label] || [];
+                                const isChecked = selectedArr.includes(opt);
+                                return (
+                                  <label key={optIdx} className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        const newArr = e.target.checked
+                                          ? [...selectedArr, opt]
+                                          : selectedArr.filter((i) => i !== opt);
+                                        setCustomAnswers({ ...customAnswers, [q.label]: newArr });
+                                      }}
+                                      className="rounded border-white/20 bg-slate-900 text-cyan-500"
+                                    />
+                                    <span>{opt}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : q.type === 'yesno' ? (
+                            <div className="flex items-center gap-4">
+                              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                                <input
+                                  type="radio"
+                                  name={q.id}
+                                  value="Yes"
+                                  checked={customAnswers[q.label] === 'Yes'}
+                                  onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                  className="text-cyan-500"
+                                />
+                                <span>Yes</span>
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                                <input
+                                  type="radio"
+                                  name={q.id}
+                                  value="No"
+                                  checked={customAnswers[q.label] === 'No'}
+                                  onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                  className="text-cyan-500"
+                                />
+                                <span>No</span>
+                              </label>
+                            </div>
+                          ) : q.type === 'checkbox' ? (
+                            <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!customAnswers[q.label]}
+                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.checked })}
+                                className="rounded border-white/20 text-cyan-500"
+                              />
+                              <span>I agree / confirm</span>
+                            </label>
                           ) : (
                             <input
-                              type="text"
+                              type={q.type === 'number' ? 'number' : q.type === 'email' ? 'email' : q.type === 'phone' ? 'tel' : q.type === 'date' ? 'date' : 'text'}
                               required={q.required}
                               placeholder="Your answer..."
                               value={customAnswers[q.label] || ''}
