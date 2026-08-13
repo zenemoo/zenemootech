@@ -1,7 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Sparkles, CheckCircle2, Lock, Unlock, ArrowRight, ShieldAlert, Briefcase, Linkedin, FileText, Mail, Phone, X, Send } from 'lucide-react';
+import {
+  ArrowLeft,
+  Sparkles,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  ShieldAlert,
+  Briefcase,
+  Linkedin,
+  FileText,
+  Mail,
+  Phone,
+  X,
+  Send,
+  ExternalLink,
+  AlertCircle,
+  FileCheck2,
+  Clock,
+  Globe,
+  UserCheck,
+  HelpCircle
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
+import { OpportunityProgram, getPublicOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
 import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
 
 interface OpportunitiesPageProps {
@@ -19,35 +40,67 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const [applicantEmail, setApplicantEmail] = useState('');
   const [applicantPhone, setApplicantPhone] = useState('');
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
 
   useEffect(() => {
-    getStoredOpportunities().then((data) => {
+    getPublicOpportunities().then((data) => {
       setOpportunities(data);
       setLoading(false);
     });
   }, []);
 
   const handleCardClick = (op: OpportunityProgram) => {
-    if (op.status === 'stopped') return;
+    if (op.status === 'stopped') {
+      alert('Applications for this opportunity are currently closed.');
+      return;
+    }
+    if (op.status === 'coming_soon') {
+      alert('Applications for this opportunity will open soon.');
+      return;
+    }
     onSelectProgram(op.id);
   };
 
-  const handleOpenApplicationModal = (op: OpportunityProgram) => {
-    if (op.status === 'stopped') return;
+  const handleOpenApplicationModal = (op: OpportunityProgram, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (op.status === 'stopped') {
+      alert('Applications for this opportunity are currently closed.');
+      return;
+    }
+    if (op.status === 'coming_soon') {
+      alert('Applications for this opportunity will open soon.');
+      return;
+    }
     setApplyingOpportunity(op);
     setApplicantName('');
     setApplicantEmail('');
     setApplicantPhone('');
     setCustomAnswers({});
+    setTermsAccepted(false);
+    setTermsError('');
+    setSubmissionError('');
+    setIsDuplicate(false);
     setSubmittedRef(null);
   };
 
   const handleSubmitApplicationForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!applyingOpportunity) return;
+
+    // MANDATORY TERMS & CONDITIONS CHECK
+    if (!termsAccepted) {
+      setTermsError('Please accept the Terms & Conditions before submitting your application.');
+      return;
+    }
+    setTermsError('');
+    setSubmissionError('');
     setIsSubmitting(true);
+    setIsDuplicate(false);
 
     try {
       const result = await submitCandidateApplication({
@@ -57,11 +110,18 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
         applicant_email: applicantEmail,
         applicant_phone: applicantPhone,
         answers: customAnswers,
+        terms_accepted: true,
+        terms_accepted_at: new Date().toISOString(),
+        terms_version: '1.0',
       });
 
-      setSubmittedRef(result.id);
+      setSubmittedRef(result.applicant_id || result.id);
     } catch (err: any) {
-      alert('Application submission failed: ' + (err.message || 'Error processing application.'));
+      if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
+        setIsDuplicate(true);
+      } else {
+        setSubmissionError(err.message || 'Error submitting application.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -98,72 +158,51 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       <main className="flex-1 py-16 sm:py-20 relative z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           {/* Header section */}
-          <div className="text-center max-w-2xl mx-auto space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono uppercase tracking-widest">
-              <Sparkles className="w-3.5 h-3.5" /> PROGRAM OPPORTUNITIES PORTAL
+          <div className="text-center space-y-4 max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono font-bold uppercase tracking-wider">
+              <Sparkles className="w-4 h-4" /> Enterprise Collaboration Network
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-display text-white light:text-slate-900 tracking-tight">
-              Choose Your Program
+            <h1 className="text-3xl sm:text-5xl font-extrabold font-display tracking-tight text-white light:text-slate-900">
+              Active Program Opportunities
             </h1>
-            <div className="w-16 h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-500 rounded-full mx-auto"></div>
-            <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base leading-relaxed font-sans">
-              Explore and apply to our verified enterprise data annotation, transcription, and language dataset collection programs.
+            <p className="text-slate-400 light:text-slate-600 text-sm sm:text-base font-sans leading-relaxed">
+              Explore official partner initiatives, language AI annotation campaigns, and enterprise project opportunities.
             </p>
           </div>
 
-          {/* Opportunities Grid */}
+          {/* Opportunities Cards Grid */}
           {loading ? (
-            <div className="text-center py-12 font-mono text-xs text-slate-400 space-y-2">
-              <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <div>Loading Live Opportunities...</div>
+            <div className="py-20 text-center space-y-3 font-mono text-xs text-slate-400">
+              <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <div>Loading Program Opportunities...</div>
             </div>
           ) : opportunities.length === 0 ? (
-            <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3 max-w-xl mx-auto">
-              <Briefcase className="w-10 h-10 text-slate-500 mx-auto" />
-              <h4 className="text-base font-bold text-white">No Program Opportunities Available Right Now</h4>
-              <p className="text-xs font-mono text-slate-400">
-                Please check back soon! Opportunities created from the Admin Dashboard will appear here automatically.
-              </p>
+            <div className="p-12 text-center glass-panel rounded-3xl border border-white/10 max-w-md mx-auto space-y-4">
+              <Briefcase className="w-12 h-12 text-slate-500 mx-auto" />
+              <div className="font-display text-lg font-bold text-white">No Public Opportunities Listed</div>
+              <p className="text-xs font-mono text-slate-400">Check back soon for new enterprise AI campaigns.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {opportunities.map((op) => {
                 const isActive = op.status === 'active';
                 const isStopped = op.status === 'stopped';
+                const isComingSoon = op.status === 'coming_soon';
 
                 return (
                   <motion.div
                     key={op.id}
-                    whileHover={{ y: -6 }}
-                    className={`glass-panel p-8 rounded-3xl border flex flex-col justify-between relative overflow-hidden group shadow-2xl ${
-                      isStopped ? 'border-red-500/30 opacity-80' : 'border-emerald-500/30'
+                    whileHover={{ y: isStopped ? 0 : -4 }}
+                    onClick={() => handleCardClick(op)}
+                    className={`glass-panel rounded-3xl border transition-all duration-300 overflow-hidden flex flex-col justify-between p-6 sm:p-7 relative group ${
+                      isStopped
+                        ? 'border-red-500/20 bg-slate-950/80 opacity-75 cursor-not-allowed'
+                        : 'border-white/10 hover:border-cyan-500/40 cursor-pointer shadow-xl'
                     }`}
                   >
-                    {isActive && (
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none"></div>
-                    )}
-
-                    <div className="space-y-6">
-                      {/* Badge & Status Header */}
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`px-3 py-1 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider ${
-                            isActive
-                              ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
-                              : 'bg-red-500/20 border border-red-500/40 text-red-300'
-                          }`}
-                        >
-                          {op.badge || op.status}
-                        </span>
-
-                        <div className="text-xs font-mono text-cyan-400 flex items-center gap-1 font-bold">
-                          {isActive ? <Unlock className="w-3.5 h-3.5 text-emerald-400" /> : <Lock className="w-3.5 h-3.5 text-red-400" />}
-                          <span className="uppercase">{op.partner_name}</span>
-                        </div>
-                      </div>
-
-                      {/* Title & Logo Header */}
-                      <div className="flex items-start gap-4">
+                    <div className="space-y-5">
+                      {/* Logo & Status Badge Header */}
+                      <div className="flex items-start justify-between gap-3">
                         {op.company_logo ? (
                           <img
                             src={op.company_logo}
@@ -176,64 +215,78 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                           </div>
                         )}
 
-                        <div className="space-y-1">
-                          <h3
-                            onClick={() => handleCardClick(op)}
-                            className="text-xl font-bold font-display text-white light:text-slate-900 group-hover:text-cyan-300 transition-all cursor-pointer line-clamp-2"
-                          >
-                            {op.title}
-                          </h3>
-                          <p className="text-xs font-sans text-slate-400 light:text-slate-600 line-clamp-2">
-                            {op.description}
-                          </p>
-                        </div>
+                        <span
+                          className={`px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1 ${
+                            isActive
+                              ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                              : isStopped
+                              ? 'bg-red-500/20 border border-red-500/40 text-red-300'
+                              : 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                          }`}
+                        >
+                          {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>}
+                          {isActive ? op.badge || 'ACTIVE' : isStopped ? '🔴 CLOSED' : 'COMING SOON'}
+                        </span>
                       </div>
 
-                      {/* Language Skills Pills */}
-                      {op.language_skills && op.language_skills.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-2">
-                          {op.language_skills.slice(0, 4).map((skill, sIdx) => (
-                            <span
-                              key={sIdx}
-                              className="px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-slate-300 font-mono text-[11px]"
-                            >
-                              {skill}
-                            </span>
-                          ))}
-                          {op.language_skills.length > 4 && (
-                            <span className="px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-300 font-mono text-[11px]">
-                              +{op.language_skills.length - 4} more
-                            </span>
-                          )}
+                      {/* Opportunity Details */}
+                      <div className="space-y-2">
+                        <div className="text-xs font-mono text-cyan-400 font-bold uppercase tracking-wider">
+                          {op.partner_name}
                         </div>
-                      )}
+                        <h3 className="text-xl font-bold font-display text-white light:text-slate-900 group-hover:text-cyan-300 transition-colors line-clamp-2">
+                          {op.title}
+                        </h3>
+                        <p className="text-xs text-slate-300 light:text-slate-600 font-sans leading-relaxed line-clamp-3">
+                          {op.description}
+                        </p>
+                      </div>
+
+                      {/* Work Mode & Compensation Stats */}
+                      <div className="grid grid-cols-2 gap-2 pt-2 font-mono text-[11px]">
+                        <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                          <span className="text-slate-400 block text-[9px] uppercase">Work Mode</span>
+                          <span className="text-cyan-300 font-bold uppercase">{op.work_mode || 'Remote WFH'}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                          <span className="text-slate-400 block text-[9px] uppercase">Compensation</span>
+                          <span className="text-emerald-300 font-bold truncate block">{op.payment_info || 'Competitive'}</span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Footer Actions */}
-                    <div className="pt-6 mt-6 border-t border-white/10 flex items-center gap-3">
+                    {/* Card Actions */}
+                    <div className="pt-6 mt-6 border-t border-white/10 flex items-center justify-between gap-3">
                       <button
-                        onClick={() => handleCardClick(op)}
-                        className="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono text-xs font-bold transition-all cursor-pointer text-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCardClick(op);
+                        }}
+                        className="text-xs font-mono font-bold text-slate-300 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
                       >
-                        View Details
+                        View Details <ArrowRight className="w-3.5 h-3.5" />
                       </button>
 
                       <button
-                        disabled={isStopped}
-                        onClick={() => handleOpenApplicationModal(op)}
-                        className={`flex-1 py-3 px-4 rounded-xl font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        disabled={!isActive}
+                        onClick={(e) => handleOpenApplicationModal(op, e)}
+                        className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
                           isActive
-                            ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:opacity-95 text-black cursor-pointer shadow-lg shadow-emerald-500/20'
-                            : 'bg-white/5 text-slate-500 border border-white/10 cursor-not-allowed'
+                            ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:opacity-95 text-black font-extrabold shadow-lg shadow-emerald-500/20 cursor-pointer'
+                            : 'bg-white/5 border border-white/10 text-slate-500 cursor-not-allowed'
                         }`}
                       >
                         {isActive ? (
                           <>
                             Apply Now <ArrowRight className="w-3.5 h-3.5" />
                           </>
+                        ) : isStopped ? (
+                          <>
+                            Applications Closed <Lock className="w-3.5 h-3.5" />
+                          </>
                         ) : (
                           <>
-                            Onboarding Stopped <Lock className="w-3.5 h-3.5" />
+                            Opening Soon <Clock className="w-3.5 h-3.5" />
                           </>
                         )}
                       </button>
@@ -246,7 +299,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
         </div>
       </main>
 
-      {/* DYNAMIC CANDIDATE APPLICATION MODAL */}
+      {/* PREMIUM MULTI-STEP CANDIDATE APPLICATION MODAL */}
       <AnimatePresence>
         {applyingOpportunity && (
           <motion.div
@@ -259,98 +312,185 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto"
+              className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto bg-[#090d16]"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <div>
-                  <div className="text-xs font-mono text-cyan-400 uppercase tracking-widest">Candidate Application</div>
-                  <h3 className="text-xl font-bold font-display text-white">{applyingOpportunity.title}</h3>
+              {/* Premium Application Header */}
+              <div className="flex items-start justify-between border-b border-white/10 pb-4 gap-4">
+                <div className="flex items-center gap-3">
+                  {applyingOpportunity.company_logo ? (
+                    <img
+                      src={applyingOpportunity.company_logo}
+                      alt={applyingOpportunity.partner_name}
+                      className="w-12 h-12 object-contain bg-white p-1 rounded-xl border border-white/10 shrink-0 shadow-md"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+                      <Briefcase className="w-6 h-6" />
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest font-bold">
+                      {applyingOpportunity.partner_name}
+                    </div>
+                    <h3 className="text-lg font-bold font-display text-white leading-snug">{applyingOpportunity.title}</h3>
+                  </div>
                 </div>
+
                 <button
                   onClick={() => setApplyingOpportunity(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {submittedRef ? (
-                <div className="text-center py-8 space-y-4 font-mono text-xs">
-                  <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-xl font-bold">
-                    ✓
+              {/* Progress Indicator */}
+              <div className="space-y-1.5 font-mono text-[11px]">
+                <div className="flex items-center justify-between text-slate-400">
+                  <span className="text-cyan-300 font-bold">Candidate Application Form</span>
+                  <span>Mandatory Step 3 of 3</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                  <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 w-full rounded-full transition-all duration-300"></div>
+                </div>
+              </div>
+
+              {isDuplicate ? (
+                <div className="text-center py-6 px-2 space-y-6 font-mono text-xs">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
+                    <ShieldAlert className="w-8 h-8" />
                   </div>
-                  <h4 className="text-lg font-bold text-white">Application Submitted Successfully!</h4>
-                  <p className="text-slate-300 leading-relaxed">
-                    Thank you for applying to <span className="text-cyan-400 font-bold">{applyingOpportunity.title}</span>. Your application reference code is:
-                  </p>
-                  <div className="p-3 rounded-xl bg-white/[0.04] border border-cyan-500/30 text-cyan-300 text-sm font-bold font-mono">
-                    {submittedRef}
+
+                  <div className="space-y-2">
+                    <div className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold uppercase text-[10px] tracking-widest inline-block">
+                      Application Record Found
+                    </div>
+                    <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">
+                      Application Already Received
+                    </h4>
                   </div>
-                  <p className="text-slate-400 text-[11px]">
-                    Our operations team will review your responses and reach out via email or phone regarding onboarding steps.
-                  </p>
+
+                  <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-300 space-y-3 font-sans text-sm text-left leading-relaxed shadow-inner">
+                    <p>
+                      Thank you for your interest in <strong className="text-cyan-400">{applyingOpportunity.title}</strong>.
+                    </p>
+                    <p>
+                      We found that an application has already been submitted using <strong className="text-white font-mono">{applicantEmail.trim().toLowerCase()}</strong> for this opportunity.
+                    </p>
+                  </div>
+
                   <button
-                    onClick={() => setApplyingOpportunity(null)}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-bold cursor-pointer"
+                    type="button"
+                    onClick={() => {
+                      setApplyingOpportunity(null);
+                      setIsDuplicate(false);
+                    }}
+                    className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-bold font-mono text-xs transition-all cursor-pointer"
                   >
-                    Done / Close Application Window
+                    Close Window
+                  </button>
+                </div>
+              ) : submittedRef ? (
+                <div className="text-center py-8 space-y-5 font-mono text-xs">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-3xl font-bold shadow-xl shadow-emerald-500/10">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-2xl font-bold font-display text-white">Application Submitted Successfully!</h4>
+                    <p className="text-slate-300 text-xs font-sans">
+                      Thank you for applying to <span className="text-cyan-400 font-bold">{applyingOpportunity.title}</span>.
+                    </p>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-900 border border-cyan-500/30 text-cyan-300 text-center space-y-1 shadow-inner">
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Your Official Application ID</div>
+                    <div className="text-2xl font-extrabold font-mono text-white tracking-widest">{submittedRef}</div>
+                    <p className="text-[11px] text-slate-400 pt-1">Please retain this ID for your application records.</p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setApplyingOpportunity(null);
+                      setSubmittedRef(null);
+                      setIsDuplicate(false);
+                    }}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-extrabold text-xs font-mono cursor-pointer shadow-lg shadow-emerald-500/20"
+                  >
+                    Done / Return to Portal
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmitApplicationForm} className="space-y-4 font-mono text-xs">
-                  {/* Basic Candidate Contact Fields */}
-                  <div>
-                    <label className="block text-slate-300 mb-1">Full Legal Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Rahul Sharma"
-                      value={applicantName}
-                      onChange={(e) => setApplicantName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
+                <form onSubmit={handleSubmitApplicationForm} className="space-y-6 font-mono text-xs">
+                  {/* Submission Error Banner */}
+                  {submissionError && (
+                    <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-bold">Submission Error:</div>
+                        <div>{submissionError}</div>
+                      </div>
+                    </div>
+                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 mb-1">Email Address *</label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="you@domain.com"
-                        value={applicantEmail}
-                        onChange={(e) => setApplicantEmail(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                      />
+                  {/* SECTION 01: APPLICANT INFORMATION */}
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
+                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/5">
+                      <UserCheck className="w-4 h-4 text-cyan-400" /> 01. Applicant Information
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 mb-1">WhatsApp / Phone Number *</label>
+                      <label className="block text-slate-300 mb-1 font-bold">Full Legal Name *</label>
                       <input
-                        type="tel"
+                        type="text"
                         required
-                        placeholder="+91 9827775230"
-                        value={applicantPhone}
-                        onChange={(e) => setApplicantPhone(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                        placeholder="e.g. Rahul Sharma"
+                        value={applicantName}
+                        onChange={(e) => setApplicantName(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-sans"
                       />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-300 mb-1 font-bold">Email Address *</label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="you@domain.com"
+                          value={applicantEmail}
+                          onChange={(e) => setApplicantEmail(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 mb-1 font-bold">WhatsApp / Phone *</label>
+                        <input
+                          type="tel"
+                          required
+                          placeholder="+91 9827775230"
+                          value={applicantPhone}
+                          onChange={(e) => setApplicantPhone(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  {/* DYNAMIC CUSTOM QUESTIONS SET BY ADMIN */}
+                  {/* SECTION 02: PROGRAM SPECIFIC QUESTIONS */}
                   {applyingOpportunity.custom_questions && applyingOpportunity.custom_questions.length > 0 && (
-                    <div className="pt-3 border-t border-white/10 space-y-4">
-                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider">
-                        Program Specific Questions (Required by Admin):
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
+                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/5">
+                        <Sparkles className="w-4 h-4 text-cyan-400" /> 02. Project-Specific Questions ({applyingOpportunity.custom_questions.length})
                       </div>
 
                       {applyingOpportunity.custom_questions.map((q) => {
                         const parsedOptions = parseQuestionOptions(q.options);
 
                         return (
-                          <div key={q.id} className="space-y-1">
-                            <label className="block text-slate-300 mb-1 font-bold">
+                          <div key={q.id} className="space-y-1.5 p-3 rounded-xl bg-black/40 border border-white/5">
+                            <label className="block text-slate-200 mb-1 font-bold">
                               {q.label} {q.required && <span className="text-red-400">*</span>}
                             </label>
 
@@ -361,14 +501,14 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                 placeholder="Enter your detailed answer..."
                                 value={customAnswers[q.label] || ''}
                                 onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-sans"
                               />
                             ) : q.type === 'select' ? (
                               <select
                                 required={q.required}
                                 value={customAnswers[q.label] || ''}
                                 onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400 font-bold"
+                                className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-bold cursor-pointer"
                               >
                                 <option value="">-- Select Option --</option>
                                 {parsedOptions.map((opt, optIdx) => (
@@ -378,7 +518,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                 ))}
                               </select>
                             ) : q.type === 'multiselect' ? (
-                              <div className="space-y-2 p-3 rounded-xl bg-white/[0.02] border border-white/10">
+                              <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-white/15">
                                 {parsedOptions.map((opt, optIdx) => {
                                   const selectedArr: string[] = customAnswers[q.label] || [];
                                   const isChecked = selectedArr.includes(opt);
@@ -452,7 +592,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                                 placeholder="Your answer..."
                                 value={customAnswers[q.label] || ''}
                                 onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white focus:outline-none focus:border-cyan-400 font-sans"
                               />
                             )}
                           </div>
@@ -461,7 +601,50 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     </div>
                   )}
 
-                  <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
+                  {/* SECTION 03: MANDATORY TERMS & CONDITIONS AGREEMENT */}
+                  <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-3">
+                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-cyan-500/20">
+                      <FileCheck2 className="w-4 h-4 text-cyan-400" /> 03. Mandatory Terms &amp; Conditions Agreement
+                    </div>
+
+                    <label className="flex items-start gap-3 text-slate-200 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={termsAccepted}
+                        onChange={(e) => {
+                          setTermsAccepted(e.target.checked);
+                          if (e.target.checked) setTermsError('');
+                        }}
+                        className="rounded border-white/20 bg-slate-950 text-cyan-500 focus:ring-0 mt-0.5 w-4 h-4 shrink-0"
+                      />
+                      <span className="text-xs font-mono leading-relaxed">
+                        I have read and agree to the <strong className="text-cyan-300">Terms &amp; Conditions</strong> and confirm that all submitted details are accurate.
+                      </span>
+                    </label>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono pt-1">
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 font-bold"
+                      >
+                        [ Read Terms &amp; Conditions ] <ExternalLink className="w-3 h-3" />
+                      </a>
+                      <span className="text-slate-400 text-[10px]">Version 1.0</span>
+                    </div>
+
+                    {/* Inline Validation Error State */}
+                    {termsError && (
+                      <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 font-bold text-xs flex items-center gap-2 animate-shake">
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        <span>{termsError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submit Button & Actions */}
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => setApplyingOpportunity(null)}
@@ -472,9 +655,9 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer"
+                      className="px-7 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-500 hover:opacity-95 text-black font-extrabold shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
-                      <Send className="w-4 h-4" /> {isSubmitting ? 'Submitting...' : 'Submit Application'}
+                      <Send className="w-4 h-4" /> {isSubmitting ? 'Submitting Application...' : 'Submit Application →'}
                     </button>
                   </div>
                 </form>

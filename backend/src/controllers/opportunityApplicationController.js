@@ -215,7 +215,16 @@ export const submitApplication = async (req, res) => {
     const cleanPhone = (applicant_phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
     const cleanTitle = (opportunity_title || 'General Opportunity').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
-    // Verify opportunity exists & is accepting applications
+    // Mandatory Terms & Conditions Validation (Server-side Enforcement)
+    const termsAccepted = req.body.terms_accepted === true || req.body.termsAccepted === true;
+    if (!termsAccepted) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please accept the Terms & Conditions before submitting your application.',
+      });
+    }
+
+    // Verify opportunity exists & is active before accepting application
     try {
       const { data: oppRecord } = await supabase
         .from('opportunities')
@@ -223,11 +232,25 @@ export const submitApplication = async (req, res) => {
         .eq('id', opportunity_id)
         .maybeSingle();
 
-      if (oppRecord && oppRecord.status === 'stopped') {
-        return res.status(400).json({
-          success: false,
-          error: 'Onboarding for this opportunity has been stopped.',
-        });
+      if (oppRecord) {
+        if (oppRecord.status === 'stopped') {
+          return res.status(400).json({
+            success: false,
+            error: 'Applications for this opportunity are currently closed.',
+          });
+        }
+        if (oppRecord.status === 'coming_soon') {
+          return res.status(400).json({
+            success: false,
+            error: 'Applications for this opportunity will open soon.',
+          });
+        }
+        if (oppRecord.status === 'draft') {
+          return res.status(400).json({
+            success: false,
+            error: 'This opportunity is not currently accepting public applications.',
+          });
+        }
       }
     } catch (oppErr) {
       console.warn('[Opportunity check note]:', oppErr.message);
@@ -263,6 +286,9 @@ export const submitApplication = async (req, res) => {
       applicant_phone: cleanPhone,
       answers: answers || {},
       status: 'pending',
+      terms_accepted: true,
+      terms_accepted_at: req.body.terms_accepted_at || new Date().toISOString(),
+      terms_version: req.body.terms_version || '1.0',
       admin_notes: '',
       sync_status: 'pending',
       email_status: 'pending',

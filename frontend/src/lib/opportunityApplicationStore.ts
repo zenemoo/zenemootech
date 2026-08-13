@@ -19,6 +19,9 @@ export interface CandidateApplication {
   acceptance_email_sent_at?: string;
   acceptance_email_message_id?: string;
   acceptance_email_error?: string;
+  terms_accepted?: boolean;
+  terms_accepted_at?: string;
+  terms_version?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -83,11 +86,18 @@ export const getStoredCandidateApplications = async (opportunity_id?: string): P
 export const submitCandidateApplication = async (
   appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'>
 ): Promise<CandidateApplication> => {
+  if (!appData.terms_accepted) {
+    throw new Error('Please accept the Terms & Conditions before submitting your application.');
+  }
+
   let localList = getLocalApplications();
   const cleanEmail = (appData.applicant_email || '').trim().toLowerCase();
   const normalizedAppData = {
     ...appData,
     applicant_email: cleanEmail,
+    terms_accepted: true,
+    terms_accepted_at: appData.terms_accepted_at || new Date().toISOString(),
+    terms_version: appData.terms_version || '1.0',
   };
 
   // Primary Method: Submit via Express API Backend (Enforces server-side duplicate protection & notifications)
@@ -106,6 +116,9 @@ export const submitCandidateApplication = async (
       dupError.code = 'DUPLICATE_APPLICATION';
       dupError.isDuplicate = true;
       throw dupError;
+    }
+    if (responseData?.error) {
+      throw new Error(responseData.error);
     }
     console.warn('Express submit application note, trying direct Supabase fallback:', apiErr.message);
   }
@@ -137,6 +150,9 @@ export const submitCandidateApplication = async (
       applicant_phone: normalizedAppData.applicant_phone,
       answers: normalizedAppData.answers || {},
       status: 'pending',
+      terms_accepted: true,
+      terms_accepted_at: normalizedAppData.terms_accepted_at,
+      terms_version: normalizedAppData.terms_version,
       admin_notes: '',
       sync_status: 'pending',
       created_at: new Date().toISOString(),

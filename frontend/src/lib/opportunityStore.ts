@@ -247,6 +247,12 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
   return getLocalOpportunities();
 };
 
+// Fetch public opportunities excluding drafts
+export const getPublicOpportunities = async (): Promise<OpportunityProgram[]> => {
+  const list = await getStoredOpportunities();
+  return list.filter((op) => op.status !== 'draft');
+};
+
 // Save or update opportunity directly in Supabase (with column fallback safety)
 export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgram>): Promise<OpportunityProgram[]> => {
   let localList = getLocalOpportunities();
