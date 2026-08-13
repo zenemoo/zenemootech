@@ -72,6 +72,118 @@ export interface OpportunityProgram {
   updated_at?: string;
 }
 
+// ----------------------------------------------------------------------
+// CENTRALIZED DATA PARSING & NORMALIZATION UTILITIES
+// ----------------------------------------------------------------------
+
+/**
+ * Safely parses options input into a clean string array.
+ * Supports comma-separated strings ("Opt A, Opt B"), newline-separated strings, or arrays.
+ */
+export const parseQuestionOptions = (optionsInput: any): string[] => {
+  if (!optionsInput) return [];
+  if (Array.isArray(optionsInput)) {
+    return optionsInput
+      .flatMap((opt) => (typeof opt === 'string' ? opt.split(/[\n,]/) : [String(opt)]))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (typeof optionsInput === 'string') {
+    return optionsInput
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+/**
+ * Normalizes custom question data structure ensuring stable IDs, valid question types,
+ * required flags, and clean options arrays.
+ */
+export const normalizeQuestion = (q: any, idx: number): CustomQuestion => {
+  const type = (q.type || 'text').toLowerCase();
+  const rawOptions = q.options || q.choices || [];
+  const parsedOptions = parseQuestionOptions(rawOptions);
+
+  const validTypes = ['text', 'textarea', 'number', 'select', 'multiselect', 'yesno', 'email', 'phone', 'date', 'checkbox'];
+  const finalType = validTypes.includes(type) ? (type as CustomQuestion['type']) : 'text';
+
+  return {
+    id: q.id || `q_${Date.now()}_${idx}`,
+    label: (q.label || q.question || q.text || `Question ${idx + 1}`).trim(),
+    type: finalType,
+    options: parsedOptions,
+    required: q.required === true || q.is_required === true,
+  };
+};
+
+/**
+ * Normalizes a complete OpportunityProgram object ensuring robust backward compatibility
+ * for old and new records alike.
+ */
+export const normalizeOpportunity = (op: any): OpportunityProgram => {
+  if (!op) return {} as OpportunityProgram;
+
+  const rawQuestions = Array.isArray(op.custom_questions) ? op.custom_questions : [];
+  const normalizedQuestions = rawQuestions.map((q: any, idx: number) => normalizeQuestion(q, idx));
+
+  return {
+    id: String(op.id || `op_${Date.now()}`),
+    position: Number(op.position) || 1,
+    title: String(op.title || '').trim(),
+    partner_name: String(op.partner_name || '').trim(),
+    badge: op.badge ? String(op.badge).trim() : undefined,
+    status: op.status || 'active',
+    description: String(op.description || '').trim(),
+    company_logo: op.company_logo ? String(op.company_logo).trim() : undefined,
+    poster_url: op.poster_url ? String(op.poster_url).trim() : undefined,
+    public_id: op.public_id ? String(op.public_id).trim() : undefined,
+
+    features: Array.isArray(op.features) ? op.features.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    requirements: Array.isArray(op.requirements) ? op.requirements.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    language_skills: Array.isArray(op.language_skills) ? op.language_skills.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    eligibility_criteria: Array.isArray(op.eligibility_criteria) ? op.eligibility_criteria.map((item: any) => String(item).trim()).filter(Boolean) : [],
+
+    whatsapp_group_url: op.whatsapp_group_url ? String(op.whatsapp_group_url).trim() : undefined,
+    whatsapp_channel_url: op.whatsapp_channel_url ? String(op.whatsapp_channel_url).trim() : undefined,
+    telegram_url: op.telegram_url ? String(op.telegram_url).trim() : undefined,
+    contact_support_url: op.contact_support_url ? String(op.contact_support_url).trim() : undefined,
+
+    linkedin_post_url: op.linkedin_post_url ? String(op.linkedin_post_url).trim() : undefined,
+    facebook_post_url: op.facebook_post_url ? String(op.facebook_post_url).trim() : undefined,
+    instagram_url: op.instagram_url ? String(op.instagram_url).trim() : undefined,
+    youtube_url: op.youtube_url ? String(op.youtube_url).trim() : undefined,
+    other_social_url: op.other_social_url ? String(op.other_social_url).trim() : undefined,
+    application_post_url: op.application_post_url ? String(op.application_post_url).trim() : undefined,
+    pdf_link: op.pdf_link ? String(op.pdf_link).trim() : undefined,
+
+    contact_details: op.contact_details && typeof op.contact_details === 'object' ? op.contact_details : {},
+
+    about_project: op.about_project ? String(op.about_project).trim() : undefined,
+    what_you_will_do: Array.isArray(op.what_you_will_do) ? op.what_you_will_do.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    experience_requirements: op.experience_requirements ? String(op.experience_requirements).trim() : undefined,
+    equipment_requirements: op.equipment_requirements ? String(op.equipment_requirements).trim() : undefined,
+    internet_requirements: op.internet_requirements ? String(op.internet_requirements).trim() : undefined,
+    working_hours: op.working_hours ? String(op.working_hours).trim() : undefined,
+    project_duration: op.project_duration ? String(op.project_duration).trim() : undefined,
+    payment_info: op.payment_info ? String(op.payment_info).trim() : undefined,
+    payment_frequency: op.payment_frequency ? String(op.payment_frequency).trim() : undefined,
+    work_mode: op.work_mode ? String(op.work_mode).trim() : 'remote',
+    availability_requirement: op.availability_requirement ? String(op.availability_requirement).trim() : undefined,
+
+    project_highlights: Array.isArray(op.project_highlights) ? op.project_highlights.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    benefits: Array.isArray(op.benefits) ? op.benefits.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    why_join: op.why_join ? String(op.why_join).trim() : undefined,
+    important_notes: op.important_notes ? String(op.important_notes).trim() : undefined,
+
+    custom_questions: normalizedQuestions,
+    action_url: op.action_url || '#desicrew-contributors',
+    created_at: op.created_at,
+    updated_at: op.updated_at,
+  };
+};
+
 const LOCAL_STORAGE_KEY = 'zenemoo_opportunities_db';
 
 const getLocalOpportunities = (): OpportunityProgram[] => {
@@ -80,7 +192,9 @@ const getLocalOpportunities = (): OpportunityProgram[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.sort((a, b) => Number(a.position) - Number(b.position));
+        return parsed
+          .map(normalizeOpportunity)
+          .sort((a, b) => Number(a.position) - Number(b.position));
       }
     }
   } catch (e) {}
@@ -89,6 +203,7 @@ const getLocalOpportunities = (): OpportunityProgram[] => {
 
 const saveLocalOpportunities = (list: OpportunityProgram[]): OpportunityProgram[] => {
   const sorted = list
+    .map(normalizeOpportunity)
     .map((item, idx) => ({ ...item, position: idx + 1 }))
     .sort((a, b) => Number(a.position) - Number(b.position));
   try {
@@ -106,20 +221,9 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
       .order('position', { ascending: true });
 
     if (!error && Array.isArray(data)) {
-      const formatted = data.map((op: any) => ({
-        ...op,
-        features: Array.isArray(op.features) ? op.features : [],
-        requirements: Array.isArray(op.requirements) ? op.requirements : [],
-        language_skills: Array.isArray(op.language_skills) ? op.language_skills : [],
-        eligibility_criteria: Array.isArray(op.eligibility_criteria) ? op.eligibility_criteria : [],
-        what_you_will_do: Array.isArray(op.what_you_will_do) ? op.what_you_will_do : [],
-        project_highlights: Array.isArray(op.project_highlights) ? op.project_highlights : [],
-        benefits: Array.isArray(op.benefits) ? op.benefits : [],
-        contact_details: op.contact_details || {},
-        custom_questions: Array.isArray(op.custom_questions) ? op.custom_questions : [],
-      }));
-      saveLocalOpportunities(formatted as OpportunityProgram[]);
-      return formatted as OpportunityProgram[];
+      const formatted = data.map(normalizeOpportunity);
+      saveLocalOpportunities(formatted);
+      return formatted;
     } else if (error) {
       console.warn('Supabase fetch opportunities error:', error.message);
     }
@@ -130,7 +234,9 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
   try {
     const res = await opportunityApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const live = res.data.data.sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position));
+      const live = res.data.data
+        .map(normalizeOpportunity)
+        .sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position));
       saveLocalOpportunities(live);
       return live;
     }
@@ -146,53 +252,57 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
   let localList = getLocalOpportunities();
 
   const isUUID = opportunity.id && opportunity.id.includes('-');
-  
+
+  // Normalize questions & array fields before constructing payload
+  const rawQuestions = Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [];
+  const normalizedQuestions = rawQuestions.map((q, idx) => normalizeQuestion(q, idx));
+
   const fullPayload: Record<string, any> = {
-    title: opportunity.title || 'New Opportunity Program',
-    partner_name: opportunity.partner_name || 'Partner Company',
-    badge: opportunity.badge || 'ACTIVE',
+    title: (opportunity.title || 'New Opportunity Program').trim(),
+    partner_name: (opportunity.partner_name || 'Partner Company').trim(),
+    badge: (opportunity.badge || 'ACTIVE').trim(),
     status: opportunity.status || 'active',
-    description: opportunity.description || '',
-    company_logo: opportunity.company_logo || '',
-    poster_url: opportunity.poster_url || '',
-    public_id: opportunity.public_id || '',
-    features: Array.isArray(opportunity.features) ? opportunity.features : [],
-    requirements: Array.isArray(opportunity.requirements) ? opportunity.requirements : [],
-    language_skills: Array.isArray(opportunity.language_skills) ? opportunity.language_skills : [],
-    eligibility_criteria: Array.isArray(opportunity.eligibility_criteria) ? opportunity.eligibility_criteria : [],
-    linkedin_post_url: opportunity.linkedin_post_url || '',
-    pdf_link: opportunity.pdf_link || '',
+    description: (opportunity.description || '').trim(),
+    company_logo: (opportunity.company_logo || '').trim(),
+    poster_url: (opportunity.poster_url || '').trim(),
+    public_id: (opportunity.public_id || '').trim(),
+    features: Array.isArray(opportunity.features) ? opportunity.features.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    requirements: Array.isArray(opportunity.requirements) ? opportunity.requirements.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    language_skills: Array.isArray(opportunity.language_skills) ? opportunity.language_skills.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    eligibility_criteria: Array.isArray(opportunity.eligibility_criteria) ? opportunity.eligibility_criteria.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    linkedin_post_url: (opportunity.linkedin_post_url || '').trim(),
+    pdf_link: (opportunity.pdf_link || '').trim(),
     contact_details: opportunity.contact_details || {},
-    custom_questions: Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [],
-    action_url: opportunity.action_url || '#desicrew-contributors',
+    custom_questions: normalizedQuestions,
+    action_url: (opportunity.action_url || '#desicrew-contributors').trim(),
     position: opportunity.position || localList.length + 1,
     updated_at: new Date().toISOString(),
 
     // Extended fields
-    whatsapp_group_url: opportunity.whatsapp_group_url || '',
-    whatsapp_channel_url: opportunity.whatsapp_channel_url || '',
-    telegram_url: opportunity.telegram_url || '',
-    contact_support_url: opportunity.contact_support_url || '',
-    facebook_post_url: opportunity.facebook_post_url || '',
-    instagram_url: opportunity.instagram_url || '',
-    youtube_url: opportunity.youtube_url || '',
-    other_social_url: opportunity.other_social_url || '',
-    application_post_url: opportunity.application_post_url || '',
-    about_project: opportunity.about_project || '',
-    what_you_will_do: Array.isArray(opportunity.what_you_will_do) ? opportunity.what_you_will_do : [],
-    experience_requirements: opportunity.experience_requirements || '',
-    equipment_requirements: opportunity.equipment_requirements || '',
-    internet_requirements: opportunity.internet_requirements || '',
-    working_hours: opportunity.working_hours || '',
-    project_duration: opportunity.project_duration || '',
-    payment_info: opportunity.payment_info || '',
-    payment_frequency: opportunity.payment_frequency || '',
+    whatsapp_group_url: (opportunity.whatsapp_group_url || '').trim(),
+    whatsapp_channel_url: (opportunity.whatsapp_channel_url || '').trim(),
+    telegram_url: (opportunity.telegram_url || '').trim(),
+    contact_support_url: (opportunity.contact_support_url || '').trim(),
+    facebook_post_url: (opportunity.facebook_post_url || '').trim(),
+    instagram_url: (opportunity.instagram_url || '').trim(),
+    youtube_url: (opportunity.youtube_url || '').trim(),
+    other_social_url: (opportunity.other_social_url || '').trim(),
+    application_post_url: (opportunity.application_post_url || '').trim(),
+    about_project: (opportunity.about_project || '').trim(),
+    what_you_will_do: Array.isArray(opportunity.what_you_will_do) ? opportunity.what_you_will_do.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    experience_requirements: (opportunity.experience_requirements || '').trim(),
+    equipment_requirements: (opportunity.equipment_requirements || '').trim(),
+    internet_requirements: (opportunity.internet_requirements || '').trim(),
+    working_hours: (opportunity.working_hours || '').trim(),
+    project_duration: (opportunity.project_duration || '').trim(),
+    payment_info: (opportunity.payment_info || '').trim(),
+    payment_frequency: (opportunity.payment_frequency || '').trim(),
     work_mode: opportunity.work_mode || 'remote',
-    availability_requirement: opportunity.availability_requirement || '',
-    project_highlights: Array.isArray(opportunity.project_highlights) ? opportunity.project_highlights : [],
-    benefits: Array.isArray(opportunity.benefits) ? opportunity.benefits : [],
-    why_join: opportunity.why_join || '',
-    important_notes: opportunity.important_notes || '',
+    availability_requirement: (opportunity.availability_requirement || '').trim(),
+    project_highlights: Array.isArray(opportunity.project_highlights) ? opportunity.project_highlights.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    benefits: Array.isArray(opportunity.benefits) ? opportunity.benefits.map((item: any) => String(item).trim()).filter(Boolean) : [],
+    why_join: (opportunity.why_join || '').trim(),
+    important_notes: (opportunity.important_notes || '').trim(),
   };
 
   const corePayload = {
@@ -242,13 +352,13 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
 
   // Fallback LocalStorage update
   if (opportunity.id && (opportunity.id.startsWith('op_') || localList.some((op) => op.id === opportunity.id))) {
-    localList = localList.map((op) => (op.id === opportunity.id ? ({ ...op, ...fullPayload } as OpportunityProgram) : op));
+    localList = localList.map((op) => (op.id === opportunity.id ? normalizeOpportunity({ ...op, ...fullPayload }) : op));
   } else {
-    const newRecord: OpportunityProgram = {
+    const newRecord: OpportunityProgram = normalizeOpportunity({
       id: `op_${Date.now()}`,
       ...fullPayload,
       created_at: new Date().toISOString(),
-    } as OpportunityProgram;
+    });
     localList.push(newRecord);
   }
 

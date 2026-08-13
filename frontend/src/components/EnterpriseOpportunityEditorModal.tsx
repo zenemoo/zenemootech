@@ -1120,16 +1120,16 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
                       {(q.type === 'select' || q.type === 'multiselect') && (
                         <div className="space-y-1">
-                          <label className="text-[10px] font-mono text-slate-400">Dropdown Options (Comma separated):</label>
-                          <input
-                            type="text"
-                            value={q.options?.join(', ') || ''}
-                            onChange={(e) =>
-                              handleUpdateQuestion(q.id, {
-                                options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                              })
-                            }
-                            placeholder="Option 1, Option 2, Option 3"
+                          <label className="text-[10px] font-mono text-slate-400">Dropdown Options (Comma or Newline separated):</label>
+                          <textarea
+                            rows={2}
+                            value={Array.isArray(q.options) ? q.options.join(', ') : q.options || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const parsed = val.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+                              handleUpdateQuestion(q.id, { options: parsed.length > 0 ? parsed : [val] });
+                            }}
+                            placeholder="Option 1, Option 2, Option 3 (or 1 per line)"
                             className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-emerald-300 font-mono text-xs focus:outline-none"
                           />
                         </div>
