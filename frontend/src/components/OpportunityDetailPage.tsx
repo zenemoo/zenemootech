@@ -37,6 +37,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
 import { submitCandidateApplication, checkExistingApplication, CandidateApplication } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
+import { OpportunityStatusModal } from './OpportunityStatusModal';
 
 interface OpportunityDetailPageProps {
   opportunityId: string;
@@ -67,6 +68,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [existingApp, setExistingApp] = useState<CandidateApplication | null>(null);
   const [submissionError, setSubmissionError] = useState('');
+  const [statusModalType, setStatusModalType] = useState<'closed' | 'coming_soon' | null>(null);
 
   const handleShareProject = async () => {
     if (!opportunity) return;
@@ -143,11 +145,11 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
   const handleOpenApplyModal = async () => {
     if (!opportunity) return;
     if (opportunity.status === 'stopped') {
-      alert('Applications for this opportunity are currently closed.');
+      setStatusModalType('closed');
       return;
     }
     if (opportunity.status === 'coming_soon') {
-      alert('Applications for this opportunity will open soon.');
+      setStatusModalType('coming_soon');
       return;
     }
 
@@ -823,12 +825,13 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
 
               {/* APPLY NOW BUTTON AT FULL END */}
               <button
-                disabled={!isActive}
                 onClick={handleOpenApplyModal}
-                className={`w-full py-4 px-6 rounded-2xl font-extrabold text-sm font-mono shadow-2xl flex items-center justify-center gap-2 transition-all ${
+                className={`w-full py-4 px-6 rounded-2xl font-extrabold text-sm font-mono shadow-2xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 cursor-pointer shadow-emerald-500/20 hover:scale-[1.01]'
-                    : 'bg-white/[0.04] border border-white/10 text-slate-500 cursor-not-allowed'
+                    ? 'bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 shadow-emerald-500/20 hover:scale-[1.01]'
+                    : isStopped
+                    ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40'
+                    : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
                 }`}
               >
                 {isActive ? (
@@ -1485,6 +1488,13 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
           Copyright &copy; 2026 <span className="text-slate-200 font-semibold">Zenemoo</span>. All Rights Reserved.
         </div>
       </footer>
+
+      {/* CUSTOM STATUS MODAL FOR CLOSED / UPCOMING OPPORTUNITIES */}
+      <OpportunityStatusModal
+        isOpen={statusModalType !== null}
+        type={statusModalType}
+        onClose={() => setStatusModalType(null)}
+      />
     </div>
   );
 };

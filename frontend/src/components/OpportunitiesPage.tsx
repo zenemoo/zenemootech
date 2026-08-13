@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getPublicOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
 import { submitCandidateApplication, checkExistingApplication, CandidateApplication } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
+import { OpportunityStatusModal } from './OpportunityStatusModal';
 
 interface OpportunitiesPageProps {
   onBack: () => void;
@@ -56,6 +57,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [existingApp, setExistingApp] = useState<CandidateApplication | null>(null);
   const [submissionError, setSubmissionError] = useState('');
+  const [statusModalType, setStatusModalType] = useState<'closed' | 'coming_soon' | null>(null);
 
   useEffect(() => {
     getPublicOpportunities().then((data) => {
@@ -66,11 +68,11 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
 
   const handleCardClick = (op: OpportunityProgram) => {
     if (op.status === 'stopped') {
-      alert('Applications for this opportunity are currently closed.');
+      setStatusModalType('closed');
       return;
     }
     if (op.status === 'coming_soon') {
-      alert('Applications for this opportunity will open soon.');
+      setStatusModalType('coming_soon');
       return;
     }
     onSelectProgram(op.id);
@@ -79,11 +81,11 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const handleOpenApplicationModal = async (op: OpportunityProgram, e: React.MouseEvent) => {
     e.stopPropagation();
     if (op.status === 'stopped') {
-      alert('Applications for this opportunity are currently closed.');
+      setStatusModalType('closed');
       return;
     }
     if (op.status === 'coming_soon') {
-      alert('Applications for this opportunity will open soon.');
+      setStatusModalType('coming_soon');
       return;
     }
 
@@ -361,12 +363,13 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                       </button>
 
                       <button
-                        disabled={!isActive}
                         onClick={(e) => handleOpenApplicationModal(op, e)}
-                        className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+                        className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                           isActive
-                            ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:opacity-95 text-black font-extrabold shadow-lg shadow-emerald-500/20 cursor-pointer'
-                            : 'bg-white/5 border border-white/10 text-slate-500 cursor-not-allowed'
+                            ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 hover:opacity-95 text-black font-extrabold shadow-lg shadow-emerald-500/20'
+                            : isStopped
+                            ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40'
+                            : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
                         }`}
                       >
                         {isActive ? (
@@ -999,6 +1002,13 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
           Copyright &copy; 2026 <span className="text-slate-200 font-semibold">Zenemoo</span>. All Rights Reserved.
         </div>
       </footer>
+
+      {/* CUSTOM STATUS MODAL FOR CLOSED / UPCOMING OPPORTUNITIES */}
+      <OpportunityStatusModal
+        isOpen={statusModalType !== null}
+        type={statusModalType}
+        onClose={() => setStatusModalType(null)}
+      />
     </div>
   );
 };
