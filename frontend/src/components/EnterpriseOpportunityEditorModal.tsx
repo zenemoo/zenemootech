@@ -28,7 +28,10 @@ import {
   Zap,
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Lock,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { OpportunityProgram, CustomQuestion } from '../lib/opportunityStore';
 
@@ -266,10 +269,12 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   };
 
   // Custom Question Form Builder Actions
+  const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
+
   const handleAddQuestion = () => {
     const newQ: CustomQuestion = {
       id: `q_${Date.now()}`,
-      label: 'New Custom Application Question',
+      label: '',
       type: 'text',
       required: true,
       options: [],
@@ -281,8 +286,52 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
     setCustomQuestions(customQuestions.map((q) => (q.id === id ? { ...q, ...updated } : q)));
   };
 
-  const handleDeleteQuestion = (id: string) => {
-    setCustomQuestions(customQuestions.filter((q) => q.id !== id));
+  const handleMoveQuestion = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === customQuestions.length - 1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const updated = [...customQuestions];
+    const [moved] = updated.splice(index, 1);
+    updated.splice(targetIndex, 0, moved);
+    setCustomQuestions(updated);
+  };
+
+  const handleAddQuestionOption = (questionId: string) => {
+    setCustomQuestions(
+      customQuestions.map((q) => {
+        if (q.id === questionId) {
+          const opts = Array.isArray(q.options) ? [...q.options] : [];
+          opts.push(`Option ${opts.length + 1}`);
+          return { ...q, options: opts };
+        }
+        return q;
+      })
+    );
+  };
+
+  const handleRemoveQuestionOption = (questionId: string, optIndex: number) => {
+    setCustomQuestions(
+      customQuestions.map((q) => {
+        if (q.id === questionId) {
+          const opts = (q.options || []).filter((_, i) => i !== optIndex);
+          return { ...q, options: opts };
+        }
+        return q;
+      })
+    );
+  };
+
+  const handleUpdateQuestionOptionText = (questionId: string, optIndex: number, text: string) => {
+    setCustomQuestions(
+      customQuestions.map((q) => {
+        if (q.id === questionId) {
+          const opts = Array.isArray(q.options) ? [...q.options] : [];
+          opts[optIndex] = text;
+          return { ...q, options: opts };
+        }
+        return q;
+      })
+    );
   };
 
   // AI Description Generator (Admin Only)
@@ -1044,14 +1093,47 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
           {/* TAB 6: FORM BUILDER */}
           {activeTab === 'form' && (
             <div className="p-6 rounded-2xl border border-white/10 bg-[#0d121f] space-y-6 shadow-sm">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h3 className="text-base font-bold font-mono text-cyan-400 flex items-center gap-2">
-                  <FileText className="w-5 h-5" /> Custom Application Form Builder
-                </h3>
+              {/* Locked Standard Applicant Information Banner */}
+              <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-bold font-mono text-xs text-cyan-300 flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-cyan-400" /> Standard Applicant Information (Locked &amp; Always Required)
+                  </div>
+                  <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/20 px-2 py-0.5 rounded border border-cyan-500/30 font-bold">
+                    SYSTEM REQUIRED
+                  </span>
+                </div>
+                <p className="text-xs font-mono text-slate-300">
+                  Every applicant form automatically includes these 3 core candidate contact fields. They cannot be edited, reordered, or deleted by admin.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 font-mono text-xs">
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2 text-slate-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-bold">1. Full Legal Name *</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2 text-slate-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-bold">2. Email Address *</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-white/10 flex items-center gap-2 text-slate-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-bold">3. WhatsApp / Phone *</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Custom Questions Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 pt-2">
+                <div>
+                  <h3 className="text-base font-bold font-mono text-cyan-400 flex items-center gap-2">
+                    <FileText className="w-5 h-5" /> Custom Application Questions ({customQuestions.length})
+                  </h3>
+                  <p className="text-xs font-mono text-slate-400">Add opportunity-specific questions for applicants</p>
+                </div>
                 <button
                   type="button"
                   onClick={handleAddQuestion}
-                  className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold text-xs font-mono flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20 active:scale-95"
                 >
                   <Plus className="w-4 h-4" /> Add Question
                 </button>
@@ -1059,28 +1141,72 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
               <div className="space-y-4">
                 {customQuestions.length === 0 ? (
-                  <p className="text-xs font-mono text-slate-500 italic p-4 text-center border border-white/10 rounded-xl">
-                    No custom questions configured. Candidates will only submit core contact details.
-                  </p>
+                  <div className="p-8 text-center border border-white/10 rounded-2xl bg-slate-900/50 space-y-2">
+                    <HelpCircle className="w-8 h-8 text-slate-500 mx-auto" />
+                    <p className="text-xs font-mono text-slate-400">
+                      No custom questions added yet. Applicants will only fill standard contact information.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAddQuestion}
+                      className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold inline-flex items-center gap-1 cursor-pointer mt-2"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Create First Custom Question
+                    </button>
+                  </div>
                 ) : (
                   customQuestions.map((q, idx) => (
-                    <div key={q.id} className="p-4 rounded-xl border border-white/10 bg-slate-900 space-y-3 relative">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-mono font-bold text-cyan-400">Q{idx + 1}. Question #{idx + 1}</span>
-                        <div className="flex items-center gap-3">
-                          <label className="flex items-center gap-1.5 text-xs font-mono text-slate-300 cursor-pointer">
+                    <div key={q.id} className="p-4 sm:p-5 rounded-2xl border border-white/10 bg-slate-900 space-y-4 relative shadow-md">
+                      {/* Question Card Header */}
+                      <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                            Q{idx + 1}
+                          </span>
+                          <span className="text-xs font-mono text-slate-300 font-bold">
+                            Question #{idx + 1}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Reorder Buttons */}
+                          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-white/10">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveQuestion(idx, 'up')}
+                              className="p-1 rounded text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                              title="Move Question Up"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === customQuestions.length - 1}
+                              onClick={() => handleMoveQuestion(idx, 'down')}
+                              className="p-1 rounded text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                              title="Move Question Down"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Required Toggle */}
+                          <label className="flex items-center gap-1.5 text-xs font-mono text-slate-300 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-white/10">
                             <input
                               type="checkbox"
                               checked={q.required}
                               onChange={(e) => handleUpdateQuestion(q.id, { required: e.target.checked })}
-                              className="rounded border-white/20 bg-slate-950 text-cyan-500 focus:ring-0"
+                              className="rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-0"
                             />
-                            Required
+                            <span>Required</span>
                           </label>
+
+                          {/* Delete Question Trigger */}
                           <button
                             type="button"
-                            onClick={() => handleDeleteQuestion(q.id)}
-                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer"
+                            onClick={() => setDeletingQuestionId(q.id)}
+                            className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/20 bg-red-500/10 border border-red-500/30 cursor-pointer"
                             title="Delete Question"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1088,55 +1214,142 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
                         </div>
                       </div>
 
+                      {/* Question Text & Input Type */}
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                        <div className="sm:col-span-8">
+                        <div className="sm:col-span-8 space-y-1">
+                          <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Question Text Label *</label>
                           <input
                             type="text"
                             value={q.label}
                             onChange={(e) => handleUpdateQuestion(q.id, { label: e.target.value })}
-                            placeholder="Enter question text label..."
-                            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white font-mono text-xs focus:outline-none"
+                            placeholder="e.g. What is your Odia typing speed (WPM)?"
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
                           />
                         </div>
-                        <div className="sm:col-span-4">
+
+                        <div className="sm:col-span-4 space-y-1">
+                          <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Question Input Type</label>
                           <select
                             value={q.type}
                             onChange={(e) => handleUpdateQuestion(q.id, { type: e.target.value as any })}
-                            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/15 text-white font-mono text-xs focus:outline-none font-bold cursor-pointer"
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-xs focus:outline-none font-bold cursor-pointer"
                           >
                             <option value="text">Short Text</option>
                             <option value="textarea">Long Text</option>
                             <option value="number">Number</option>
-                            <option value="select">Dropdown Select</option>
-                            <option value="multiselect">Multi Select</option>
+                            <option value="select">Dropdown / Single Choice</option>
+                            <option value="multiselect">Multiple Choice / Multi Select</option>
                             <option value="yesno">Yes / No</option>
                             <option value="email">Email</option>
                             <option value="phone">Phone</option>
                             <option value="date">Date</option>
-                            <option value="checkbox">Checkbox</option>
+                            <option value="checkbox">Checkbox Confirmation</option>
                           </select>
                         </div>
                       </div>
 
+                      {/* DEDICATED OPTION BUILDER (For Dropdown & Multi Select) */}
                       {(q.type === 'select' || q.type === 'multiselect') && (
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-mono text-slate-400">Dropdown Options (Comma or Newline separated):</label>
-                          <textarea
-                            rows={2}
-                            value={Array.isArray(q.options) ? q.options.join(', ') : q.options || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const parsed = val.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-                              handleUpdateQuestion(q.id, { options: parsed.length > 0 ? parsed : [val] });
-                            }}
-                            placeholder="Option 1, Option 2, Option 3 (or 1 per line)"
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-emerald-300 font-mono text-xs focus:outline-none"
-                          />
+                        <div className="p-4 rounded-xl bg-black/40 border border-white/10 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
+                              <span>Options List ({q.options?.length || 0})</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleAddQuestionOption(q.id)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Add Option
+                            </button>
+                          </div>
+
+                          {/* Individual Option Rows */}
+                          {q.options && q.options.length > 0 ? (
+                            <div className="space-y-2">
+                              {q.options.map((opt, optIdx) => (
+                                <div key={optIdx} className="flex items-center gap-2">
+                                  <span className="text-[11px] font-mono text-slate-400 w-6 text-right font-bold">{optIdx + 1}.</span>
+                                  <input
+                                    type="text"
+                                    value={opt}
+                                    onChange={(e) => handleUpdateQuestionOptionText(q.id, optIdx, e.target.value)}
+                                    placeholder={`Option ${optIdx + 1}`}
+                                    className="flex-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-emerald-300 font-mono text-xs focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveQuestionOption(q.id, optIdx)}
+                                    className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/20 cursor-pointer"
+                                    title="Delete Option"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-mono text-amber-400 italic">
+                              No options added yet. Click "+ Add Option" or paste below.
+                            </div>
+                          )}
+
+                          {/* Bulk Paste Fallback Box */}
+                          <div className="pt-2 border-t border-white/10 space-y-1">
+                            <label className="text-[10px] font-mono text-slate-400">Bulk Paste Options (Comma or Newline separated):</label>
+                            <textarea
+                              rows={2}
+                              value={Array.isArray(q.options) ? q.options.join(', ') : q.options || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const parsed = val.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+                                handleUpdateQuestion(q.id, { options: parsed });
+                              }}
+                              placeholder="Option 1, Option 2, Option 3 (or 1 per line)"
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-slate-300 font-mono text-xs focus:outline-none"
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* DELETE QUESTION CONFIRMATION MODAL */}
+          {deletingQuestionId && (
+            <div className="fixed inset-0 z-[100000] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="glass-panel p-6 rounded-2xl border border-red-500/40 max-w-md w-full space-y-4 bg-[#0d0a14]">
+                <div className="flex items-center gap-3 text-red-400 font-bold font-mono text-base">
+                  <AlertCircle className="w-6 h-6 shrink-0" />
+                  <span>Delete Custom Question?</span>
+                </div>
+
+                <p className="text-xs font-mono text-slate-300 leading-relaxed">
+                  Are you sure you want to delete this question? This action cannot be undone and will remove it from future candidate application forms.
+                </p>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingQuestionId(null)}
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-mono text-xs font-bold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomQuestions(customQuestions.filter((q) => q.id !== deletingQuestionId));
+                      setDeletingQuestionId(null);
+                    }}
+                    className="px-5 py-2 rounded-xl bg-red-500 hover:bg-red-400 text-white font-mono text-xs font-extrabold cursor-pointer shadow-lg shadow-red-500/20"
+                  >
+                    Delete Question
+                  </button>
+                </div>
               </div>
             </div>
           )}

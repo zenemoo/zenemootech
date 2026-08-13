@@ -24,10 +24,12 @@ import {
   DollarSign,
   Zap,
   Layers,
-  HelpCircle
+  HelpCircle,
+  Cpu,
+  Wifi
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
+import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
 import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
 
 interface OpportunityDetailPageProps {
@@ -242,7 +244,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 {/* Scope & Overview */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400" /> Program Scope &amp; Executive Overview
+                    <Sparkles className="w-4 h-4 text-cyan-400" /> Program Overview &amp; Executive Scope
                   </h3>
                   <p className="text-sm sm:text-base text-slate-300 light:text-slate-600 font-sans leading-relaxed whitespace-pre-wrap">
                     {opportunity.description}
@@ -250,7 +252,24 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               </div>
 
-              {/* Language & Skills Requirements */}
+              {/* Responsibilities & Tasks (ONLY RENDER IF Non-Empty) */}
+              {opportunity.what_you_will_do && opportunity.what_you_will_do.length > 0 && (
+                <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-4">
+                  <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-cyan-400" /> Responsibilities &amp; Daily Tasks
+                  </h3>
+                  <div className="space-y-2.5 font-sans text-sm text-slate-300">
+                    {opportunity.what_you_will_do.map((task, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+                        <div className="w-2 h-2 rounded-full bg-cyan-400 shrink-0 mt-2"></div>
+                        <span className="leading-relaxed">{task}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Language & Skills Requirements (ONLY RENDER IF Non-Empty) */}
               {opportunity.language_skills && opportunity.language_skills.length > 0 && (
                 <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
@@ -269,26 +288,47 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Eligibility Checklist */}
-              {opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0 && (
+              {/* Eligibility, Hardware & Equipment Checklist (ONLY RENDER IF Non-Empty) */}
+              {Boolean(opportunity.equipment_requirements || opportunity.internet_requirements || (opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0)) && (
                 <div className="glass-panel p-8 rounded-3xl border border-emerald-500/30 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-emerald-400 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Eligibility &amp; Hardware Checklist
+                    <Cpu className="w-4 h-4 text-emerald-400" /> Eligibility, Hardware &amp; Equipment Checklist
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 font-mono text-xs text-slate-200">
-                    {opportunity.eligibility_criteria.map((elig, idx) => (
-                      <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
-                          <Check className="w-3 h-3" />
-                        </div>
-                        <span>{elig}</span>
+
+                  {opportunity.equipment_requirements && (
+                    <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-xs space-y-1">
+                      <div className="font-bold uppercase text-[10px] text-emerald-400 flex items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5" /> Required Hardware / Devices:
                       </div>
-                    ))}
-                  </div>
+                      <div className="whitespace-pre-wrap font-sans text-slate-200 text-sm leading-relaxed">{opportunity.equipment_requirements}</div>
+                    </div>
+                  )}
+
+                  {opportunity.internet_requirements && (
+                    <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs space-y-1">
+                      <div className="font-bold uppercase text-[10px] text-cyan-400 flex items-center gap-1.5">
+                        <Wifi className="w-3.5 h-3.5" /> Internet &amp; Connectivity:
+                      </div>
+                      <div className="font-sans text-slate-200 text-sm leading-relaxed">{opportunity.internet_requirements}</div>
+                    </div>
+                  )}
+
+                  {opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 font-mono text-xs text-slate-200">
+                      {opportunity.eligibility_criteria.map((elig, idx) => (
+                        <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-3">
+                          <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                            <Check className="w-3 h-3" />
+                          </div>
+                          <span>{elig}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Project Highlights & Benefits */}
+              {/* Project Highlights & Benefits (ONLY RENDER IF Non-Empty) */}
               {((opportunity.project_highlights && opportunity.project_highlights.length > 0) || (opportunity.benefits && opportunity.benefits.length > 0)) && (
                 <div className="glass-panel p-8 rounded-3xl border border-purple-500/30 space-y-6">
                   {opportunity.project_highlights && opportunity.project_highlights.length > 0 && (
@@ -325,7 +365,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Communication & Social Links Section (ONLY RENDER IF FILLED) */}
+              {/* Communication & Social Links Section (ONLY RENDER IF Non-Empty) */}
               {hasSocialOrCommLinks && (
                 <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
@@ -379,7 +419,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Direct Opportunity Contact Info */}
+              {/* Direct Opportunity Contact Info (ONLY RENDER IF Non-Empty) */}
               {opportunity.contact_details && (opportunity.contact_details.email || opportunity.contact_details.phone) && (
                 <div className="glass-panel p-6 rounded-3xl border border-white/10 font-mono text-xs space-y-3">
                   <div className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-2">
@@ -483,7 +523,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Questions Required:</span>
                   <span className="text-white font-bold">
-                    {opportunity.custom_questions?.length || 0} Questions
+                    {opportunity.custom_questions?.length || 0} Custom Questions
                   </span>
                 </div>
               </div>
@@ -658,152 +698,171 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmitForm} className="space-y-4 font-mono text-xs">
-                  {/* Basic Candidate Contact Fields */}
-                  <div>
-                    <label className="block text-slate-300 mb-1">Full Legal Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Rahul Sharma"
-                      value={applicantName}
-                      onChange={(e) => setApplicantName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <form onSubmit={handleSubmitForm} className="space-y-5 font-mono text-xs">
+                  {/* LOCKED STANDARD APPLICANT INFORMATION HEADER */}
+                  <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-3">
+                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                      <Lock className="w-3.5 h-3.5" /> Locked Standard Applicant Details (Required):
+                    </div>
                     <div>
-                      <label className="block text-slate-300 mb-1">Email Address *</label>
+                      <label className="block text-slate-300 mb-1">Full Legal Name *</label>
                       <input
-                        type="email"
+                        type="text"
                         required
-                        placeholder="you@domain.com"
-                        value={applicantEmail}
-                        onChange={(e) => setApplicantEmail(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                        placeholder="e.g. Rahul Sharma"
+                        value={applicantName}
+                        onChange={(e) => setApplicantName(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400 font-sans"
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-slate-300 mb-1">WhatsApp / Phone Number *</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="+91 9827775230"
-                        value={applicantPhone}
-                        onChange={(e) => setApplicantPhone(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-300 mb-1">Email Address *</label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="you@domain.com"
+                          value={applicantEmail}
+                          onChange={(e) => setApplicantEmail(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 mb-1">WhatsApp / Phone Number *</label>
+                        <input
+                          type="tel"
+                          required
+                          placeholder="+91 9827775230"
+                          value={applicantPhone}
+                          onChange={(e) => setApplicantPhone(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
                     </div>
                   </div>
 
                   {/* DYNAMIC CUSTOM QUESTIONS SET BY ADMIN */}
                   {opportunity.custom_questions && opportunity.custom_questions.length > 0 && (
                     <div className="pt-3 border-t border-white/10 space-y-4">
-                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider">
-                        Program Specific Questions (Required by Admin):
+                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5" /> Program Specific Questions ({opportunity.custom_questions.length}):
                       </div>
 
-                      {opportunity.custom_questions.map((q) => (
-                        <div key={q.id} className="space-y-1">
-                          <label className="block text-slate-300 mb-1 font-bold">
-                            {q.label} {q.required && <span className="text-red-400">*</span>}
-                          </label>
+                      {opportunity.custom_questions.map((q) => {
+                        const parsedOptions = parseQuestionOptions(q.options);
 
-                          {q.type === 'textarea' ? (
-                            <textarea
-                              required={q.required}
-                              rows={3}
-                              placeholder="Enter your detailed answer..."
-                              value={customAnswers[q.label] || ''}
-                              onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                            />
-                          ) : q.type === 'select' ? (
-                            <select
-                              required={q.required}
-                              value={customAnswers[q.label] || ''}
-                              onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                              className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                            >
-                              <option value="">-- Select Option --</option>
-                              {q.options?.map((opt, optIdx) => (
-                                <option key={optIdx} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          ) : q.type === 'multiselect' ? (
-                            <div className="space-y-2 p-3 rounded-xl bg-white/[0.02] border border-white/10">
-                              {q.options?.map((opt, optIdx) => {
-                                const selectedArr: string[] = customAnswers[q.label] || [];
-                                const isChecked = selectedArr.includes(opt);
-                                return (
-                                  <label key={optIdx} className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        const newArr = e.target.checked
-                                          ? [...selectedArr, opt]
-                                          : selectedArr.filter((i) => i !== opt);
-                                        setCustomAnswers({ ...customAnswers, [q.label]: newArr });
-                                      }}
-                                      className="rounded border-white/20 bg-slate-900 text-cyan-500"
-                                    />
-                                    <span>{opt}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          ) : q.type === 'yesno' ? (
-                            <div className="flex items-center gap-4">
-                              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                                <input
-                                  type="radio"
-                                  name={q.id}
-                                  value="Yes"
-                                  checked={customAnswers[q.label] === 'Yes'}
-                                  onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                  className="text-cyan-500"
-                                />
-                                <span>Yes</span>
-                              </label>
-                              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                                <input
-                                  type="radio"
-                                  name={q.id}
-                                  value="No"
-                                  checked={customAnswers[q.label] === 'No'}
-                                  onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                  className="text-cyan-500"
-                                />
-                                <span>No</span>
-                              </label>
-                            </div>
-                          ) : q.type === 'checkbox' ? (
-                            <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!customAnswers[q.label]}
-                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.checked })}
-                                className="rounded border-white/20 text-cyan-500"
-                              />
-                              <span>I agree / confirm</span>
+                        return (
+                          <div key={q.id} className="space-y-1.5 p-3.5 rounded-2xl bg-white/[0.02] border border-white/5">
+                            <label className="block text-slate-200 mb-1 font-bold">
+                              {q.label} {q.required && <span className="text-red-400">*</span>}
                             </label>
-                          ) : (
-                            <input
-                              type={q.type === 'number' ? 'number' : q.type === 'email' ? 'email' : q.type === 'phone' ? 'tel' : q.type === 'date' ? 'date' : 'text'}
-                              required={q.required}
-                              placeholder="Your answer..."
-                              value={customAnswers[q.label] || ''}
-                              onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                              className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400"
-                            />
-                          )}
-                        </div>
-                      ))}
+
+                            {q.type === 'textarea' ? (
+                              <textarea
+                                required={q.required}
+                                rows={3}
+                                placeholder="Enter your detailed answer..."
+                                value={customAnswers[q.label] || ''}
+                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400 font-sans"
+                              />
+                            ) : q.type === 'select' ? (
+                              <select
+                                required={q.required}
+                                value={customAnswers[q.label] || ''}
+                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                className="w-full px-3 py-2.5 rounded-xl bg-[#0d0e15] border border-white/10 text-white focus:outline-none focus:border-cyan-400 font-bold cursor-pointer"
+                              >
+                                <option value="">-- Select Option --</option>
+                                {parsedOptions.map((opt, optIdx) => (
+                                  <option key={optIdx} value={opt} className="bg-slate-900 text-white">
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : q.type === 'multiselect' ? (
+                              <div className="space-y-2 p-3 rounded-xl bg-white/[0.02] border border-white/10">
+                                {parsedOptions.map((opt, optIdx) => {
+                                  const selectedArr: string[] = customAnswers[q.label] || [];
+                                  const isChecked = selectedArr.includes(opt);
+                                  return (
+                                    <label key={optIdx} className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          const newArr = e.target.checked
+                                            ? [...selectedArr, opt]
+                                            : selectedArr.filter((i) => i !== opt);
+                                          setCustomAnswers({ ...customAnswers, [q.label]: newArr });
+                                        }}
+                                        className="rounded border-white/20 bg-slate-900 text-cyan-500 focus:ring-0"
+                                      />
+                                      <span>{opt}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ) : q.type === 'yesno' ? (
+                              <div className="flex items-center gap-4 pt-1">
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-mono text-xs">
+                                  <input
+                                    type="radio"
+                                    name={q.id}
+                                    value="Yes"
+                                    checked={customAnswers[q.label] === 'Yes'}
+                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                    className="text-cyan-500 focus:ring-0"
+                                  />
+                                  <span>Yes</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-mono text-xs">
+                                  <input
+                                    type="radio"
+                                    name={q.id}
+                                    value="No"
+                                    checked={customAnswers[q.label] === 'No'}
+                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                    className="text-cyan-500 focus:ring-0"
+                                  />
+                                  <span>No</span>
+                                </label>
+                              </div>
+                            ) : q.type === 'checkbox' ? (
+                              <label className="flex items-center gap-2 text-slate-300 cursor-pointer font-mono text-xs pt-1">
+                                <input
+                                  type="checkbox"
+                                  checked={!!customAnswers[q.label]}
+                                  onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.checked })}
+                                  className="rounded border-white/20 text-cyan-500 focus:ring-0"
+                                />
+                                <span>I agree / confirm</span>
+                              </label>
+                            ) : (
+                              <input
+                                type={
+                                  q.type === 'number'
+                                    ? 'number'
+                                    : q.type === 'email'
+                                    ? 'email'
+                                    : q.type === 'phone'
+                                    ? 'tel'
+                                    : q.type === 'date'
+                                    ? 'date'
+                                    : 'text'
+                                }
+                                required={q.required}
+                                placeholder="Your answer..."
+                                value={customAnswers[q.label] || ''}
+                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none focus:border-cyan-400 font-sans"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
