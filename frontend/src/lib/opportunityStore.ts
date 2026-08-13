@@ -253,11 +253,18 @@ export const getPublicOpportunities = async (): Promise<OpportunityProgram[]> =>
   return list.filter((op) => op.status !== 'draft');
 };
 
+// Helper to check if an ID is a temporary frontend ID
+export const isTempId = (id?: string | null): boolean => {
+  if (!id) return true;
+  const str = String(id).trim().toLowerCase();
+  return str.startsWith('temp_') || str.startsWith('new_') || str.includes('temp');
+};
+
 // Save or update opportunity directly in Supabase (with column fallback safety)
 export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgram>): Promise<OpportunityProgram[]> => {
   let localList = getLocalOpportunities();
 
-  const isExistingRecord = Boolean(opportunity.id);
+  const isExistingRecord = Boolean(opportunity.id && !isTempId(opportunity.id));
 
   // Normalize questions & array fields before constructing payload
   const rawQuestions = Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [];
@@ -335,9 +342,11 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
         .eq('id', opportunity.id);
       resError = error;
     } else {
+      const insertPayload: Record<string, any> = { ...fullPayload, created_at: new Date().toISOString() };
+      delete insertPayload.id;
       const { error } = await supabase
         .from('opportunities')
-        .insert([{ ...fullPayload, created_at: new Date().toISOString() }]);
+        .insert([insertPayload]);
       resError = error;
     }
 
@@ -346,7 +355,9 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
       if (isExistingRecord) {
         await supabase.from('opportunities').update(corePayload).eq('id', opportunity.id);
       } else {
-        await supabase.from('opportunities').insert([{ ...corePayload, created_at: new Date().toISOString() }]);
+        const coreInsertPayload: Record<string, any> = { ...corePayload, created_at: new Date().toISOString() };
+        delete coreInsertPayload.id;
+        await supabase.from('opportunities').insert([coreInsertPayload]);
       }
     }
 

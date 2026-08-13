@@ -33,7 +33,7 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
-import { OpportunityProgram, CustomQuestion } from '../lib/opportunityStore';
+import { OpportunityProgram, CustomQuestion, isTempId } from '../lib/opportunityStore';
 
 export interface EnterpriseOpportunityEditorModalProps {
   isOpen: boolean;
@@ -129,7 +129,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   // Saving & Mode State
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const isEditMode = Boolean(opportunity && opportunity.id);
+  const isEditMode = Boolean(opportunity && opportunity.id && !isTempId(opportunity.id));
 
   // Initialize form state when editing or opening
   useEffect(() => {
