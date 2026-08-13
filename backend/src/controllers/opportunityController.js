@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase.js';
+import { ensureOpportunitySheetExists } from '../services/googleSheetsService.js';
 
 // 1. GET ALL OPPORTUNITY PROGRAMS (Sorted by position ASC)
 export const getOpportunities = async (req, res) => {
@@ -73,9 +74,16 @@ export const createOpportunity = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+    const createdRecord = data[0];
+
+    // Asynchronously pre-create dedicated sheet tab in Google Sheets for this new project
+    ensureOpportunitySheetExists(createdRecord).catch((sheetErr) => {
+      console.warn('[Google Sheets Ensure Sheet Note]:', sheetErr.message);
+    });
+
     // Return updated full list
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
-    return res.status(201).json({ status: 'success', data: data[0], opportunities: fullList });
+    return res.status(201).json({ status: 'success', data: createdRecord, opportunities: fullList });
   } catch (err) {
     console.error('createOpportunity controller exception:', err.message);
     return res.status(500).json({ error: err.message });
@@ -99,8 +107,17 @@ export const updateOpportunity = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+    const updatedRecord = data[0];
+
+    // Pre-create/verify dedicated sheet tab in Google Sheets
+    if (updatedRecord) {
+      ensureOpportunitySheetExists(updatedRecord).catch((sheetErr) => {
+        console.warn('[Google Sheets Ensure Sheet Note]:', sheetErr.message);
+      });
+    }
+
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
-    return res.json({ status: 'success', data: data[0], opportunities: fullList });
+    return res.json({ status: 'success', data: updatedRecord, opportunities: fullList });
   } catch (err) {
     console.error('updateOpportunity controller exception:', err.message);
     return res.status(500).json({ error: err.message });

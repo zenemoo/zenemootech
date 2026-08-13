@@ -211,9 +211,9 @@ export const submitApplication = async (req, res) => {
       return res.status(400).json({ error: 'Please enter a valid applicant email address.' });
     }
 
-    const cleanName = (applicant_name || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
-    const cleanPhone = (applicant_phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
-    const cleanTitle = (opportunity_title || 'General Opportunity').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    let cleanName = (applicant_name || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+    let cleanPhone = (applicant_phone || '').replace(/[^\d+ -]/g, '').trim().substring(0, 20);
+    let cleanTitle = (opportunity_title || 'General Opportunity').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
 
     // Mandatory Terms & Conditions Validation (Server-side Enforcement)
     const termsAccepted = req.body.terms_accepted === true || req.body.termsAccepted === true;
@@ -225,27 +225,32 @@ export const submitApplication = async (req, res) => {
     }
 
     // Verify opportunity exists & is active before accepting application
+    let oppRecord = null;
     try {
-      const { data: oppRecord } = await supabase
+      const { data: foundOpp } = await supabase
         .from('opportunities')
         .select('id, title, status')
         .eq('id', opportunity_id)
         .maybeSingle();
 
-      if (oppRecord) {
-        if (oppRecord.status === 'stopped') {
+      if (foundOpp) {
+        oppRecord = foundOpp;
+        if (foundOpp.title) {
+          cleanTitle = foundOpp.title.replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
+        }
+        if (foundOpp.status === 'stopped') {
           return res.status(400).json({
             success: false,
             error: 'Applications for this opportunity are currently closed.',
           });
         }
-        if (oppRecord.status === 'coming_soon') {
+        if (foundOpp.status === 'coming_soon') {
           return res.status(400).json({
             success: false,
             error: 'Applications for this opportunity will open soon.',
           });
         }
-        if (oppRecord.status === 'draft') {
+        if (foundOpp.status === 'draft') {
           return res.status(400).json({
             success: false,
             error: 'This opportunity is not currently accepting public applications.',
@@ -335,7 +340,7 @@ export const submitApplication = async (req, res) => {
     console.log(`📥 New candidate application processed: App ID = ${savedRecord.applicant_id} | Email = ${cleanEmail}`);
 
     // Asynchronously trigger Google Sheets synchronization (non-blocking)
-    syncApplicationToGoogleSheet(savedRecord).catch((err) => {
+    syncApplicationToGoogleSheet(savedRecord, oppRecord).catch((err) => {
       console.warn('[Google Sheets Post-Submit Sync Note]:', err.message);
     });
 

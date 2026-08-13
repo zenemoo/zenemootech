@@ -35,15 +35,101 @@ const getGoogleSheetsClient = () => {
 
 /**
  * Sanitize Opportunity Title for Google Sheets Worksheet Name (Max 30 chars, no special chars)
+ * Strips generic brand prefixes so each project receives a unique, dedicated tab name.
  */
 export const sanitizeSheetName = (title = '') => {
   if (!title) return 'Applications';
-  let clean = title.replace(/^Zenemoo\s*[×x|-]\s*/i, '').trim();
-  clean = clean.replace(/[\?:*\[\]\/\\]/g, '').trim();
+
+  // 1. Remove generic brand prefixes to preserve unique project title within 30 chars limit
+  let clean = title
+    .replace(/^Zenemoo\s*(Opportunity\s*Program|Opportunity|Program)?\s*[×x|-]?\s*/i, '')
+    .trim();
+
+  if (!clean) clean = title;
+
+  // 2. Remove illegal characters for Google Sheets tab names
+  clean = clean.replace(/[\?:*\[\]\/\\]/g, '').replace(/\s+/g, ' ').trim();
+
+  // 3. Truncate to Google Sheets tab limit of 30 characters
   if (clean.length > 30) {
     clean = clean.substring(0, 30).trim();
   }
+
   return clean || 'Applications';
+};
+
+/**
+ * Pre-create a dedicated sheet (tab) in Google Sheets for a newly created or updated project/opportunity.
+ */
+export const ensureOpportunitySheetExists = async (opportunityObj) => {
+  if (!opportunityObj || !opportunityObj.title) return { success: false, message: 'No opportunity title provided.' };
+  const sheetTitle = sanitizeSheetName(opportunityObj.title);
+
+  // METHOD 1: Google Apps Script Web App
+  const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
+  if (appsScriptUrl) {
+    try {
+      const secret = process.env.ZENEMOO_SHEETS_SYNC_SECRET || 'zenemoo-secret-key-2026';
+      await fetch(appsScriptUrl.trim(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          secret,
+          action: 'ensure_sheet',
+          payload: {
+            sheet_name: sheetTitle,
+            opportunity_title: opportunityObj.title,
+          },
+        }),
+        redirect: 'follow',
+      });
+    } catch (err) {
+      console.warn(`[Apps Script ensure_sheet Note for "${sheetTitle}"]:`, err.message);
+    }
+  }
+
+  // METHOD 2: Direct Google Sheets API (Service Account Fallback)
+  const sheets = getGoogleSheetsClient();
+  if (sheets) {
+    try {
+      const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+      const sheetList = spreadsheet.data.sheets || [];
+      const exists = sheetList.some((s) => s.properties?.title === sheetTitle);
+
+      if (!exists) {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests: [
+              {
+                addSheet: {
+                  properties: {
+                    title: sheetTitle,
+                    gridProperties: { frozenRowCount: 1 },
+                  },
+                },
+              },
+            ],
+          },
+        });
+
+        // Initialize header row for new project sheet tab
+        const defaultHeaders = ['Applicant ID', 'Applicant Name', 'Email', 'Phone', 'Status', 'Application Date'];
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'${sheetTitle}'!A1`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [defaultHeaders] },
+        });
+        console.log(`[Google Sheets] Created separate sheet tab "${sheetTitle}" for project "${opportunityObj.title}".`);
+      }
+      return { success: true, sheetTitle };
+    } catch (err) {
+      console.warn(`[Google Sheets Service Account ensure_sheet Note for "${sheetTitle}"]:`, err.message);
+    }
+  }
+
+  return { success: false, message: 'Google Sheets sync not configured or completed in background.' };
 };
 
 /**
