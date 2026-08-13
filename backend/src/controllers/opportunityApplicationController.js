@@ -291,12 +291,30 @@ export const submitApplication = async (req, res) => {
       terms_version: req.body.terms_version || '1.0',
       admin_notes: '',
       sync_status: 'pending',
-      email_status: 'pending',
       created_at: new Date().toISOString(),
     };
 
     // Attempt insert into Supabase database (Source of truth)
-    const { data, error } = await supabase.from('opportunity_applications').insert([newRecord]).select();
+    let { data, error } = await supabase.from('opportunity_applications').insert([newRecord]).select();
+
+    // Fallback: If Supabase schema is missing extended columns (e.g., terms_accepted or sync_status), retry with core record
+    if (error && (error.message?.includes('schema cache') || error.message?.includes('Could not find'))) {
+      console.warn('[Supabase Application Insert Schema Fallback] Extended column missing, retrying with core payload:', error.message);
+      const coreRecord = {
+        applicant_id: generatedApplicantId,
+        opportunity_id,
+        opportunity_title: cleanTitle,
+        applicant_name: cleanName,
+        applicant_email: cleanEmail,
+        applicant_phone: cleanPhone,
+        answers: answers || {},
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+      const fallbackRes = await supabase.from('opportunity_applications').insert([coreRecord]).select();
+      data = fallbackRes.data;
+      error = fallbackRes.error;
+    }
 
     if (error) {
       // Catch duplicate constraint error if database unique constraint triggers in a race condition
