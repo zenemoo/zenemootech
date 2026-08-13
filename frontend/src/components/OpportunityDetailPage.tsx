@@ -30,11 +30,13 @@ import {
   FileCheck2,
   ExternalLink,
   AlertCircle,
-  UserCheck
+  UserCheck,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
-import { submitCandidateApplication } from '../lib/opportunityApplicationStore';
+import { submitCandidateApplication, checkExistingApplication, CandidateApplication } from '../lib/opportunityApplicationStore';
+import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 
 interface OpportunityDetailPageProps {
   opportunityId: string;
@@ -47,6 +49,10 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
+  // Multi-Step Navigation State (1: Personal Info, 2: Questions, 3: Review & Terms)
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [step1Error, setStep1Error] = useState('');
+
   // Form State
   const [applicantName, setApplicantName] = useState('');
   const [applicantEmail, setApplicantEmail] = useState('');
@@ -56,7 +62,9 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const [termsError, setTermsError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
   const [isDuplicate, setIsDuplicate] = useState(false);
+  const [existingApp, setExistingApp] = useState<CandidateApplication | null>(null);
   const [submissionError, setSubmissionError] = useState('');
 
   useEffect(() => {
@@ -93,7 +101,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
     }
   };
 
-  const handleOpenApplyModal = () => {
+  const handleOpenApplyModal = async () => {
     if (!opportunity) return;
     if (opportunity.status === 'stopped') {
       alert('Applications for this opportunity are currently closed.');
@@ -103,19 +111,102 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
       alert('Applications for this opportunity will open soon.');
       return;
     }
+
     setIsApplyModalOpen(true);
+    setCurrentStep(1);
+    setStep1Error('');
+    setApplicantName('');
+    setApplicantEmail('');
+    setApplicantPhone('');
+    setCustomAnswers({});
     setTermsAccepted(false);
     setTermsError('');
     setSubmissionError('');
     setIsDuplicate(false);
+    setExistingApp(null);
     setSubmittedAppId(null);
+    setCopiedId(false);
+
+    // Check if applicant previously saved email or submitted in this session
+    const savedEmail = localStorage.getItem(`zenemoo_applicant_email_${opportunity.id}`) || '';
+    if (savedEmail) {
+      setApplicantEmail(savedEmail);
+      const existing = await checkExistingApplication(opportunity.id, savedEmail);
+      if (existing) {
+        setExistingApp(existing);
+      }
+    }
+  };
+
+  const handleStep1Next = async () => {
+    if (!applicantName.trim()) {
+      setStep1Error('Please enter your full legal name.');
+      return;
+    }
+    if (!applicantEmail.trim() || !applicantEmail.includes('@')) {
+      setStep1Error('Please enter a valid email address.');
+      return;
+    }
+    if (!applicantPhone.trim()) {
+      setStep1Error('Please enter your phone / WhatsApp number.');
+      return;
+    }
+    setStep1Error('');
+
+    if (opportunity) {
+      const cleanEmail = applicantEmail.trim().toLowerCase();
+      localStorage.setItem(`zenemoo_applicant_email_${opportunity.id}`, cleanEmail);
+      const existing = await checkExistingApplication(opportunity.id, cleanEmail);
+      if (existing) {
+        setExistingApp(existing);
+        return;
+      }
+    }
+
+    const hasCustomQuestions = opportunity?.custom_questions && opportunity.custom_questions.length > 0;
+    if (hasCustomQuestions) {
+      setCurrentStep(2);
+    } else {
+      setCurrentStep(3);
+    }
+  };
+
+  const handleStep2Next = () => {
+    if (opportunity?.custom_questions) {
+      for (const q of opportunity.custom_questions) {
+        if (q.required && (!customAnswers[q.label] || (Array.isArray(customAnswers[q.label]) && customAnswers[q.label].length === 0))) {
+          alert(`Please answer the required question: "${q.label}"`);
+          return;
+        }
+      }
+    }
+    setCurrentStep(3);
+  };
+
+  const handleCopyAppId = (idString: string) => {
+    if (!idString) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(idString);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = idString;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 1800);
+    } catch (e) {
+      console.warn('Copy failed:', e);
+    }
   };
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!opportunity) return;
 
-    // MANDATORY TERMS ACCEPTANCE CHECK
     if (!termsAccepted) {
       setTermsError('Please accept the Terms & Conditions before submitting your application.');
       return;
@@ -138,7 +229,9 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
         terms_version: '1.0',
       });
 
-      setSubmittedAppId(result.applicant_id || result.id);
+      const generatedId = result.applicant_id || result.id;
+      setSubmittedAppId(generatedId);
+      localStorage.setItem(`zenemoo_applicant_email_${opportunity.id}`, applicantEmail.trim().toLowerCase());
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);
@@ -179,6 +272,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const isActive = opportunity.status === 'active';
   const isStopped = opportunity.status === 'stopped';
   const isComingSoon = opportunity.status === 'coming_soon';
+  const hasQuestions = Boolean(opportunity.custom_questions && opportunity.custom_questions.length > 0);
 
   const hasSocialOrCommLinks = Boolean(
     opportunity.whatsapp_group_url ||
@@ -251,7 +345,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
 
           {/* SPLIT LAYOUT: Left (Details) & Right (Poster Graphic & Apply Sticky Card) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* LEFT COLUMN: 8 COLS (Comprehensive Information) */}
+            {/* LEFT COLUMN: 8 COLS */}
             <div className="lg:col-span-8 space-y-8">
               {/* Program Header */}
               <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-6">
@@ -291,7 +385,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               </div>
 
-              {/* Responsibilities & Tasks (ONLY RENDER IF Non-Empty) */}
+              {/* Responsibilities & Daily Tasks */}
               {opportunity.what_you_will_do && opportunity.what_you_will_do.length > 0 && (
                 <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
@@ -308,7 +402,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Language & Skills Requirements (ONLY RENDER IF Non-Empty) */}
+              {/* Language & Technical Skills */}
               {opportunity.language_skills && opportunity.language_skills.length > 0 && (
                 <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
@@ -327,7 +421,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Eligibility, Hardware & Equipment Checklist (ONLY RENDER IF Non-Empty) */}
+              {/* Eligibility & Hardware Checklist */}
               {Boolean(opportunity.equipment_requirements || opportunity.internet_requirements || (opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0)) && (
                 <div className="glass-panel p-8 rounded-3xl border border-emerald-500/30 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-emerald-400 flex items-center gap-2">
@@ -367,7 +461,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Project Highlights & Benefits (ONLY RENDER IF Non-Empty) */}
+              {/* Project Highlights & Benefits */}
               {((opportunity.project_highlights && opportunity.project_highlights.length > 0) || (opportunity.benefits && opportunity.benefits.length > 0)) && (
                 <div className="glass-panel p-8 rounded-3xl border border-purple-500/30 space-y-6">
                   {opportunity.project_highlights && opportunity.project_highlights.length > 0 && (
@@ -404,35 +498,13 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 </div>
               )}
 
-              {/* Communication & Social Links Section (ONLY RENDER IF Non-Empty) */}
+              {/* Communication Links */}
               {hasSocialOrCommLinks && (
                 <div className="glass-panel p-8 rounded-3xl border border-cyan-500/30 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
-                    <Share2 className="w-4 h-4 text-cyan-400" /> Communication &amp; Official Project Links
+                    <Share2 className="w-4 h-4 text-cyan-400" /> Communication &amp; Official Links
                   </h3>
                   <div className="flex flex-wrap items-center gap-3 pt-1">
-                    {opportunity.whatsapp_group_url && (
-                      <a
-                        href={opportunity.whatsapp_group_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-                      >
-                        <MessageCircle className="w-4 h-4 text-emerald-400" /> Join WhatsApp Group
-                      </a>
-                    )}
-
-                    {opportunity.whatsapp_channel_url && (
-                      <a
-                        href={opportunity.whatsapp_channel_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-                      >
-                        <MessageCircle className="w-4 h-4 text-emerald-400" /> WhatsApp Channel
-                      </a>
-                    )}
-
                     {opportunity.linkedin_post_url && (
                       <a
                         href={opportunity.linkedin_post_url}
@@ -457,40 +529,11 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                   </div>
                 </div>
               )}
-
-              {/* Direct Opportunity Contact Info (ONLY RENDER IF Non-Empty) */}
-              {opportunity.contact_details && (opportunity.contact_details.email || opportunity.contact_details.phone) && (
-                <div className="glass-panel p-6 rounded-3xl border border-white/10 font-mono text-xs space-y-3">
-                  <div className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-2">
-                    <Mail className="w-4 h-4" /> Direct Program Coordinator Contact:
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                    {opportunity.contact_details.contact_person && (
-                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                        <div className="text-slate-400 text-[10px] uppercase">Contact Person</div>
-                        <div className="font-bold text-white mt-0.5">{opportunity.contact_details.contact_person}</div>
-                      </div>
-                    )}
-                    {opportunity.contact_details.email && (
-                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                        <div className="text-slate-400 text-[10px] uppercase">Email Inquiry</div>
-                        <div className="font-bold text-cyan-300 mt-0.5">{opportunity.contact_details.email}</div>
-                      </div>
-                    )}
-                    {opportunity.contact_details.phone && (
-                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                        <div className="text-slate-400 text-[10px] uppercase">WhatsApp / Phone</div>
-                        <div className="font-bold text-emerald-300 mt-0.5">{opportunity.contact_details.phone}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* RIGHT COLUMN: 4 COLS (Poster Banner Graphic Card & Sticky Apply Button) */}
+            {/* RIGHT COLUMN: 4 COLS */}
             <div className="lg:col-span-4 space-y-6 sticky top-24">
-              {/* Poster Graphic Card (Dynamic A4 Height & Lightbox Zoom) */}
+              {/* Poster Graphic */}
               {opportunity.poster_url ? (
                 <div className="space-y-3">
                   <div className="glass-panel p-2.5 rounded-3xl border border-white/10 overflow-hidden group shadow-2xl relative bg-black/40">
@@ -506,7 +549,6 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                     </div>
                   </div>
 
-                  {/* Download Banner Button */}
                   <button
                     type="button"
                     onClick={() => handleDownloadBanner(opportunity.poster_url!, opportunity.title)}
@@ -523,11 +565,11 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                     </div>
                   </div>
                   <h3 className="font-display font-extrabold text-xl text-white">{opportunity.partner_name}</h3>
-                  <p className="text-xs font-mono text-slate-400">Enterprise AI Language &amp; Annotation Partner</p>
+                  <p className="text-xs font-mono text-slate-400">Enterprise AI Partner</p>
                 </div>
               )}
 
-              {/* Program Summary Stats Card */}
+              {/* Stats Card */}
               <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4 font-mono text-xs">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <span className="text-slate-400">Status:</span>
@@ -536,7 +578,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       isActive ? 'text-emerald-400' : isStopped ? 'text-red-400' : 'text-amber-400'
                     }`}
                   >
-                    {isActive ? opportunity.badge || 'ACTIVE' : isStopped ? '🔴 APPLICATIONS CLOSED' : 'COMING SOON'}
+                    {isActive ? opportunity.badge || 'ACTIVE' : isStopped ? '🔴 CLOSED' : 'COMING SOON'}
                   </span>
                 </div>
 
@@ -551,20 +593,6 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                     <span className="text-emerald-300 font-bold">{opportunity.payment_info}</span>
                   </div>
                 )}
-
-                {opportunity.working_hours && (
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <span className="text-slate-400">Working Hours:</span>
-                    <span className="text-purple-300 font-bold">{opportunity.working_hours}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Questions Required:</span>
-                  <span className="text-white font-bold">
-                    {opportunity.custom_questions?.length || 0} Custom Questions
-                  </span>
-                </div>
               </div>
 
               {/* Sticky Apply Button */}
@@ -596,7 +624,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
         </div>
       </main>
 
-      {/* FULLSCREEN POSTER BANNER LIGHTBOX PREVIEW */}
+      {/* FULLSCREEN POSTER LIGHTBOX */}
       <AnimatePresence>
         {isPreviewOpen && opportunity?.poster_url && (
           <motion.div
@@ -619,47 +647,38 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                 className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/20"
                 onClick={(e) => e.stopPropagation()}
               />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadBanner(opportunity.poster_url!, opportunity.title);
-                }}
-                className="px-6 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-mono text-xs font-bold flex items-center gap-2 shadow-xl cursor-pointer"
-              >
-                <Download className="w-4 h-4" /> Download Official Poster Image (HD)
-              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* DYNAMIC CANDIDATE APPLICATION MODAL */}
+      {/* SINGLE PRIMARY SCROLL APPLICATION WORKSPACE MODAL */}
       <AnimatePresence>
         {isApplyModalOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-hidden"
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-xl w-full my-8 space-y-6 max-h-[90vh] overflow-y-auto bg-[#090d16]"
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="glass-panel rounded-3xl border border-white/15 w-full max-w-2xl max-h-[92vh] sm:max-h-[88vh] flex flex-col bg-[#090d16] shadow-2xl overflow-hidden"
             >
-              {/* Header */}
-              <div className="flex items-start justify-between border-b border-white/10 pb-4 gap-4">
+              {/* STICKY HEADER */}
+              <div className="p-5 sm:p-6 border-b border-white/10 shrink-0 flex items-center justify-between gap-4 bg-[#090d16]">
                 <div className="flex items-center gap-3">
                   {opportunity.company_logo ? (
                     <img
                       src={opportunity.company_logo}
                       alt={opportunity.partner_name}
-                      className="w-12 h-12 object-contain bg-white p-1 rounded-xl border border-white/10 shrink-0 shadow-md"
+                      className="w-11 h-11 object-contain bg-white p-1 rounded-xl border border-white/10 shrink-0 shadow-md"
                     />
                   ) : (
-                    <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-                      <Briefcase className="w-6 h-6" />
+                    <div className="w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+                      <Briefcase className="w-5 h-5" />
                     </div>
                   )}
 
@@ -667,98 +686,123 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                     <div className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest font-bold">
                       {opportunity.partner_name}
                     </div>
-                    <h3 className="text-lg font-bold font-display text-white leading-snug">{opportunity.title}</h3>
+                    <h3 className="text-base sm:text-lg font-bold font-display text-white leading-snug line-clamp-1">
+                      {opportunity.title}
+                    </h3>
                   </div>
                 </div>
 
                 <button
                   onClick={() => setIsApplyModalOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 cursor-pointer shrink-0"
+                  className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 cursor-pointer shrink-0 border border-white/10"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Step Progress Bar */}
-              <div className="space-y-1.5 font-mono text-[11px]">
-                <div className="flex items-center justify-between text-slate-400">
-                  <span className="text-cyan-300 font-bold">Candidate Application Form</span>
-                  <span>Mandatory Step 3 of 3</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-white/5">
-                  <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 w-full rounded-full transition-all duration-300"></div>
-                </div>
-              </div>
-
-              {isDuplicate ? (
-                <div className="text-center py-6 px-2 space-y-6 font-mono text-xs">
-                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
-                    <ShieldAlert className="w-8 h-8" />
+              {/* DYNAMIC REAL STEP PROGRESS INDICATOR */}
+              {!submittedAppId && !existingApp && !isDuplicate && (
+                <div className="px-5 sm:px-6 py-3 bg-slate-950/80 border-b border-white/10 shrink-0 space-y-2 font-mono text-xs">
+                  <div className="flex items-center justify-between text-slate-300 font-bold">
+                    <span className="text-cyan-400 flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {currentStep === 1 ? 'Step 1 of 3: Personal Details' : currentStep === 2 ? 'Step 2 of 3: Application Questions' : 'Step 3 of 3: Review & Terms'}
+                    </span>
+                    <span className="text-slate-400 text-[11px]">Step {currentStep} of 3</span>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold uppercase text-[10px] tracking-widest inline-block">
-                      Application Record Found
+                  {/* Step Pills */}
+                  <div className="grid grid-cols-3 gap-2 text-[11px] pt-1">
+                    <div className={`py-1 px-2 rounded-lg text-center font-bold border transition-all ${currentStep === 1 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : currentStep > 1 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-slate-500 border-white/5'}`}>
+                      ① Personal Info {currentStep > 1 && '✓'}
                     </div>
-                    <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">
-                      Application Already Received
-                    </h4>
+                    <div className={`py-1 px-2 rounded-lg text-center font-bold border transition-all ${currentStep === 2 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : currentStep > 2 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-slate-500 border-white/5'}`}>
+                      ② Questions {currentStep > 2 && '✓'}
+                    </div>
+                    <div className={`py-1 px-2 rounded-lg text-center font-bold border transition-all ${currentStep === 3 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-white/5 text-slate-500 border-white/5'}`}>
+                      ③ Review &amp; Terms
+                    </div>
                   </div>
-
-                  <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-300 space-y-3 font-sans text-sm text-left leading-relaxed shadow-inner">
-                    <p>
-                      Thank you for your interest in <strong className="text-cyan-400">{opportunity.title}</strong>.
-                    </p>
-                    <p>
-                      We found that an application has already been submitted using <strong className="text-white font-mono">{applicantEmail.trim().toLowerCase()}</strong> for this opportunity.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsApplyModalOpen(false);
-                      setIsDuplicate(false);
-                    }}
-                    className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-bold font-mono text-xs transition-all cursor-pointer"
-                  >
-                    Close Window
-                  </button>
                 </div>
-              ) : submittedAppId ? (
-                <div className="text-center py-6 space-y-5 font-mono text-xs">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-3xl font-bold shadow-xl shadow-emerald-500/10">
-                    <CheckCircle2 className="w-10 h-10 text-emerald-400" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="text-2xl font-bold font-display text-white">Application Submitted Successfully!</h4>
-                    <p className="text-slate-300 text-xs font-sans">
-                      Thank you for applying to <span className="text-cyan-400 font-bold">{opportunity.title}</span>.
-                    </p>
-                  </div>
+              )}
 
-                  {/* Application ID Box */}
-                  <div className="p-5 rounded-2xl bg-slate-900 border border-cyan-500/30 text-cyan-300 text-center space-y-1 shadow-inner">
-                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Your Official Application ID</div>
-                    <div className="text-2xl font-extrabold font-mono text-white tracking-widest">{submittedAppId}</div>
-                    <p className="text-[11px] text-slate-400 pt-1">Please retain this ID for your application records.</p>
-                  </div>
+              {/* SINGLE PRIMARY SCROLL CONTAINER */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-6">
+                {/* EXISTING APPLICATION SUBMITTED VIEW */}
+                {existingApp ? (
+                  <div className="py-4 space-y-6 font-mono text-xs text-center">
+                    <div className="w-16 h-16 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center mx-auto shadow-xl shadow-cyan-500/10">
+                      <CheckCircle2 className="w-10 h-10 text-cyan-400" />
+                    </div>
 
-                  {/* CONDITIONAL WHATSAPP GROUP LINK SECTION */}
-                  {opportunity.whatsapp_group_url && opportunity.whatsapp_group_url.trim().length > 0 && (
-                    <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3.5 shadow-xl relative overflow-hidden">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
-                        <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES — Official WhatsApp Group
+                    <div className="space-y-2">
+                      <div className="px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold uppercase text-[10px] tracking-widest inline-block">
+                        Application Already Submitted
                       </div>
-                      <p className="text-slate-200 text-xs font-sans leading-relaxed">
-                        Please join the official WhatsApp group for <strong className="text-white">{opportunity.title}</strong> to receive:
-                      </p>
-                      <ul className="text-xs font-sans text-slate-300 space-y-1.5 list-disc pl-5">
-                        <li>Project updates &amp; announcements</li>
-                        <li>Onboarding instructions &amp; guidelines</li>
-                        <li>Direct project coordinator support</li>
-                      </ul>
-                      <div className="pt-2">
+                      <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">
+                        We Have Received Your Application
+                      </h4>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-900 border border-cyan-500/30 text-cyan-300 text-center space-y-2 shadow-inner">
+                      <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Your Application ID</div>
+                      <div className="flex items-center justify-center gap-3 flex-wrap">
+                        <div className="text-2xl font-extrabold font-mono text-white tracking-widest">
+                          {existingApp.applicant_id || `APP-2026-${existingApp.id.substring(0, 4)}`}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAppId(existingApp.applicant_id || existingApp.id)}
+                          className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-sm"
+                        >
+                          {copiedId ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" /> Copy ID
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="text-xs text-emerald-400 font-bold uppercase pt-1">
+                        Status: {existingApp.status.toUpperCase()}
+                      </div>
+                    </div>
+
+                    {/* Clean Formatted Submitted Answers (Read-Only) */}
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 text-left space-y-3">
+                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider pb-2 border-b border-white/10">
+                        Submitted Application Summary:
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between border-b border-white/5 pb-1">
+                          <span className="text-slate-400">Applicant:</span>
+                          <span className="text-white font-bold">{existingApp.applicant_name}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-white/5 pb-1">
+                          <span className="text-slate-400">Email:</span>
+                          <span className="text-cyan-300 font-bold">{existingApp.applicant_email}</span>
+                        </div>
+                        {Object.entries(existingApp.answers || {}).map(([qKey, qVal]) => (
+                          <div key={qKey} className="flex justify-between border-b border-white/5 pb-1">
+                            <span className="text-slate-400">{qKey}:</span>
+                            <span className="text-emerald-300 font-bold">{formatApplicationAnswer(qVal)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* WhatsApp Project Updates Section */}
+                    {opportunity.whatsapp_group_url && opportunity.whatsapp_group_url.trim().length > 0 && (
+                      <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3 shadow-xl">
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
+                          <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES — Official WhatsApp Group
+                        </div>
+                        <p className="text-slate-200 text-xs font-sans leading-relaxed">
+                          Join the official WhatsApp group for project updates, announcements, and instructions:
+                        </p>
                         <a
                           href={opportunity.whatsapp_group_url.trim()}
                           target="_blank"
@@ -768,261 +812,441 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                           <MessageCircle className="w-4 h-4" /> Join WhatsApp Group →
                         </a>
                       </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      setIsApplyModalOpen(false);
-                      setSubmittedAppId(null);
-                      setIsDuplicate(false);
-                    }}
-                    className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"
-                  >
-                    Done / Return to Opportunity Page
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmitForm} className="space-y-6 font-mono text-xs">
-                  {/* Error Banner */}
-                  {submissionError && (
-                    <div className="p-4 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-200 flex items-start gap-2.5 shadow-md">
-                      <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="font-bold">Submission Error:</div>
-                        <div>{submissionError}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* SECTION 01: APPLICANT INFORMATION */}
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-3 shadow-md">
-                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/10">
-                      <UserCheck className="w-4 h-4 text-cyan-400" /> 01. Applicant Information
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-200 mb-1 font-bold">Full Legal Name *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Rahul Sharma"
-                        value={applicantName}
-                        onChange={(e) => setApplicantName(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-slate-200 mb-1 font-bold">Email Address *</label>
-                        <input
-                          type="email"
-                          required
-                          placeholder="you@domain.com"
-                          value={applicantEmail}
-                          onChange={(e) => setApplicantEmail(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-200 mb-1 font-bold">WhatsApp / Phone *</label>
-                        <input
-                          type="tel"
-                          required
-                          placeholder="+91 9827775230"
-                          value={applicantPhone}
-                          onChange={(e) => setApplicantPhone(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SECTION 02: DYNAMIC CUSTOM QUESTIONS */}
-                  {opportunity.custom_questions && opportunity.custom_questions.length > 0 && (
-                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-4 shadow-md">
-                      <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-white/10">
-                        <Sparkles className="w-4 h-4 text-cyan-400" /> 02. Project-Specific Questions ({opportunity.custom_questions.length})
-                      </div>
-
-                      {opportunity.custom_questions.map((q) => {
-                        const parsedOptions = parseQuestionOptions(q.options);
-
-                        return (
-                          <div key={q.id} className="space-y-1.5 p-3.5 rounded-xl bg-slate-950/80 border border-white/10">
-                            <label className="block text-slate-200 mb-1 font-bold leading-snug">
-                              {q.label} {q.required && <span className="text-red-400">*</span>}
-                            </label>
-
-                            {q.type === 'textarea' ? (
-                              <textarea
-                                required={q.required}
-                                rows={3}
-                                placeholder="Enter your detailed answer..."
-                                value={customAnswers[q.label] || ''}
-                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
-                              />
-                            ) : q.type === 'select' ? (
-                              <select
-                                required={q.required}
-                                value={customAnswers[q.label] || ''}
-                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-3 py-2.5 rounded-xl bg-[#0d1220] border border-white/20 text-white font-mono font-bold text-xs sm:text-sm focus:outline-none focus:border-cyan-400 cursor-pointer shadow-inner"
-                              >
-                                <option value="" className="bg-[#0d1220] text-slate-300">-- Select Option --</option>
-                                {parsedOptions.map((opt, optIdx) => (
-                                  <option key={optIdx} value={opt} className="bg-[#0d1220] text-white">
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : q.type === 'multiselect' ? (
-                              <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-white/20">
-                                {parsedOptions.map((opt, optIdx) => {
-                                  const selectedArr: string[] = customAnswers[q.label] || [];
-                                  const isChecked = selectedArr.includes(opt);
-                                  return (
-                                    <label key={optIdx} className="flex items-center gap-2.5 text-slate-200 cursor-pointer text-xs font-mono">
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={(e) => {
-                                          const newArr = e.target.checked
-                                            ? [...selectedArr, opt]
-                                            : selectedArr.filter((i) => i !== opt);
-                                          setCustomAnswers({ ...customAnswers, [q.label]: newArr });
-                                        }}
-                                        className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer"
-                                      />
-                                      <span>{opt}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            ) : q.type === 'yesno' ? (
-                              <div className="flex items-center gap-5 pt-1">
-                                <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-mono text-xs">
-                                  <input
-                                    type="radio"
-                                    name={q.id}
-                                    value="Yes"
-                                    checked={customAnswers[q.label] === 'Yes'}
-                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                    className="w-4 h-4 text-cyan-400 bg-slate-950 border-white/30 focus:ring-0 cursor-pointer"
-                                  />
-                                  <span>Yes</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-mono text-xs">
-                                  <input
-                                    type="radio"
-                                    name={q.id}
-                                    value="No"
-                                    checked={customAnswers[q.label] === 'No'}
-                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                    className="w-4 h-4 text-cyan-400 bg-slate-950 border-white/30 focus:ring-0 cursor-pointer"
-                                  />
-                                  <span>No</span>
-                                </label>
-                              </div>
-                            ) : q.type === 'checkbox' ? (
-                              <label className="flex items-center gap-2.5 text-slate-200 cursor-pointer font-mono text-xs pt-1">
-                                <input
-                                  type="checkbox"
-                                  checked={!!customAnswers[q.label]}
-                                  onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.checked })}
-                                  className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer"
-                                />
-                                <span>I agree / confirm</span>
-                              </label>
-                            ) : (
-                              <input
-                                type={
-                                  q.type === 'number'
-                                    ? 'number'
-                                    : q.type === 'email'
-                                    ? 'email'
-                                    : q.type === 'phone'
-                                    ? 'tel'
-                                    : q.type === 'date'
-                                    ? 'date'
-                                    : 'text'
-                                }
-                                required={q.required}
-                                placeholder="Your answer..."
-                                value={customAnswers[q.label] || ''}
-                                onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-xs sm:text-sm shadow-inner"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* SECTION 03: MANDATORY TERMS & CONDITIONS AGREEMENT */}
-                  <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 space-y-3 shadow-md">
-                    <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-cyan-500/20">
-                      <FileCheck2 className="w-4 h-4 text-cyan-400" /> 03. Mandatory Terms &amp; Conditions Agreement
-                    </div>
-
-                    <label className="flex items-start gap-3 text-slate-200 cursor-pointer pt-1">
-                      <input
-                        type="checkbox"
-                        checked={termsAccepted}
-                        onChange={(e) => {
-                          setTermsAccepted(e.target.checked);
-                          if (e.target.checked) setTermsError('');
-                        }}
-                        className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 mt-0.5 shrink-0 cursor-pointer"
-                      />
-                      <span className="text-xs font-mono leading-relaxed">
-                        I have read and agree to the <strong className="text-cyan-300">Terms &amp; Conditions</strong> and confirm that all submitted details are accurate.
-                      </span>
-                    </label>
-
-                    <div className="flex items-center justify-between text-[11px] font-mono pt-1">
-                      <a
-                        href="/terms"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-cyan-300 hover:text-cyan-200 underline font-bold transition-all flex items-center gap-1"
-                      >
-                        [ Read Terms &amp; Conditions ] <ExternalLink className="w-3 h-3" />
-                      </a>
-                      <span className="text-slate-400 text-[10px]">Version 1.0</span>
-                    </div>
-
-                    {/* Inline Validation Error State */}
-                    {termsError && (
-                      <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold text-xs flex items-center gap-2 animate-shake shadow-md">
-                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                        <span>{termsError}</span>
-                      </div>
                     )}
-                  </div>
 
-                  {/* Submit Button & Actions */}
-                  <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => setIsApplyModalOpen(false)}
+                      className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"
+                    >
+                      Close Window
+                    </button>
+                  </div>
+                ) : isDuplicate ? (
+                  <div className="text-center py-6 px-2 space-y-6 font-mono text-xs">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
+                      <ShieldAlert className="w-8 h-8" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold uppercase text-[10px] tracking-widest inline-block">
+                        Application Record Found
+                      </div>
+                      <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">
+                        Application Already Received
+                      </h4>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-300 space-y-3 font-sans text-sm text-left leading-relaxed shadow-inner">
+                      <p>
+                        Thank you for your interest in <strong className="text-cyan-400">{opportunity.title}</strong>.
+                      </p>
+                      <p>
+                        We found that an application has already been submitted using <strong className="text-white font-mono">{applicantEmail.trim().toLowerCase()}</strong> for this opportunity.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsApplyModalOpen(false);
+                        setIsDuplicate(false);
+                      }}
+                      className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"
+                    >
+                      Close Window
+                    </button>
+                  </div>
+                ) : submittedAppId ? (
+                  /* COMPACT FOCUSED SUCCESS SCREEN */
+                  <div className="text-center py-4 px-2 space-y-5 font-mono text-xs">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-3xl font-bold shadow-xl shadow-emerald-500/10">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                    </div>
+
+                    <div className="space-y-1">
+                      <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">Application Submitted Successfully!</h4>
+                      <p className="text-slate-300 text-xs font-sans">
+                        Thank you for applying to <span className="text-cyan-400 font-bold">{opportunity.title}</span>.
+                      </p>
+                    </div>
+
+                    {/* Application ID Box with Copy Button */}
+                    <div className="p-5 rounded-2xl bg-slate-900 border border-cyan-500/30 text-cyan-300 text-center space-y-2 shadow-inner">
+                      <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Your Official Application ID</div>
+                      <div className="flex items-center justify-center gap-3 flex-wrap">
+                        <div className="text-2xl font-extrabold font-mono text-white tracking-widest">{submittedAppId}</div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAppId(submittedAppId)}
+                          className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-sm"
+                        >
+                          {copiedId ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" /> Copy ID
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-400 pt-1">Please keep your Application ID for future reference.</p>
+                    </div>
+
+                    {/* CONDITIONAL WHATSAPP GROUP LINK SECTION */}
+                    {opportunity.whatsapp_group_url && opportunity.whatsapp_group_url.trim().length > 0 && (
+                      <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3 shadow-xl relative overflow-hidden">
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
+                          <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES
+                        </div>
+                        <p className="text-slate-200 text-xs font-sans leading-relaxed">
+                          Your application has been received successfully. Join the official WhatsApp group for <strong className="text-white">{opportunity.title}</strong> to receive project updates, announcements, and further instructions.
+                        </p>
+                        <div className="pt-2">
+                          <a
+                            href={opportunity.whatsapp_group_url.trim()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                          >
+                            <MessageCircle className="w-4 h-4" /> Join WhatsApp Group →
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setIsApplyModalOpen(false);
+                        setSubmittedAppId(null);
+                        setIsDuplicate(false);
+                      }}
+                      className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"
+                    >
+                      Close Window
+                    </button>
+                  </div>
+                ) : (
+                  /* DYNAMIC STEP-BY-STEP APPLICATION FORM */
+                  <form onSubmit={handleSubmitForm} className="space-y-6 font-mono text-xs">
+                    {/* Error Banner */}
+                    {submissionError && (
+                      <div className="p-4 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-200 flex items-start gap-2.5 shadow-md">
+                        <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold">Submission Error:</div>
+                          <div>{submissionError}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STEP 1: APPLICANT PERSONAL INFORMATION */}
+                    {currentStep === 1 && (
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-4 shadow-md">
+                          <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-white/10">
+                            <UserCheck className="w-4 h-4 text-cyan-400" /> 01. Personal Information
+                          </div>
+
+                          {step1Error && (
+                            <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-red-200 font-bold text-xs flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                              <span>{step1Error}</span>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-slate-200 mb-1 font-bold">Full Legal Name *</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. Rahul Sharma"
+                              value={applicantName}
+                              onChange={(e) => setApplicantName(e.target.value)}
+                              className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-sm shadow-inner"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-slate-200 mb-1 font-bold">Email Address *</label>
+                              <input
+                                type="email"
+                                required
+                                placeholder="you@domain.com"
+                                value={applicantEmail}
+                                onChange={(e) => setApplicantEmail(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-sm shadow-inner"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-200 mb-1 font-bold">WhatsApp / Phone *</label>
+                              <input
+                                type="tel"
+                                required
+                                placeholder="+91 9827775230"
+                                value={applicantPhone}
+                                onChange={(e) => setApplicantPhone(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-sm shadow-inner"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STEP 2: PROJECT SPECIFIC QUESTIONS */}
+                    {currentStep === 2 && hasQuestions && (
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-4 shadow-md">
+                          <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-2 border-b border-white/10">
+                            <Sparkles className="w-4 h-4 text-cyan-400" /> 02. Project-Specific Questions ({opportunity.custom_questions!.length})
+                          </div>
+
+                          {opportunity.custom_questions!.map((q) => {
+                            const parsedOptions = parseQuestionOptions(q.options);
+
+                            return (
+                              <div key={q.id} className="space-y-1.5 p-4 rounded-xl bg-slate-950/90 border border-white/15 shadow-inner">
+                                <label className="block text-slate-200 mb-1 font-bold leading-snug">
+                                  {q.label} {q.required && <span className="text-red-400">*</span>}
+                                </label>
+
+                                {q.type === 'textarea' ? (
+                                  <textarea
+                                    required={q.required}
+                                    rows={3}
+                                    placeholder="Enter your detailed answer..."
+                                    value={customAnswers[q.label] || ''}
+                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-sans text-sm"
+                                  />
+                                ) : q.type === 'select' ? (
+                                  <select
+                                    required={q.required}
+                                    value={customAnswers[q.label] || ''}
+                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                    className="w-full px-3 py-3 rounded-xl bg-[#0d1220] border border-white/20 text-white font-mono font-bold text-sm focus:outline-none focus:border-cyan-400 cursor-pointer"
+                                  >
+                                    <option value="" className="bg-[#0d1220] text-slate-300">-- Select Option --</option>
+                                    {parsedOptions.map((opt, optIdx) => (
+                                      <option key={optIdx} value={opt} className="bg-[#0d1220] text-white">
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : q.type === 'multiselect' ? (
+                                  <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-white/20">
+                                    {parsedOptions.map((opt, optIdx) => {
+                                      const selectedArr: string[] = customAnswers[q.label] || [];
+                                      const isChecked = selectedArr.includes(opt);
+                                      return (
+                                        <label key={optIdx} className="flex items-center gap-2.5 text-slate-200 cursor-pointer text-xs font-mono">
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={(e) => {
+                                              const newArr = e.target.checked
+                                                ? [...selectedArr, opt]
+                                                : selectedArr.filter((i) => i !== opt);
+                                              setCustomAnswers({ ...customAnswers, [q.label]: newArr });
+                                            }}
+                                            className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer"
+                                          />
+                                          <span>{opt}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : q.type === 'yesno' ? (
+                                  <div className="flex items-center gap-6 pt-1">
+                                    <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-mono text-xs">
+                                      <input
+                                        type="radio"
+                                        name={q.id}
+                                        value="Yes"
+                                        checked={customAnswers[q.label] === 'Yes'}
+                                        onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                        className="w-4 h-4 text-cyan-400 bg-slate-950 border-white/30 focus:ring-0 cursor-pointer"
+                                      />
+                                      <span>Yes</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer text-slate-200 font-mono text-xs">
+                                      <input
+                                        type="radio"
+                                        name={q.id}
+                                        value="No"
+                                        checked={customAnswers[q.label] === 'No'}
+                                        onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                        className="w-4 h-4 text-cyan-400 bg-slate-950 border-white/30 focus:ring-0 cursor-pointer"
+                                      />
+                                      <span>No</span>
+                                    </label>
+                                  </div>
+                                ) : q.type === 'checkbox' ? (
+                                  <label className="flex items-center gap-2.5 text-slate-200 cursor-pointer font-mono text-xs pt-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!customAnswers[q.label]}
+                                      onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.checked })}
+                                      className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 cursor-pointer"
+                                    />
+                                    <span>I agree / confirm</span>
+                                  </label>
+                                ) : (
+                                  <input
+                                    type={
+                                      q.type === 'number'
+                                        ? 'number'
+                                        : q.type === 'email'
+                                        ? 'email'
+                                        : q.type === 'phone'
+                                        ? 'tel'
+                                        : q.type === 'date'
+                                        ? 'date'
+                                        : 'text'
+                                    }
+                                    required={q.required}
+                                    placeholder="Your answer..."
+                                    value={customAnswers[q.label] || ''}
+                                    onChange={(e) => setCustomAnswers({ ...customAnswers, [q.label]: e.target.value })}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-white/20 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 font-sans text-sm"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STEP 3: REVIEW SUMMARY & MANDATORY TERMS AGREEMENT */}
+                    {currentStep === 3 && (
+                      <div className="space-y-4">
+                        {/* Summary Box */}
+                        <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/15 space-y-3 shadow-md">
+                          <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider pb-2 border-b border-white/10">
+                            Summary of Entered Details:
+                          </div>
+                          <div className="space-y-2 text-xs font-mono">
+                            <div className="flex justify-between border-b border-white/5 pb-1">
+                              <span className="text-slate-400">Full Name:</span>
+                              <span className="text-white font-bold">{applicantName}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/5 pb-1">
+                              <span className="text-slate-400">Email Address:</span>
+                              <span className="text-cyan-300 font-bold">{applicantEmail}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/5 pb-1">
+                              <span className="text-slate-400">Phone / WhatsApp:</span>
+                              <span className="text-emerald-300 font-bold">{applicantPhone}</span>
+                            </div>
+                            {Object.entries(customAnswers).map(([k, v]) => (
+                              <div key={k} className="flex justify-between border-b border-white/5 pb-1">
+                                <span className="text-slate-400">{k}:</span>
+                                <span className="text-emerald-300 font-bold">{formatApplicationAnswer(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Mandatory Terms Box */}
+                        <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 space-y-3 shadow-md">
+                          <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center gap-2 pb-1 border-b border-cyan-500/20">
+                            <FileCheck2 className="w-4 h-4 text-cyan-400" /> 03. Mandatory Terms &amp; Conditions Agreement
+                          </div>
+
+                          <label className="flex items-start gap-3 text-slate-200 cursor-pointer pt-1">
+                            <input
+                              type="checkbox"
+                              checked={termsAccepted}
+                              onChange={(e) => {
+                                setTermsAccepted(e.target.checked);
+                                if (e.target.checked) setTermsError('');
+                              }}
+                              className="w-4 h-4 rounded border-white/30 bg-slate-950 text-cyan-400 focus:ring-0 mt-0.5 shrink-0 cursor-pointer"
+                            />
+                            <span className="text-xs font-mono leading-relaxed">
+                              I have read and agree to the <strong className="text-cyan-300">Terms &amp; Conditions</strong> and confirm that all submitted details are accurate.
+                            </span>
+                          </label>
+
+                          <div className="flex items-center justify-between text-[11px] font-mono pt-1">
+                            <a
+                              href="/terms"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-cyan-300 hover:text-cyan-200 underline font-bold transition-all flex items-center gap-1"
+                            >
+                              [ Read Terms &amp; Conditions ] <ExternalLink className="w-3 h-3" />
+                            </a>
+                            <span className="text-slate-400 text-[10px]">Version 1.0</span>
+                          </div>
+
+                          {termsError && (
+                            <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold text-xs flex items-center gap-2 animate-shake shadow-md">
+                              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                              <span>{termsError}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </form>
+                )}
+              </div>
+
+              {/* STICKY FOOTER ACTIONS */}
+              {!submittedAppId && !existingApp && !isDuplicate && (
+                <div className="p-4 sm:p-5 border-t border-white/10 bg-[#090d16] shrink-0 flex items-center justify-between gap-3">
+                  {currentStep > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep((s) => (s - 1) as 1 | 2 | 3)}
                       className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 text-xs sm:text-sm font-mono font-bold cursor-pointer transition-all"
+                    >
+                      ← Back
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsApplyModalOpen(false)}
+                      className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs sm:text-sm font-mono font-bold cursor-pointer"
                     >
                       Cancel
                     </button>
+                  )}
+
+                  {currentStep === 1 ? (
+                    <button
+                      type="button"
+                      onClick={handleStep1Next}
+                      className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs sm:text-sm font-mono flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all"
+                    >
+                      {hasQuestions ? 'Continue to Questions →' : 'Continue to Review →'}
+                    </button>
+                  ) : currentStep === 2 ? (
+                    <button
+                      type="button"
+                      onClick={handleStep2Next}
+                      className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs sm:text-sm font-mono flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all"
+                    >
+                      Continue to Terms →
+                    </button>
+                  ) : (
                     <button
                       type="submit"
                       disabled={isSubmitting}
+                      onClick={handleSubmitForm}
                       className="px-7 py-3 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400 hover:opacity-95 text-slate-950 font-extrabold text-xs sm:text-sm font-mono shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                     >
                       <Send className="w-4 h-4" /> {isSubmitting ? 'Submitting Application...' : 'Submit Application →'}
                     </button>
-                  </div>
-                </form>
+                  )}
+                </div>
               )}
             </motion.div>
           </motion.div>

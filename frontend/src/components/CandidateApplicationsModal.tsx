@@ -35,6 +35,7 @@ import {
 } from '../lib/opportunityApplicationStore';
 import { OpportunityProgram } from '../lib/opportunityStore';
 import { ExportButton } from './ExportButton';
+import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 
 export interface CandidateApplicationsModalProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export interface CandidateApplicationsModalProps {
 // MEMOIZED CUSTOM ANSWER CHIP COMPONENT (Prevents re-renders during filter/typing)
 // ----------------------------------------------------------------------
 const CustomAnswerChip = React.memo<{ answerKey: string; val: any }>(({ answerKey, val }) => {
-  const displayVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+  const displayVal = formatApplicationAnswer(val);
   const keyLower = answerKey.toLowerCase();
 
   let IconComp = FileText;
@@ -1317,7 +1318,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
                     <div key={key} className="bg-white/[0.03] p-3 rounded-xl border border-white/10 space-y-1">
                       <div className="text-xs font-mono text-slate-400 font-bold">{key}</div>
                       <div className="text-xs font-sans text-emerald-300 font-medium whitespace-pre-wrap">
-                        {typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val)}
+                        {formatApplicationAnswer(val)}
                       </div>
                     </div>
                   ))

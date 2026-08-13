@@ -82,6 +82,36 @@ export const getStoredCandidateApplications = async (opportunity_id?: string): P
   return localList;
 };
 
+// Lookup existing application by opportunity_id and email in Supabase / LocalStorage
+export const checkExistingApplication = async (
+  opportunity_id: string,
+  email: string
+): Promise<CandidateApplication | null> => {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!opportunity_id || !cleanEmail) return null;
+
+  // 1. Check direct Supabase database
+  try {
+    const { data } = await supabase
+      .from('opportunity_applications')
+      .select('*')
+      .eq('opportunity_id', opportunity_id)
+      .ilike('applicant_email', cleanEmail)
+      .limit(1);
+
+    if (data && data.length > 0) {
+      return data[0] as CandidateApplication;
+    }
+  } catch (_) {}
+
+  // 2. Check LocalStorage fallback
+  const localList = getLocalApplications();
+  const found = localList.find(
+    (app) => app.opportunity_id === opportunity_id && (app.applicant_email || '').toLowerCase() === cleanEmail
+  );
+  return found || null;
+};
+
 // Submit candidate application directly to Supabase / Backend API with Duplicate Protection
 export const submitCandidateApplication = async (
   appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'>
