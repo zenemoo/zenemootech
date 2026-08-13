@@ -91,11 +91,10 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     setCurrentPage(1);
   }, [searchQuery, statusFilter, dateFilter, startDate, endDate, pageSize, selectedOpp]);
 
-  if (!isOpen || !selectedOpp) return null;
-
   // 1. Applications belonging to current program
   const programApps = useMemo(() => {
-    return allCandidateApps.filter((a) => a.opportunity_id === selectedOpp.id);
+    if (!selectedOpp) return [];
+    return (allCandidateApps || []).filter((a) => a.opportunity_id === selectedOpp.id);
   }, [allCandidateApps, selectedOpp]);
 
   // 2. Dynamic summary counts
@@ -111,6 +110,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
 
   // 3. Filtered applications based on search & filters
   const filteredApps = useMemo(() => {
+    if (!selectedOpp) return [];
     return programApps.filter((app) => {
       // Status filter
       if (statusFilter !== 'all' && app.status !== statusFilter) {
@@ -169,7 +169,10 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
 
       return true;
     });
-  }, [programApps, statusFilter, searchQuery, dateFilter, startDate, endDate]);
+  }, [programApps, statusFilter, searchQuery, dateFilter, startDate, endDate, selectedOpp]);
+
+  // Early return if modal is not open
+  if (!isOpen || !selectedOpp) return null;
 
   // 4. Pagination calculations
   const totalFilteredCount = filteredApps.length;
