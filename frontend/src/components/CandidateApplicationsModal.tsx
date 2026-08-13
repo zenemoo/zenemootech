@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,19 +18,12 @@ import {
   Edit,
   Globe,
   Smartphone,
-  CheckSquare,
   FileText,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  Download,
   AlertCircle,
   Calendar,
-  Layers,
-  Sparkles,
-  Info,
-  RotateCcw,
-  Check
+  RotateCcw
 } from 'lucide-react';
 import {
   CandidateApplication,
@@ -53,6 +46,241 @@ export interface CandidateApplicationsModalProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
+// ----------------------------------------------------------------------
+// MEMOIZED CUSTOM ANSWER CHIP COMPONENT (Prevents re-renders during filter/typing)
+// ----------------------------------------------------------------------
+const CustomAnswerChip = React.memo<{ answerKey: string; val: any }>(({ answerKey, val }) => {
+  const displayVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+  const keyLower = answerKey.toLowerCase();
+
+  let IconComp = FileText;
+  if (keyLower.includes('time') || keyLower.includes('hour') || keyLower.includes('commitment')) {
+    IconComp = Clock;
+  } else if (keyLower.includes('language') || keyLower.includes('lang')) {
+    IconComp = Globe;
+  } else if (keyLower.includes('smart') || keyLower.includes('phone') || keyLower.includes('internet') || keyLower.includes('wifi')) {
+    IconComp = Smartphone;
+  }
+
+  return (
+    <div className="flex items-start gap-1.5 text-[11px] bg-white/[0.04] px-2 py-1 rounded-lg border border-white/10 text-slate-300">
+      <IconComp className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+      <div className="leading-tight">
+        <span className="text-slate-400 font-semibold">{answerKey}: </span>
+        <span className="text-emerald-300 font-bold">{displayVal}</span>
+      </div>
+    </div>
+  );
+});
+
+CustomAnswerChip.displayName = 'CustomAnswerChip';
+
+// ----------------------------------------------------------------------
+// MEMOIZED DESKTOP TABLE ROW COMPONENT
+// ----------------------------------------------------------------------
+interface TableRowProps {
+  app: CandidateApplication;
+  resyncingId: string | null;
+  resendingEmailId: string | null;
+  onView: (app: CandidateApplication) => void;
+  onEditNotes: (app: CandidateApplication) => void;
+  onDeleteConfirm: (app: CandidateApplication) => void;
+  onStatusChange: (app: CandidateApplication, newStatus: string) => void;
+  onSingleResync: (app: CandidateApplication) => void;
+  onResendEmail: (app: CandidateApplication) => void;
+}
+
+const CandidateTableRow = React.memo<TableRowProps>(({
+  app,
+  resyncingId,
+  resendingEmailId,
+  onView,
+  onEditNotes,
+  onDeleteConfirm,
+  onStatusChange,
+  onSingleResync,
+  onResendEmail,
+}) => {
+  const formattedId = app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`;
+  const answerEntries = Object.entries(app.answers || {});
+
+  return (
+    <tr className="hover:bg-white/[0.02] transition-colors">
+      {/* Application ID */}
+      <td className="p-4 font-bold font-mono text-cyan-400 text-xs whitespace-nowrap">
+        <button
+          onClick={() => onView(app)}
+          className="hover:underline flex items-center gap-1 cursor-pointer"
+          title="Click to view full application details"
+        >
+          <span>{formattedId}</span>
+        </button>
+      </td>
+
+      {/* Applicant Name */}
+      <td className="p-4 font-bold text-white font-sans text-sm whitespace-nowrap">
+        {app.applicant_name}
+      </td>
+
+      {/* Contact Info */}
+      <td className="p-4 space-y-1 text-[11px] whitespace-nowrap">
+        <div className="text-cyan-300 font-mono font-medium">{app.applicant_email}</div>
+        <div className="text-slate-400 font-mono">{app.applicant_phone}</div>
+      </td>
+
+      {/* Custom Form Answers */}
+      <td className="p-4 max-w-xs">
+        {answerEntries.length === 0 ? (
+          <span className="text-slate-500 italic text-[11px]">No custom responses</span>
+        ) : (
+          <div className="space-y-1.5">
+            {answerEntries.slice(0, 3).map(([k, v]) => (
+              <CustomAnswerChip key={k} answerKey={k} val={v} />
+            ))}
+            {answerEntries.length > 3 && (
+              <button
+                onClick={() => onView(app)}
+                className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-mono font-semibold cursor-pointer"
+              >
+                +{answerEntries.length - 3} more response(s)
+              </button>
+            )}
+          </div>
+        )}
+      </td>
+
+      {/* Sheet Sync */}
+      <td className="p-4 font-mono text-[11px] whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          {app.sync_status === 'synced' ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]" title="Synced to Google Sheets">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Synced
+            </span>
+          ) : app.sync_status === 'failed' ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 font-bold text-[10px]" title={app.sync_error || 'Google Sheets sync failed'}>
+              <XCircle className="w-3 h-3 text-red-400" /> Failed
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold text-[10px]" title="Sync Pending">
+              <Clock className="w-3 h-3 text-amber-400" /> Pending
+            </span>
+          )}
+
+          {/* Manual Resync Button */}
+          <button
+            type="button"
+            disabled={resyncingId === app.id}
+            onClick={() => onSingleResync(app)}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 border border-white/10 text-[10px] cursor-pointer transition-colors"
+            title="Manual Resync to Google Sheets"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${resyncingId === app.id ? 'animate-spin text-cyan-400' : ''}`} />
+          </button>
+        </div>
+      </td>
+
+      {/* Status Dropdown & Email Indicator */}
+      <td className="p-4 whitespace-nowrap">
+        <select
+          value={app.status}
+          onChange={(e) => onStatusChange(app, e.target.value)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase focus:outline-none cursor-pointer transition-all ${
+            app.status === 'accepted'
+              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+              : app.status === 'shortlisted'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+              : app.status === 'rejected'
+              ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+          }`}
+        >
+          <option value="pending" className="bg-slate-900 text-amber-400">PENDING</option>
+          <option value="shortlisted" className="bg-slate-900 text-cyan-400">SHORTLISTED</option>
+          <option value="accepted" className="bg-slate-900 text-emerald-400">ACCEPTED</option>
+          <option value="rejected" className="bg-slate-900 text-red-400">REJECTED</option>
+        </select>
+
+        {/* Acceptance Email Status Sub-Badge */}
+        {app.status === 'accepted' && (
+          <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px]">
+            {app.acceptance_email_status === 'sent' ? (
+              <span className="text-emerald-400 font-medium flex items-center gap-1" title={app.acceptance_email_sent_at ? `Sent on ${new Date(app.acceptance_email_sent_at).toLocaleString()}` : 'Email Sent'}>
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> ✓ Email Sent
+              </span>
+            ) : app.acceptance_email_status === 'sending' || resendingEmailId === app.id ? (
+              <span className="text-blue-400 font-medium flex items-center gap-1">
+                <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" /> Sending Email...
+              </span>
+            ) : app.acceptance_email_status === 'failed' ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-red-400 font-medium flex items-center gap-1" title={app.acceptance_email_error || 'Delivery failed'}>
+                  <AlertCircle className="w-3 h-3 text-red-400" /> Email Failed
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onResendEmail(app)}
+                  className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 cursor-pointer font-sans text-[10px]"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <span className="text-slate-400 font-medium flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-400" /> Email Pending
+              </span>
+            )}
+          </div>
+        )}
+      </td>
+
+      {/* Date */}
+      <td className="p-4 text-[11px] text-slate-400 font-mono whitespace-nowrap">
+        {app.created_at ? new Date(app.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
+      </td>
+
+      {/* Actions */}
+      <td className="p-4 text-right whitespace-nowrap">
+        <div className="flex items-center justify-end gap-1.5">
+          {/* View Button */}
+          <button
+            type="button"
+            onClick={() => onView(app)}
+            className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 cursor-pointer transition-colors"
+            title="View Full Application"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+
+          {/* Edit Notes Button */}
+          <button
+            type="button"
+            onClick={() => onEditNotes(app)}
+            className="p-2 rounded-xl bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 cursor-pointer transition-colors"
+            title="Edit Admin Notes"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+
+          {/* Delete Button */}
+          <button
+            type="button"
+            onClick={() => onDeleteConfirm(app)}
+            className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer transition-colors"
+            title="Delete Candidate Application"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+CandidateTableRow.displayName = 'CandidateTableRow';
+
+// ----------------------------------------------------------------------
+// MAIN CANDIDATE APPLICATIONS DASHBOARD MODAL
+// ----------------------------------------------------------------------
 export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProps> = ({
   isOpen,
   onClose,
@@ -63,6 +291,8 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
 }) => {
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery); // Deferred for 60fps input typing!
+
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'shortlisted' | 'accepted' | 'rejected'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'last7' | 'last30' | 'thisMonth' | 'custom'>('all');
   const [startDate, setStartDate] = useState('');
@@ -72,7 +302,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Modals & Action States
+  // Action Modals State
   const [deleteConfirmApp, setDeleteConfirmApp] = useState<CandidateApplication | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -89,7 +319,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, dateFilter, startDate, endDate, pageSize, selectedOpp]);
+  }, [deferredSearchQuery, statusFilter, dateFilter, startDate, endDate, pageSize, selectedOpp]);
 
   // 1. Applications belonging to current program
   const programApps = useMemo(() => {
@@ -97,44 +327,68 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     return (allCandidateApps || []).filter((a) => a.opportunity_id === selectedOpp.id);
   }, [allCandidateApps, selectedOpp]);
 
-  // 2. Dynamic summary counts
+  // 2. Fast single-pass summary counts
   const summaryCounts = useMemo(() => {
-    const total = programApps.length;
-    const pending = programApps.filter((a) => a.status === 'pending').length;
-    const accepted = programApps.filter((a) => a.status === 'accepted').length;
-    const rejected = programApps.filter((a) => a.status === 'rejected').length;
-    const shortlisted = programApps.filter((a) => a.status === 'shortlisted').length;
+    let total = 0;
+    let pending = 0;
+    let accepted = 0;
+    let rejected = 0;
+    let shortlisted = 0;
+
+    for (let i = 0; i < programApps.length; i++) {
+      total++;
+      const st = programApps[i].status;
+      if (st === 'pending') pending++;
+      else if (st === 'accepted') accepted++;
+      else if (st === 'rejected') rejected++;
+      else if (st === 'shortlisted') shortlisted++;
+    }
 
     return { total, pending, accepted, rejected, shortlisted };
   }, [programApps]);
 
-  // 3. Filtered applications based on search & filters
+  // 3. High-performance Filtered applications with deferred search
   const filteredApps = useMemo(() => {
     if (!selectedOpp) return [];
+
+    const q = deferredSearchQuery.toLowerCase().trim();
+    const hasSearch = q !== '';
+    const now = new Date();
+    const nowTime = now.getTime();
+
+    let startMs = 0;
+    let endMs = 0;
+    if (dateFilter === 'custom') {
+      if (startDate) startMs = new Date(startDate).getTime();
+      if (endDate) {
+        const e = new Date(endDate);
+        e.setHours(23, 59, 59, 999);
+        endMs = e.getTime();
+      }
+    }
+
     return programApps.filter((app) => {
       // Status filter
       if (statusFilter !== 'all' && app.status !== statusFilter) {
         return false;
       }
 
-      // Search query filter (applicant_name, email, phone, applicant_id/id)
-      if (searchQuery.trim() !== '') {
-        const q = searchQuery.toLowerCase().trim();
+      // Search query filter
+      if (hasSearch) {
         const appId = (app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`).toLowerCase();
         const name = (app.applicant_name || '').toLowerCase();
         const email = (app.applicant_email || '').toLowerCase();
         const phone = (app.applicant_phone || '').toLowerCase();
 
-        const matchesSearch =
-          name.includes(q) || email.includes(q) || phone.includes(q) || appId.includes(q);
-
-        if (!matchesSearch) return false;
+        if (!name.includes(q) && !email.includes(q) && !phone.includes(q) && !appId.includes(q)) {
+          return false;
+        }
       }
 
       // Date filter
       if (dateFilter !== 'all' && app.created_at) {
         const appDate = new Date(app.created_at);
-        const now = new Date();
+        const appTime = appDate.getTime();
 
         if (dateFilter === 'today') {
           const isToday =
@@ -143,38 +397,27 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
             appDate.getFullYear() === now.getFullYear();
           if (!isToday) return false;
         } else if (dateFilter === 'last7') {
-          const diffMs = now.getTime() - appDate.getTime();
-          const diffDays = diffMs / (1000 * 3600 * 24);
-          if (diffDays > 7) return false;
+          if (nowTime - appTime > 7 * 24 * 3600 * 1000) return false;
         } else if (dateFilter === 'last30') {
-          const diffMs = now.getTime() - appDate.getTime();
-          const diffDays = diffMs / (1000 * 3600 * 24);
-          if (diffDays > 30) return false;
+          if (nowTime - appTime > 30 * 24 * 3600 * 1000) return false;
         } else if (dateFilter === 'thisMonth') {
           const isSameMonth =
             appDate.getMonth() === now.getMonth() && appDate.getFullYear() === now.getFullYear();
           if (!isSameMonth) return false;
         } else if (dateFilter === 'custom') {
-          if (startDate) {
-            const start = new Date(startDate);
-            if (appDate < start) return false;
-          }
-          if (endDate) {
-            const end = new Date(endDate);
-            end.setHours(23, 59, 59, 999);
-            if (appDate > end) return false;
-          }
+          if (startMs && appTime < startMs) return false;
+          if (endMs && appTime > endMs) return false;
         }
       }
 
       return true;
     });
-  }, [programApps, statusFilter, searchQuery, dateFilter, startDate, endDate, selectedOpp]);
+  }, [programApps, statusFilter, deferredSearchQuery, dateFilter, startDate, endDate, selectedOpp]);
 
   // Early return if modal is not open
   if (!isOpen || !selectedOpp) return null;
 
-  // 4. Pagination calculations
+  // Pagination calculations
   const totalFilteredCount = filteredApps.length;
   const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
   const validCurrentPage = Math.min(currentPage, totalPages);
@@ -182,7 +425,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
   const paginatedApps = filteredApps.slice(startIndex, endIndex);
 
-  // Clear all filters
+  // Handlers
   const handleClearFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
@@ -193,11 +436,10 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     showToast('Filters cleared', 'info');
   };
 
-  // Status Change Handler
-  const handleStatusChange = async (app: CandidateApplication, newStatus: any) => {
+  const handleStatusChange = async (app: CandidateApplication, newStatus: string) => {
     try {
       showToast(`Updating status for ${app.applicant_name}...`, 'info');
-      const updatedList = await updateCandidateApplicationStatus(app.id, { status: newStatus });
+      const updatedList = await updateCandidateApplicationStatus(app.id, { status: newStatus as any });
       onUpdateApps(updatedList);
       showToast(`Updated candidate "${app.applicant_name}" status to ${newStatus.toUpperCase()}`, 'success');
     } catch (err: any) {
@@ -205,7 +447,6 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     }
   };
 
-  // Delete Confirm Handler
   const handleConfirmDelete = async () => {
     if (!deleteConfirmApp) return;
     try {
@@ -222,7 +463,6 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     }
   };
 
-  // Single Resync Handler
   const handleSingleResync = async (app: CandidateApplication) => {
     try {
       setResyncingId(app.id);
@@ -242,7 +482,6 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     }
   };
 
-  // Bulk Resync Handler
   const handleBulkResync = async () => {
     try {
       setIsSyncingBulk(true);
@@ -263,7 +502,6 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     }
   };
 
-  // Resend Acceptance Email Handler
   const handleResendEmail = async (app: CandidateApplication) => {
     try {
       setResendingEmailId(app.id);
@@ -283,7 +521,6 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     }
   };
 
-  // Save Admin Notes Handler
   const handleSaveNotes = async () => {
     if (!editNotesApp) return;
     try {
@@ -299,43 +536,18 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     }
   };
 
-  // Custom Form Answer Helper for Icon & Styling
-  const renderCustomAnswerChip = (key: string, val: any) => {
-    const displayVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
-    const keyLower = key.toLowerCase();
-
-    let IconComp = FileText;
-    if (keyLower.includes('time') || keyLower.includes('hour') || keyLower.includes('commitment')) {
-      IconComp = Clock;
-    } else if (keyLower.includes('language') || keyLower.includes('lang')) {
-      IconComp = Globe;
-    } else if (keyLower.includes('smart') || keyLower.includes('phone') || keyLower.includes('internet') || keyLower.includes('wifi')) {
-      IconComp = Smartphone;
-    }
-
-    return (
-      <div key={key} className="flex items-start gap-1.5 text-[11px] bg-white/[0.04] px-2 py-1 rounded-lg border border-white/10 text-slate-300">
-        <IconComp className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-        <div className="leading-tight">
-          <span className="text-slate-400 font-semibold">{key}: </span>
-          <span className="text-emerald-300 font-bold">{displayVal}</span>
-        </div>
-      </div>
-    );
-  };
-
   return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[99999] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto"
+        className="fixed inset-0 z-[99999] bg-[#050811]/95 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto"
       >
         <motion.div
-          initial={{ scale: 0.96, opacity: 0 }}
+          initial={{ scale: 0.98, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.96, opacity: 0 }}
+          exit={{ scale: 0.98, opacity: 0 }}
           className="glass-panel rounded-3xl border border-cyan-500/30 w-full max-w-[1440px] my-auto space-y-5 max-h-[96vh] flex flex-col shadow-2xl shadow-cyan-500/10 bg-[#090d16] text-slate-100 overflow-hidden"
         >
           {/* ========================================================= */}
@@ -654,182 +866,23 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 text-slate-200">
-                      {paginatedApps.map((app) => {
-                        const formattedId = app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`;
-                        const answerEntries = Object.entries(app.answers || {});
-
-                        return (
-                          <tr key={app.id} className="hover:bg-white/[0.02] transition-colors">
-                            {/* Application ID */}
-                            <td className="p-4 font-bold font-mono text-cyan-400 text-xs whitespace-nowrap">
-                              <button
-                                onClick={() => setViewDetailApp(app)}
-                                className="hover:underline flex items-center gap-1 cursor-pointer"
-                                title="Click to view full application details"
-                              >
-                                <span>{formattedId}</span>
-                              </button>
-                            </td>
-
-                            {/* Applicant Name */}
-                            <td className="p-4 font-bold text-white font-sans text-sm whitespace-nowrap">
-                              {app.applicant_name}
-                            </td>
-
-                            {/* Contact Info */}
-                            <td className="p-4 space-y-1 text-[11px] whitespace-nowrap">
-                              <div className="text-cyan-300 font-mono font-medium">{app.applicant_email}</div>
-                              <div className="text-slate-400 font-mono">{app.applicant_phone}</div>
-                            </td>
-
-                            {/* Custom Form Answers */}
-                            <td className="p-4 max-w-xs">
-                              {answerEntries.length === 0 ? (
-                                <span className="text-slate-500 italic text-[11px]">No custom responses</span>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  {answerEntries.slice(0, 3).map(([k, v]) => renderCustomAnswerChip(k, v))}
-                                  {answerEntries.length > 3 && (
-                                    <button
-                                      onClick={() => setViewDetailApp(app)}
-                                      className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-mono font-semibold"
-                                    >
-                                      +{answerEntries.length - 3} more response(s)
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Sheet Sync */}
-                            <td className="p-4 font-mono text-[11px] whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                {app.sync_status === 'synced' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]" title="Synced to Google Sheets">
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Synced
-                                  </span>
-                                ) : app.sync_status === 'failed' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 font-bold text-[10px]" title={app.sync_error || 'Google Sheets sync failed'}>
-                                    <XCircle className="w-3 h-3 text-red-400" /> Failed
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold text-[10px]" title="Sync Pending">
-                                    <Clock className="w-3 h-3 text-amber-400" /> Pending
-                                  </span>
-                                )}
-
-                                {/* Manual Resync Button */}
-                                <button
-                                  type="button"
-                                  disabled={resyncingId === app.id}
-                                  onClick={() => handleSingleResync(app)}
-                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 border border-white/10 text-[10px] cursor-pointer transition-colors"
-                                  title="Manual Resync to Google Sheets"
-                                >
-                                  <RefreshCw className={`w-3.5 h-3.5 ${resyncingId === app.id ? 'animate-spin text-cyan-400' : ''}`} />
-                                </button>
-                              </div>
-                            </td>
-
-                            {/* Status Dropdown & Email Indicator */}
-                            <td className="p-4 whitespace-nowrap">
-                              <select
-                                value={app.status}
-                                onChange={(e) => handleStatusChange(app, e.target.value)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase focus:outline-none cursor-pointer transition-all ${
-                                  app.status === 'accepted'
-                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                    : app.status === 'shortlisted'
-                                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                                    : app.status === 'rejected'
-                                    ? 'bg-red-500/20 text-red-300 border border-red-500/40'
-                                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                }`}
-                              >
-                                <option value="pending" className="bg-slate-900 text-amber-400">PENDING</option>
-                                <option value="shortlisted" className="bg-slate-900 text-cyan-400">SHORTLISTED</option>
-                                <option value="accepted" className="bg-slate-900 text-emerald-400">ACCEPTED</option>
-                                <option value="rejected" className="bg-slate-900 text-red-400">REJECTED</option>
-                              </select>
-
-                              {/* Acceptance Email Status Sub-Badge */}
-                              {app.status === 'accepted' && (
-                                <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px]">
-                                  {app.acceptance_email_status === 'sent' ? (
-                                    <span className="text-emerald-400 font-medium flex items-center gap-1" title={app.acceptance_email_sent_at ? `Sent on ${new Date(app.acceptance_email_sent_at).toLocaleString()}` : 'Email Sent'}>
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" /> ✓ Email Sent
-                                    </span>
-                                  ) : app.acceptance_email_status === 'sending' || resendingEmailId === app.id ? (
-                                    <span className="text-blue-400 font-medium flex items-center gap-1">
-                                      <RefreshCw className="w-3 h-3 text-blue-400 animate-spin" /> Sending Email...
-                                    </span>
-                                  ) : app.acceptance_email_status === 'failed' ? (
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-red-400 font-medium flex items-center gap-1" title={app.acceptance_email_error || 'Delivery failed'}>
-                                        <AlertCircle className="w-3 h-3 text-red-400" /> Email Failed
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleResendEmail(app)}
-                                        className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 cursor-pointer font-sans text-[10px]"
-                                      >
-                                        Retry
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-400 font-medium flex items-center gap-1">
-                                      <Clock className="w-3 h-3 text-slate-400" /> Email Pending
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Date */}
-                            <td className="p-4 text-[11px] text-slate-400 font-mono whitespace-nowrap">
-                              {app.created_at ? new Date(app.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
-                            </td>
-
-                            {/* Actions */}
-                            <td className="p-4 text-right whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {/* View Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => setViewDetailApp(app)}
-                                  className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 cursor-pointer transition-colors"
-                                  title="View Full Application"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-
-                                {/* Edit Notes Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditNotesApp(app);
-                                    setAdminNoteText(app.admin_notes || '');
-                                  }}
-                                  className="p-2 rounded-xl bg-white/5 hover:bg-purple-500/20 text-slate-300 hover:text-purple-300 border border-white/10 cursor-pointer transition-colors"
-                                  title="Edit Admin Notes"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </button>
-
-                                {/* Delete Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteConfirmApp(app)}
-                                  className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 cursor-pointer transition-colors"
-                                  title="Delete Candidate Application"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {paginatedApps.map((app) => (
+                        <CandidateTableRow
+                          key={app.id}
+                          app={app}
+                          resyncingId={resyncingId}
+                          resendingEmailId={resendingEmailId}
+                          onView={setViewDetailApp}
+                          onEditNotes={(a) => {
+                            setEditNotesApp(a);
+                            setAdminNoteText(a.admin_notes || '');
+                          }}
+                          onDeleteConfirm={setDeleteConfirmApp}
+                          onStatusChange={handleStatusChange}
+                          onSingleResync={handleSingleResync}
+                          onResendEmail={handleResendEmail}
+                        />
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -931,7 +984,9 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
                       {/* Custom Answers Chips */}
                       {answerEntries.length > 0 && (
                         <div className="space-y-1 pt-2 border-t border-white/5">
-                          {answerEntries.slice(0, 2).map(([k, v]) => renderCustomAnswerChip(k, v))}
+                          {answerEntries.slice(0, 2).map(([k, v]) => (
+                            <CustomAnswerChip key={k} answerKey={k} val={v} />
+                          ))}
                         </div>
                       )}
 
@@ -1049,11 +1104,11 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
       {/* DELETE CONFIRMATION MODAL OVERLAY (CENTERED IN VIEWPORT) */}
       {/* ========================================================= */}
       {deleteConfirmApp && (
-        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
+            initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            exit={{ scale: 0.95, opacity: 0 }}
             className="bg-[#0d121f] border border-red-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl shadow-red-500/10 space-y-5 text-slate-100 relative"
           >
             <div className="flex items-center gap-3">
@@ -1106,11 +1161,11 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
       {/* BULK SYNC CONFIRMATION MODAL OVERLAY */}
       {/* ========================================================= */}
       {bulkSyncConfirmOpen && (
-        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
+            initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            exit={{ scale: 0.95, opacity: 0 }}
             className="bg-[#0d121f] border border-purple-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl shadow-purple-500/10 space-y-5 text-slate-100"
           >
             <div className="flex items-center gap-3">
@@ -1155,7 +1210,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
       {/* VIEW FULL CANDIDATE DETAILS MODAL OVERLAY */}
       {/* ========================================================= */}
       {viewDetailApp && (
-        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -1171,7 +1226,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
               </div>
               <button
                 onClick={() => setViewDetailApp(null)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5"
+                className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1241,7 +1296,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
             <div className="flex justify-end pt-2 border-t border-white/10">
               <button
                 onClick={() => setViewDetailApp(null)}
-                className="px-6 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs font-mono"
+                className="px-6 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs font-mono cursor-pointer"
               >
                 Close
               </button>
@@ -1254,7 +1309,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
       {/* EDIT ADMIN NOTES MODAL OVERLAY */}
       {/* ========================================================= */}
       {editNotesApp && (
-        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -1265,7 +1320,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Edit className="w-5 h-5 text-purple-400" /> Admin Notes
               </h3>
-              <button onClick={() => setEditNotesApp(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setEditNotesApp(null)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1285,13 +1340,13 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
             <div className="flex justify-end gap-3 pt-2 border-t border-white/10">
               <button
                 onClick={() => setEditNotesApp(null)}
-                className="px-4 py-2 rounded-xl bg-white/5 text-slate-300 text-xs font-mono"
+                className="px-4 py-2 rounded-xl bg-white/5 text-slate-300 text-xs font-mono cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveNotes}
-                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs font-mono"
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs font-mono cursor-pointer"
               >
                 Save Notes
               </button>
