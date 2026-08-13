@@ -62,7 +62,7 @@ const CustomAnswerChip = React.memo<{ answerKey: string; val: any }>(({ answerKe
   }
 
   return (
-    <div className="flex items-start gap-1.5 text-[11px] bg-white/[0.04] px-2 py-1 rounded-lg border border-white/10 text-slate-300">
+    <div className="flex items-start gap-1.5 text-[11px] bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/10 text-slate-300">
       <IconComp className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
       <div className="leading-tight">
         <span className="text-slate-400 font-semibold">{answerKey}: </span>
@@ -75,7 +75,7 @@ const CustomAnswerChip = React.memo<{ answerKey: string; val: any }>(({ answerKe
 CustomAnswerChip.displayName = 'CustomAnswerChip';
 
 // ----------------------------------------------------------------------
-// MEMOIZED DESKTOP TABLE ROW COMPONENT (With CSS Containment & Pre-formatted Dates)
+// MEMOIZED DESKTOP TABLE ROW COMPONENT
 // ----------------------------------------------------------------------
 interface TableRowProps {
   app: CandidateApplication;
@@ -141,7 +141,7 @@ const CandidateTableRow = React.memo<TableRowProps>(({
       </td>
 
       {/* Custom Form Answers */}
-      <td className="p-4 max-w-xs">
+      <td className="p-4 max-w-sm">
         {answerEntries.length === 0 ? (
           <span className="text-slate-500 italic text-[11px]">No custom responses</span>
         ) : (
@@ -428,7 +428,7 @@ const CandidateMobileCard = React.memo<TableRowProps>(({
 CandidateMobileCard.displayName = 'CandidateMobileCard';
 
 // ----------------------------------------------------------------------
-// MAIN CANDIDATE APPLICATIONS DASHBOARD MODAL
+// MAIN CANDIDATE APPLICATIONS WORKSPACE COMPONENT (FULL VIEWPORT WORKSPACE LAYOUT)
 // ALL HOOKS ARE DECLARED UNCONDITIONALLY AT THE TOP LEVEL BEFORE ANY RETURN
 // ----------------------------------------------------------------------
 export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProps> = ({
@@ -701,458 +701,458 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   const paginatedApps = filteredApps.slice(startIndex, endIndex);
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] bg-[#050811]/98 flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
-      <div className="rounded-3xl border border-cyan-500/30 w-full max-w-[1440px] my-auto space-y-5 max-h-[96vh] flex flex-col shadow-2xl shadow-cyan-500/10 bg-[#090d16] text-slate-100 overflow-hidden">
-        {/* ========================================================= */}
-        {/* HEADER SECTION */}
-        {/* ========================================================= */}
-        <div className="p-4 sm:p-6 pb-4 border-b border-white/10 shrink-0 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold font-display text-white flex items-center gap-2.5">
-                <FileSpreadsheet className="w-6 h-6 text-cyan-400" />
-                Candidate Applications
-              </h2>
-              <div className="flex items-center gap-2 text-xs font-mono text-cyan-300 mt-1">
-                <span className="text-slate-400 font-medium">Zenemoo</span>
+    /* ========================================================================= */
+    /* FULL VIEWPORT CANDIDATE APPLICATIONS WORKSPACE (NO FLOATING MODAL CARD)  */
+    /* ========================================================================= */
+    <div className="fixed inset-0 z-[99999] w-full h-full min-h-screen bg-[#080c14] text-slate-100 flex flex-col overflow-hidden font-sans">
+      {/* ========================================================= */}
+      {/* FULL WIDTH WORKSPACE HEADER */}
+      {/* ========================================================= */}
+      <header className="px-4 sm:px-6 lg:px-8 py-4 bg-[#0c101c] border-b border-white/10 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-md">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-white flex items-center gap-2.5">
+            <FileSpreadsheet className="w-6 h-6 text-cyan-400" />
+            Candidate Applications
+          </h2>
+          <div className="flex items-center gap-2 text-xs font-mono text-cyan-300 mt-1">
+            <span className="text-slate-400 font-medium">Zenemoo</span>
+            <span className="text-slate-600">•</span>
+            <span className="text-white font-bold">{selectedOpp.title}</span>
+            {selectedOpp.partner_name && (
+              <>
                 <span className="text-slate-600">•</span>
-                <span className="text-white font-bold">{selectedOpp.title}</span>
-                {selectedOpp.partner_name && (
-                  <>
-                    <span className="text-slate-600">•</span>
-                    <span className="text-cyan-400 font-mono">({selectedOpp.partner_name})</span>
-                  </>
-                )}
-                <span className="text-slate-600">•</span>
-                <span className="text-emerald-400 font-semibold">Applications Dashboard</span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {/* Open Google Sheet */}
-              <a
-                href="https://docs.google.com/spreadsheets/d/1TRWH_zKjTtEiUAmQSS0XsA6_OtKc57FtMaDMeoIfjMs/edit?usp=sharing"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-mono font-bold flex items-center gap-2 active:scale-95 cursor-pointer"
-                title="Open Zenemoo Google Sheet in new tab"
-              >
-                <ExternalLink className="w-4 h-4 text-emerald-400" />
-                <span>Open Google Sheet</span>
-              </a>
-
-              {/* Sync All */}
-              <button
-                type="button"
-                disabled={isSyncingBulk}
-                onClick={() => setBulkSyncConfirmOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
-                title="Bulk sync candidate applications to Google Sheets"
-              >
-                <RefreshCw className={`w-4 h-4 text-purple-400 ${isSyncingBulk ? 'animate-spin' : ''}`} />
-                <span>Sync All</span>
-              </button>
-
-              {/* Export Applications */}
-              <ExportButton
-                sectionId="candidate-applications"
-                dataset={programApps.map((app) => {
-                  const flat: Record<string, any> = {
-                    applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
-                    applicant_name: app.applicant_name,
-                    applicant_email: app.applicant_email,
-                    applicant_phone: app.applicant_phone,
-                    opportunity_title: app.opportunity_title,
-                    status: app.status.toUpperCase(),
-                    sync_status: app.sync_status || 'synced',
-                    created_at: app.created_at || new Date().toISOString(),
-                  };
-                  if (app.answers && typeof app.answers === 'object') {
-                    Object.entries(app.answers).forEach(([k, v]) => {
-                      flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-                    });
-                  }
-                  return flat;
-                })}
-                filteredDataset={filteredApps.map((app) => {
-                  const flat: Record<string, any> = {
-                    applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
-                    applicant_name: app.applicant_name,
-                    applicant_email: app.applicant_email,
-                    applicant_phone: app.applicant_phone,
-                    opportunity_title: app.opportunity_title,
-                    status: app.status.toUpperCase(),
-                    sync_status: app.sync_status || 'synced',
-                    created_at: app.created_at || new Date().toISOString(),
-                  };
-                  if (app.answers && typeof app.answers === 'object') {
-                    Object.entries(app.answers).forEach(([k, v]) => {
-                      flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-                    });
-                  }
-                  return flat;
-                })}
-                label="Export"
-                className="px-3.5 py-2 text-xs"
-                showToast={(msg) => showToast(msg, 'info')}
-              />
-
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 cursor-pointer border border-white/10 ml-1"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                <span className="text-cyan-400 font-mono">({selectedOpp.partner_name})</span>
+              </>
+            )}
+            <span className="text-slate-600">•</span>
+            <span className="text-emerald-400 font-semibold">Workspace</span>
           </div>
         </div>
 
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Open Google Sheet */}
+          <a
+            href="https://docs.google.com/spreadsheets/d/1TRWH_zKjTtEiUAmQSS0XsA6_OtKc57FtMaDMeoIfjMs/edit?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer active:scale-95 transition-all"
+            title="Open Zenemoo Google Sheet in new tab"
+          >
+            <ExternalLink className="w-4 h-4 text-emerald-400" />
+            <span>Open Google Sheet</span>
+          </a>
+
+          {/* Sync All */}
+          <button
+            type="button"
+            disabled={isSyncingBulk}
+            onClick={() => setBulkSyncConfirmOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 transition-all"
+            title="Bulk sync candidate applications to Google Sheets"
+          >
+            <RefreshCw className={`w-4 h-4 text-purple-400 ${isSyncingBulk ? 'animate-spin' : ''}`} />
+            <span>Sync All</span>
+          </button>
+
+          {/* Export Applications */}
+          <ExportButton
+            sectionId="candidate-applications"
+            dataset={programApps.map((app) => {
+              const flat: Record<string, any> = {
+                applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
+                applicant_name: app.applicant_name,
+                applicant_email: app.applicant_email,
+                applicant_phone: app.applicant_phone,
+                opportunity_title: app.opportunity_title,
+                status: app.status.toUpperCase(),
+                sync_status: app.sync_status || 'synced',
+                created_at: app.created_at || new Date().toISOString(),
+              };
+              if (app.answers && typeof app.answers === 'object') {
+                Object.entries(app.answers).forEach(([k, v]) => {
+                  flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                });
+              }
+              return flat;
+            })}
+            filteredDataset={filteredApps.map((app) => {
+              const flat: Record<string, any> = {
+                applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
+                applicant_name: app.applicant_name,
+                applicant_email: app.applicant_email,
+                applicant_phone: app.applicant_phone,
+                opportunity_title: app.opportunity_title,
+                status: app.status.toUpperCase(),
+                sync_status: app.sync_status || 'synced',
+                created_at: app.created_at || new Date().toISOString(),
+              };
+              if (app.answers && typeof app.answers === 'object') {
+                Object.entries(app.answers).forEach(([k, v]) => {
+                  flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                });
+              }
+              return flat;
+            })}
+            label="Export"
+            className="px-3.5 py-2 text-xs"
+            showToast={(msg) => showToast(msg, 'info')}
+          />
+
+          {/* Close / Back Button */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 cursor-pointer border border-white/10 ml-1 transition-colors"
+            aria-label="Close workspace"
+            title="Back to Admin Dashboard"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* ========================================================= */}
+      {/* MAIN WORKSPACE BODY — SINGLE NATIVE FULL VIEWPORT SCROLL  */}
+      {/* ========================================================= */}
+      <main
+        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 bg-[#080c14] overscroll-contain"
+        style={{ contain: 'content' }}
+      >
         {/* ========================================================= */}
-        {/* SCROLLABLE DASHBOARD BODY — ISOLATED SMOOTH NATIVE SCROLL */}
+        {/* SEARCH AND FILTER BAR */}
         {/* ========================================================= */}
-        <div
-          className="p-4 sm:p-6 pt-0 space-y-6 overflow-y-auto flex-1 overscroll-contain"
-          style={{ contain: 'content' }}
-        >
-          {/* ========================================================= */}
-          {/* SEARCH AND FILTER BAR */}
-          {/* ========================================================= */}
-          <div className="p-4 rounded-2xl border border-white/10 bg-[#0d121f] space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
-              {/* Search Bar */}
-              <div className="lg:col-span-4 relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, email or ID..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-white/15 text-white placeholder:text-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {/* Status Filter */}
-              <div className="lg:col-span-3">
-                <div className="relative">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/80 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 cursor-pointer appearance-none pr-8 font-bold"
-                  >
-                    <option value="all" className="bg-slate-900">All Statuses</option>
-                    <option value="pending" className="bg-slate-900 text-amber-400">Pending</option>
-                    <option value="shortlisted" className="bg-slate-900 text-cyan-400">Shortlisted</option>
-                    <option value="accepted" className="bg-slate-900 text-emerald-400">Accepted</option>
-                    <option value="rejected" className="bg-slate-900 text-red-400">Rejected</option>
-                  </select>
-                  <Filter className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Date Filter */}
-              <div className="lg:col-span-3">
-                <div className="relative">
-                  <select
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/80 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 cursor-pointer appearance-none pr-8 font-bold"
-                  >
-                    <option value="all" className="bg-slate-900">Select Date Range (All Time)</option>
-                    <option value="today" className="bg-slate-900">Today</option>
-                    <option value="last7" className="bg-slate-900">Last 7 Days</option>
-                    <option value="last30" className="bg-slate-900">Last 30 Days</option>
-                    <option value="thisMonth" className="bg-slate-900">This Month</option>
-                    <option value="custom" className="bg-slate-900">Custom Range...</option>
-                  </select>
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Clear Filters Button */}
-              <div className="lg:col-span-2 flex items-center justify-end">
+        <div className="p-4 sm:p-5 rounded-2xl border border-white/10 bg-[#0d121f] space-y-3 w-full shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+            {/* Search Bar */}
+            <div className="lg:col-span-4 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, email or ID..."
+                className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-slate-900/90 border border-white/15 text-white placeholder:text-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+              />
+              {searchQuery && (
                 <button
                   type="button"
-                  onClick={handleClearFilters}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Clear Filters</span>
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              )}
             </div>
 
-            {/* Custom Date Range Picker */}
-            {dateFilter === 'custom' && (
-              <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-3 text-xs font-mono">
-                <span className="text-slate-400">From:</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-white focus:outline-none focus:border-cyan-500"
-                />
-                <span className="text-slate-400">To:</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-white focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* ========================================================= */}
-          {/* SUMMARY STAT CARDS GRID */}
-          {/* ========================================================= */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total Applications Card */}
-            <div className="p-4 sm:p-5 rounded-2xl border border-cyan-500/20 bg-[#0d121f] flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="text-xs font-mono uppercase tracking-wider text-cyan-400 font-semibold flex items-center gap-1.5">
-                  <Search className="w-3.5 h-3.5 text-cyan-400" />
-                  Total Applications
-                </div>
-                <div className="text-2xl sm:text-3xl font-extrabold font-display text-white">
-                  {summaryCounts.total}
-                </div>
-                <p className="text-[11px] font-mono text-slate-400">All applications received</p>
-              </div>
-              <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-                <Users className="w-6 h-6" />
-              </div>
-            </div>
-
-            {/* Pending Card */}
-            <div className="p-4 sm:p-5 rounded-2xl border border-amber-500/20 bg-[#0d121f] flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  Pending
-                </div>
-                <div className="text-2xl sm:text-3xl font-extrabold font-display text-amber-300">
-                  {summaryCounts.pending}
-                </div>
-                <p className="text-[11px] font-mono text-slate-400">Awaiting review</p>
-              </div>
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                <Clock className="w-6 h-6" />
-              </div>
-            </div>
-
-            {/* Accepted Card */}
-            <div className="p-4 sm:p-5 rounded-2xl border border-emerald-500/20 bg-[#0d121f] flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  Accepted
-                </div>
-                <div className="text-2xl sm:text-3xl font-extrabold font-display text-emerald-300">
-                  {summaryCounts.accepted}
-                </div>
-                <p className="text-[11px] font-mono text-slate-400">Candidates accepted</p>
-              </div>
-              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-            </div>
-
-            {/* Rejected Card */}
-            <div className="p-4 sm:p-5 rounded-2xl border border-red-500/20 bg-[#0d121f] flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="text-xs font-mono uppercase tracking-wider text-red-400 font-semibold flex items-center gap-1.5">
-                  <XCircle className="w-3.5 h-3.5 text-red-400" />
-                  Rejected
-                </div>
-                <div className="text-2xl sm:text-3xl font-extrabold font-display text-red-300">
-                  {summaryCounts.rejected}
-                </div>
-                <p className="text-[11px] font-mono text-slate-400">Not selected</p>
-              </div>
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400">
-                <XCircle className="w-6 h-6" />
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================= */}
-          {/* DESKTOP TABLE VIEW (MD & UP) */}
-          {/* ========================================================= */}
-          <div className="hidden md:block">
-            {filteredApps.length === 0 ? (
-              <div className="p-12 text-center rounded-3xl border border-white/10 bg-[#0d121f] space-y-4">
-                <User className="w-12 h-12 text-slate-500 mx-auto" />
-                <h4 className="text-lg font-bold text-white">No Applications Found</h4>
-                <p className="text-xs font-mono text-slate-400 max-w-md mx-auto">
-                  Try changing your search terms or status/date filters to view matching candidate entries.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  className="px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold inline-flex items-center gap-2 cursor-pointer"
+            {/* Status Filter */}
+            <div className="lg:col-span-3">
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 cursor-pointer appearance-none pr-8 font-bold"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Clear Filters
-                </button>
+                  <option value="all" className="bg-slate-900">All Statuses</option>
+                  <option value="pending" className="bg-slate-900 text-amber-400">Pending</option>
+                  <option value="shortlisted" className="bg-slate-900 text-cyan-400">Shortlisted</option>
+                  <option value="accepted" className="bg-slate-900 text-emerald-400">Accepted</option>
+                  <option value="rejected" className="bg-slate-900 text-red-400">Rejected</option>
+                </select>
+                <Filter className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
-            ) : (
-              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#0d121f]">
-                <table className="w-full text-left font-mono text-xs">
-                  <thead className="bg-white/[0.03] text-slate-300 border-b border-white/10 uppercase text-[10px] tracking-wider font-bold">
-                    <tr>
-                      <th className="p-4">Application ID</th>
-                      <th className="p-4">Applicant Name</th>
-                      <th className="p-4">Contact Info</th>
-                      <th className="p-4">Custom Form Answers</th>
-                      <th className="p-4">Sheet Sync</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4">Date</th>
-                      <th className="p-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-slate-200">
-                    {paginatedApps.map((app) => (
-                      <CandidateTableRow
-                        key={app.id}
-                        app={app}
-                        resyncingId={resyncingId}
-                        resendingEmailId={resendingEmailId}
-                        onView={handleView}
-                        onEditNotes={handleEditNotes}
-                        onDeleteConfirm={handleDeleteConfirm}
-                        onStatusChange={handleStatusChange}
-                        onSingleResync={handleSingleResync}
-                        onResendEmail={handleResendEmail}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+            </div>
 
-          {/* ========================================================= */}
-          {/* MOBILE APPLICATION CARDS (STACKED VIEW FOR MOBILE) */}
-          {/* ========================================================= */}
-          <div className="block md:hidden space-y-4">
-            {filteredApps.length === 0 ? (
-              <div className="p-8 text-center rounded-2xl border border-white/10 bg-[#0d121f] space-y-3">
-                <User className="w-10 h-10 text-slate-500 mx-auto" />
-                <h4 className="text-base font-bold text-white">No Applications Found</h4>
-                <p className="text-xs font-mono text-slate-400">Try clearing filters or search.</p>
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  className="px-4 py-2 rounded-xl bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold"
+            {/* Date Filter */}
+            <div className="lg:col-span-3">
+              <div className="relative">
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 cursor-pointer appearance-none pr-8 font-bold"
                 >
-                  Clear Filters
-                </button>
+                  <option value="all" className="bg-slate-900">Select Date Range (All Time)</option>
+                  <option value="today" className="bg-slate-900">Today</option>
+                  <option value="last7" className="bg-slate-900">Last 7 Days</option>
+                  <option value="last30" className="bg-slate-900">Last 30 Days</option>
+                  <option value="thisMonth" className="bg-slate-900">This Month</option>
+                  <option value="custom" className="bg-slate-900">Custom Range...</option>
+                </select>
+                <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
-            ) : (
-              paginatedApps.map((app) => (
-                <CandidateMobileCard
-                  key={app.id}
-                  app={app}
-                  resyncingId={resyncingId}
-                  resendingEmailId={resendingEmailId}
-                  onView={handleView}
-                  onEditNotes={handleEditNotes}
-                  onDeleteConfirm={handleDeleteConfirm}
-                  onStatusChange={handleStatusChange}
-                  onSingleResync={handleSingleResync}
-                  onResendEmail={handleResendEmail}
-                />
-              ))
-            )}
+            </div>
+
+            {/* Clear Filters Button */}
+            <div className="lg:col-span-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear Filters</span>
+              </button>
+            </div>
           </div>
 
-          {/* ========================================================= */}
-          {/* PAGINATION FOOTER */}
-          {/* ========================================================= */}
-          {totalFilteredCount > 0 && (
-            <div className="p-4 rounded-2xl border border-white/10 bg-[#0d121f] flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs text-slate-400">
-              <div>
-                Showing <span className="text-white font-bold">{startIndex + 1}</span> to{' '}
-                <span className="text-white font-bold">{endIndex}</span> of{' '}
-                <span className="text-cyan-400 font-bold">{totalFilteredCount}</span> applications
-              </div>
-
-              <div className="flex items-center gap-3">
-                {/* Page Size Selector */}
-                <div className="flex items-center gap-1.5">
-                  <span>Show:</span>
-                  <select
-                    value={pageSize}
-                    onChange={(e) => setPageSize(Number(e.target.value))}
-                    className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/15 text-white focus:outline-none text-xs font-bold cursor-pointer"
-                  >
-                    <option value={10}>10 / page</option>
-                    <option value={25}>25 / page</option>
-                    <option value={50}>50 / page</option>
-                  </select>
-                </div>
-
-                {/* Navigation Buttons */}
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    disabled={validCurrentPage <= 1}
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 cursor-pointer"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
-                    .map((p, idx, arr) => {
-                      const prev = arr[idx - 1];
-                      const showEllipsis = prev && p - prev > 1;
-
-                      return (
-                        <React.Fragment key={p}>
-                          {showEllipsis && <span className="px-1 text-slate-600">...</span>}
-                          <button
-                            type="button"
-                            onClick={() => setCurrentPage(p)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold font-mono cursor-pointer ${
-                              p === validCurrentPage
-                                ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-md shadow-cyan-500/20'
-                                : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
-                            }`}
-                          >
-                            {p}
-                          </button>
-                        </React.Fragment>
-                      );
-                    })}
-
-                  <button
-                    type="button"
-                    disabled={validCurrentPage >= totalPages}
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 cursor-pointer"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+          {/* Custom Date Range Picker */}
+          {dateFilter === 'custom' && (
+            <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-3 text-xs font-mono">
+              <span className="text-slate-400">From:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-white focus:outline-none focus:border-cyan-500"
+              />
+              <span className="text-slate-400">To:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-white focus:outline-none focus:border-cyan-500"
+              />
             </div>
           )}
         </div>
-      </div>
+
+        {/* ========================================================= */}
+        {/* SUMMARY STAT CARDS GRID */}
+        {/* ========================================================= */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 w-full">
+          {/* Total Applications Card */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-cyan-500/20 bg-[#0d121f] flex items-center justify-between shadow-sm">
+            <div className="space-y-1">
+              <div className="text-xs font-mono uppercase tracking-wider text-cyan-400 font-semibold flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5 text-cyan-400" />
+                Total Applications
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold font-display text-white">
+                {summaryCounts.total}
+              </div>
+              <p className="text-[11px] font-mono text-slate-400">All applications received</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <Users className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Pending Card */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-amber-500/20 bg-[#0d121f] flex items-center justify-between shadow-sm">
+            <div className="space-y-1">
+              <div className="text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                Pending
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold font-display text-amber-300">
+                {summaryCounts.pending}
+              </div>
+              <p className="text-[11px] font-mono text-slate-400">Awaiting review</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+              <Clock className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Accepted Card */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-emerald-500/20 bg-[#0d121f] flex items-center justify-between shadow-sm">
+            <div className="space-y-1">
+              <div className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                Accepted
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold font-display text-emerald-300">
+                {summaryCounts.accepted}
+              </div>
+              <p className="text-[11px] font-mono text-slate-400">Candidates accepted</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Rejected Card */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-red-500/20 bg-[#0d121f] flex items-center justify-between shadow-sm">
+            <div className="space-y-1">
+              <div className="text-xs font-mono uppercase tracking-wider text-red-400 font-semibold flex items-center gap-1.5">
+                <XCircle className="w-3.5 h-3.5 text-red-400" />
+                Rejected
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold font-display text-red-300">
+                {summaryCounts.rejected}
+              </div>
+              <p className="text-[11px] font-mono text-slate-400">Not selected</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400">
+              <XCircle className="w-6 h-6" />
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* DESKTOP TABLE VIEW (MD & UP) */}
+        {/* ========================================================= */}
+        <div className="hidden md:block w-full">
+          {filteredApps.length === 0 ? (
+            <div className="p-12 text-center rounded-3xl border border-white/10 bg-[#0d121f] space-y-4 w-full">
+              <User className="w-12 h-12 text-slate-500 mx-auto" />
+              <h4 className="text-lg font-bold text-white">No Applications Found</h4>
+              <p className="text-xs font-mono text-slate-400 max-w-md mx-auto">
+                Try changing your search terms or status/date filters to view matching candidate entries.
+              </p>
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold inline-flex items-center gap-2 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Clear Filters
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#0d121f] w-full">
+              <table className="w-full text-left font-mono text-xs">
+                <thead className="bg-white/[0.03] text-slate-300 border-b border-white/10 uppercase text-[10px] tracking-wider font-bold">
+                  <tr>
+                    <th className="p-4">Application ID</th>
+                    <th className="p-4">Applicant Name</th>
+                    <th className="p-4">Contact Info</th>
+                    <th className="p-4">Custom Form Answers</th>
+                    <th className="p-4">Sheet Sync</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Date</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-slate-200">
+                  {paginatedApps.map((app) => (
+                    <CandidateTableRow
+                      key={app.id}
+                      app={app}
+                      resyncingId={resyncingId}
+                      resendingEmailId={resendingEmailId}
+                      onView={handleView}
+                      onEditNotes={handleEditNotes}
+                      onDeleteConfirm={handleDeleteConfirm}
+                      onStatusChange={handleStatusChange}
+                      onSingleResync={handleSingleResync}
+                      onResendEmail={handleResendEmail}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ========================================================= */}
+        {/* MOBILE APPLICATION CARDS (STACKED VIEW FOR MOBILE) */}
+        {/* ========================================================= */}
+        <div className="block md:hidden space-y-4 w-full">
+          {filteredApps.length === 0 ? (
+            <div className="p-8 text-center rounded-2xl border border-white/10 bg-[#0d121f] space-y-3 w-full">
+              <User className="w-10 h-10 text-slate-500 mx-auto" />
+              <h4 className="text-base font-bold text-white">No Applications Found</h4>
+              <p className="text-xs font-mono text-slate-400">Try clearing filters or search.</p>
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="px-4 py-2 rounded-xl bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold"
+              >
+                Clear Filters
+              </button>
+            </div>
+          ) : (
+            paginatedApps.map((app) => (
+              <CandidateMobileCard
+                key={app.id}
+                app={app}
+                resyncingId={resyncingId}
+                resendingEmailId={resendingEmailId}
+                onView={handleView}
+                onEditNotes={handleEditNotes}
+                onDeleteConfirm={handleDeleteConfirm}
+                onStatusChange={handleStatusChange}
+                onSingleResync={handleSingleResync}
+                onResendEmail={handleResendEmail}
+              />
+            ))
+          )}
+        </div>
+
+        {/* ========================================================= */}
+        {/* PAGINATION FOOTER */}
+        {/* ========================================================= */}
+        {totalFilteredCount > 0 && (
+          <div className="p-4 rounded-2xl border border-white/10 bg-[#0d121f] flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs text-slate-400 w-full">
+            <div>
+              Showing <span className="text-white font-bold">{startIndex + 1}</span> to{' '}
+              <span className="text-white font-bold">{endIndex}</span> of{' '}
+              <span className="text-cyan-400 font-bold">{totalFilteredCount}</span> applications
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Page Size Selector */}
+              <div className="flex items-center gap-1.5">
+                <span>Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/15 text-white focus:outline-none text-xs font-bold cursor-pointer"
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+              </div>
+
+              {/* Navigation Buttons */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={validCurrentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                  .map((p, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev && p - prev > 1;
+
+                    return (
+                      <React.Fragment key={p}>
+                        {showEllipsis && <span className="px-1 text-slate-600">...</span>}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(p)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold font-mono cursor-pointer ${
+                            p === validCurrentPage
+                              ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-md shadow-cyan-500/20'
+                              : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+
+                <button
+                  type="button"
+                  disabled={validCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
 
       {/* ========================================================= */}
       {/* DELETE CONFIRMATION MODAL OVERLAY (CENTERED IN VIEWPORT) */}
