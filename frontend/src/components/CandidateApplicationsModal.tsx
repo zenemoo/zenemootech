@@ -429,6 +429,7 @@ CandidateMobileCard.displayName = 'CandidateMobileCard';
 
 // ----------------------------------------------------------------------
 // MAIN CANDIDATE APPLICATIONS DASHBOARD MODAL
+// ALL HOOKS ARE DECLARED UNCONDITIONALLY AT THE TOP LEVEL BEFORE ANY RETURN
 // ----------------------------------------------------------------------
 export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProps> = ({
   isOpen,
@@ -438,7 +439,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   onUpdateApps,
   showToast
 }) => {
-  // Search & Filter state
+  // 1. ALL useState HOOKS
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -447,11 +448,9 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Action Modals State
   const [deleteConfirmApp, setDeleteConfirmApp] = useState<CandidateApplication | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -465,18 +464,17 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   const [editNotesApp, setEditNotesApp] = useState<CandidateApplication | null>(null);
   const [adminNoteText, setAdminNoteText] = useState('');
 
-  // Reset page when filters change
+  // 2. ALL useEffect HOOKS
   useEffect(() => {
     setCurrentPage(1);
   }, [deferredSearchQuery, statusFilter, dateFilter, startDate, endDate, pageSize, selectedOpp]);
 
-  // 1. Applications belonging to current program
+  // 3. ALL useMemo HOOKS
   const programApps = useMemo(() => {
     if (!selectedOpp) return [];
     return (allCandidateApps || []).filter((a) => a.opportunity_id === selectedOpp.id);
   }, [allCandidateApps, selectedOpp]);
 
-  // 2. Fast single-pass summary counts
   const summaryCounts = useMemo(() => {
     let total = 0;
     let pending = 0;
@@ -496,7 +494,6 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     return { total, pending, accepted, rejected, shortlisted };
   }, [programApps]);
 
-  // 3. High-performance Filtered applications with deferred search
   const filteredApps = useMemo(() => {
     if (!selectedOpp) return [];
 
@@ -563,18 +560,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     });
   }, [programApps, statusFilter, deferredSearchQuery, dateFilter, startDate, endDate, selectedOpp]);
 
-  // Early return if modal is not open
-  if (!isOpen || !selectedOpp) return null;
-
-  // Pagination calculations
-  const totalFilteredCount = filteredApps.length;
-  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
-  const validCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = (validCurrentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
-  const paginatedApps = filteredApps.slice(startIndex, endIndex);
-
-  // Memoized Handlers to prevent re-creating functions on every render
+  // 4. ALL useCallback HOOKS (DECLARED UNCONDITIONALLY HERE BEFORE ANY RETURN)
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('all');
@@ -700,6 +686,19 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
       showToast(`Failed to save notes: ${err.message}`, 'error');
     }
   }, [editNotesApp, adminNoteText, onUpdateApps, showToast]);
+
+  // =========================================================================
+  // ABSOLUTELY NO HOOKS BELOW THIS LINE! SAFE EARLY RETURN
+  // =========================================================================
+  if (!isOpen || !selectedOpp) return null;
+
+  // Pagination calculations
+  const totalFilteredCount = filteredApps.length;
+  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalFilteredCount);
+  const paginatedApps = filteredApps.slice(startIndex, endIndex);
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] bg-[#050811]/98 flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
