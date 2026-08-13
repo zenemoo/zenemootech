@@ -274,17 +274,17 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
   const isComingSoon = opportunity.status === 'coming_soon';
   const hasQuestions = Boolean(opportunity.custom_questions && opportunity.custom_questions.length > 0);
 
-  const hasSocialOrCommLinks = Boolean(
-    opportunity.whatsapp_group_url ||
-    opportunity.whatsapp_channel_url ||
-    opportunity.telegram_url ||
-    opportunity.linkedin_post_url ||
-    opportunity.facebook_post_url ||
-    opportunity.instagram_url ||
-    opportunity.youtube_url ||
-    opportunity.other_social_url ||
-    opportunity.application_post_url ||
-    opportunity.pdf_link
+  const hasPublicCommLinks = Boolean(
+    opportunity.pdf_link?.trim() ||
+    opportunity.whatsapp_channel_url?.trim() ||
+    opportunity.telegram_url?.trim() ||
+    opportunity.linkedin_post_url?.trim() ||
+    opportunity.facebook_post_url?.trim() ||
+    opportunity.instagram_url?.trim() ||
+    opportunity.youtube_url?.trim() ||
+    opportunity.other_social_url?.trim() ||
+    opportunity.application_post_url?.trim() ||
+    opportunity.contact_support_url?.trim()
   );
 
   return (
@@ -630,55 +630,14 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
               </button>
 
               {/* COMMUNICATION & OFFICIAL LINKS ON RIGHT COLUMN */}
-              {hasSocialOrCommLinks && (
+              {hasPublicCommLinks && (
                 <div className="glass-panel p-6 rounded-3xl border border-cyan-500/30 space-y-4 shadow-2xl bg-[#090d16]/90">
                   <h3 className="text-xs font-mono uppercase font-bold text-cyan-300 flex items-center gap-2 pb-2 border-b border-white/10">
                     <Share2 className="w-4 h-4 text-cyan-400" /> Communication &amp; Official Links
                   </h3>
 
                   <div className="flex flex-col gap-2.5 pt-1">
-                    {opportunity.whatsapp_group_url && opportunity.whatsapp_group_url.trim().length > 0 && (
-                      <a
-                        href={opportunity.whatsapp_group_url.trim()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-3 px-4 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
-                      >
-                        <span className="flex items-center gap-2">
-                          <MessageCircle className="w-4 h-4 text-emerald-400" /> Join WhatsApp Group
-                        </span>
-                        <ExternalLink className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
-                      </a>
-                    )}
-
-                    {opportunity.whatsapp_channel_url && opportunity.whatsapp_channel_url.trim().length > 0 && (
-                      <a
-                        href={opportunity.whatsapp_channel_url.trim()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-3 px-4 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
-                      >
-                        <span className="flex items-center gap-2">
-                          <MessageCircle className="w-4 h-4 text-teal-400" /> WhatsApp Channel
-                        </span>
-                        <ExternalLink className="w-3.5 h-3.5 text-teal-400 group-hover:translate-x-0.5 transition-transform" />
-                      </a>
-                    )}
-
-                    {opportunity.linkedin_post_url && opportunity.linkedin_post_url.trim().length > 0 && (
-                      <a
-                        href={opportunity.linkedin_post_url.trim()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-3 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Linkedin className="w-4 h-4 text-blue-400" /> LinkedIn Announcement
-                        </span>
-                        <ExternalLink className="w-3.5 h-3.5 text-blue-400 group-hover:translate-x-0.5 transition-transform" />
-                      </a>
-                    )}
-
+                    {/* 1ST PRIORITY: DOWNLOAD PDF GUIDELINES */}
                     {opportunity.pdf_link && opportunity.pdf_link.trim().length > 0 && (
                       <a
                         href={opportunity.pdf_link.trim()}
@@ -693,6 +652,37 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* WHATSAPP CHANNEL */}
+                    {opportunity.whatsapp_channel_url && opportunity.whatsapp_channel_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.whatsapp_channel_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4 text-teal-400" /> WhatsApp Channel
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-teal-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {/* LINKEDIN ANNOUNCEMENT */}
+                    {opportunity.linkedin_post_url && opportunity.linkedin_post_url.trim().length > 0 && (
+                      <a
+                        href={opportunity.linkedin_post_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Linkedin className="w-4 h-4 text-blue-400" /> LinkedIn Announcement
+                        </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-blue-400 group-hover:translate-x-0.5 transition-transform" />
+                      </a>
+                    )}
+
+                    {/* FACEBOOK POST */}
                     {opportunity.facebook_post_url && opportunity.facebook_post_url.trim().length > 0 && (
                       <a
                         href={opportunity.facebook_post_url.trim()}
@@ -707,6 +697,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* INSTAGRAM ANNOUNCEMENT */}
                     {opportunity.instagram_url && opportunity.instagram_url.trim().length > 0 && (
                       <a
                         href={opportunity.instagram_url.trim()}
@@ -721,6 +712,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* TELEGRAM CHANNEL */}
                     {opportunity.telegram_url && opportunity.telegram_url.trim().length > 0 && (
                       <a
                         href={opportunity.telegram_url.trim()}
@@ -735,6 +727,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* YOUTUBE VIDEO */}
                     {opportunity.youtube_url && opportunity.youtube_url.trim().length > 0 && (
                       <a
                         href={opportunity.youtube_url.trim()}
@@ -749,6 +742,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* OFFICIAL PARTNER LINK */}
                     {opportunity.other_social_url && opportunity.other_social_url.trim().length > 0 && (
                       <a
                         href={opportunity.other_social_url.trim()}
@@ -763,6 +757,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* CONTACT SUPPORT */}
                     {opportunity.contact_support_url && opportunity.contact_support_url.trim().length > 0 && (
                       <a
                         href={opportunity.contact_support_url.trim()}
@@ -777,6 +772,7 @@ export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ op
                       </a>
                     )}
 
+                    {/* APPLICATION DETAILS POST */}
                     {opportunity.application_post_url && opportunity.application_post_url.trim().length > 0 && (
                       <a
                         href={opportunity.application_post_url.trim()}
