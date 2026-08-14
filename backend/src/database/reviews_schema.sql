@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
-  reviewer_type TEXT NOT NULL, -- 'contributor' or 'client'
+  reviewer_type TEXT NOT NULL CHECK (reviewer_type IN ('contributor', 'client')),
   rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
   review_text TEXT,
   is_visible BOOLEAN NOT NULL DEFAULT false,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Step 2: Safely add columns if the table already existed with legacy structure
+-- Step 2: Safely add/alter columns if the table already existed with legacy structure
 DO $$ 
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='review_id') THEN
@@ -51,12 +51,17 @@ BEGIN
   END IF;
 END $$;
 
--- Step 4: Create performance indexes
+-- Step 4: Remove any legacy demo / sample records from development
+DELETE FROM reviews 
+WHERE name IN ('Ramesh Kumar', 'Priya Sharma', 'Ankit Verma', 'Sunita Mohanty', 'Rajesh Das')
+   OR review_id IN ('ZEN-REV-A7k9-X2m4', 'ZEN-REV-P4z8-K9q1', 'ZEN-REV-B3m1-W8r7', 'ZEN-REV-L9v4-T2n8', 'ZEN-REV-E5x2-J6k3');
+
+-- Step 5: Create performance indexes
 CREATE INDEX IF NOT EXISTS idx_reviews_visible_created ON reviews (is_visible, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewer_type ON reviews (reviewer_type);
 CREATE INDEX IF NOT EXISTS idx_reviews_rating ON reviews (rating);
 
--- Step 5: Enable Row Level Security (RLS)
+-- Step 6: Enable Row Level Security (RLS)
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 
 -- Drop old policy names if present

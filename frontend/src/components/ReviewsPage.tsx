@@ -53,19 +53,23 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
   const [submittedReview, setSubmittedReview] = useState<ReviewItem | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
-  // Public Reviews List State
+  // Public Reviews List State (Strict Database Source of Truth)
   const [publicReviews, setPublicReviews] = useState<ReviewItem[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [publicFilter, setPublicFilter] = useState<'all' | 'contributor' | 'client'>('all');
 
-  // Load public reviews
+  // Load public reviews directly from Supabase
   const loadPublicReviews = async () => {
     setLoadingReviews(true);
+    setFetchError(null);
     try {
       const data = await getPublicVisibleReviews();
       setPublicReviews(data);
-    } catch (e) {
-      console.warn('Failed to load public reviews');
+    } catch (e: any) {
+      console.error('Failed to load public reviews from Supabase:', e);
+      setPublicReviews([]);
+      setFetchError(e.message || 'Unable to load reviews from database.');
     } finally {
       setLoadingReviews(false);
     }
@@ -76,7 +80,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
     window.scrollTo(0, 0);
   }, []);
 
-  // Filter public reviews
+  // Filter public reviews from database
   const filteredPublicReviews = useMemo(() => {
     return publicReviews.filter((r) => {
       if (publicFilter === 'contributor') {
@@ -106,7 +110,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
     return Object.keys(newErrors).length === 0;
   };
 
-  // Form Submission
+  // Form Submission (Must strictly succeed in Supabase before showing success modal)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setToastMessage(null);
@@ -129,7 +133,9 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
         review_text: reviewText,
       });
 
+      // Database insertion verified!
       setSubmittedReview(created);
+
       // Reset form fields
       setFullName('');
       setReviewerType('');
@@ -137,8 +143,10 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
       setReviewText('');
       setErrors({});
     } catch (err: any) {
+      console.error('Review submission database error:', err);
+      // DO NOT show success screen if database insert fails
       setToastMessage({
-        text: 'Failed to submit review. Please try again.',
+        text: "We couldn't submit your review right now. Please try again.",
         type: 'error',
       });
     } finally {
@@ -171,6 +179,14 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
     setTimeout(() => setCopiedId(false), 2500);
   };
 
+  // Scroll to Form Card
+  const scrollToForm = () => {
+    const el = document.getElementById('review-form-card');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   // Helpers: Formatting strings cleanly
   const formatReviewText = (text?: string | null) => {
     if (!text || !text.trim()) return null;
@@ -201,7 +217,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
       const d = new Date(isoString);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch (e) {
-      return 'May 2025';
+      return 'Recent';
     }
   };
 
@@ -236,7 +252,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
               </p>
             </div>
 
-            {/* Visual Artwork Card (Matching design mockup) */}
+            {/* Visual Artwork Card */}
             <div className="relative rounded-3xl bg-gradient-to-b from-white/[0.06] to-white/[0.01] p-8 border border-white/10 backdrop-blur-xl shadow-2xl overflow-hidden group">
               <div className="absolute -top-16 -right-16 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none group-hover:bg-cyan-500/30 transition-all duration-500" />
               <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -249,35 +265,16 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                   ))}
                 </div>
 
-                {/* Glowing Avatar Nodes Illustration */}
-                <div className="flex items-center justify-center -space-x-3 pt-2">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-teal-400 p-[2px] shadow-lg shadow-cyan-500/30">
-                    <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-cyan-300 font-bold text-xs">
-                      RK
-                    </div>
-                  </div>
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 p-[2px] shadow-xl shadow-purple-500/40 z-10 scale-110">
-                    <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-purple-300 font-bold text-sm">
-                      PS
-                    </div>
-                  </div>
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-400 p-[2px] shadow-lg shadow-blue-500/30">
-                    <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-blue-300 font-bold text-xs">
-                      AV
-                    </div>
-                  </div>
-                </div>
-
                 <div className="text-xs font-mono text-slate-300 space-y-1">
                   <div className="font-bold text-white">Community &amp; Partner Voices</div>
-                  <div className="text-[11px] text-slate-400">100% Verified Feedback &amp; Moderated Reviews</div>
+                  <div className="text-[11px] text-slate-400">100% Database-Backed &amp; Moderated Reviews</div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Right Column: Review Submission Form Card */}
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-7" id="review-form-card">
             <div className="glass-panel p-6 sm:p-10 rounded-3xl border border-cyan-500/30 shadow-2xl shadow-cyan-950/40 relative">
               
               {/* Form Title */}
@@ -294,7 +291,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                 <div className="text-[11px] font-mono text-cyan-400 font-bold">* Required</div>
               </div>
 
-              {/* Toast Error Alert Message (Inline Custom Zenemoo Notification) */}
+              {/* Toast Error Alert Message (Inline Custom Notification) */}
               {toastMessage && (
                 <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono flex items-center gap-3 animate-fade-in">
                   <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
@@ -508,7 +505,10 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                   className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-teal-400 to-purple-500 hover:from-cyan-400 hover:to-purple-400 text-black font-extrabold font-mono text-sm uppercase tracking-wider transition-all duration-300 shadow-xl shadow-cyan-500/25 hover:shadow-cyan-400/40 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
-                    <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    <>
+                      <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      <span>Submitting Review...</span>
+                    </>
                   ) : (
                     <>
                       <span>Submit Review</span>
@@ -574,17 +574,33 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
             </div>
           </div>
 
-          {/* Review Cards Grid */}
+          {/* Review Cards Grid or Empty State */}
           {loadingReviews ? (
             <div className="p-12 text-center text-slate-400 font-mono text-xs">
               <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              Loading verified reviews...
+              Loading verified reviews from database...
             </div>
           ) : filteredPublicReviews.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 font-mono text-xs glass-panel rounded-3xl border border-white/10">
-              <MessageSquare className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <div className="text-white font-bold text-sm">No reviews in this category yet.</div>
-              <p className="text-slate-500">Be the first to share your experience!</p>
+            /* PROFESSIONAL EMPTY STATE (Strictly required when database contains zero published reviews) */
+            <div className="p-12 text-center text-slate-300 font-mono text-xs glass-panel rounded-3xl border border-white/10 space-y-4 max-w-lg mx-auto shadow-2xl">
+              <div className="w-14 h-14 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/10">
+                <MessageSquare className="w-7 h-7" />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-xl font-bold font-display text-white">No reviews yet</h3>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  Be the first to share your experience with Zenemoo.
+                </p>
+              </div>
+
+              <button
+                onClick={scrollToForm}
+                className="px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs uppercase tracking-wider transition-all shadow-lg shadow-cyan-500/20 cursor-pointer inline-flex items-center gap-2"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Write a Review</span>
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -599,7 +615,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                     className="glass-panel p-6 rounded-3xl border border-white/10 hover:border-cyan-500/30 transition-all duration-300 space-y-4 flex flex-col justify-between group shadow-xl"
                   >
                     <div className="space-y-3">
-                      {/* Top Row: Stars + Verified Badge */}
+                      {/* Top Row: Stars + Type Badge */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1">
                           {[1, 2, 3, 4, 5].map((s) => (
@@ -620,13 +636,13 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                           }`}
                         >
                           <ShieldCheck className="w-3 h-3" />
-                          {isContributor ? 'Verified Contributor' : 'Verified Client'}
+                          {isContributor ? 'Contributor' : 'Client'}
                         </span>
                       </div>
 
-                      {/* Review Text (Only rendered if text is present) */}
+                      {/* Review Text (Only rendered if text is present and non-empty) */}
                       {cleanText && (
-                        <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans italic">
+                        <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans italic whitespace-pre-line">
                           "{cleanText}"
                         </p>
                       )}
@@ -663,7 +679,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
         </div>
       </main>
 
-      {/* SUCCESS MODAL (After Review Submission) */}
+      {/* SUCCESS MODAL (Rendered ONLY AFTER Database Insert Succeeds) */}
       {submittedReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
           <div className="glass-panel p-6 sm:p-10 rounded-3xl border border-cyan-500/40 max-w-md w-full relative space-y-6 text-center shadow-2xl shadow-cyan-500/20">

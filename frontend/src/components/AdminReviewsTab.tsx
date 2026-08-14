@@ -34,6 +34,7 @@ interface AdminReviewsTabProps {
 export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) => {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'visible' | 'hidden'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'contributor' | 'client'>('all');
@@ -50,11 +51,15 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
 
   const fetchReviews = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const data = await getAllReviewsForAdmin();
       setReviews(data);
-    } catch (e) {
-      onAddToast('Error', 'Failed to fetch reviews data.', 'error');
+    } catch (e: any) {
+      console.error('Failed to fetch admin reviews from database:', e);
+      setReviews([]);
+      setFetchError(e.message || 'Unable to fetch reviews from database.');
+      onAddToast('Database Error', 'Unable to fetch reviews from database.', 'error');
     } finally {
       setLoading(false);
     }
@@ -80,7 +85,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     return { total, visible, hidden, contributors, clients, avgRating };
   }, [reviews]);
 
-  // Search & Filtering
+  // Search & Filtering on real database records
   const filteredReviews = useMemo(() => {
     return reviews.filter((review) => {
       // Search query filter
@@ -121,36 +126,40 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     return filteredReviews.slice(start, start + pageSize);
   }, [filteredReviews, currentPage]);
 
-  // Handle visibility toggle
+  // Handle visibility toggle directly in Supabase
   const handleToggleVisibility = async (review: ReviewItem) => {
     setTogglingId(review.id);
     const newStatus = !review.is_visible;
     try {
-      const updatedList = await toggleReviewVisibility(review.id, newStatus);
-      setReviews(updatedList);
+      await toggleReviewVisibility(review.id, newStatus);
+      // Re-fetch database to confirm update persisted
+      await fetchReviews();
       onAddToast(
         'Visibility Updated',
-        `Review ${review.review_id} is now ${newStatus ? 'VISIBLE on /review' : 'HIDDEN from public'}`,
+        newStatus ? 'Review is now visible publicly.' : 'Review hidden successfully.',
         newStatus ? 'success' : 'info'
       );
-    } catch (err) {
-      onAddToast('Update Failed', 'Could not update review status.', 'error');
+    } catch (err: any) {
+      console.error('Toggle visibility error:', err);
+      onAddToast('Update Failed', 'Unable to update review visibility. Please try again.', 'error');
     } finally {
       setTogglingId(null);
     }
   };
 
-  // Handle review deletion confirmation
+  // Handle review deletion directly in Supabase
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const updatedList = await deleteReviewFromApi(deleteTarget.id);
-      setReviews(updatedList);
-      onAddToast('Review Deleted', `Review ${deleteTarget.review_id} has been permanently deleted.`, 'success');
+      await deleteReviewFromApi(deleteTarget.id);
+      // Re-fetch database to verify deletion
+      await fetchReviews();
+      onAddToast('Review Deleted', 'Review deleted successfully.', 'success');
       setDeleteTarget(null);
-    } catch (err) {
-      onAddToast('Delete Failed', 'Failed to delete review.', 'error');
+    } catch (err: any) {
+      console.error('Delete review error:', err);
+      onAddToast('Delete Failed', 'Unable to delete this review. Please try again.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -186,7 +195,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-mono font-bold transition-all cursor-pointer disabled:opacity-50 self-start sm:self-auto shadow-sm"
         >
           <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Data</span>
+          <span>Refresh Database</span>
         </button>
       </div>
 
@@ -329,13 +338,17 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
         {loading ? (
           <div className="p-12 text-center text-slate-400 font-mono text-sm space-y-3">
             <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
-            <div>Loading Zenemoo reviews...</div>
+            <div>Loading reviews from Supabase database...</div>
           </div>
         ) : filteredReviews.length === 0 ? (
           <div className="p-12 text-center text-slate-400 font-mono text-xs space-y-2">
             <MessageSquare className="w-8 h-8 text-slate-600 mx-auto" />
-            <div className="text-slate-200 font-bold text-sm">No reviews found</div>
-            <p className="text-slate-500">Try clearing or adjusting your search filters.</p>
+            <div className="text-slate-200 font-bold text-sm">No reviews in database</div>
+            <p className="text-slate-500">
+              {searchQuery || statusFilter !== 'all' || typeFilter !== 'all' || ratingFilter !== 'all'
+                ? 'No database reviews match your selected filters.'
+                : 'No reviews have been submitted to the database yet.'}
+            </p>
           </div>
         ) : (
           <>
@@ -400,9 +413,9 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
 
                         {/* Review Text */}
                         <td className="py-4 px-4 max-w-xs">
-                          {review.review_text ? (
-                            <p className="line-clamp-2 text-slate-300 leading-normal italic text-[11px]">
-                              "{review.review_text}"
+                          {review.review_text && review.review_text.trim() ? (
+                            <p className="line-clamp-2 text-slate-300 leading-normal italic text-[11px] whitespace-pre-line">
+                              "{review.review_text.trim()}"
                             </p>
                           ) : (
                             <span className="text-slate-600 text-[10px] italic">(No written text provided)</span>
@@ -517,12 +530,12 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-xl font-bold font-display text-white">Delete this review?</h3>
+              <h3 className="text-xl font-bold font-display text-white">Delete Review?</h3>
               <p className="text-xs font-mono text-slate-300 leading-relaxed">
                 Are you sure you want to permanently delete review <span className="text-cyan-300 font-bold">{deleteTarget.review_id}</span> by{' '}
                 <span className="text-white font-bold">{deleteTarget.name}</span>?
               </p>
-              <p className="text-[11px] font-mono text-red-400 font-semibold">This action cannot be undone.</p>
+              <p className="text-[11px] font-mono text-red-400 font-semibold">This action will delete the database row permanently.</p>
             </div>
 
             <div className="flex items-center gap-3 pt-2">
@@ -539,7 +552,10 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
                 className="w-1/2 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-red-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {isDeleting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" /> Delete Review

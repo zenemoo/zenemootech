@@ -12,63 +12,7 @@ export interface ReviewItem {
   updated_at?: string | null;
 }
 
-const LOCAL_STORAGE_KEY = 'zenemoo_reviews_db';
-
-// Initial seed reviews shown if database is fresh / empty
-const INITIAL_SEED_REVIEWS: ReviewItem[] = [
-  {
-    id: 'rev_seed_1',
-    review_id: 'ZEN-REV-A7k9-X2m4',
-    name: 'Ramesh Kumar',
-    reviewer_type: 'contributor',
-    rating: 5,
-    review_text: 'Great platform to work with. Clear instructions, timely payments, and supportive team.',
-    is_visible: true,
-    created_at: '2025-05-10T10:30:00.000Z',
-  },
-  {
-    id: 'rev_seed_2',
-    review_id: 'ZEN-REV-P4z8-K9q1',
-    name: 'Priya Sharma',
-    reviewer_type: 'client',
-    rating: 5,
-    review_text: 'Zenemoo delivers high-quality work and maintains excellent communication throughout projects.',
-    is_visible: true,
-    created_at: '2025-05-08T14:15:00.000Z',
-  },
-  {
-    id: 'rev_seed_3',
-    review_id: 'ZEN-REV-B3m1-W8r7',
-    name: 'Ankit Verma',
-    reviewer_type: 'contributor',
-    rating: 5,
-    review_text: 'Professional team and smooth workflow. Highly recommended for AI data projects.',
-    is_visible: true,
-    created_at: '2025-05-05T09:00:00.000Z',
-  },
-  {
-    id: 'rev_seed_4',
-    review_id: 'ZEN-REV-L9v4-T2n8',
-    name: 'Sunita Mohanty',
-    reviewer_type: 'contributor',
-    rating: 4,
-    review_text: 'Very structured datasets and clear guidelines for speech annotation. Enjoyed working with the team.',
-    is_visible: true,
-    created_at: '2025-04-28T16:45:00.000Z',
-  },
-  {
-    id: 'rev_seed_5',
-    review_id: 'ZEN-REV-E5x2-J6k3',
-    name: 'Rajesh Das',
-    reviewer_type: 'client',
-    rating: 5,
-    review_text: 'Exceptionally accurate Odia and Hindi transcription data delivered ahead of deadline.',
-    is_visible: true,
-    created_at: '2025-04-20T11:20:00.000Z',
-  },
-];
-
-// Helper: Generate unique Review ID in ZEN-REV-XXXX-XXXX format
+// Helper: Generate unique Review ID in ZEN-REV-XXXX-XXXX format (mix of uppercase, lowercase, numbers)
 export const generateUniqueReviewId = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let part1 = '';
@@ -80,157 +24,145 @@ export const generateUniqueReviewId = (): string => {
   return `ZEN-REV-${part1}-${part2}`;
 };
 
-// Helper: Read local storage reviews cache
-const getLocalReviews = (): ReviewItem[] => {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {}
-  // If local storage is empty, initialize with seed reviews
-  saveLocalReviews(INITIAL_SEED_REVIEWS);
-  return INITIAL_SEED_REVIEWS;
-};
-
-// Helper: Save to local storage reviews cache
-const saveLocalReviews = (list: ReviewItem[]): ReviewItem[] => {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-  } catch (e) {}
-  return list;
-};
-
-// Public API: Fetch published (visible) reviews ordered newest first
+/**
+ * Public API: Fetch published (visible) reviews directly from Supabase ordered newest first.
+ * Database is the SINGLE SOURCE OF TRUTH. No fake/demo data or local storage fallbacks.
+ */
 export const getPublicVisibleReviews = async (): Promise<ReviewItem[]> => {
-  try {
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('is_visible', true)
-      .order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('is_visible', true)
+    .order('created_at', { ascending: false });
 
-    if (!error && Array.isArray(data) && data.length > 0) {
-      return data as ReviewItem[];
-    }
-  } catch (err: any) {
-    console.warn('Direct Supabase fetch public reviews notice:', err.message);
+  if (error) {
+    console.error('Supabase fetch public reviews error:', error);
+    throw new Error(error.message || 'Unable to fetch reviews from database.');
   }
 
-  // Fallback to visible local cache
-  const local = getLocalReviews();
-  return local.filter((r) => r.is_visible);
+  return (data as ReviewItem[]) || [];
 };
 
-// Admin API: Fetch all reviews (both visible and hidden) ordered newest first
+/**
+ * Admin API: Fetch ALL reviews directly from Supabase ordered newest first.
+ */
 export const getAllReviewsForAdmin = async (): Promise<ReviewItem[]> => {
-  try {
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-    if (!error && Array.isArray(data) && data.length > 0) {
-      saveLocalReviews(data as ReviewItem[]);
-      return data as ReviewItem[];
-    }
-  } catch (err: any) {
-    console.warn('Direct Supabase fetch all reviews notice:', err.message);
+  if (error) {
+    console.error('Supabase fetch admin reviews error:', error);
+    throw new Error(error.message || 'Unable to fetch admin reviews from database.');
   }
 
-  return getLocalReviews();
+  return (data as ReviewItem[]) || [];
 };
 
-// Public API: Submit new review (default is_visible = false)
+/**
+ * Public API: Submit new review directly to Supabase.
+ * - Validates input
+ * - Generates unique review_id (ZEN-REV-XXXX-XXXX)
+ * - Sets default is_visible = false (Pending/Hidden)
+ * - Retries if review_id collision occurs
+ * - Throws Error if database insertion fails
+ */
 export const submitPublicReview = async (reviewData: {
   name: string;
   reviewer_type: string;
   rating: number;
   review_text?: string;
 }): Promise<ReviewItem> => {
-  const review_id = generateUniqueReviewId();
-  const now = new Date().toISOString();
+  // Validate inputs
+  const cleanName = reviewData.name ? reviewData.name.trim() : '';
+  if (!cleanName) {
+    throw new Error('Full Name is required');
+  }
 
-  const newRecord: Partial<ReviewItem> = {
-    review_id,
-    name: reviewData.name.trim(),
-    reviewer_type: reviewData.reviewer_type,
-    rating: reviewData.rating,
-    review_text: reviewData.review_text ? reviewData.review_text.trim() : null,
-    is_visible: false,
-    created_at: now,
-    updated_at: now,
-  };
+  const cleanType = (reviewData.reviewer_type || '').toLowerCase();
+  if (cleanType !== 'contributor' && cleanType !== 'client') {
+    throw new Error('Reviewer type must be contributor or client');
+  }
 
-  let savedItem: ReviewItem | null = null;
+  const cleanRating = Math.min(5, Math.max(1, Math.round(reviewData.rating || 0)));
+  if (cleanRating < 1 || cleanRating > 5) {
+    throw new Error('Rating must be between 1 and 5 stars');
+  }
 
-  try {
+  const cleanText = reviewData.review_text && reviewData.review_text.trim() ? reviewData.review_text.trim() : null;
+
+  // Insert into Supabase with collision retry
+  let attempts = 0;
+  let lastError: any = null;
+
+  while (attempts < 3) {
+    attempts++;
+    const review_id = generateUniqueReviewId();
+
+    const payload = {
+      review_id,
+      name: cleanName,
+      reviewer_type: cleanType,
+      rating: cleanRating,
+      review_text: cleanText,
+      is_visible: false,
+    };
+
     const { data, error } = await supabase
       .from('reviews')
-      .insert([newRecord])
+      .insert([payload])
       .select()
       .single();
 
     if (!error && data) {
-      savedItem = data as ReviewItem;
+      return data as ReviewItem;
     }
-  } catch (err: any) {
-    console.warn('Direct Supabase insert review notice:', err.message);
+
+    lastError = error;
+    console.error(`Supabase review insertion attempt ${attempts} failed:`, error);
+
+    // If error is not a unique constraint violation on review_id, don't retry
+    if (error && !error.message?.includes('review_id') && !error.details?.includes('review_id')) {
+      break;
+    }
   }
 
-  if (!savedItem) {
-    savedItem = {
-      id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      ...newRecord,
-    } as ReviewItem;
-  }
-
-  // Update local storage
-  const current = getLocalReviews();
-  saveLocalReviews([savedItem, ...current]);
-
-  return savedItem;
+  throw new Error(lastError?.message || "We couldn't submit your review right now. Please try again.");
 };
 
-// Admin API: Toggle review visibility state
-export const toggleReviewVisibility = async (id: string, newVisibility: boolean): Promise<ReviewItem[]> => {
+/**
+ * Admin API: Toggle review visibility state in Supabase.
+ */
+export const toggleReviewVisibility = async (id: string, newVisibility: boolean): Promise<ReviewItem> => {
   const now = new Date().toISOString();
 
-  try {
-    await supabase
-      .from('reviews')
-      .update({ is_visible: newVisibility, updated_at: now })
-      .or(`id.eq.${id},review_id.eq.${id}`);
-  } catch (err: any) {
-    console.warn('Direct Supabase toggle review visibility notice:', err.message);
+  const { data, error } = await supabase
+    .from('reviews')
+    .update({ is_visible: newVisibility, updated_at: now })
+    .or(`id.eq.${id},review_id.eq.${id}`)
+    .select()
+    .single();
+
+  if (error || !data) {
+    console.error('Supabase toggle visibility error:', error);
+    throw new Error(error?.message || 'Unable to update review visibility. Please try again.');
   }
 
-  const local = getLocalReviews().map((r) => {
-    if (r.id === id || r.review_id === id) {
-      return { ...r, is_visible: newVisibility, updated_at: now };
-    }
-    return r;
-  });
-
-  saveLocalReviews(local);
-  return getAllReviewsForAdmin();
+  return data as ReviewItem;
 };
 
-// Admin API: Delete review
-export const deleteReviewFromApi = async (id: string): Promise<ReviewItem[]> => {
-  try {
-    await supabase
-      .from('reviews')
-      .delete()
-      .or(`id.eq.${id},review_id.eq.${id}`);
-  } catch (err: any) {
-    console.warn('Direct Supabase delete review notice:', err.message);
-  }
+/**
+ * Admin API: Delete review permanently from Supabase.
+ */
+export const deleteReviewFromApi = async (id: string): Promise<void> => {
+  const { error } = await supabase
+    .from('reviews')
+    .delete()
+    .or(`id.eq.${id},review_id.eq.${id}`);
 
-  const local = getLocalReviews().filter((r) => r.id !== id && r.review_id !== id);
-  saveLocalReviews(local);
-  return getAllReviewsForAdmin();
+  if (error) {
+    console.error('Supabase delete review error:', error);
+    throw new Error(error.message || 'Unable to delete this review. Please try again.');
+  }
 };
