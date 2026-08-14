@@ -122,6 +122,24 @@ CREATE TABLE media (
 -- ALTER TABLE media ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 -- ALTER TABLE media ADD COLUMN IF NOT EXISTS updated_by TEXT;
 
+-- Table 4B: site_branding
+CREATE TABLE IF NOT EXISTS site_branding (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  asset_type TEXT DEFAULT 'site_logo',
+  asset_name TEXT DEFAULT 'Zenemoo Official Site Logo',
+  cloudinary_public_id TEXT,
+  cloudinary_secure_url TEXT NOT NULL,
+  resource_type TEXT DEFAULT 'image',
+  format TEXT DEFAULT 'png',
+  width INTEGER DEFAULT 0,
+  height INTEGER DEFAULT 0,
+  version TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_by TEXT DEFAULT 'admin'
+);
+
 
 -- Table 5: partners
 CREATE TABLE partners (

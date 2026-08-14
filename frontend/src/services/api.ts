@@ -191,6 +191,16 @@ export const settingsApi = {
   update: (data: any) => api.put('/settings', data),
 };
 
+// Site Branding & Brand Logo Management APIs
+export const brandingApi = {
+  getActiveLogo: () => api.get('/branding/active'),
+  uploadLogo: (formData: FormData) =>
+    api.post('/branding/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  deleteLogo: () => api.delete('/branding/logo'),
+};
+
 // Cloudinary + Supabase Media APIs
 export const mediaApi = {
   getAll: () => api.get('/media'),

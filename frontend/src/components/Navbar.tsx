@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, ArrowLeft, Briefcase, Home, Star } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
+import { useActiveLogo } from '../lib/useActiveLogo';
 
 interface NavbarProps {
   onBack?: () => void;
@@ -11,6 +12,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAiDrawer }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { logoUrl, isLoading } = useActiveLogo();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -42,16 +44,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
         <div className="flex items-center justify-between">
           {/* Logo & Company Name (ZENEMOO) */}
           <a href="/" className="flex items-center gap-3 group shrink-0">
-            <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300">
-              <SeoImage
-                src="/assets/logo.png"
-                alt="Zenemoo Official Logo — Enterprise AI Language & Data Solutions"
-                priority={true}
-                width={44}
-                height={44}
-                className="w-full h-full object-cover rounded-full bg-white p-0.5"
-              />
-            </div>
+            {isLoading ? (
+              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-slate-900 animate-pulse border border-white/10 shrink-0" />
+            ) : (
+              <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300">
+                <SeoImage
+                  src={logoUrl || '/assets/logo.png'}
+                  alt="Zenemoo Official Logo — Enterprise AI Language & Data Solutions"
+                  priority={true}
+                  width={44}
+                  height={44}
+                  className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                  fallbackSrc="/assets/logo.png"
+                />
+              </div>
+            )}
             <span className="text-xl sm:text-2xl font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors">
               ZENEMOO
             </span>
