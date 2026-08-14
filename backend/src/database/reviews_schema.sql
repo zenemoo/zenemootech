@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id TEXT UNIQUE NOT NULL,
   review_slug TEXT,
+  review_fingerprint TEXT,
   name TEXT NOT NULL,
   reviewer_type TEXT NOT NULL CHECK (reviewer_type IN ('contributor', 'client')),
   rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
@@ -25,6 +26,9 @@ BEGIN
     ALTER TABLE reviews ADD COLUMN review_slug TEXT;
   ELSE
     ALTER TABLE reviews ALTER COLUMN review_slug DROP NOT NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='review_fingerprint') THEN
+    ALTER TABLE reviews ADD COLUMN review_fingerprint TEXT;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='reviewer_type') THEN
     ALTER TABLE reviews ADD COLUMN reviewer_type TEXT DEFAULT 'contributor';
@@ -66,6 +70,10 @@ UPDATE reviews
 SET review_slug = LOWER(review_id)
 WHERE review_slug IS NULL OR review_slug = '';
 
+UPDATE reviews 
+SET review_fingerprint = MD5(LOWER(REGEXP_REPLACE(TRIM(name), '\s+', ' ', 'g')) || '|' || LOWER(TRIM(reviewer_type)) || '|' || rating || '|' || LOWER(REGEXP_REPLACE(TRIM(COALESCE(review_text, 'no_text')), '\s+', ' ', 'g')))
+WHERE review_fingerprint IS NULL OR review_fingerprint = '';
+
 -- Ensure review_id is UNIQUE and NOT NULL
 ALTER TABLE reviews ALTER COLUMN review_id SET NOT NULL;
 DO $$ 
@@ -84,6 +92,7 @@ WHERE name IN ('Ramesh Kumar', 'Priya Sharma', 'Ankit Verma', 'Sunita Mohanty', 
 CREATE INDEX IF NOT EXISTS idx_reviews_visible_created ON reviews (is_visible, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewer_type ON reviews (reviewer_type);
 CREATE INDEX IF NOT EXISTS idx_reviews_rating ON reviews (rating);
+CREATE INDEX IF NOT EXISTS idx_reviews_fingerprint ON reviews (review_fingerprint);
 
 -- Step 6: Enable Row Level Security (RLS)
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;

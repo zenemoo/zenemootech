@@ -622,7 +622,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
                         </td>
 
                         {/* Status Badge */}
-                        <td className="py-4 px-4 whitespace-nowrap">
+                        <td className="py-4 px-4 whitespace-nowrap space-y-1">
                           {review.is_visible ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
                               <Eye className="w-3 h-3" /> VISIBLE
@@ -631,6 +631,14 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
                               <EyeOff className="w-3 h-3" /> HIDDEN
                             </span>
+                          )}
+
+                          {review.isPossibleDuplicate && (
+                            <div className="pt-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 text-red-300 text-[9px] font-mono font-bold" title="Matches name and content of another review record">
+                                <AlertTriangle className="w-2.5 h-2.5 text-red-400" /> Possible Duplicate
+                              </span>
+                            </div>
                           )}
                         </td>
 

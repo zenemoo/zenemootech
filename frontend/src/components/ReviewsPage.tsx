@@ -283,11 +283,18 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
       setReviewText('');
       setErrors({});
     } catch (err: any) {
-      console.error('Review submission database error:', err);
-      setToastMessage({
-        text: "We couldn't submit your review right now. Please try again.",
-        type: 'error',
-      });
+      console.error('Review submission error:', err);
+      if (err.isDuplicate || (err.message && err.message.toLowerCase().includes('already submitted'))) {
+        setToastMessage({
+          text: 'Looks like you have already submitted this review. Please share a different experience if you would like to submit another review.',
+          type: 'error',
+        });
+      } else {
+        setToastMessage({
+          text: err.message || "We couldn't submit your review right now. Please try again.",
+          type: 'error',
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
