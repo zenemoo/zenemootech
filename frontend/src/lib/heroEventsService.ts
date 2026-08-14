@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { holidaysApi } from '../services/api';
 
 export interface NormalizedHeroEvent {
   id: string;
@@ -7,15 +8,15 @@ export interface NormalizedHeroEvent {
   date: string; // YYYY-MM-DD or MM-DD
   endDate?: string;
   icon?: string;
-  priority: number; // 1 = Zenemoo Custom, 2 = Major National, 3 = Public
+  priority: number; // 1 = Zenemoo Custom, 2 = Major National/Religious, 3 = Observance
   link?: string;
-  source: 'api' | 'supabase' | 'preconfigured' | 'default';
+  source: 'calendarific' | 'supabase' | 'preconfigured' | 'default';
 }
 
-const HOLIDAY_CACHE_KEY_PREFIX = 'zenemoo_holiday_cache_';
+const HOLIDAY_CACHE_KEY_PREFIX = 'calendarific_india_holidays_';
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Pre-configured Known Major Indian & Zenemoo Holidays (Guaranteed Failsafe recognition)
+// Pre-configured Known Major Indian & Zenemoo Holidays (Failsafe Instant Recognition)
 const KNOWN_SPECIAL_EVENTS: Omit<NormalizedHeroEvent, 'id' | 'source'>[] = [
   {
     title: 'Republic Day',
@@ -83,55 +84,35 @@ const KNOWN_SPECIAL_EVENTS: Omit<NormalizedHeroEvent, 'id' | 'source'>[] = [
 ];
 
 /**
- * Format Date object to YYYY-MM-DD
+ * Determine current date in Indian Standard Time (Asia/Kolkata)
  */
-export const formatDateKey = (d: Date): string => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+export const getIndianLocalDate = (): { todayStr: string; monthDayStr: string; year: number } => {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const todayStr = formatter.format(now); // "YYYY-MM-DD"
+    const parts = todayStr.split('-');
+    const year = parseInt(parts[0], 10);
+    const monthDayStr = `${parts[1]}-${parts[2]}`;
+    return { todayStr, monthDayStr, year };
+  } catch (e) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return { todayStr: `${y}-${m}-${d}`, monthDayStr: `${m}-${d}`, year: y };
+  }
 };
 
 /**
- * Format Date object to MM-DD
+ * Source 1: Fetch normalized Calendarific holidays via secure backend proxy
  */
-export const formatMonthDayKey = (d: Date): string => {
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${m}-${day}`;
-};
-
-/**
- * Generate short title with emoji for Nager.Date API holidays
- */
-const generateShortTitle = (name: string): { shortTitle: string; icon: string } => {
-  const lower = name.toLowerCase();
-  let icon = '✨';
-
-  if (lower.includes('independence')) icon = '🇮🇳';
-  else if (lower.includes('republic')) icon = '🎉';
-  else if (lower.includes('diwali') || lower.includes('deepavali')) icon = '🪔';
-  else if (lower.includes('ganesh') || lower.includes('vinayaka')) icon = '🕉️';
-  else if (lower.includes('holi')) icon = '🎨';
-  else if (lower.includes('gandhi')) icon = '🕊️';
-  else if (lower.includes('christmas')) icon = '🎄';
-  else if (lower.includes('new year')) icon = '🎆';
-  else if (lower.includes('good friday') || lower.includes('easter')) icon = '✝️';
-  else if (lower.includes('eid') || lower.includes('ramzan')) icon = '🌙';
-
-  const cleanName = name
-    .replace(/day/gi, 'DAY')
-    .toUpperCase()
-    .trim();
-
-  const shortTitle = `${icon} HAPPY ${cleanName} →`;
-  return { shortTitle, icon };
-};
-
-/**
- * Source 1: Fetch Nager.Date Public Holidays for India with LocalStorage Caching
- */
-export const fetchApiHolidays = async (year: number): Promise<NormalizedHeroEvent[]> => {
+export const fetchCalendarificHolidays = async (year: number): Promise<NormalizedHeroEvent[]> => {
   const cacheKey = `${HOLIDAY_CACHE_KEY_PREFIX}${year}`;
 
   try {
@@ -145,36 +126,16 @@ export const fetchApiHolidays = async (year: number): Promise<NormalizedHeroEven
   } catch (e) {}
 
   try {
-    const response = await fetch(`https://date.nager.at/api/v4/Holidays/IN/${year}`);
-    if (response.status === 204 || !response.ok) return [];
-
-    const text = await response.text();
-    if (!text || text.trim().length === 0) return [];
-
-    const data = JSON.parse(text);
-
-    if (Array.isArray(data)) {
-      const normalized: NormalizedHeroEvent[] = data.map((item: any, idx: number) => {
-        const { shortTitle, icon } = generateShortTitle(item.name || item.localName || 'Public Holiday');
-        return {
-          id: `api_${year}_${idx}_${item.date}`,
-          title: item.name || item.localName,
-          shortTitle,
-          date: item.date, // YYYY-MM-DD
-          icon,
-          priority: 2,
-          source: 'api',
-        };
-      });
-
+    const res = await holidaysApi.getHolidays(year);
+    if (res?.data?.success && Array.isArray(res.data.data)) {
+      const data = res.data.data;
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: normalized }));
+        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data }));
       } catch (e) {}
-
-      return normalized;
+      return data;
     }
   } catch (err: any) {
-    console.warn('Nager.Date API fetch fallback:', err.message);
+    console.warn('Calendarific proxy request handled safely:', err.message);
   }
 
   return [];
@@ -213,17 +174,18 @@ export const fetchSupabaseEvents = async (): Promise<NormalizedHeroEvent[]> => {
  * Deduplicate and Sort Events by Priority
  */
 export const normalizeAndDeduplicateEvents = (
-  apiEvents: NormalizedHeroEvent[],
-  supabaseEvents: NormalizedHeroEvent[],
-  currentYear: number
+  calendarificEvents: NormalizedHeroEvent[],
+  supabaseEvents: NormalizedHeroEvent[]
 ): NormalizedHeroEvent[] => {
   const map = new Map<string, NormalizedHeroEvent>();
 
-  apiEvents.forEach((ev) => {
+  // 1. Add Calendarific API events
+  calendarificEvents.forEach((ev) => {
     const key = `${ev.date}_${ev.title.toLowerCase().trim()}`;
     map.set(key, ev);
   });
 
+  // 2. Add Supabase custom events (overwrites Calendarific for exact same date/name)
   supabaseEvents.forEach((ev) => {
     const key = `${ev.date}_${ev.title.toLowerCase().trim()}`;
     map.set(key, ev);
@@ -233,19 +195,15 @@ export const normalizeAndDeduplicateEvents = (
 };
 
 /**
- * Get active events matching today's date (Handles local date and UTC timezones)
+ * Get active events matching today's date in Asia/Kolkata timezone
  */
-export const getActiveEventsForDate = (
-  allEvents: NormalizedHeroEvent[],
-  todayDate: Date
+export const getActiveEventsForToday = (
+  allEvents: NormalizedHeroEvent[]
 ): NormalizedHeroEvent[] => {
-  const todayStr = formatDateKey(todayDate);
-  const monthDayStr = formatMonthDayKey(todayDate);
-  const currentYear = todayDate.getFullYear();
-
+  const { todayStr, monthDayStr, year } = getIndianLocalDate();
   const active: NormalizedHeroEvent[] = [];
 
-  // 1. Check API/Supabase events
+  // 1. Match API and Supabase events
   allEvents.forEach((ev) => {
     const isSingleDayMatch = ev.date === todayStr || ev.date.endsWith(monthDayStr);
     const isRangeMatch = ev.endDate && todayStr >= ev.date && todayStr <= ev.endDate;
@@ -258,7 +216,7 @@ export const getActiveEventsForDate = (
   // 2. Check preconfigured failsafe calendar
   KNOWN_SPECIAL_EVENTS.forEach((known) => {
     if (known.date === monthDayStr) {
-      const fullDateStr = `${currentYear}-${known.date}`;
+      const fullDateStr = `${year}-${known.date}`;
       const exists = active.some((a) => a.date.endsWith(known.date) || a.title.toLowerCase().includes(known.title.toLowerCase()));
       if (!exists) {
         active.push({
@@ -274,6 +232,6 @@ export const getActiveEventsForDate = (
     }
   });
 
-  // Sort by priority ascending (1 = Custom Zenemoo, 2 = Major National, 3 = Public)
+  // Sort by priority ascending (1 = Custom Zenemoo, 2 = Major National/Religious, 3 = Observance)
   return active.sort((a, b) => a.priority - b.priority);
 };

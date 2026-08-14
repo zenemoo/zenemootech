@@ -203,6 +203,11 @@ export const brandingApi = {
   deleteLogo: () => api.delete('/branding/logo'),
 };
 
+// Calendarific-Powered Secure Holidays Proxy API
+export const holidaysApi = {
+  getHolidays: (year?: number) => api.get('/holidays', { params: { year } }),
+};
+
 // Cloudinary + Supabase Media APIs
 export const mediaApi = {
   getAll: () => api.get('/media'),
