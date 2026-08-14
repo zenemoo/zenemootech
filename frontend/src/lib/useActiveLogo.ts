@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { brandingApi } from '../services/api';
 
 const LOGO_UPDATE_EVENT = 'zenemoo_logo_updated';
+const DEFAULT_LOGO = '/assets/logo.png';
 
 export const notifyLogoUpdated = () => {
   if (typeof window !== 'undefined') {
@@ -9,22 +10,55 @@ export const notifyLogoUpdated = () => {
   }
 };
 
+export interface ActiveLogoData {
+  id?: string;
+  url?: string;
+  secure_url?: string;
+  publicId?: string;
+  cloudinary_public_id?: string;
+  altText?: string;
+  title?: string;
+  seo_filename?: string;
+  original_filename?: string;
+  format?: string;
+  width?: number;
+  height?: number;
+  fileSize?: string;
+  isActive?: boolean;
+  isDefault?: boolean;
+  updated_at?: string;
+}
+
 export const useActiveLogo = () => {
-  const [logoUrl, setLogoUrl] = useState<string>('/assets/logo.png');
-  const [logoData, setLogoData] = useState<any>(null);
+  const [logoUrl, setLogoUrl] = useState<string>(DEFAULT_LOGO);
+  const [logoData, setLogoData] = useState<ActiveLogoData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchLogo = async () => {
     try {
       const res = await brandingApi.getActiveLogo();
-      if (res.data && res.data.success && res.data.data) {
+      if (res?.data?.success && res.data.data) {
         const item = res.data.data;
-        const url = item.cloudinary_secure_url || item.image_url || '/assets/logo.png';
-        setLogoUrl(url);
-        setLogoData(item);
+        const rawUrl = item.secure_url || item.url || item.cloudinary_secure_url || item.image_url;
+        
+        if (rawUrl) {
+          // Add cache buster query parameter to ensure newly activated logos display instantly
+          const ver = item.updated_at ? new Date(item.updated_at).getTime() : Date.now();
+          const versionedUrl = rawUrl.includes('?') ? `${rawUrl}&v=${ver}` : `${rawUrl}?v=${ver}`;
+          setLogoUrl(versionedUrl);
+          setLogoData(item);
+        } else {
+          setLogoUrl(DEFAULT_LOGO);
+          setLogoData(null);
+        }
+      } else {
+        setLogoUrl(DEFAULT_LOGO);
+        setLogoData(null);
       }
     } catch (err) {
-      setLogoUrl('/assets/logo.png');
+      // Graceful fallback to default logo on any API error or offline state
+      setLogoUrl(DEFAULT_LOGO);
+      setLogoData(null);
     } finally {
       setIsLoading(false);
     }
