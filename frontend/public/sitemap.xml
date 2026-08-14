@@ -84,4 +84,17 @@
     <priority>0.7</priority>
   </url>
 
+  <!-- 9. Community & Client Reviews Page -->
+  <url>
+    <loc>https://www.zenemoo.in/review</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.95</priority>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>Zenemoo Community Reviews &amp; Ratings</image:title>
+      <image:caption>Zenemoo AI Data Solutions Reviews &amp; Client Testimonials</image:caption>
+    </image:image>
+  </url>
+
 </urlset>

@@ -42,6 +42,8 @@ Allow: /#telemetry
 Allow: /#contact
 Allow: /#privacy
 Allow: /#terms
+Allow: /review
+Allow: /#review
 
 # Disallow Private & Admin Routes
 Disallow: /admin
