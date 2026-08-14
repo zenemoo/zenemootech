@@ -4,8 +4,8 @@ export interface NormalizedHeroEvent {
   id: string;
   title: string;
   shortTitle: string;
-  date: string; // YYYY-MM-DD
-  endDate?: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD or MM-DD
+  endDate?: string;
   icon?: string;
   priority: number; // 1 = Zenemoo Custom, 2 = Major National, 3 = Public
   link?: string;
@@ -15,7 +15,7 @@ export interface NormalizedHeroEvent {
 const HOLIDAY_CACHE_KEY_PREFIX = 'zenemoo_holiday_cache_';
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Pre-configured Known Major Indian & Zenemoo Holidays (Failsafe Instant Recognition)
+// Pre-configured Known Major Indian & Zenemoo Holidays (Guaranteed Failsafe recognition)
 const KNOWN_SPECIAL_EVENTS: Omit<NormalizedHeroEvent, 'id' | 'source'>[] = [
   {
     title: 'Republic Day',
@@ -135,7 +135,6 @@ export const fetchApiHolidays = async (year: number): Promise<NormalizedHeroEven
   const cacheKey = `${HOLIDAY_CACHE_KEY_PREFIX}${year}`;
 
   try {
-    // Check localStorage cache
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       const parsed = JSON.parse(cached);
@@ -147,8 +146,12 @@ export const fetchApiHolidays = async (year: number): Promise<NormalizedHeroEven
 
   try {
     const response = await fetch(`https://date.nager.at/api/v4/Holidays/IN/${year}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
+    if (response.status === 204 || !response.ok) return [];
+
+    const text = await response.text();
+    if (!text || text.trim().length === 0) return [];
+
+    const data = JSON.parse(text);
 
     if (Array.isArray(data)) {
       const normalized: NormalizedHeroEvent[] = data.map((item: any, idx: number) => {
@@ -164,7 +167,6 @@ export const fetchApiHolidays = async (year: number): Promise<NormalizedHeroEven
         };
       });
 
-      // Save to localStorage cache
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: normalized }));
       } catch (e) {}
@@ -217,13 +219,11 @@ export const normalizeAndDeduplicateEvents = (
 ): NormalizedHeroEvent[] => {
   const map = new Map<string, NormalizedHeroEvent>();
 
-  // 1. Add API events
   apiEvents.forEach((ev) => {
     const key = `${ev.date}_${ev.title.toLowerCase().trim()}`;
     map.set(key, ev);
   });
 
-  // 2. Add Supabase events (overwrites API events for exact same date/name)
   supabaseEvents.forEach((ev) => {
     const key = `${ev.date}_${ev.title.toLowerCase().trim()}`;
     map.set(key, ev);
@@ -233,7 +233,7 @@ export const normalizeAndDeduplicateEvents = (
 };
 
 /**
- * Get active events matching today's date
+ * Get active events matching today's date (Handles local date and UTC timezones)
  */
 export const getActiveEventsForDate = (
   allEvents: NormalizedHeroEvent[],
@@ -243,18 +243,23 @@ export const getActiveEventsForDate = (
   const monthDayStr = formatMonthDayKey(todayDate);
   const currentYear = todayDate.getFullYear();
 
-  const active = allEvents.filter((ev) => {
-    if (ev.endDate) {
-      return todayStr >= ev.date && todayStr <= ev.endDate;
+  const active: NormalizedHeroEvent[] = [];
+
+  // 1. Check API/Supabase events
+  allEvents.forEach((ev) => {
+    const isSingleDayMatch = ev.date === todayStr || ev.date.endsWith(monthDayStr);
+    const isRangeMatch = ev.endDate && todayStr >= ev.date && todayStr <= ev.endDate;
+
+    if (isSingleDayMatch || isRangeMatch) {
+      active.push(ev);
     }
-    return ev.date === todayStr;
   });
 
-  // Check preconfigured failsafe calendar if no API/Supabase events match
+  // 2. Check preconfigured failsafe calendar
   KNOWN_SPECIAL_EVENTS.forEach((known) => {
     if (known.date === monthDayStr) {
       const fullDateStr = `${currentYear}-${known.date}`;
-      const exists = active.some((a) => a.date.endsWith(known.date));
+      const exists = active.some((a) => a.date.endsWith(known.date) || a.title.toLowerCase().includes(known.title.toLowerCase()));
       if (!exists) {
         active.push({
           id: `preconfig_${fullDateStr}`,
