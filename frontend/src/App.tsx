@@ -34,10 +34,11 @@ import { TeamLoginPage } from './components/TeamLoginPage';
 import { HRLoginPage } from './components/HRLoginPage';
 import { TeamDashboard } from './components/TeamDashboard';
 import { HRDashboard } from './components/HRDashboard';
+import { ReviewsPage } from './components/ReviewsPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | '404'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -94,6 +95,7 @@ export function App() {
         | 'forgot-password-reset'
         | 'zenemooai'
         | 'unsubscribe'
+        | 'reviews'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -162,6 +164,17 @@ export function App() {
       } else if (path === '/unsubscribe' || path === '/unsubscribe/' || hash === '#unsubscribe' || hash === '#/unsubscribe') {
         matchedRoute = 'unsubscribe';
       } else if (
+        path === '/review' ||
+        path === '/review/' ||
+        path === '/reviews' ||
+        path === '/reviews/' ||
+        hash === '#review' ||
+        hash === '#/review' ||
+        hash === '#reviews' ||
+        hash === '#/reviews'
+      ) {
+        matchedRoute = 'reviews';
+      } else if (
         path === '/opportunities' ||
         path === '/projects' ||
         path === '/programs' ||
@@ -227,6 +240,10 @@ export function App() {
       } else if (path === '/zenemooai' || hash.includes('#zenemooai')) {
         pageTitle = 'Zenemoo AI Assistant — Multilingual AI Engine';
         canonicalUrl = 'https://www.zenemoo.in/zenemooai';
+      } else if (matchedRoute === 'reviews' || path === '/review' || hash.includes('#review')) {
+        pageTitle = 'Community & Client Reviews — Zenemoo Enterprise AI';
+        canonicalUrl = 'https://www.zenemoo.in/review';
+        metaDescription = 'Read verified community reviews, worker feedback, and client testimonials about Zenemoo language data solutions and AI data annotation.';
       }
 
       document.title = pageTitle;
@@ -383,6 +400,8 @@ export function App() {
         />
       ) : currentRoute === 'unsubscribe' ? (
         <UnsubscribePage />
+      ) : currentRoute === 'reviews' ? (
+        <ReviewsPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
