@@ -81,8 +81,18 @@ CREATE TABLE subscribers (
 -- Table 4: media
 CREATE TABLE media (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type TEXT DEFAULT 'general',
+  entity_id TEXT,
+  asset_type TEXT DEFAULT 'image',
+  original_filename TEXT,
+  seo_filename TEXT,
+  alt_text TEXT,
   title TEXT,
+  description TEXT,
+  caption TEXT,
   folder TEXT DEFAULT 'zenemoo/team',
+  cloudinary_public_id TEXT,
+  cloudinary_secure_url TEXT,
   public_id TEXT,
   image_url TEXT NOT NULL,
   asset_id TEXT,
@@ -90,8 +100,28 @@ CREATE TABLE media (
   height INTEGER,
   format TEXT,
   bytes INTEGER,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_by TEXT
 );
+
+-- Image SEO Media Migration Commands for existing Supabase instance:
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS entity_type TEXT DEFAULT 'general';
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS entity_id TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS asset_type TEXT DEFAULT 'image';
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS original_filename TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS seo_filename TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS alt_text TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS title TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS description TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS caption TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS cloudinary_public_id TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS cloudinary_secure_url TEXT;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+-- ALTER TABLE media ADD COLUMN IF NOT EXISTS updated_by TEXT;
+
 
 -- Table 5: partners
 CREATE TABLE partners (
