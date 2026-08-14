@@ -1,49 +1,74 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, ArrowRight, Mail, Play, Pause } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Sparkles, ArrowRight, ShieldCheck, CheckCircle2, Mic, Tags, Volume2, Globe, Users, Calendar, Mail, Play, Pause } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CountUp } from './CountUp';
 import { SeoImage } from '../seo/components/SeoImage';
-import { fetchTodayHeroEvents, HeroEvent } from '../lib/heroEventsService';
-import { useActiveLogo } from '../lib/useActiveLogo';
+import {
+  fetchApiHolidays,
+  fetchSupabaseEvents,
+  normalizeAndDeduplicateEvents,
+  getActiveEventsForDate,
+  NormalizedHeroEvent,
+} from '../lib/heroEventsService';
 
 export const Hero: React.FC = () => {
-  const { logoUrl } = useActiveLogo();
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
-  // Hero Events State
-  const [events, setEvents] = useState<HeroEvent[]>([]);
+  // Dynamic Special Announcement Events State
+  const [activeEvents, setActiveEvents] = useState<NormalizedHeroEvent[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(false);
 
+  // Load and calculate today's events
   useEffect(() => {
-    // Check prefers-reduced-motion
-    if (typeof window !== 'undefined') {
-      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setPrefersReducedMotion(mediaQuery.matches);
-    }
+    let isMounted = true;
 
-    // Fetch today's special events
     const loadEvents = async () => {
+      const today = new Date();
+      const year = today.getFullYear();
+
       try {
-        const todayEvents = await fetchTodayHeroEvents();
-        setEvents(todayEvents);
-      } catch (err) {
-        console.warn('Hero events fetch error:', err);
-        setEvents([]);
+        const [apiHolidays, supabaseEvents] = await Promise.all([
+          fetchApiHolidays(year),
+          fetchSupabaseEvents(),
+        ]);
+
+        if (isMounted) {
+          const allNormalized = normalizeAndDeduplicateEvents(apiHolidays, supabaseEvents, year);
+          const todaysActive = getActiveEventsForDate(allNormalized, today);
+          setActiveEvents(todaysActive);
+        }
+      } catch (e) {
+        if (isMounted) {
+          const todaysActive = getActiveEventsForDate([], today);
+          setActiveEvents(todaysActive);
+        }
       }
     };
+
     loadEvents();
+
+    // Check date change at midnight
+    const dateInterval = setInterval(() => {
+      loadEvents();
+    }, 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(dateInterval);
+    };
   }, []);
 
-  // Slide rotation timer for 2+ events (3.5 seconds per slide)
+  // Auto-rotate ticker slides if multiple events exist
   useEffect(() => {
-    if (events.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrentSlideIndex((prev) => (prev + 1) % events.length);
+    if (activeEvents.length <= 1) return;
+
+    const timer = setInterval(() => {
+      setCurrentSlideIndex((prev) => (prev + 1) % activeEvents.length);
     }, 3500);
-    return () => clearInterval(interval);
-  }, [events.length]);
+
+    return () => clearInterval(timer);
+  }, [activeEvents.length]);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -64,7 +89,7 @@ export const Hero: React.FC = () => {
     }
   };
 
-  const activeEvent = events.length > 0 ? events[currentSlideIndex % events.length] : null;
+  const currentEvent = activeEvents.length > 0 ? activeEvents[currentSlideIndex % activeEvents.length] : null;
 
   return (
     <section className="relative pt-24 pb-20 md:pt-28 md:pb-24 overflow-hidden bg-noise">
@@ -77,83 +102,75 @@ export const Hero: React.FC = () => {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 z-10">
         <div className="text-center max-w-4xl mx-auto">
-          {/* Top Hero Announcement Badge & Event Carousel */}
-          <div className="inline-block mb-8 max-w-full">
-            {!activeEvent ? (
-              /* NORMAL ANNOUNCEMENT (No Special Events Today) */
-              <a
-                href="#contact"
-                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full overflow-hidden"
-              >
-                <SeoImage
-                  src={logoUrl || '/assets/logo.png'}
-                  alt="Zenemoo Official Logo — Enterprise AI Solutions"
-                  priority={true}
-                  width={24}
-                  height={24}
-                  className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white p-0.5 shadow object-contain shrink-0"
-                  fallbackSrc="/assets/logo.png"
-                />
-                <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
-                <span className="text-[11px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold truncate">
-                  Trusted DesiCrew Vendor &bull; Est. 2023
-                </span>
-                <span className="text-xs text-slate-500 hidden sm:inline">&bull;</span>
-                <span className="text-[11px] sm:text-xs text-slate-300 group-hover:text-white transition-colors truncate">
-                  99%+ Quality Rate &rarr;
-                </span>
-              </a>
-            ) : events.length === 1 ? (
-              /* SINGLE SPECIAL EVENT TODAY */
-              <a
-                href={activeEvent.link || '#contact'}
-                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-blue-500/10 border border-cyan-500/40 backdrop-blur-xl group hover:border-cyan-300 transition-all duration-300 shadow-lg max-w-full overflow-hidden"
-              >
-                <span className="text-base sm:text-lg shrink-0 leading-none">{activeEvent.icon}</span>
-                <span className="text-[11px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-bold truncate">
-                  {activeEvent.title}
-                </span>
-                <span className="text-xs text-cyan-400 group-hover:translate-x-0.5 transition-transform shrink-0">
-                  &rarr;
-                </span>
-              </a>
-            ) : (
-              /* MULTIPLE SPECIAL EVENTS CAROUSEL SLIDER (2+ Events) */
-              <a
-                href={activeEvent.link || '#contact'}
-                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-blue-500/10 border border-cyan-500/40 backdrop-blur-xl group hover:border-cyan-300 transition-all duration-300 shadow-lg max-w-full overflow-hidden relative"
-              >
-                <AnimatePresence mode="wait">
+          {/* Top Pill Badge with Official Logo & Dynamic Special Announcement Ticker */}
+          <div className="inline-flex items-center gap-2.5 sm:gap-3 px-3.5 sm:px-4 py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-8 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full overflow-hidden select-none">
+            <SeoImage src="/assets/logo.png" alt="Zenemoo Official Logo — Enterprise AI Solutions" priority={true} width={24} height={24} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white p-0.5 shadow object-cover shrink-0" />
+            <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+
+            {/* Dynamic Announcement Ticker Content */}
+            <div className="relative overflow-hidden font-mono text-[11px] sm:text-xs tracking-wider font-semibold max-w-[260px] sm:max-w-md md:max-w-xl truncate">
+              <AnimatePresence mode="wait">
+                {currentEvent ? (
                   <motion.div
-                    key={activeEvent.id}
-                    initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, x: 12 }}
-                    animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
-                    exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, x: -12 }}
-                    transition={{ duration: 0.35, ease: 'easeOut' }}
-                    className="inline-flex items-center gap-2 max-w-full truncate"
+                    key={currentEvent.id || currentSlideIndex}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.3 }}
+                    className="truncate"
                   >
-                    <span className="text-base sm:text-lg shrink-0 leading-none">{activeEvent.icon}</span>
-                    <span className="text-[11px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-bold truncate">
-                      {activeEvent.title}
+                    {currentEvent.link ? (
+                      <a
+                        href={currentEvent.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={currentEvent.title}
+                        className="text-cyan-300 hover:text-white uppercase transition-colors truncate block"
+                      >
+                        {currentEvent.shortTitle}
+                      </a>
+                    ) : (
+                      <span
+                        aria-label={currentEvent.title}
+                        className="text-cyan-300 uppercase truncate block"
+                      >
+                        {currentEvent.shortTitle}
+                      </span>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="default_announcement"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex items-center gap-1.5 sm:gap-2 truncate"
+                  >
+                    <span className="text-cyan-300 uppercase font-semibold truncate">
+                      Trusted DesiCrew Vendor • Est. 2023
                     </span>
-                    <span className="text-xs text-cyan-400 group-hover:translate-x-0.5 transition-transform shrink-0">
-                      &rarr;
+                    <span className="text-slate-500 shrink-0">•</span>
+                    <span className="text-slate-300 group-hover:text-white transition-colors shrink-0">
+                      99%+ Quality Rate &rarr;
                     </span>
                   </motion.div>
-                </AnimatePresence>
+                )}
+              </AnimatePresence>
+            </div>
 
-                {/* Subtle Slide Indicator Dots */}
-                <div className="hidden sm:flex items-center gap-1 ml-1.5 shrink-0">
-                  {events.map((ev, idx) => (
-                    <span
-                      key={ev.id}
-                      className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                        idx === currentSlideIndex ? 'bg-cyan-400 w-3' : 'bg-white/20'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </a>
+            {/* Optional Subtle Indicator Dots when Multiple Events are Active */}
+            {activeEvents.length > 1 && (
+              <div className="hidden sm:flex items-center gap-1 shrink-0 pl-1">
+                {activeEvents.map((_, idx) => (
+                  <span
+                    key={idx}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      idx === currentSlideIndex % activeEvents.length ? 'w-3 bg-cyan-400' : 'w-1.5 bg-white/20'
+                    }`}
+                  />
+                ))}
+              </div>
             )}
           </div>
 
