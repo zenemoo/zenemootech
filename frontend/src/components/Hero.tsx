@@ -4,11 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CountUp } from './CountUp';
 import { SeoImage } from '../seo/components/SeoImage';
 import {
-  fetchCalendarificHolidays,
+  fetchApiHolidays,
   fetchSupabaseEvents,
   normalizeAndDeduplicateEvents,
-  getActiveEventsForToday,
-  getIndianLocalDate,
+  getActiveEventsForDate,
   NormalizedHeroEvent,
 } from '../lib/heroEventsService';
 
@@ -20,27 +19,28 @@ export const Hero: React.FC = () => {
   const [activeEvents, setActiveEvents] = useState<NormalizedHeroEvent[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
 
-  // Load and calculate today's events (Asia/Kolkata timezone)
+  // Load and calculate today's events
   useEffect(() => {
     let isMounted = true;
 
     const loadEvents = async () => {
-      const { year } = getIndianLocalDate();
+      const today = new Date();
+      const year = today.getFullYear();
 
       try {
-        const [calendarificHolidays, supabaseEvents] = await Promise.all([
-          fetchCalendarificHolidays(year),
+        const [apiHolidays, supabaseEvents] = await Promise.all([
+          fetchApiHolidays(year),
           fetchSupabaseEvents(),
         ]);
 
         if (isMounted) {
-          const allNormalized = normalizeAndDeduplicateEvents(calendarificHolidays, supabaseEvents);
-          const todaysActive = getActiveEventsForToday(allNormalized);
+          const allNormalized = normalizeAndDeduplicateEvents(apiHolidays, supabaseEvents, year);
+          const todaysActive = getActiveEventsForDate(allNormalized, today);
           setActiveEvents(todaysActive);
         }
       } catch (e) {
         if (isMounted) {
-          const todaysActive = getActiveEventsForToday([]);
+          const todaysActive = getActiveEventsForDate([], today);
           setActiveEvents(todaysActive);
         }
       }

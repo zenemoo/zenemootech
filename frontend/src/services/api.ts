@@ -203,9 +203,9 @@ export const brandingApi = {
   deleteLogo: () => api.delete('/branding/logo'),
 };
 
-// Calendarific-Powered Secure Holidays Proxy API
+// Calendarific Indian Public Holidays API Proxy
 export const holidaysApi = {
-  getHolidays: (year?: number) => api.get('/holidays', { params: { year } }),
+  getHolidays: (year: number) => api.get(`/holidays?year=${year}`),
 };
 
 // Cloudinary + Supabase Media APIs
