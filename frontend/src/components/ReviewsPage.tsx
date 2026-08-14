@@ -17,7 +17,8 @@ import {
   ThumbsUp,
   AlertCircle,
   HelpCircle,
-  ChevronDown
+  ChevronDown,
+  ArrowRight
 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -58,6 +59,9 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
   const [submittedReview, setSubmittedReview] = useState<ReviewItem | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
+  // Modal State for Reading Full Review (Glassmorphism Modal)
+  const [selectedReviewModal, setSelectedReviewModal] = useState<ReviewItem | null>(null);
+
   // Public Reviews List State (Strict Database Source of Truth)
   const [publicReviews, setPublicReviews] = useState<ReviewItem[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
@@ -87,6 +91,29 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
     loadPublicReviews();
     window.scrollTo(0, 0);
   }, []);
+
+  // Lock background scroll when full review modal is open
+  useEffect(() => {
+    if (selectedReviewModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedReviewModal]);
+
+  // Support Escape key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedReviewModal) {
+        setSelectedReviewModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedReviewModal]);
 
   // Compute dynamic schema.org structured data (AggregateRating, Organization, Breadcrumb, FAQs, Reviews) for Google Search
   const reviewSchemas = useMemo(() => {
@@ -350,7 +377,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200 font-sans">
       
-      {/* 🚀 HIGH-POWERED GOOGLE SEO META & SCHEMA STRUCTURED DATA */}
+      {/* GOOGLE SEO META & SCHEMA STRUCTURED DATA */}
       <SeoMeta
         title="Zenemoo Reviews & Client Ratings — AI Data Solutions & Contributor Feedback"
         description="Read 100% verified community reviews, worker feedback, and enterprise client testimonials for Zenemoo language data annotation, audio transcription, and AI dataset creation."
@@ -385,7 +412,6 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                 <span>Verified Reviews &amp; Community Ratings</span>
               </div>
 
-              {/* H1 Tag Optimized for Search Indexing */}
               <h1 className="text-4xl sm:text-5xl font-extrabold font-display text-white tracking-tight leading-tight">
                 Zenemoo Reviews &amp;{' '}
                 <span className="bg-gradient-to-r from-cyan-400 via-teal-300 to-purple-400 bg-clip-text text-transparent">
@@ -734,18 +760,32 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            /* 🌟 RESPONSIVE CARDS GRID WITH INDEPENDENT NATURAL HEIGHT (items-start removes empty white space!) */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
               {filteredPublicReviews.map((rev) => {
                 const cleanText = formatReviewText(rev.review_text);
                 const isContributor = (rev.reviewer_type || '').toLowerCase().includes('contributor');
                 const initials = getInitials(rev.name);
+                
+                // Truncate long reviews for preview
+                const isLong = cleanText && cleanText.length > 140;
+                const previewText = isLong ? cleanText.slice(0, 140).trim() + '...' : cleanText;
 
                 return (
                   <article
                     key={rev.id}
-                    className="glass-panel p-6 rounded-3xl border border-white/10 hover:border-cyan-500/30 transition-all duration-300 space-y-4 flex flex-col justify-between group shadow-xl"
+                    onClick={() => setSelectedReviewModal(rev)}
+                    className="glass-panel p-6 rounded-3xl border border-white/10 hover:border-cyan-500/40 transition-all duration-300 flex flex-col justify-between group shadow-xl hover:shadow-cyan-950/40 cursor-pointer h-fit space-y-4"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedReviewModal(rev);
+                      }
+                    }}
                   >
                     <div className="space-y-3">
+                      {/* Top Row: Stars + Type Badge */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1" aria-label={`${rev.rating} out of 5 stars`}>
                           {[1, 2, 3, 4, 5].map((s) => (
@@ -770,17 +810,36 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                         </span>
                       </div>
 
+                      {/* Review Text Preview */}
                       {cleanText && (
-                        <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans italic whitespace-pre-line">
-                          "{cleanText}"
-                        </p>
+                        <div className="space-y-2">
+                          <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans italic whitespace-pre-line">
+                            "{previewText}"
+                          </p>
+
+                          {/* Read More button for long reviews */}
+                          {isLong && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedReviewModal(rev);
+                              }}
+                              className="inline-flex items-center gap-1 text-xs font-mono font-bold text-cyan-400 hover:text-cyan-300 hover:underline transition-colors pt-0.5 cursor-pointer"
+                            >
+                              <span>Read More</span>
+                              <span>→</span>
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
-                    <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+                    {/* Bottom Author Row (Aligned strictly inside each card) */}
+                    <div className="pt-4 border-t border-white/5 flex items-center justify-between mt-auto">
                       <div className="flex items-center gap-3">
                         <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-mono font-bold border ${
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-mono font-bold border ${
                             isContributor
                               ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
                               : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
@@ -794,7 +853,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
                         </div>
                       </div>
 
-                      <span className="text-[10px] font-mono text-slate-500 bg-white/5 px-2 py-0.5 rounded-lg border border-white/5">
+                      <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-lg border border-white/5">
                         {rev.review_id}
                       </span>
                     </div>
@@ -805,7 +864,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
           )}
         </section>
 
-        {/* 📚 NEW SEO FAQ ACCORDION SECTION (High Google Search Keyword Density) */}
+        {/* SEO FAQ ACCORDION SECTION */}
         <section className="mt-24 border-t border-white/10 pt-16 space-y-8" aria-label="Frequently Asked Questions">
           <div className="text-center max-w-2xl mx-auto space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-mono font-bold">
@@ -857,7 +916,95 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onBack, onOpenAiDrawer
         </section>
       </main>
 
-      {/* SUCCESS MODAL */}
+      {/* 💎 PREMIUM GLASSMORPHISM FULL REVIEW MODAL */}
+      {selectedReviewModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-xl animate-fade-in"
+          onClick={() => setSelectedReviewModal(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 max-w-2xl w-full relative space-y-6 shadow-2xl shadow-cyan-500/20 max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Prominent Close Button */}
+            <button
+              onClick={() => setSelectedReviewModal(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer border border-white/10"
+              aria-label="Close review details"
+            >
+              <X className="w-5 h-5 text-cyan-400" />
+            </button>
+
+            {/* Stars + Reviewer Type Badge */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pr-10">
+              <div className="flex items-center gap-1.5" aria-label={`${selectedReviewModal.rating} out of 5 stars`}>
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star
+                    key={s}
+                    className={`w-5 h-5 ${
+                      s <= selectedReviewModal.rating
+                        ? 'text-amber-400 fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                        : 'text-slate-700'
+                    }`}
+                  />
+                ))}
+                <span className="text-sm font-bold font-mono text-amber-300 ml-1">
+                  {selectedReviewModal.rating}.0 / 5.0
+                </span>
+              </div>
+
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono font-bold border ${
+                  (selectedReviewModal.reviewer_type || '').toLowerCase().includes('contributor')
+                    ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                    : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {(selectedReviewModal.reviewer_type || '').toLowerCase().includes('contributor')
+                  ? 'Contributor'
+                  : 'Client'}
+              </span>
+            </div>
+
+            {/* Full Review Text */}
+            {selectedReviewModal.review_text && (
+              <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 text-sm sm:text-base text-slate-100 font-sans leading-relaxed italic whitespace-pre-line">
+                "{formatReviewText(selectedReviewModal.review_text)}"
+              </div>
+            )}
+
+            {/* Author Footer Info */}
+            <div className="pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-mono font-bold border ${
+                    (selectedReviewModal.reviewer_type || '').toLowerCase().includes('contributor')
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  }`}
+                >
+                  {getInitials(selectedReviewModal.name)}
+                </div>
+                <div>
+                  <div className="text-sm font-bold font-display text-white">{selectedReviewModal.name}</div>
+                  <div className="text-xs font-mono text-slate-400">{formatDate(selectedReviewModal.created_at)}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-cyan-300 bg-cyan-500/10 px-3 py-1 rounded-xl border border-cyan-500/30 font-bold">
+                  {selectedReviewModal.review_id}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUCCESS SUBMISSION MODAL */}
       {submittedReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl animate-fade-in">
           <div className="glass-panel p-6 sm:p-10 rounded-3xl border border-cyan-500/40 max-w-md w-full relative space-y-6 text-center shadow-2xl shadow-cyan-500/20">
