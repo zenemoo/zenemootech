@@ -22,6 +22,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/review",
+      "destination": "/index.html"
+    },
+    {
       "source": "/opportunity/:id*",
       "destination": "/index.html"
     },
