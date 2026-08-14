@@ -198,6 +198,8 @@ export const brandingApi = {
     api.post('/branding/logo', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+  saveLogoUrl: (payload: { url: string; altText?: string; title?: string }) =>
+    api.post('/branding/logo', payload),
   deleteLogo: () => api.delete('/branding/logo'),
 };
 

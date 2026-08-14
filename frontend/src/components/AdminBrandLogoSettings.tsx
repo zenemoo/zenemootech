@@ -18,11 +18,10 @@ import {
   Sun,
   Moon,
   Info,
-  Check,
-  Layers,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { brandingApi } from '../services/api';
-import { useActiveLogo, notifyLogoUpdated, ActiveLogoData } from '../lib/useActiveLogo';
+import { useActiveLogo, notifyLogoUpdated } from '../lib/useActiveLogo';
 import { SeoImage } from '../seo/components/SeoImage';
 
 type UploadState =
@@ -56,6 +55,10 @@ export const AdminBrandLogoSettings: React.FC = () => {
     height: 0,
     size: '',
   });
+
+  // Direct URL Input State
+  const [directUrlInput, setDirectUrlInput] = useState<string>('');
+  const [activeTabMode, setActiveTabMode] = useState<'upload' | 'url'>('upload');
 
   // SEO Editable Fields
   const [altText, setAltText] = useState<string>('Zenemoo official site logo');
@@ -162,7 +165,6 @@ export const AdminBrandLogoSettings: React.FC = () => {
     setShowReplaceModal(false);
 
     try {
-      // Step 1: Uploading
       setUploadState('UPLOADING');
       setUploadProgress(20);
 
@@ -189,7 +191,6 @@ export const AdminBrandLogoSettings: React.FC = () => {
         setUploadState('SUCCESS');
         setSuccessMessage('✓ Logo uploaded successfully • Branding record saved • Logo activated');
 
-        // Reset local selection state after success
         setSelectedFile(null);
         setFilePreviewUrl('');
         setTimeout(() => setUploadState('IDLE'), 3500);
@@ -201,7 +202,6 @@ export const AdminBrandLogoSettings: React.FC = () => {
       setUploadState('ERROR');
       setUploadProgress(0);
 
-      // Clean human-readable error messages (never expose AxiosError or raw 30000ms timeout)
       const rawMsg = err.response?.data?.message || err.message || '';
       if (rawMsg.toLowerCase().includes('timeout') || rawMsg.toLowerCase().includes('exceeded')) {
         setErrorMessage('Logo upload is taking longer than expected. Please try again.');
@@ -210,6 +210,43 @@ export const AdminBrandLogoSettings: React.FC = () => {
       } else {
         setErrorMessage('Logo could not be uploaded. Please check the file and try again.');
       }
+    }
+  };
+
+  // Save via Direct URL Input Handler
+  const executeSaveDirectUrl = async () => {
+    if (!directUrlInput || !directUrlInput.trim()) return;
+
+    setErrorMessage('');
+    setSuccessMessage('');
+    setUploadState('SAVING');
+    setUploadProgress(40);
+
+    try {
+      const response = await brandingApi.saveLogoUrl({
+        url: directUrlInput.trim(),
+        altText: altText.trim(),
+        title: logoTitle.trim(),
+      });
+
+      setUploadProgress(85);
+      setUploadState('ACTIVATING');
+
+      if (response?.data?.success) {
+        await refetchLogo();
+        notifyLogoUpdated();
+        setUploadProgress(100);
+        setUploadState('SUCCESS');
+        setSuccessMessage('✓ Direct URL logo saved & activated successfully across site!');
+        setDirectUrlInput('');
+        setTimeout(() => setUploadState('IDLE'), 3500);
+      } else {
+        throw new Error(response?.data?.message || 'Save failed');
+      }
+    } catch (err: any) {
+      console.error('Direct URL Save Error:', err);
+      setUploadState('ERROR');
+      setErrorMessage('Logo could not be saved from URL. Please check the link and try again.');
     }
   };
 
@@ -238,8 +275,8 @@ export const AdminBrandLogoSettings: React.FC = () => {
     }
   };
 
-  const currentDisplayUrl = filePreviewUrl || logoUrl || '/assets/logo.png';
-  const hasCustomLogo = Boolean(logoData && logoData.cloudinary_public_id);
+  const currentDisplayUrl = filePreviewUrl || directUrlInput || logoUrl || '/assets/logo.png';
+  const hasCustomLogo = Boolean(logoData && (logoData.cloudinary_public_id || logoData.url));
   const isBusy = ['UPLOADING', 'PROCESSING', 'SAVING', 'ACTIVATING'].includes(uploadState);
 
   return (
@@ -268,7 +305,7 @@ export const AdminBrandLogoSettings: React.FC = () => {
             <span className="text-slate-500 text-[10px] block uppercase font-bold">ACTIVE BRAND STATUS</span>
             {hasCustomLogo ? (
               <span className="text-emerald-400 font-bold flex items-center justify-end gap-1.5 mt-0.5">
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> ACTIVE ✓ (Cloudinary CDN)
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> ACTIVE ✓ (Configured Logo)
               </span>
             ) : (
               <span className="text-amber-400 font-bold flex items-center justify-end gap-1.5 mt-0.5">
@@ -324,24 +361,10 @@ export const AdminBrandLogoSettings: React.FC = () => {
               style={{ width: `${uploadProgress}%` }}
             />
           </div>
-
-          <div className="text-[11px] text-slate-400 flex items-center gap-4">
-            <span className={uploadProgress >= 25 ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
-              ✓ Media Storage Upload
-            </span>
-            <span>•</span>
-            <span className={uploadProgress >= 75 ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
-              ✓ Branding Record Sync
-            </span>
-            <span>•</span>
-            <span className={uploadProgress >= 95 ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
-              ✓ Navbar Activation
-            </span>
-          </div>
         </div>
       )}
 
-      {/* ── MAIN GRID: CURRENT ACTIVE LOGO & DROPZONE ── */}
+      {/* ── MAIN GRID: CURRENT ACTIVE LOGO & INPUT MODES ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* LEFT COLUMN: CURRENT ACTIVE LOGO CARD */}
         <div className="lg:col-span-6 space-y-6">
@@ -354,7 +377,7 @@ export const AdminBrandLogoSettings: React.FC = () => {
                 <span className="text-xs font-mono text-slate-400">Zenemoo Site Identity</span>
               </div>
 
-              {/* Logo Display Container with Light & Dark contrast option */}
+              {/* Logo Display Container */}
               <div className="relative w-full h-48 rounded-2xl bg-[#08090d] border border-white/10 flex items-center justify-center p-6 group overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-transparent to-purple-500/5 opacity-50" />
                 <div className="relative w-32 h-32 rounded-2xl bg-white/10 p-3 border border-white/10 flex items-center justify-center shadow-2xl">
@@ -372,13 +395,13 @@ export const AdminBrandLogoSettings: React.FC = () => {
                 <div className="flex items-center justify-between text-white font-bold">
                   <span>{logoData?.title || 'Zenemoo Official Site Logo'}</span>
                   <span className="px-2 py-0.5 rounded text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                    {hasCustomLogo ? 'Cloudinary CDN' : 'Default Brandmark'}
+                    {hasCustomLogo ? 'Configured Logo' : 'Default Brandmark'}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400 pt-1">
                   <div>Format: <span className="text-white font-bold uppercase">{logoData?.format || 'PNG'}</span></div>
-                  <div>Dimensions: <span className="text-purple-300 font-bold">{logoData?.width ? `${logoData.width} × ${logoData.height}` : '2978 × 2978'}</span></div>
+                  <div>Dimensions: <span className="text-purple-300 font-bold">{logoData?.width ? `${logoData.width} × ${logoData.height}` : 'Auto'}</span></div>
                   <div>File Size: <span className="text-slate-300">{logoData?.fileSize || 'N/A'}</span></div>
                   <div>Status: <span className="text-emerald-400 font-bold">{hasCustomLogo ? 'ACTIVE ✓' : 'DEFAULT'}</span></div>
                 </div>
@@ -422,156 +445,142 @@ export const AdminBrandLogoSettings: React.FC = () => {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: UPLOAD NEW LOGO / SELECTED FILE */}
+        {/* RIGHT COLUMN: UPLOAD FILE OR DIRECT URL INPUT */}
         <div className="lg:col-span-6 space-y-6">
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 space-y-6">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <h3 className="text-base font-bold font-display text-white flex items-center gap-2">
-                <Upload className="w-5 h-5 text-purple-400" /> UPLOAD NEW LOGO
-              </h3>
-              <span className="text-xs font-mono text-purple-400">Drag &amp; Drop Dropzone</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTabMode('upload')}
+                  className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
+                    activeTabMode === 'upload' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📁 File Upload
+                </button>
+
+                <button
+                  onClick={() => setActiveTabMode('url')}
+                  className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
+                    activeTabMode === 'url' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🔗 Direct Image URL
+                </button>
+              </div>
+
+              <span className="text-xs font-mono text-cyan-400">Add Asset</span>
             </div>
 
-            {!selectedFile ? (
-              /* Drag & Drop Upload Zone */
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`p-10 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center space-y-4 cursor-pointer relative ${
-                  isDragOver
-                    ? 'border-cyan-400 bg-cyan-500/10 scale-[1.01]'
-                    : 'border-white/15 bg-white/[0.01] hover:border-purple-400/50 hover:bg-white/[0.03]'
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
+            {activeTabMode === 'upload' ? (
+              /* TAB MODE 1: FILE UPLOAD DROPZONE */
+              !selectedFile ? (
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-10 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center space-y-4 cursor-pointer relative ${
+                    isDragOver
+                      ? 'border-cyan-400 bg-cyan-500/10 scale-[1.01]'
+                      : 'border-white/15 bg-white/[0.01] hover:border-purple-400/50 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
 
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center text-cyan-400 shadow-xl">
-                  <Upload className="w-8 h-8 animate-bounce" />
-                </div>
-
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-white font-display">Drag &amp; Drop Logo Here</h4>
-                  <p className="text-xs font-mono text-slate-400">or click to browse from computer</p>
-                </div>
-
-                <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[11px] font-mono text-cyan-300 font-bold">
-                  PNG / JPG / WEBP / SVG &bull; Maximum 5 MB
-                </div>
-              </div>
-            ) : (
-              /* Selected File Card & Actions */
-              <div className="space-y-5">
-                <div className="p-5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-4 font-mono text-xs">
-                  <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3">
-                    <span className="font-bold text-cyan-300 flex items-center gap-2">
-                      <FileCheck className="w-4 h-4 text-cyan-400" /> SELECTED FILE DETAILS
-                    </span>
-                    <button
-                      onClick={handleCancelSelection}
-                      disabled={isBusy}
-                      className="p-1 rounded bg-white/10 hover:bg-white/20 text-slate-300 cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center text-cyan-400 shadow-xl">
+                    <Upload className="w-8 h-8 animate-bounce" />
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl bg-slate-900 border border-white/10 p-1 flex items-center justify-center shrink-0">
-                      <img src={filePreviewUrl} alt="Selected preview" className="w-full h-full object-contain" />
-                    </div>
-
-                    <div className="space-y-1 text-[11px] min-w-0 flex-1">
-                      <div className="text-white font-bold truncate">Filename: {selectedFile.name}</div>
-                      <div className="text-slate-300">Dimensions: <span className="text-purple-300 font-bold">{fileSpecs.dimensions} px</span></div>
-                      <div className="text-slate-300">Size: <span className="text-cyan-300 font-bold">{fileSpecs.size}</span> ({fileSpecs.format})</div>
-                    </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-white font-display">Drag &amp; Drop Logo Here</h4>
+                    <p className="text-xs font-mono text-slate-400">or click to browse from computer</p>
                   </div>
 
-                  {/* Expandable Image SEO Metadata Controls */}
-                  <div className="pt-2 border-t border-cyan-500/20">
-                    <button
-                      type="button"
-                      onClick={() => setShowSeoSettings(!showSeoSettings)}
-                      className="text-[11px] text-cyan-300 hover:underline flex items-center gap-1 cursor-pointer font-bold"
-                    >
-                      <Sliders className="w-3.5 h-3.5" /> {showSeoSettings ? 'Hide Image SEO Metadata' : 'Edit Image SEO Metadata'}
-                    </button>
+                  <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[11px] font-mono text-cyan-300 font-bold">
+                    PNG / JPG / WEBP / SVG &bull; Maximum 5 MB
+                  </div>
+                </div>
+              ) : (
+                /* Selected File Actions */
+                <div className="space-y-4 font-mono text-xs">
+                  <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-3">
+                    <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
+                      <span className="font-bold text-cyan-300 flex items-center gap-2">
+                        <FileCheck className="w-4 h-4 text-cyan-400" /> SELECTED FILE READY
+                      </span>
+                      <button onClick={handleCancelSelection} className="p-1 text-slate-400 hover:text-white cursor-pointer">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                    {showSeoSettings && (
-                      <div className="mt-3 space-y-3 p-3 rounded-xl bg-black/40 border border-white/10">
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-1">Alt Text (Search Engine Accessibility):</label>
-                          <input
-                            type="text"
-                            value={altText}
-                            onChange={(e) => setAltText(e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-white text-xs outline-none focus:border-cyan-400 font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 block mb-1">Logo Title Tag:</label>
-                          <input
-                            type="text"
-                            value={logoTitle}
-                            onChange={(e) => setLogoTitle(e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-white text-xs outline-none focus:border-cyan-400 font-mono"
-                          />
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <img src={filePreviewUrl} alt="Preview" className="w-14 h-14 object-contain rounded-xl bg-slate-900 border border-white/10 p-1" />
+                      <div className="space-y-0.5 text-[11px]">
+                        <div className="text-white font-bold">{selectedFile.name}</div>
+                        <div className="text-slate-300">{fileSpecs.dimensions} px ({fileSpecs.size})</div>
                       </div>
-                    )}
-                  </div>
+                    </div>
 
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      onClick={() => setShowPreviewModal(true)}
-                      disabled={isBusy}
-                      className="py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 font-bold text-xs cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Eye className="w-4 h-4 text-cyan-400" /> Preview
-                    </button>
-
-                    <button
-                      onClick={handleCancelSelection}
-                      disabled={isBusy}
-                      className="py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        if (hasCustomLogo) {
-                          setShowReplaceModal(true);
-                        } else {
-                          executeUploadAndActivate();
-                        }
-                      }}
-                      disabled={isBusy}
-                      className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/20 cursor-pointer flex items-center justify-center gap-2 transition-all"
-                    >
-                      {isBusy ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-black" /> Processing...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="w-4 h-4 text-black" /> Save &amp; Activate Logo
-                        </>
-                      )}
-                    </button>
+                    <div className="flex gap-2 pt-2">
+                      <button onClick={handleCancelSelection} disabled={isBusy} className="px-3 py-2 rounded-xl bg-white/5 text-slate-300 font-bold">
+                        Cancel
+                      </button>
+                      <button
+                        onClick={executeUploadAndActivate}
+                        disabled={isBusy}
+                        className="flex-1 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/20 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4" /> Save &amp; Activate Logo
+                      </button>
+                    </div>
                   </div>
                 </div>
+              )
+            ) : (
+              /* TAB MODE 2: DIRECT URL INPUT */
+              <div className="space-y-4 font-mono text-xs">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <LinkIcon className="w-4 h-4 text-cyan-400" /> Paste Direct Cloudinary or Image URL:
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://res.cloudinary.com/zenemoo/image/upload/v12345/logo.png"
+                    value={directUrlInput}
+                    onChange={(e) => setDirectUrlInput(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                {directUrlInput.trim().length > 0 && (
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
+                    <img
+                      src={directUrlInput.trim()}
+                      alt="URL Preview"
+                      onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
+                      className="w-12 h-12 object-contain rounded-lg bg-slate-900 border border-white/10 p-1"
+                    />
+                    <div className="text-[11px] text-slate-300 font-bold truncate">URL Preview Ready</div>
+                  </div>
+                )}
+
+                <button
+                  onClick={executeSaveDirectUrl}
+                  disabled={isBusy || !directUrlInput.trim()}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-extrabold text-xs shadow-lg shadow-cyan-500/20 cursor-pointer flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <CheckCircle className="w-4 h-4 text-black" /> Save &amp; Activate Direct URL Logo
+                </button>
               </div>
             )}
           </div>
@@ -595,7 +604,7 @@ export const AdminBrandLogoSettings: React.FC = () => {
               </button>
             </div>
 
-            {/* 1. Desktop Navbar Simulation */}
+            {/* Desktop Navbar Simulation */}
             <div className="space-y-2">
               <label className="text-slate-400 font-bold flex items-center gap-2">
                 <Monitor className="w-4 h-4 text-cyan-400" /> Navbar Desktop Simulation
@@ -612,27 +621,6 @@ export const AdminBrandLogoSettings: React.FC = () => {
                   <span>Services</span>
                   <span>Opportunities</span>
                   <span className="px-3 py-1 rounded-full bg-cyan-500 text-black font-bold text-[10px]">Admin</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Light & Dark Background Contrast Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-slate-400 font-bold flex items-center gap-1.5">
-                  <Sun className="w-3.5 h-3.5 text-amber-400" /> Light Background Contrast
-                </label>
-                <div className="p-6 rounded-2xl bg-white border border-slate-300 flex items-center justify-center shadow-lg">
-                  <SeoImage src={currentDisplayUrl} alt="Light Preview" className="h-12 w-auto object-contain" />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-slate-400 font-bold flex items-center gap-1.5">
-                  <Moon className="w-3.5 h-3.5 text-purple-400" /> Dark Background Contrast
-                </label>
-                <div className="p-6 rounded-2xl bg-[#050505] border border-white/10 flex items-center justify-center shadow-lg">
-                  <SeoImage src={currentDisplayUrl} alt="Dark Preview" className="h-12 w-auto object-contain" />
                 </div>
               </div>
             </div>
@@ -676,15 +664,11 @@ export const AdminBrandLogoSettings: React.FC = () => {
             </div>
 
             <p className="text-slate-300 leading-relaxed bg-white/[0.03] p-4 rounded-xl border border-white/10">
-              Uploading a new logo will replace the currently active site logo. The previous Cloudinary asset will be safely purged only after the new logo is confirmed working.
+              Uploading a new logo will replace the currently active site logo across the site.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowReplaceModal(false)}
-                disabled={isBusy}
-                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer"
-              >
+              <button onClick={() => setShowReplaceModal(false)} disabled={isBusy} className="px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 font-bold cursor-pointer">
                 Cancel
               </button>
 
@@ -693,8 +677,7 @@ export const AdminBrandLogoSettings: React.FC = () => {
                 disabled={isBusy}
                 className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold shadow-lg shadow-cyan-500/20 cursor-pointer flex items-center gap-2"
               >
-                {isBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                Replace Logo
+                <CheckCircle className="w-4 h-4" /> Replace Logo
               </button>
             </div>
           </div>
@@ -711,15 +694,11 @@ export const AdminBrandLogoSettings: React.FC = () => {
             </div>
 
             <p className="text-slate-300 leading-relaxed bg-white/[0.03] p-4 rounded-xl border border-white/10">
-              This will remove the custom logo and restore the default Zenemoo logo. The custom Cloudinary asset will be permanently removed.
+              This will remove the custom logo and restore the default Zenemoo logo.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                disabled={isBusy}
-                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold cursor-pointer"
-              >
+              <button onClick={() => setShowDeleteModal(false)} disabled={isBusy} className="px-4 py-2.5 rounded-xl bg-white/5 text-slate-300 font-bold cursor-pointer">
                 Cancel
               </button>
 
@@ -728,8 +707,7 @@ export const AdminBrandLogoSettings: React.FC = () => {
                 disabled={isBusy}
                 className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold shadow-lg shadow-red-500/20 cursor-pointer flex items-center gap-2"
               >
-                {isBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                Remove Logo
+                <Trash2 className="w-4 h-4" /> Remove Logo
               </button>
             </div>
           </div>
