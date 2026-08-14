@@ -1,11 +1,49 @@
-import React, { useState } from 'react';
-import { Sparkles, ArrowRight, ShieldCheck, CheckCircle2, Mic, Tags, Volume2, Globe, Users, Calendar, Mail, Play, Pause } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, ArrowRight, Mail, Play, Pause } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CountUp } from './CountUp';
 import { SeoImage } from '../seo/components/SeoImage';
+import { fetchTodayHeroEvents, HeroEvent } from '../lib/heroEventsService';
+import { useActiveLogo } from '../lib/useActiveLogo';
 
 export const Hero: React.FC = () => {
+  const { logoUrl } = useActiveLogo();
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Hero Events State
+  const [events, setEvents] = useState<HeroEvent[]>([]);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Check prefers-reduced-motion
+    if (typeof window !== 'undefined') {
+      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setPrefersReducedMotion(mediaQuery.matches);
+    }
+
+    // Fetch today's special events
+    const loadEvents = async () => {
+      try {
+        const todayEvents = await fetchTodayHeroEvents();
+        setEvents(todayEvents);
+      } catch (err) {
+        console.warn('Hero events fetch error:', err);
+        setEvents([]);
+      }
+    };
+    loadEvents();
+  }, []);
+
+  // Slide rotation timer for 2+ events (3.5 seconds per slide)
+  useEffect(() => {
+    if (events.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentSlideIndex((prev) => (prev + 1) % events.length);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [events.length]);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -26,6 +64,8 @@ export const Hero: React.FC = () => {
     }
   };
 
+  const activeEvent = events.length > 0 ? events[currentSlideIndex % events.length] : null;
+
   return (
     <section className="relative pt-24 pb-20 md:pt-28 md:pb-24 overflow-hidden bg-noise">
       {/* Background Lights & Aurora */}
@@ -37,17 +77,84 @@ export const Hero: React.FC = () => {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 z-10">
         <div className="text-center max-w-4xl mx-auto">
-          {/* Top Pill Badge with Official Logo */}
-          <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-8 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg">
-            <SeoImage src="/assets/logo.png" alt="Zenemoo Official Logo — Enterprise AI Solutions" priority={true} width={24} height={24} className="w-6 h-6 rounded-full bg-white p-0.5 shadow object-cover" />
-            <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span className="text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold">
-              Trusted DesiCrew Vendor • Est. 2023
-            </span>
-            <span className="text-xs text-slate-500">•</span>
-            <span className="text-xs text-slate-300 group-hover:text-white transition-colors">
-              99%+ Quality Rate &rarr;
-            </span>
+          {/* Top Hero Announcement Badge & Event Carousel */}
+          <div className="inline-block mb-8 max-w-full">
+            {!activeEvent ? (
+              /* NORMAL ANNOUNCEMENT (No Special Events Today) */
+              <a
+                href="#contact"
+                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full overflow-hidden"
+              >
+                <SeoImage
+                  src={logoUrl || '/assets/logo.png'}
+                  alt="Zenemoo Official Logo — Enterprise AI Solutions"
+                  priority={true}
+                  width={24}
+                  height={24}
+                  className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white p-0.5 shadow object-contain shrink-0"
+                  fallbackSrc="/assets/logo.png"
+                />
+                <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+                <span className="text-[11px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold truncate">
+                  Trusted DesiCrew Vendor &bull; Est. 2023
+                </span>
+                <span className="text-xs text-slate-500 hidden sm:inline">&bull;</span>
+                <span className="text-[11px] sm:text-xs text-slate-300 group-hover:text-white transition-colors truncate">
+                  99%+ Quality Rate &rarr;
+                </span>
+              </a>
+            ) : events.length === 1 ? (
+              /* SINGLE SPECIAL EVENT TODAY */
+              <a
+                href={activeEvent.link || '#contact'}
+                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-blue-500/10 border border-cyan-500/40 backdrop-blur-xl group hover:border-cyan-300 transition-all duration-300 shadow-lg max-w-full overflow-hidden"
+              >
+                <span className="text-base sm:text-lg shrink-0 leading-none">{activeEvent.icon}</span>
+                <span className="text-[11px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-bold truncate">
+                  {activeEvent.title}
+                </span>
+                <span className="text-xs text-cyan-400 group-hover:translate-x-0.5 transition-transform shrink-0">
+                  &rarr;
+                </span>
+              </a>
+            ) : (
+              /* MULTIPLE SPECIAL EVENTS CAROUSEL SLIDER (2+ Events) */
+              <a
+                href={activeEvent.link || '#contact'}
+                className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-blue-500/10 border border-cyan-500/40 backdrop-blur-xl group hover:border-cyan-300 transition-all duration-300 shadow-lg max-w-full overflow-hidden relative"
+              >
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeEvent.id}
+                    initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, x: 12 }}
+                    animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
+                    exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, x: -12 }}
+                    transition={{ duration: 0.35, ease: 'easeOut' }}
+                    className="inline-flex items-center gap-2 max-w-full truncate"
+                  >
+                    <span className="text-base sm:text-lg shrink-0 leading-none">{activeEvent.icon}</span>
+                    <span className="text-[11px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-bold truncate">
+                      {activeEvent.title}
+                    </span>
+                    <span className="text-xs text-cyan-400 group-hover:translate-x-0.5 transition-transform shrink-0">
+                      &rarr;
+                    </span>
+                  </motion.div>
+                </AnimatePresence>
+
+                {/* Subtle Slide Indicator Dots */}
+                <div className="hidden sm:flex items-center gap-1 ml-1.5 shrink-0">
+                  {events.map((ev, idx) => (
+                    <span
+                      key={ev.id}
+                      className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                        idx === currentSlideIndex ? 'bg-cyan-400 w-3' : 'bg-white/20'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </a>
+            )}
           </div>
 
           {/* Cinematic Headline */}
