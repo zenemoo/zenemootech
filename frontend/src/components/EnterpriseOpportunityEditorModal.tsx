@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { AdminSeoImageUploader } from './AdminSeoImageUploader';
 import {
   Briefcase,
   Sparkles,
@@ -773,35 +774,20 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
                     <Globe className="w-4 h-4 text-cyan-400" /> Partner / Company Logo
                   </h4>
 
-                  {companyLogo ? (
-                    <div className="relative group p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                      <img src={companyLogo} alt="Logo preview" className="max-h-24 object-contain rounded-lg" />
-                      <button
-                        type="button"
-                        onClick={() => setCompanyLogo('')}
-                        className="absolute top-2 right-2 p-1.5 rounded-lg bg-red-500/80 hover:bg-red-500 text-white cursor-pointer"
-                        title="Remove Logo"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center border-2 border-dashed border-white/15 rounded-xl space-y-2">
-                      <ImageIcon className="w-8 h-8 text-slate-500 mx-auto" />
-                      <p className="text-xs font-mono text-slate-400">No logo uploaded</p>
-                    </div>
-                  )}
+                  <AdminSeoImageUploader
+                    folder="zenemoo/opportunities/logos"
+                    entityType="partner"
+                    entityTitle={partnerName || title || 'Company Logo'}
+                    assetType="logo"
+                    currentImageUrl={companyLogo}
+                    onUploadSuccess={(res) => {
+                      setCompanyLogo(res.imageUrl);
+                      showToast(`Company logo uploaded with SEO filename: ${res.seoFilename}`, 'success');
+                    }}
+                    label="Automatic SEO Logo Upload"
+                  />
 
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-mono text-slate-400 block">Cloudinary CDN Image Upload:</label>
-                    <label className="w-full px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer">
-                      <Upload className="w-4 h-4" />
-                      <span>{isLogoUploading ? 'Uploading Logo...' : 'Upload Logo File'}</span>
-                      <input type="file" accept="image/*" onChange={handleLogoFileChange} className="hidden" />
-                    </label>
-                  </div>
-
-                  <div className="space-y-1">
+                  <div className="space-y-1 pt-2">
                     <label className="text-[11px] font-mono text-slate-400 block">Direct Image URL:</label>
                     <input
                       type="url"
@@ -819,36 +805,21 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
                     <ImageIcon className="w-4 h-4 text-purple-400" /> Program Poster Banner
                   </h4>
 
-                  {posterUrl ? (
-                    <div className="relative group p-2 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                      <img src={posterUrl} alt="Poster banner preview" className="max-h-36 object-cover rounded-lg w-full" />
-                      <button
-                        type="button"
-                        onClick={() => setPosterUrl('')}
-                        className="absolute top-4 right-4 p-1.5 rounded-lg bg-red-500/80 hover:bg-red-500 text-white cursor-pointer"
-                        title="Remove Poster Banner"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center border-2 border-dashed border-white/15 rounded-xl space-y-2">
-                      <ImageIcon className="w-8 h-8 text-slate-500 mx-auto" />
-                      <p className="text-xs font-mono text-slate-400">No poster banner uploaded</p>
-                    </div>
-                  )}
+                  <AdminSeoImageUploader
+                    folder="zenemoo/opportunities/posters"
+                    entityType="opportunity"
+                    entityTitle={title || partnerName || 'Opportunity Poster Banner'}
+                    assetType="banner"
+                    currentImageUrl={posterUrl}
+                    onUploadSuccess={(res) => {
+                      setPosterUrl(res.imageUrl);
+                      showToast(`Poster banner uploaded with SEO alt text: "${res.altText}"`, 'success');
+                    }}
+                    label="Automatic SEO Poster Banner Upload"
+                  />
 
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-mono text-slate-400 block">Cloudinary CDN Poster Upload:</label>
-                    <label className="w-full px-4 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer">
-                      <Upload className="w-4 h-4" />
-                      <span>{isPosterUploading ? 'Uploading Poster...' : 'Upload Poster Banner'}</span>
-                      <input type="file" accept="image/*" onChange={handlePosterFileChange} className="hidden" />
-                    </label>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-mono text-slate-400 block">Direct Poster URL:</label>
+                  <div className="space-y-1 pt-2">
+                    <label className="text-[11px] font-mono text-slate-400 block">Direct Image URL:</label>
                     <input
                       type="url"
                       value={posterUrl}

@@ -2,13 +2,19 @@ import { cloudinary } from '../config/cloudinary.js';
 
 export const cloudinaryService = {
   // Production-grade Cloudinary Upload Stream
-  uploadStream(fileBuffer, folder = 'zenemoo/team') {
+  uploadStream(fileBuffer, folder = 'zenemoo/team', options = {}) {
     return new Promise((resolve, reject) => {
+      const uploadParams = {
+        folder,
+        resource_type: 'auto',
+      };
+      if (options.public_id) {
+        uploadParams.public_id = options.public_id;
+        uploadParams.overwrite = true;
+      }
+
       const stream = cloudinary.uploader.upload_stream(
-        {
-          folder,
-          resource_type: 'auto',
-        },
+        uploadParams,
         (error, result) => {
           if (error) {
             console.error('Cloudinary Upload Error:', error);

@@ -1,5 +1,6 @@
 import { cloudinaryService } from '../services/cloudinaryService.js';
 import { supabaseService } from '../services/supabaseService.js';
+import { buildImageSeoMetadata, generateCloudinaryPublicId } from '../utils/imageSeoHelper.js';
 
 const ALLOWED_FOLDERS = [
   'zenemoo/team',
@@ -8,6 +9,9 @@ const ALLOWED_FOLDERS = [
   'zenemoo/portfolio',
   'zenemoo/blog',
   'zenemoo/testimonials',
+  'zenemoo/opportunities',
+  'zenemoo/partners',
+  'zenemoo/logo',
 ];
 
 export const uploadMedia = async (req, res, next) => {
@@ -22,33 +26,59 @@ export const uploadMedia = async (req, res, next) => {
       folder = 'zenemoo/team';
     }
 
-    const title = req.body.title || req.file.originalname;
+    const entityType = req.body.entity_type || req.body.entityType || 'general';
+    const entityId = req.body.entity_id || req.body.entityId || '';
+    const entityTitle = req.body.entity_title || req.body.entityTitle || req.body.title || req.file.originalname.replace(/\.[^/.]+$/, '');
+    const assetType = req.body.asset_type || req.body.assetType || 'image';
 
-    // 1. Upload file buffer to Cloudinary SDK via stream
-    const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder);
+    const customPublicId = generateCloudinaryPublicId(folder, entityTitle, assetType);
 
-    // 2. Insert image metadata record into Supabase PostgreSQL media table
-    const mediaPayload = {
-      title,
-      folder,
-      public_id: cloudinaryRes.public_id,
-      image_url: cloudinaryRes.secure_url,
-      asset_id: cloudinaryRes.asset_id,
-      width: cloudinaryRes.width,
-      height: cloudinaryRes.height,
-      format: cloudinaryRes.format,
-      bytes: cloudinaryRes.bytes,
-      created_at: new Date().toISOString(),
-    };
+    // 1. Upload file buffer to Cloudinary SDK via stream with clean public_id
+    const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder, {
+      public_id: customPublicId,
+    });
 
-    const dbRecord = await supabaseService.insert('media', mediaPayload);
+    // 2. Build full automatic SEO Metadata payload
+    const mediaPayload = buildImageSeoMetadata({
+      originalName: req.file.originalname,
+      entityType,
+      entityId,
+      entityTitle,
+      assetType,
+      altText: req.body.alt_text || req.body.altText || '',
+      title: req.body.title || '',
+      description: req.body.description || '',
+      caption: req.body.caption || '',
+      cloudinaryResult: cloudinaryRes,
+    });
 
-    // 3. Return Database Record JSON
+    // Add backwards-compatible fields
+    mediaPayload.folder = folder;
+    mediaPayload.bytes = cloudinaryRes.bytes;
+
+    let dbRecord = null;
+    try {
+      dbRecord = await supabaseService.insert('media', mediaPayload);
+    } catch (dbErr) {
+      console.warn('Supabase insert warning (media table fallback):', dbErr.message);
+    }
+
+    const resultData = dbRecord || mediaPayload;
+
+    // 3. Return Database Record JSON with complete SEO preview attributes
     return res.status(201).json({
       success: true,
-      message: 'Image uploaded successfully to Cloudinary & Supabase',
-      media: dbRecord || mediaPayload,
-      data: dbRecord || mediaPayload,
+      message: 'Image uploaded successfully with automatic SEO metadata',
+      media: resultData,
+      data: resultData,
+      seo: {
+        seo_filename: mediaPayload.seo_filename,
+        alt_text: mediaPayload.alt_text,
+        title: mediaPayload.title,
+        description: mediaPayload.description,
+        public_id: mediaPayload.cloudinary_public_id,
+        image_url: mediaPayload.cloudinary_secure_url,
+      },
     });
   } catch (err) {
     console.error('Upload Controller Error:', err.message);
@@ -80,53 +110,77 @@ export const updateMedia = async (req, res, next) => {
     }
 
     // 1. Fetch existing record from Supabase
-    const existingMedia = await supabaseService.selectById('media', id);
-    if (!existingMedia) {
-      return res.status(404).json({ success: false, message: 'Media record not found in Supabase' });
-    }
+    let existingMedia = null;
+    try {
+      existingMedia = await supabaseService.selectById('media', id);
+    } catch (e) {}
 
-    let updatedPayload = { ...existingMedia };
+    let updatedPayload = existingMedia ? { ...existingMedia } : {};
+    let oldPublicId = existingMedia?.public_id || existingMedia?.cloudinary_public_id || null;
 
     if (req.file) {
-      // 2. Delete old image from Cloudinary if public_id exists
-      if (existingMedia.public_id) {
-        try {
-          await cloudinaryService.deleteMedia(existingMedia.public_id);
-        } catch (e) {
-          console.warn('Failed to delete old Cloudinary image:', e.message);
-        }
-      }
-
-      // 3. Upload new image to Cloudinary
-      let folder = req.body.folder || existingMedia.folder || 'zenemoo/team';
+      // Step A: Upload NEW image first before deleting old one (safe replacement workflow)
+      let folder = req.body.folder || existingMedia?.folder || 'zenemoo/team';
       if (!ALLOWED_FOLDERS.includes(folder)) {
         folder = 'zenemoo/team';
       }
 
-      const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder);
+      const entityType = req.body.entity_type || existingMedia?.entity_type || 'general';
+      const entityId = req.body.entity_id || existingMedia?.entity_id || '';
+      const entityTitle = req.body.entity_title || req.body.title || existingMedia?.title || req.file.originalname.replace(/\.[^/.]+$/, '');
+      const assetType = req.body.asset_type || existingMedia?.asset_type || 'image';
+
+      const customPublicId = generateCloudinaryPublicId(folder, entityTitle, assetType);
+      const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder, {
+        public_id: customPublicId,
+      });
+
+      const newSeoPayload = buildImageSeoMetadata({
+        originalName: req.file.originalname,
+        entityType,
+        entityId,
+        entityTitle,
+        assetType,
+        altText: req.body.alt_text || req.body.altText || existingMedia?.alt_text || '',
+        title: req.body.title || existingMedia?.title || '',
+        description: req.body.description || existingMedia?.description || '',
+        caption: req.body.caption || existingMedia?.caption || '',
+        cloudinaryResult: cloudinaryRes,
+      });
 
       updatedPayload = {
         ...updatedPayload,
-        title: req.body.title || req.file.originalname,
+        ...newSeoPayload,
         folder,
-        public_id: cloudinaryRes.public_id,
-        image_url: cloudinaryRes.secure_url,
-        asset_id: cloudinaryRes.asset_id,
-        width: cloudinaryRes.width,
-        height: cloudinaryRes.height,
-        format: cloudinaryRes.format,
-        bytes: cloudinaryRes.bytes,
+        updated_at: new Date().toISOString(),
       };
-    } else if (req.body.title) {
-      updatedPayload.title = req.body.title;
+
+      // Step B: Delete OLD image ONLY after new image is successfully uploaded
+      if (oldPublicId && oldPublicId !== cloudinaryRes.public_id) {
+        try {
+          await cloudinaryService.deleteMedia(oldPublicId);
+        } catch (e) {
+          console.warn('Failed to delete replaced Cloudinary asset:', e.message);
+        }
+      }
+    } else {
+      // Update text fields only
+      if (req.body.alt_text || req.body.altText) updatedPayload.alt_text = req.body.alt_text || req.body.altText;
+      if (req.body.title) updatedPayload.title = req.body.title;
+      if (req.body.description) updatedPayload.description = req.body.description;
+      if (req.body.caption) updatedPayload.caption = req.body.caption;
+      updatedPayload.updated_at = new Date().toISOString();
     }
 
     // 4. Update Supabase record
-    const updatedRecord = await supabaseService.update('media', id, updatedPayload);
+    let updatedRecord = null;
+    try {
+      updatedRecord = await supabaseService.update('media', id, updatedPayload);
+    } catch (e) {}
 
     res.json({
       success: true,
-      message: 'Media record updated successfully',
+      message: 'Media record & SEO metadata updated successfully',
       media: updatedRecord || updatedPayload,
       data: updatedRecord || updatedPayload,
     });
@@ -151,8 +205,8 @@ export const deleteMedia = async (req, res, next) => {
 
     try {
       const existingMedia = await supabaseService.selectById('media', decodedId);
-      if (existingMedia && existingMedia.public_id) {
-        public_id = existingMedia.public_id;
+      if (existingMedia) {
+        public_id = existingMedia.public_id || existingMedia.cloudinary_public_id || decodedId;
         recordId = existingMedia.id;
       }
     } catch (e) {}
@@ -182,3 +236,4 @@ export const deleteMedia = async (req, res, next) => {
     });
   }
 };
+

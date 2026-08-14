@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Edit, Trash2, Upload, Database, Cloud, CheckCircle, Sparkles, Image, RefreshCw, Save } from 'lucide-react';
 import { TeamMember } from '../lib/teamStore';
 import { uploadImageToCloudinary } from '../lib/adminStore';
+import { AdminSeoImageUploader } from './AdminSeoImageUploader';
 
 interface TeamAdminModalProps {
   isOpen: boolean;
@@ -300,34 +301,32 @@ export const TeamAdminModal: React.FC<TeamAdminModalProps> = ({
 
               {/* Photo Upload via Cloudinary / URL */}
               <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
-                <label className="block text-xs font-mono text-cyan-300 font-bold flex items-center gap-2">
-                  <Image className="w-4 h-4" /> Team Photo (Cloudinary Upload / Image URL)
-                </label>
+                <AdminSeoImageUploader
+                  folder="zenemoo/team"
+                  entityType="team"
+                  entityTitle={editingMember.name || 'Team Member'}
+                  assetType="profile"
+                  currentImageUrl={editingMember.image_url || editingMember.image || ''}
+                  onUploadSuccess={(res) => {
+                    setEditingMember({
+                      ...editingMember,
+                      image_url: res.imageUrl,
+                      image: res.imageUrl,
+                      public_id: res.publicId,
+                    });
+                  }}
+                  label="Team Profile Photo (Automatic SEO Upload)"
+                />
 
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shrink-0">
-                    {editingMember.image_url || editingMember.image ? (
-                      <img src={editingMember.image_url || editingMember.image} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">No Image</div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="url"
-                      placeholder="https://res.cloudinary.com/.../photo.jpg"
-                      value={editingMember.image_url || editingMember.image || ''}
-                      onChange={(e) => setEditingMember({ ...editingMember, image_url: e.target.value, image: e.target.value })}
-                      className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
-                    />
-
-                    <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-mono cursor-pointer hover:bg-purple-500/30 transition-all">
-                      <Upload className="w-3.5 h-3.5" />
-                      {isUploading ? 'Uploading to Cloudinary...' : 'Upload Local Image to Cloudinary'}
-                      <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
-                    </label>
-                  </div>
+                <div className="space-y-1 pt-1">
+                  <label className="text-[11px] font-mono text-slate-400 block">Direct Image URL:</label>
+                  <input
+                    type="url"
+                    placeholder="https://res.cloudinary.com/.../photo.jpg"
+                    value={editingMember.image_url || editingMember.image || ''}
+                    onChange={(e) => setEditingMember({ ...editingMember, image_url: e.target.value, image: e.target.value })}
+                    className="w-full px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
+                  />
                 </div>
               </div>
 

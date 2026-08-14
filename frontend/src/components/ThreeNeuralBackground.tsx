@@ -18,13 +18,13 @@ export const ThreeNeuralBackground: React.FC = () => {
     );
     camera.position.z = 40;
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     container.appendChild(renderer.domElement);
 
     // Particle geometry
-    const particleCount = 170;
+    const particleCount = 110;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const velocities: { x: number; y: number; z: number }[] = [];
@@ -44,7 +44,7 @@ export const ThreeNeuralBackground: React.FC = () => {
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-    // Vibrant particle material
+    // Particle texture
     const canvas = document.createElement('canvas');
     canvas.width = 32;
     canvas.height = 32;
@@ -73,7 +73,15 @@ export const ThreeNeuralBackground: React.FC = () => {
     const particles = new THREE.Points(geometry, material);
     scene.add(particles);
 
-    // Visible Neural mesh connecting lines
+    // Static buffer for lines to avoid garbage collection on every frame
+    const maxLineConnections = 350;
+    const maxLineFloats = maxLineConnections * 2 * 3; // 2 vertices per line, 3 coords per vertex
+    const linePositionsBuffer = new Float32Array(maxLineFloats);
+    const lineGeometry = new THREE.BufferGeometry();
+    const linePositionAttribute = new THREE.BufferAttribute(linePositionsBuffer, 3);
+    linePositionAttribute.setUsage(THREE.DynamicDrawUsage);
+    lineGeometry.setAttribute('position', linePositionAttribute);
+
     const lineMaterial = new THREE.LineBasicMaterial({
       color: 0x3b82f6,
       transparent: true,
@@ -81,12 +89,11 @@ export const ThreeNeuralBackground: React.FC = () => {
       blending: THREE.AdditiveBlending,
     });
 
-    const lineGeometry = new THREE.BufferGeometry();
     const lineMesh = new THREE.LineSegments(lineGeometry, lineMaterial);
     scene.add(lineMesh);
 
     // Central 3D Geometric Ring
-    const torusGeometry = new THREE.TorusKnotGeometry(12, 2.5, 120, 16);
+    const torusGeometry = new THREE.TorusKnotGeometry(12, 2.5, 80, 12);
     const torusMaterial = new THREE.MeshBasicMaterial({
       color: 0xa855f7,
       wireframe: true,
@@ -101,13 +108,19 @@ export const ThreeNeuralBackground: React.FC = () => {
     let mouseY = 0;
     let targetX = 0;
     let targetY = 0;
+    let isTabVisible = true;
 
     const handleMouseMove = (event: MouseEvent) => {
-      mouseX = (event.clientX - window.innerWidth / 2) * 0.006;
-      mouseY = (event.clientY - window.innerHeight / 2) * 0.006;
+      mouseX = (event.clientX - window.innerWidth / 2) * 0.004;
+      mouseY = (event.clientY - window.innerHeight / 2) * 0.004;
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Resize Handler
     const handleResize = () => {
@@ -116,11 +129,15 @@ export const ThreeNeuralBackground: React.FC = () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, { passive: true });
 
-    // Smooth Slow-Motion Animation Loop
+    // Smooth Animation Loop
     let animationFrameId: number;
     const animate = () => {
+      animationFrameId = requestAnimationFrame(animate);
+
+      if (!isTabVisible) return;
+
       targetX += (mouseX - targetX) * 0.025;
       targetY += (mouseY - targetY) * 0.025;
 
@@ -133,7 +150,7 @@ export const ThreeNeuralBackground: React.FC = () => {
       const posAttr = geometry.attributes.position as THREE.BufferAttribute;
       const posArray = posAttr.array as Float32Array;
 
-      const linePositions: number[] = [];
+      let lineVertexCount = 0;
 
       for (let i = 0; i < particleCount; i++) {
         let x = posArray[i * 3];
@@ -152,35 +169,40 @@ export const ThreeNeuralBackground: React.FC = () => {
         posArray[i * 3 + 1] = y;
         posArray[i * 3 + 2] = z;
 
-        // Check neighbor connections for neural lines
-        for (let j = i + 1; j < particleCount; j++) {
-          const dx = x - posArray[j * 3];
-          const dy = y - posArray[j * 3 + 1];
-          const dz = z - posArray[j * 3 + 2];
-          const distSq = dx * dx + dy * dy + dz * dz;
+        // Neighbor connection check
+        if (lineVertexCount < maxLineFloats - 6) {
+          for (let j = i + 1; j < particleCount; j++) {
+            const dx = x - posArray[j * 3];
+            const dy = y - posArray[j * 3 + 1];
+            const dz = z - posArray[j * 3 + 2];
+            const distSq = dx * dx + dy * dy + dz * dz;
 
-          if (distSq < 130) {
-            linePositions.push(x, y, z);
-            linePositions.push(posArray[j * 3], posArray[j * 3 + 1], posArray[j * 3 + 2]);
+            if (distSq < 130) {
+              linePositionsBuffer[lineVertexCount++] = x;
+              linePositionsBuffer[lineVertexCount++] = y;
+              linePositionsBuffer[lineVertexCount++] = z;
+              linePositionsBuffer[lineVertexCount++] = posArray[j * 3];
+              linePositionsBuffer[lineVertexCount++] = posArray[j * 3 + 1];
+              linePositionsBuffer[lineVertexCount++] = posArray[j * 3 + 2];
+
+              if (lineVertexCount >= maxLineFloats - 6) break;
+            }
           }
         }
       }
 
       posAttr.needsUpdate = true;
-
-      lineGeometry.setAttribute(
-        'position',
-        new THREE.Float32BufferAttribute(linePositions, 3)
-      );
+      linePositionAttribute.needsUpdate = true;
+      lineGeometry.setDrawRange(0, lineVertexCount / 3);
 
       renderer.render(scene, camera);
-      animationFrameId = requestAnimationFrame(animate);
     };
 
     animate();
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
       if (container.contains(renderer.domElement)) {
@@ -199,7 +221,9 @@ export const ThreeNeuralBackground: React.FC = () => {
   return (
     <div
       ref={mountRef}
-      className="fixed inset-0 z-0 pointer-events-none opacity-85"
+      className="fixed inset-0 z-0 pointer-events-none opacity-85 will-change-transform"
+      style={{ transform: 'translateZ(0)' }}
     />
   );
 };
+
