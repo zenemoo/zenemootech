@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   review_id TEXT UNIQUE NOT NULL,
+  review_slug TEXT,
   name TEXT NOT NULL,
   reviewer_type TEXT NOT NULL CHECK (reviewer_type IN ('contributor', 'client')),
   rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
@@ -19,6 +20,11 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='review_id') THEN
     ALTER TABLE reviews ADD COLUMN review_id TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='review_slug') THEN
+    ALTER TABLE reviews ADD COLUMN review_slug TEXT;
+  ELSE
+    ALTER TABLE reviews ALTER COLUMN review_slug DROP NOT NULL;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='reviewer_type') THEN
     ALTER TABLE reviews ADD COLUMN reviewer_type TEXT DEFAULT 'contributor';
@@ -37,10 +43,28 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 2.5: Drop NOT NULL constraints on any legacy columns (slug, email, organization, etc.)
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='slug') THEN
+    ALTER TABLE reviews ALTER COLUMN slug DROP NOT NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='email') THEN
+    ALTER TABLE reviews ALTER COLUMN email DROP NOT NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='reviews' AND column_name='organization') THEN
+    ALTER TABLE reviews ALTER COLUMN organization DROP NOT NULL;
+  END IF;
+END $$;
+
 -- Step 3: Populate any null review_id values if legacy data existed
 UPDATE reviews 
 SET review_id = 'ZEN-REV-' || UPPER(SUBSTRING(MD5(RANDOM()::text) FROM 1 FOR 4)) || '-' || UPPER(SUBSTRING(MD5(RANDOM()::text) FROM 5 FOR 4))
 WHERE review_id IS NULL OR review_id = '';
+
+UPDATE reviews 
+SET review_slug = LOWER(review_id)
+WHERE review_slug IS NULL OR review_slug = '';
 
 -- Ensure review_id is UNIQUE and NOT NULL
 ALTER TABLE reviews ALTER COLUMN review_id SET NOT NULL;

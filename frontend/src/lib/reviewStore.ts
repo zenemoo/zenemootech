@@ -100,8 +100,9 @@ export const submitPublicReview = async (reviewData: {
     attempts++;
     const review_id = generateUniqueReviewId();
 
-    const payload = {
+    const payload: any = {
       review_id,
+      review_slug: review_id.toLowerCase(),
       name: cleanName,
       reviewer_type: cleanType,
       rating: cleanRating,
@@ -109,11 +110,23 @@ export const submitPublicReview = async (reviewData: {
       is_visible: false,
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('reviews')
       .insert([payload])
       .select()
       .single();
+
+    // Fallback if review_slug column is missing in a fresh table
+    if (error && error.message?.includes('review_slug') && error.message?.includes('does not exist')) {
+      delete payload.review_slug;
+      const res = await supabase
+        .from('reviews')
+        .insert([payload])
+        .select()
+        .single();
+      data = res.data;
+      error = res.error;
+    }
 
     if (!error && data) {
       return data as ReviewItem;
