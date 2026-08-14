@@ -30,6 +30,11 @@ export class CloudinaryService {
     }
 
     let cleanUrl = rawUrl.trim();
+    // Strip query strings (e.g. ?v=123) to prevent Cloudinary URL corruption and broken srcSet
+    if (cleanUrl.includes('?')) {
+      cleanUrl = cleanUrl.split('?')[0];
+    }
+
     if (cleanUrl.startsWith('http://')) {
       cleanUrl = cleanUrl.replace('http://', 'https://');
     }

@@ -42,10 +42,7 @@ export const useActiveLogo = () => {
         const rawUrl = item.secure_url || item.url || item.cloudinary_secure_url || item.image_url;
         
         if (rawUrl) {
-          // Add cache buster query parameter to ensure newly activated logos display instantly
-          const ver = item.updated_at ? new Date(item.updated_at).getTime() : Date.now();
-          const versionedUrl = rawUrl.includes('?') ? `${rawUrl}&v=${ver}` : `${rawUrl}?v=${ver}`;
-          setLogoUrl(versionedUrl);
+          setLogoUrl(rawUrl);
           setLogoData(item);
         } else {
           setLogoUrl(DEFAULT_LOGO);
