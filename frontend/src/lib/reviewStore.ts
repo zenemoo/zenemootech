@@ -179,3 +179,61 @@ export const deleteReviewFromApi = async (id: string): Promise<void> => {
     throw new Error(error.message || 'Unable to delete this review. Please try again.');
   }
 };
+
+/**
+ * Admin API: Publish ALL pending (hidden) reviews at once in Supabase.
+ */
+export const publishAllPendingReviews = async (): Promise<number> => {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('reviews')
+    .update({ is_visible: true, updated_at: now })
+    .eq('is_visible', false)
+    .select('id');
+
+  if (error) {
+    console.error('Supabase publish all pending error:', error);
+    throw new Error(error.message || 'Unable to publish pending reviews.');
+  }
+
+  return data ? data.length : 0;
+};
+
+/**
+ * Admin API: Bulk publish selected review IDs in Supabase.
+ */
+export const bulkPublishReviews = async (ids: string[]): Promise<number> => {
+  if (!ids || ids.length === 0) return 0;
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('reviews')
+    .update({ is_visible: true, updated_at: now })
+    .in('id', ids)
+    .select('id');
+
+  if (error) {
+    console.error('Supabase bulk publish error:', error);
+    throw new Error(error.message || 'Unable to publish selected reviews.');
+  }
+
+  return data ? data.length : 0;
+};
+
+/**
+ * Admin API: Bulk delete selected review IDs in Supabase.
+ */
+export const bulkDeleteReviews = async (ids: string[]): Promise<number> => {
+  if (!ids || ids.length === 0) return 0;
+  const { data, error } = await supabase
+    .from('reviews')
+    .delete()
+    .in('id', ids)
+    .select('id');
+
+  if (error) {
+    console.error('Supabase bulk delete error:', error);
+    throw new Error(error.message || 'Unable to delete selected reviews.');
+  }
+
+  return data ? data.length : 0;
+};

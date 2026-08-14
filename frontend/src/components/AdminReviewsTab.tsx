@@ -18,13 +18,20 @@ import {
   Clock,
   Sparkles,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CheckSquare,
+  Square,
+  Layers,
+  ChevronDown
 } from 'lucide-react';
 import {
   ReviewItem,
   getAllReviewsForAdmin,
   toggleReviewVisibility,
   deleteReviewFromApi,
+  publishAllPendingReviews,
+  bulkPublishReviews,
+  bulkDeleteReviews,
 } from '../lib/reviewStore';
 
 interface AdminReviewsTabProps {
@@ -40,14 +47,20 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
   const [typeFilter, setTypeFilter] = useState<'all' | 'contributor' | 'client'>('all');
   const [ratingFilter, setRatingFilter] = useState<'all' | '1' | '2' | '3' | '4' | '5'>('all');
 
+  // Multi-select & Bulk Actions State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkPublishing, setIsBulkPublishing] = useState(false);
+  const [isPublishingAll, setIsPublishingAll] = useState(false);
+
   // Confirmation modal for deleting review
   const [deleteTarget, setDeleteTarget] = useState<ReviewItem | null>(null);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Pagination state
+  // Scalability Pagination state (Matching screenshot 2)
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState<number>(10);
 
   const fetchReviews = async () => {
     setLoading(true);
@@ -119,12 +132,93 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     });
   }, [reviews, searchQuery, statusFilter, typeFilter, ratingFilter]);
 
-  // Paginated records
+  // Paginated records based on scalable pageSize
   const totalPages = Math.ceil(filteredReviews.length / pageSize) || 1;
   const paginatedReviews = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredReviews.slice(start, start + pageSize);
-  }, [filteredReviews, currentPage]);
+  }, [filteredReviews, currentPage, pageSize]);
+
+  // Row selection logic
+  const isAllPaginatedSelected = useMemo(() => {
+    if (paginatedReviews.length === 0) return false;
+    return paginatedReviews.every((r) => selectedIds.includes(r.id));
+  }, [paginatedReviews, selectedIds]);
+
+  const toggleSelectAllPaginated = () => {
+    if (isAllPaginatedSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !paginatedReviews.some((r) => r.id === id)));
+    } else {
+      const pageIds = paginatedReviews.map((r) => r.id);
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Handle Accept / Publish ALL Pending Reviews at once
+  const handlePublishAllPending = async () => {
+    if (stats.hidden === 0) {
+      onAddToast('Notice', 'There are no pending/hidden reviews to approve.', 'info');
+      return;
+    }
+
+    setIsPublishingAll(true);
+    try {
+      const count = await publishAllPendingReviews();
+      await fetchReviews();
+      setSelectedIds([]);
+      onAddToast(
+        'All Accepted!',
+        `Successfully accepted and published all ${count} pending reviews to the public web UI!`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Publish all pending error:', err);
+      onAddToast('Accept Error', 'Unable to accept all pending reviews. Please try again.', 'error');
+    } finally {
+      setIsPublishingAll(false);
+    }
+  };
+
+  // Handle Bulk Publish Selected
+  const handleBulkPublishSelected = async () => {
+    if (selectedIds.length === 0) return;
+    setIsBulkPublishing(true);
+    try {
+      const count = await bulkPublishReviews(selectedIds);
+      await fetchReviews();
+      setSelectedIds([]);
+      onAddToast('Bulk Accepted', `Successfully accepted ${count} selected reviews!`, 'success');
+    } catch (err: any) {
+      console.error('Bulk publish error:', err);
+      onAddToast('Bulk Accept Error', 'Unable to accept selected reviews.', 'error');
+    } finally {
+      setIsBulkPublishing(false);
+    }
+  };
+
+  // Handle Bulk Delete Selected
+  const handleConfirmBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    setIsDeleting(true);
+    try {
+      const count = await bulkDeleteReviews(selectedIds);
+      await fetchReviews();
+      setSelectedIds([]);
+      setIsBulkDeleteModalOpen(false);
+      onAddToast('Bulk Deleted', `Successfully deleted ${count} selected reviews.`, 'success');
+    } catch (err: any) {
+      console.error('Bulk delete error:', err);
+      onAddToast('Bulk Delete Error', 'Unable to delete selected reviews.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Handle visibility toggle directly in Supabase
   const handleToggleVisibility = async (review: ReviewItem) => {
@@ -132,7 +226,6 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     const newStatus = !review.is_visible;
     try {
       await toggleReviewVisibility(review.id, newStatus);
-      // Re-fetch database to confirm update persisted
       await fetchReviews();
       onAddToast(
         'Visibility Updated',
@@ -147,13 +240,12 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     }
   };
 
-  // Handle review deletion directly in Supabase
+  // Handle single review deletion directly in Supabase
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
       await deleteReviewFromApi(deleteTarget.id);
-      // Re-fetch database to verify deletion
       await fetchReviews();
       onAddToast('Review Deleted', 'Review deleted successfully.', 'success');
       setDeleteTarget(null);
@@ -174,10 +266,50 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     }
   };
 
+  // Page numbers generator for UI pagination (Matching Image 2)
+  const renderPaginationButtons = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 4) {
+        pages.push(1, 2, 3, 4, 5, '...', totalPages);
+      } else if (currentPage >= totalPages - 3) {
+        pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+
+    return pages.map((page, idx) => {
+      if (typeof page === 'string') {
+        return (
+          <span key={`dots_${idx}`} className="px-2 text-slate-500 font-mono">
+            ...
+          </span>
+        );
+      }
+      const isActive = page === currentPage;
+      return (
+        <button
+          key={`page_${page}`}
+          onClick={() => setCurrentPage(page)}
+          className={`w-8 h-8 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
+            isActive
+              ? 'bg-cyan-400 text-black shadow-md shadow-cyan-500/20'
+              : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
+          }`}
+        >
+          {page}
+        </button>
+      );
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/[0.02] p-5 rounded-2xl border border-white/10">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/[0.02] p-5 rounded-2xl border border-white/10">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold mb-2">
             <Star className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400" />
@@ -189,14 +321,33 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
           </p>
         </div>
 
-        <button
-          onClick={fetchReviews}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-mono font-bold transition-all cursor-pointer disabled:opacity-50 self-start sm:self-auto shadow-sm"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Database</span>
-        </button>
+        {/* Global Header Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* ACCEPT ALL PENDING REVIEWS BUTTON */}
+          <button
+            onClick={handlePublishAllPending}
+            disabled={isPublishingAll || stats.hidden === 0}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold font-mono text-xs transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Accept & publish all pending hidden reviews at once"
+          >
+            {isPublishingAll ? (
+              <RefreshCw className="w-4 h-4 animate-spin text-black" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-black" />
+            )}
+            <span>Accept All Pending ({stats.hidden})</span>
+          </button>
+
+          {/* Refresh Database Button */}
+          <button
+            onClick={fetchReviews}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-mono font-bold transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Database</span>
+          </button>
+        </div>
       </div>
 
       {/* Analytics KPI Stat Cards */}
@@ -312,28 +463,50 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
         </div>
 
         {/* Rating Filter Pills */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5 text-xs font-mono">
-          <span className="text-slate-400 text-[11px] uppercase tracking-wider font-semibold mr-1">Rating Filter:</span>
-          {(['all', '5', '4', '3', '2', '1'] as const).map((r) => (
-            <button
-              key={r}
-              onClick={() => {
-                setRatingFilter(r);
-                setCurrentPage(1);
-              }}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                ratingFilter === r
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                  : 'bg-white/[0.03] text-slate-400 hover:text-white border border-white/5'
-              }`}
-            >
-              {r === 'all' ? 'All Ratings' : `${r} ★`}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-slate-400 text-[11px] uppercase tracking-wider font-semibold mr-1">Rating Filter:</span>
+            {(['all', '5', '4', '3', '2', '1'] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => {
+                  setRatingFilter(r);
+                  setCurrentPage(1);
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  ratingFilter === r
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'bg-white/[0.03] text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                {r === 'all' ? 'All Ratings' : `${r} ★`}
+              </button>
+            ))}
+          </div>
+
+          {/* Bulk Selection Bar when 1 or more rows selected */}
+          {selectedIds.length > 0 && (
+            <div className="flex items-center gap-2 bg-cyan-500/10 px-3 py-1 rounded-xl border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold animate-fade-in">
+              <span>{selectedIds.length} Selected</span>
+              <button
+                onClick={handleBulkPublishSelected}
+                disabled={isBulkPublishing}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500 text-black hover:bg-emerald-400 font-bold transition-all cursor-pointer text-[11px]"
+              >
+                {isBulkPublishing ? 'Accepting...' : 'Accept Selected'}
+              </button>
+              <button
+                onClick={() => setIsBulkDeleteModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 font-bold transition-all cursor-pointer text-[11px]"
+              >
+                Delete Selected
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Reviews Table / Responsive Cards */}
+      {/* Reviews Table / Cards Container */}
       <div className="bg-white/[0.02] rounded-2xl border border-white/10 overflow-hidden shadow-xl">
         {loading ? (
           <div className="p-12 text-center text-slate-400 font-mono text-sm space-y-3">
@@ -356,6 +529,15 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
               <table className="w-full text-left text-xs font-mono">
                 <thead>
                   <tr className="bg-white/[0.04] border-b border-white/10 text-slate-400 uppercase tracking-wider">
+                    {/* Master Checkbox */}
+                    <th className="py-3.5 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllPaginatedSelected}
+                        onChange={toggleSelectAllPaginated}
+                        className="rounded border-white/20 bg-white/5 text-cyan-400 focus:ring-0 cursor-pointer"
+                      />
+                    </th>
                     <th className="py-3.5 px-4 font-semibold">Review ID</th>
                     <th className="py-3.5 px-4 font-semibold">Reviewer</th>
                     <th className="py-3.5 px-4 font-semibold">Type</th>
@@ -369,8 +551,25 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
                 <tbody className="divide-y divide-white/5 text-slate-300">
                   {paginatedReviews.map((review) => {
                     const isContributor = (review.reviewer_type || '').toLowerCase().includes('contributor');
+                    const isSelected = selectedIds.includes(review.id);
+
                     return (
-                      <tr key={review.id} className="hover:bg-white/[0.02] transition-colors">
+                      <tr
+                        key={review.id}
+                        className={`transition-colors ${
+                          isSelected ? 'bg-cyan-500/[0.06]' : 'hover:bg-white/[0.02]'
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td className="py-4 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectRow(review.id)}
+                            className="rounded border-white/20 bg-white/5 text-cyan-400 focus:ring-0 cursor-pointer"
+                          />
+                        </td>
+
                         {/* Review ID */}
                         <td className="py-4 px-4 font-bold text-cyan-300 whitespace-nowrap">
                           {review.review_id}
@@ -478,43 +677,71 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
               </table>
             </div>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="px-5 py-4 bg-white/[0.02] border-t border-white/10 flex items-center justify-between text-xs font-mono">
-                <div className="text-slate-400">
-                  Showing <span className="text-white font-bold">{(currentPage - 1) * pageSize + 1}</span> to{' '}
-                  <span className="text-white font-bold">
-                    {Math.min(currentPage * pageSize, filteredReviews.length)}
-                  </span>{' '}
-                  of <span className="text-white font-bold">{filteredReviews.length}</span> reviews
+            {/* SCALABILITY PAGINATION FOOTER (Matching Image 2 Exactly) */}
+            <div className="px-6 py-4 bg-[#07090e] border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono">
+              {/* Left Side: Showing X to Y of Z reviews */}
+              <div className="text-slate-400">
+                Showing{' '}
+                <span className="text-cyan-300 font-bold">
+                  {filteredReviews.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+                </span>{' '}
+                to{' '}
+                <span className="text-cyan-300 font-bold">
+                  {Math.min(currentPage * pageSize, filteredReviews.length)}
+                </span>{' '}
+                of <span className="text-white font-bold">{filteredReviews.length}</span> reviews
+              </div>
+
+              {/* Right Side: Page Size Selector & Numbered Buttons */}
+              <div className="flex items-center gap-4">
+                {/* Page Size Selector */}
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 font-semibold">Show:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 text-xs"
+                  >
+                    <option value={5} className="bg-slate-900 text-white">5 / page</option>
+                    <option value={10} className="bg-slate-900 text-white">10 / page</option>
+                    <option value={20} className="bg-slate-900 text-white">20 / page</option>
+                    <option value={50} className="bg-slate-900 text-white">50 / page</option>
+                    <option value={100} className="bg-slate-900 text-white">100 / page</option>
+                  </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Page Navigation Buttons (< 1 2 ... N >) */}
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    title="Previous Page"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <span className="px-2 font-bold text-cyan-300">
-                    {currentPage} / {totalPages}
-                  </span>
+
+                  {renderPaginationButtons()}
+
                   <button
                     onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    title="Next Page"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
 
-      {/* Delete Confirmation Modal (NO browser confirm()) */}
+      {/* Delete Single Confirmation Modal */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-red-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-red-950/50">
@@ -559,6 +786,58 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" /> Delete Review
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Bulk Confirmation Modal */}
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-red-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-red-950/50">
+            <button
+              onClick={() => setIsBulkDeleteModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-14 h-14 rounded-full bg-red-500/20 text-red-400 border border-red-500/40 flex items-center justify-center mx-auto shadow-lg shadow-red-500/20">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold font-display text-white">Delete Selected Reviews?</h3>
+              <p className="text-xs font-mono text-slate-300 leading-relaxed">
+                Are you sure you want to permanently delete <span className="text-cyan-300 font-bold">{selectedIds.length}</span> selected reviews from Supabase?
+              </p>
+              <p className="text-[11px] font-mono text-red-400 font-semibold">This action cannot be undone.</p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setIsBulkDeleteModalOpen(false)}
+                className="w-1/2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold font-mono text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleConfirmBulkDelete}
+                disabled={isDeleting}
+                className="w-1/2 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-red-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" /> Delete Selected
                   </>
                 )}
               </button>
