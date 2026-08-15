@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield, Users } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { subscriberApi } from '../services/api';
 import { ZENEMOO_SOCIAL_LINKS } from './SocialData';
@@ -191,11 +191,11 @@ export const Footer: React.FC = () => {
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
               <li><a href="/zenemooai" className="hover:text-cyan-400 transition-colors text-cyan-400 font-bold flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Zenemoo AI Assistant</a></li>
+              <li><a href="/talent-registration" className="hover:text-cyan-400 transition-colors text-emerald-300 font-bold flex items-center gap-1.5"><Users className="w-3 h-3" /> Join AI Data Network</a></li>
               <li><a href="/review" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Community &amp; Client Reviews</a></li>
               <li><a href="/opportunities" className="hover:text-cyan-400 transition-colors font-bold">Opportunities Portal</a></li>
               <li><a href="/team-directory" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
-              <li><a href="#telemetry" className="hover:text-cyan-400 transition-colors">Production Capacity</a></li>
               <li className="pt-2 border-t border-white/5 space-y-1 font-mono text-[11px]">
                 <div className="text-slate-400 font-bold">Official Contact &amp; Location:</div>
                 <div>Contact: <a href="mailto:contact@zenemoo.in" className="text-cyan-300 hover:underline">contact@zenemoo.in</a></div>
@@ -213,13 +213,6 @@ export const Footer: React.FC = () => {
             Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
           </div>
           <div className="flex items-center gap-3 text-slate-400 font-bold">
-            <a
-              href="/talent-registration"
-              className="hover:text-cyan-400 transition-colors cursor-pointer"
-            >
-              Join AI Network
-            </a>
-            <span>·</span>
             <a
               href="/privacy"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
