@@ -316,14 +316,15 @@ export const registerTalent = async (req, res) => {
 </html>
       `;
 
+      const sender = process.env.EMAIL_FROM || 'Zenemoo AI Network <contact@zenemoo.in>';
       await sendMailViaBrevo({
-        sender: { name: 'Zenemoo AI Network', email: 'contact@zenemoo.in' },
-        recipients: [{ name: fullName.trim(), email: normalizedEmail }],
+        sender,
+        recipients: normalizedEmail,
         subject: `Zenemoo AI Data Network — Registration Confirmation [ID: ${registrationCode}]`,
         html: applicantHtml,
       });
     } catch (mailErr) {
-      console.warn('Applicant confirmation email dispatch warning:', mailErr.message);
+      console.error('Applicant confirmation email dispatch error:', mailErr.message);
     }
 
     return res.status(201).json({

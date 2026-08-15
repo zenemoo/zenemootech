@@ -326,8 +326,20 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
 
   const safeHtml = sanitizeHtml(html);
 
+  let senderObject = { email: 'contact@zenemoo.in', name: 'Zenemoo AI Network' };
+  if (typeof sender === 'string') {
+    const match = sender.match(/^(?:"?([^"]*)"?\s)?<([^>]+)>$/);
+    if (match) {
+      senderObject = { name: match[1] || 'Zenemoo AI Network', email: match[2] };
+    } else {
+      senderObject = { email: sender, name: 'Zenemoo AI Network' };
+    }
+  } else if (sender && typeof sender === 'object' && sender.email) {
+    senderObject = { email: sender.email, name: sender.name || 'Zenemoo AI Network' };
+  }
+
   const payload = {
-    sender: { email: sender || 'contact@zenemoo.in', name: 'Zenemoo Tech' },
+    sender: senderObject,
     to: parsedTo.map((email) => ({ email })),
     subject: subject || '(No Subject)',
     htmlContent: safeHtml || '<p>Zenemoo System Message</p>',
