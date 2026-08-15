@@ -341,6 +341,8 @@ export const talentRegistrationApi = {
   addAdminNote: (id: string, note: string) => api.post(`/talent-registration/admin/note/${id}`, { note }),
   exportAdminRegistrations: () =>
     api.get('/talent-registration/admin/export', { responseType: 'blob' }),
+  deleteAdminRegistration: (id: string) =>
+    api.delete(`/talent-registration/admin/delete/${id}`),
 };
 
 

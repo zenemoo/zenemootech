@@ -225,136 +225,6 @@ export const registerTalent = async (req, res) => {
     currentList.unshift(registrationRecord);
     saveDiskRegistrations(currentList);
 
-    // ── EMAIL DISPATCH: APPLICANT CONFIRMATION & ADMIN ALERT ──
-    try {
-      const langSummary = languages.map((l) => `${l.language} (${l.proficiency})`).join(', ');
-
-      const applicantHtml = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zenemoo AI Data Network Registration</title>
-</head>
-<body style="margin:0; padding:0; background-color:#050505; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#e2e8f0;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#050505; padding:30px 10px;">
-    <tr>
-      <td align="center">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px; background-color:#0d0f17; border:1px solid #1e293b; border-radius:16px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
-          <!-- Header Banner -->
-          <tr>
-            <td style="padding:32px 24px; background:linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #9333ea 100%); text-align:center;">
-              <h1 style="margin:0; font-size:26px; font-weight:800; color:#ffffff; letter-spacing:1.5px; text-transform:uppercase;">ZENEMOO</h1>
-              <p style="margin:6px 0 0 0; font-size:12px; color:#e0f2fe; text-transform:uppercase; letter-spacing:2px; font-weight:600;">AI Data Talent &amp; Partner Network</p>
-            </td>
-          </tr>
-          <!-- Main Content -->
-          <tr>
-            <td style="padding:32px 24px;">
-              <h2 style="margin:0 0 16px 0; font-size:18px; color:#ffffff; font-weight:700;">Registration Confirmed ✓</h2>
-              <p style="margin:0 0 20px 0; font-size:14px; line-height:1.6; color:#94a3b8;">
-                Dear <strong style="color:#ffffff;">${fullName.trim()}</strong>,<br>
-                Thank you for submitting your application to the <strong>Zenemoo AI Data Network</strong>. Your profile details have been securely recorded for internal project matching and upcoming task assignments.
-              </p>
-              
-              <!-- Unique Tracking Code Box -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0; background-color:#061826; border:1px solid #0891b2; border-radius:12px; text-align:center; padding:18px;">
-                <tr>
-                  <td>
-                    <span style="font-size:11px; text-transform:uppercase; color:#22d3ee; letter-spacing:1px; display:block; font-weight:700; margin-bottom:6px;">Your Unique Registration Tracking ID</span>
-                    <span style="font-size:24px; font-weight:900; color:#ffffff; font-family:'Courier New', Courier, monospace; letter-spacing:3px;">${registrationCode}</span>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Registration Summary -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0; background-color:#161926; border-radius:12px; padding:18px;">
-                <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8; width:40%;">Primary Role:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#ffffff; font-weight:700;">${primaryRole}</td>
-                </tr>
-                <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8;">Location:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#ffffff; font-weight:700;">${state.trim()}, ${cityDistrict.trim()}</td>
-                </tr>
-                <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8;">Languages:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#38bdf8; font-weight:700;">${langSummary}</td>
-                </tr>
-                <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8;">Availability:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#4ade80; font-weight:700;">${availability}</td>
-                </tr>
-              </table>
-
-              <!-- Confidentiality Notice -->
-              <div style="background-color:#1e1b4b; border-left:4px solid #818cf8; padding:14px 16px; border-radius:8px; margin-bottom:24px;">
-                <p style="margin:0; font-size:12px; color:#c7d2fe; line-height:1.5;">
-                  🔒 <strong>Strict Privacy Protection:</strong> Your information is strictly confidential and used ONLY by authorized Zenemoo administrators for project recruitment. Your profile will never be publicly displayed.
-                </p>
-              </div>
-
-              <p style="margin:0; font-size:13px; color:#94a3b8; line-height:1.5;">
-                If you need to update your details, please contact our team at <a href="mailto:contact@zenemoo.in" style="color:#38bdf8; text-decoration:none; font-weight:600;">contact@zenemoo.in</a> referencing your Tracking ID (<strong>${registrationCode}</strong>).
-              </p>
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="padding:24px; background-color:#07080c; border-top:1px solid #1e293b; text-align:center; font-size:11px; color:#64748b; line-height:1.6;">
-              Zenemoo Enterprise AI Language &amp; Data Solutions<br>
-              K. Barida, Main Road, Odisha, India – 761031 | <a href="https://www.zenemoo.in" style="color:#64748b; text-decoration:underline;">www.zenemoo.in</a>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `;
-
-      await sendMailViaBrevo({
-        sender: { name: 'Zenemoo AI Network', email: 'contact@zenemoo.in' },
-        recipients: [{ name: fullName.trim(), email: normalizedEmail }],
-        subject: `Zenemoo AI Data Network — Registration Confirmation [ID: ${registrationCode}]`,
-        html: applicantHtml,
-      });
-
-      // Admin Alert Email
-      const adminHtml = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:sans-serif; background-color:#050505; color:#e2e8f0; padding:20px;">
-  <div style="max-width:550px; background-color:#0d0f17; border:1px solid #1e293b; border-radius:12px; padding:24px; margin:0 auto;">
-    <h2 style="color:#38bdf8; margin-top:0;">New Talent Registration Submitted</h2>
-    <p><strong>Tracking Code:</strong> <span style="color:#22d3ee; font-family:monospace; font-weight:bold;">${registrationCode}</span></p>
-    <p><strong>Name:</strong> ${fullName.trim()}</p>
-    <p><strong>Email:</strong> ${normalizedEmail}</p>
-    <p><strong>Phone:</strong> ${countryCode} ${phone.trim()}</p>
-    <p><strong>Role:</strong> ${primaryRole}</p>
-    <p><strong>Location:</strong> ${state.trim()}, ${cityDistrict.trim()}</p>
-    <p><strong>Languages:</strong> ${langSummary}</p>
-    <p style="margin-top:20px;">
-      <a href="https://www.zenemoo.in/portal/9KqvA2Nz8" style="background-color:#06b6d4; color:#000; padding:10px 18px; border-radius:8px; font-weight:bold; text-decoration:none; display:inline-block;">View in Admin Center</a>
-    </p>
-  </div>
-</body>
-</html>
-      `;
-
-      await sendMailViaBrevo({
-        sender: { name: 'Zenemoo System Alert', email: 'contact@zenemoo.in' },
-        recipients: [{ name: 'Zenemoo Admin', email: 'zenemootech@gmail.com' }, { name: 'Zenemoo Contact', email: 'contact@zenemoo.in' }],
-        subject: `[New Registration] ${registrationCode} — ${fullName.trim()} (${primaryRole})`,
-        html: adminHtml,
-      }).catch(() => {});
-    } catch (mailErr) {
-      console.warn('Applicant email dispatch warning:', mailErr.message);
-    }
-
     return res.status(201).json({
       success: true,
       message: 'Registration Submitted Successfully. Information securely recorded for internal project matching.',
@@ -692,5 +562,44 @@ export const exportRegistrationsAdmin = async (req, res) => {
   } catch (err) {
     console.error('exportRegistrationsAdmin Error:', err);
     return res.status(500).json({ success: false, message: 'Failed to generate CSV export.' });
+  }
+};
+
+/**
+ * ADMIN API: DELETE /api/talent-registration/admin/delete/:id
+ * Permanently delete candidate registration from Supabase DB & local disk
+ */
+export const deleteRegistrationAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Registration ID parameter is required.' });
+    }
+
+    // 1. Delete child & parent rows in Supabase Database
+    try {
+      await supabaseService.deleteByField('talent_languages', 'registration_id', id).catch(() => {});
+      await supabaseService.deleteByField('talent_experiences', 'registration_id', id).catch(() => {});
+      await supabaseService.deleteByField('talent_admin_notes', 'registration_id', id).catch(() => {});
+      await supabaseService.delete('talent_registrations', id).catch(() => {});
+    } catch (dbErr) {
+      console.warn('Supabase delete error (continuing local disk delete):', dbErr.message);
+    }
+
+    // 2. Delete from Local Disk persistent store
+    const diskList = loadDiskRegistrations();
+    const filteredDisk = diskList.filter((item) => item.id !== id && item.registration_code !== id);
+    saveDiskRegistrations(filteredDisk);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Registration record permanently deleted.',
+    });
+  } catch (err) {
+    console.error('deleteRegistrationAdmin Error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete registration record.',
+    });
   }
 };

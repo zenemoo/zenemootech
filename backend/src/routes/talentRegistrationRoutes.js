@@ -6,6 +6,7 @@ import {
   updateRegistrationAdmin,
   addAdminNote,
   exportRegistrationsAdmin,
+  deleteRegistrationAdmin,
 } from '../controllers/talentRegistrationController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -21,5 +22,7 @@ router.get('/admin/detail/:id', authMiddleware, getRegistrationByIdAdmin);
 router.patch('/admin/status/:id', authMiddleware, updateRegistrationAdmin);
 router.post('/admin/note/:id', authMiddleware, addAdminNote);
 router.get('/admin/export', authMiddleware, exportRegistrationsAdmin);
+router.delete('/admin/delete/:id', authMiddleware, deleteRegistrationAdmin);
+router.delete('/admin/:id', authMiddleware, deleteRegistrationAdmin);
 
 export default router;

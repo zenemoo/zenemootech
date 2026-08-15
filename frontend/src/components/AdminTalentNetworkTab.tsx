@@ -23,6 +23,7 @@ import {
   Plus,
   Sliders,
   CheckSquare,
+  Trash2,
 } from 'lucide-react';
 import { talentRegistrationApi } from '../services/api';
 
@@ -235,6 +236,30 @@ export const AdminTalentNetworkTab: React.FC = () => {
       link.remove();
     } catch (err) {
       console.error('Export CSV Error:', err);
+    }
+  };
+
+  const handleDeleteCandidate = async (candidateId: string, candidateName: string) => {
+    if (
+      window.confirm(
+        `Are you sure you want to PERMANENTLY delete candidate registration data for:\n\n"${candidateName}"?\n\nThis will erase all profile details, languages, experiences, and internal notes from Supabase database and local storage.`
+      )
+    ) {
+      try {
+        const res = await talentRegistrationApi.deleteAdminRegistration(candidateId);
+        if (res?.data?.success) {
+          if (selectedCandidate?.id === candidateId) {
+            setSelectedCandidate(null);
+          }
+          setActionSuccessMsg(`Candidate "${candidateName}" permanently deleted.`);
+          setTimeout(() => setActionSuccessMsg(''), 4000);
+          fetchRegistrations();
+        } else {
+          alert(res?.data?.message || 'Failed to delete candidate record.');
+        }
+      } catch (err: any) {
+        alert(err.response?.data?.message || 'Error deleting candidate record.');
+      }
     }
   };
 
@@ -486,20 +511,30 @@ export const AdminTalentNetworkTab: React.FC = () => {
                       </td>
 
                       <td className="p-4 text-right">
-                        <button
-                          onClick={async () => {
-                            setSelectedCandidate(item);
-                            try {
-                              const res = await talentRegistrationApi.getAdminRegistrationDetail(item.id);
-                              if (res?.data?.success && res.data.data) {
-                                setSelectedCandidate(res.data.data);
-                              }
-                            } catch (e) {}
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold text-[11px] inline-flex items-center gap-1.5 cursor-pointer transition-all"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> View Profile
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={async () => {
+                              setSelectedCandidate(item);
+                              try {
+                                const res = await talentRegistrationApi.getAdminRegistrationDetail(item.id);
+                                if (res?.data?.success && res.data.data) {
+                                  setSelectedCandidate(res.data.data);
+                                }
+                              } catch (e) {}
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold text-[11px] inline-flex items-center gap-1.5 cursor-pointer transition-all"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> View Profile
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteCandidate(item.id, item.full_name)}
+                            className="p-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-[11px] inline-flex items-center cursor-pointer transition-all"
+                            title="Delete Candidate Record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -560,7 +595,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => handleUpdateStatus(selectedCandidate.id, 'verified')}
                   disabled={isUpdatingStatus}
@@ -581,6 +616,14 @@ export const AdminTalentNetworkTab: React.FC = () => {
                   className="px-3.5 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 font-bold cursor-pointer transition-all"
                 >
                   Reject
+                </button>
+
+                <button
+                  onClick={() => handleDeleteCandidate(selectedCandidate.id, selectedCandidate.full_name)}
+                  className="px-3.5 py-1.5 rounded-xl bg-red-600/30 hover:bg-red-600/50 border border-red-500/60 text-red-200 font-bold cursor-pointer transition-all flex items-center gap-1.5"
+                  title="Permanently Delete Candidate Record"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" /> Delete Record
                 </button>
               </div>
             </div>

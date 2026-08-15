@@ -67,4 +67,16 @@ export const supabaseService = {
     if (error) throw error;
     return true;
   },
+
+  async deleteByField(table, field, value) {
+    if (!supabase) {
+      throw new Error('Supabase client is not initialized.');
+    }
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq(field, value);
+    if (error) throw error;
+    return true;
+  },
 };
