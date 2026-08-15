@@ -266,10 +266,17 @@ export const getRegistrationsAdmin = async (req, res) => {
         if ((item.status || 'pending').toLowerCase() !== status.toLowerCase()) return false;
       }
 
-      // Search (Name, Email, Phone, State, City)
+      // Search (Name, Email, Phone, State, City, Role, Role Details, Experiences, Capabilities, Equipment, Additional Info)
       if (search && search.trim().length > 0) {
         const q = search.toLowerCase().trim();
-        const textToMatch = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.state || ''} ${item.city_district || ''} ${item.primary_role || ''}`.toLowerCase();
+        const roleDetailsText = typeof item.role_details === 'object' ? JSON.stringify(item.role_details) : String(item.role_details || '');
+        const equipmentText = typeof item.equipment_resources === 'object' ? JSON.stringify(item.equipment_resources) : String(item.equipment_resources || '');
+        const addInfoText = typeof item.additional_info === 'object' ? JSON.stringify(item.additional_info) : String(item.additional_info || '');
+        const expText = (item.experiences || []).map((e) => `${e.project_company_name || e.projectName || ''} ${e.type_of_work || e.typeOfWork || ''} ${e.description || ''}`).join(' ');
+        const langText = (item.languages || []).map((l) => `${l.language} ${l.proficiency} ${l.speaker_availability}`).join(' ');
+        const capsText = (item.work_capabilities || []).join(' ');
+
+        const textToMatch = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.state || ''} ${item.city_district || ''} ${item.primary_role || ''} ${roleDetailsText} ${equipmentText} ${addInfoText} ${expText} ${langText} ${capsText}`.toLowerCase();
         if (!textToMatch.includes(q)) return false;
       }
 
