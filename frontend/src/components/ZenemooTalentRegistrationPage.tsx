@@ -22,9 +22,12 @@ import {
   Users,
   CheckSquare,
   Lock,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { talentRegistrationApi } from '../services/api';
 import { SeoImage } from '../seo/components/SeoImage';
+import { TurnstileWidget } from './TurnstileWidget';
 
 interface ZenemooTalentRegistrationPageProps {
   onBack?: () => void;
@@ -148,6 +151,10 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [duplicateEmailError, setDuplicateEmailError] = useState<string>('');
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const [submittedRegistrationCode, setSubmittedRegistrationCode] = useState<string>('');
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   // Step 1: Personal & Contact
   const [fullName, setFullName] = useState<string>('');
@@ -293,8 +300,12 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   // Execute Submit Registration
   const handleSubmitRegistration = async () => {
     setErrorMsg('');
+    setDuplicateEmailError('');
     if (!termsAccepted || !privacyAccepted) {
       return setErrorMsg('Please agree to the Terms & Conditions and Privacy Policy to register.');
+    }
+    if (!turnstileToken) {
+      return setErrorMsg('Please complete the Cloudflare security verification check.');
     }
 
     setIsSubmitting(true);
@@ -326,6 +337,7 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
           termsAccepted,
           privacyAccepted,
         },
+        turnstileToken,
         languages: selectedLanguageList.map((lang) => ({
           language: lang,
           proficiency: languageDetails[lang]?.proficiency || 'Native',
@@ -337,14 +349,25 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
 
       const res = await talentRegistrationApi.register(payload);
       if (res?.data?.success) {
+        if (res.data.registrationCode) {
+          setSubmittedRegistrationCode(res.data.registrationCode);
+        }
         setIsSubmitted(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        throw new Error(res?.data?.message || 'Submission failed');
+        if (res?.data?.isDuplicate) {
+          setDuplicateEmailError(res.data.message);
+        } else {
+          throw new Error(res?.data?.message || 'Submission failed');
+        }
       }
     } catch (err: any) {
       console.error('Registration Error:', err);
-      setErrorMsg(err.response?.data?.message || err.message || 'Unable to submit registration. Please try again.');
+      if (err.response?.data?.isDuplicate) {
+        setDuplicateEmailError(err.response.data.message);
+      } else {
+        setErrorMsg(err.response?.data?.message || err.message || 'Unable to submit registration. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -416,11 +439,46 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
               </p>
             </div>
 
+            {/* Generated Unique Registration Tracking ID (ZEN-XXXX-XXXX) */}
+            {submittedRegistrationCode && (
+              <div className="p-6 rounded-2xl bg-cyan-950/40 border border-cyan-500/50 space-y-3 text-center max-w-lg mx-auto shadow-2xl">
+                <span className="text-[11px] font-mono uppercase tracking-widest text-cyan-400 font-bold block">
+                  Your Unique Registration Tracking ID
+                </span>
+                <div className="flex items-center justify-center gap-3">
+                  <div className="text-2xl sm:text-3xl font-extrabold font-mono text-white tracking-widest bg-black/80 py-2.5 px-6 rounded-xl border border-cyan-400/40 shadow-inner">
+                    {submittedRegistrationCode}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(submittedRegistrationCode);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2500);
+                    }}
+                    className="p-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 cursor-pointer transition-all shrink-0"
+                    title="Copy Tracking ID"
+                  >
+                    {copiedCode ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+                  </button>
+                </div>
+                {copiedCode && (
+                  <div className="text-[11px] text-emerald-400 font-mono font-bold animate-pulse">
+                    ✓ Tracking ID copied to clipboard!
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-400 font-mono leading-relaxed">
+                  Please save this Tracking ID for future correspondence regarding project matching and updates.
+                </p>
+              </div>
+            )}
+
             <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 max-w-lg mx-auto text-left text-xs font-mono text-slate-400 space-y-2">
               <div className="text-white font-bold uppercase tracking-wider text-[11px] border-b border-white/10 pb-2">
                 What happens next?
               </div>
               <ul className="space-y-1.5 list-disc list-inside text-slate-300">
+                <li>A confirmation email with your Tracking ID has been sent to <strong>{email}</strong>.</li>
                 <li>Our project operations team reviews registrations based on active client datasets.</li>
                 <li>If a matching project in your language/region arises, our team will contact you via your preferred contact method ({preferredContact}).</li>
                 <li>Your profile remains private and protected inside Zenemoo's admin system.</li>
@@ -1140,6 +1198,16 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   <p>• I agree not to submit confidential information, passwords, financial credentials, or information belonging to another person without authorization.</p>
                 </div>
 
+                {/* Duplicate Email Security Warning Alert Banner */}
+                {duplicateEmailError && (
+                  <div className="p-5 rounded-2xl bg-red-500/10 border border-red-500/40 text-red-300 space-y-2 font-mono text-xs animate-pulse">
+                    <div className="font-bold flex items-center gap-2 text-sm text-red-200">
+                      <AlertCircle className="w-5 h-5 text-red-400 shrink-0" /> Security Check: Email Already Registered
+                    </div>
+                    <p className="leading-relaxed text-red-200/90">{duplicateEmailError}</p>
+                  </div>
+                )}
+
                 <div className="space-y-3 pt-2">
                   <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-400/50 transition-all">
                     <input
@@ -1160,6 +1228,20 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                     />
                     <span className="text-white font-bold">I agree to the Privacy Policy &amp; Internal Data Protection *</span>
                   </label>
+                </div>
+
+                {/* Cloudflare Turnstile Security Captcha Widget */}
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                  <label className="text-slate-300 font-bold block text-xs flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-cyan-400" /> Security Verification Check (Cloudflare Turnstile) *
+                  </label>
+                  <TurnstileWidget
+                    onVerify={(token) => {
+                      setTurnstileToken(token);
+                      setErrorMsg('');
+                    }}
+                    onExpire={() => setTurnstileToken('')}
+                  />
                 </div>
               </div>
             )}
