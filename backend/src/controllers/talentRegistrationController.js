@@ -8,6 +8,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PERSISTENT_FILE_PATH = path.join(__dirname, '../database/talent_registrations.json');
 
+const formatIstDateTime = (isoDateString) => {
+  try {
+    const d = isoDateString ? new Date(isoDateString) : new Date();
+    const options = {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    };
+    const formatted = d.toLocaleString('en-IN', options);
+    return `${formatted} (IST)`;
+  } catch (_) {
+    return `${new Date().toLocaleDateString('en-IN')} (IST)`;
+  }
+};
+
 // Local disk fallback helpers
 const loadDiskRegistrations = () => {
   try {
@@ -274,78 +293,240 @@ export const registerTalent = async (req, res) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zenemoo AI Data Network Registration</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Zenemoo AI Data Network Registration — Confirmation [ID: ${registrationCode}]</title>
+  <style type="text/css">
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body { margin: 0; padding: 0; width: 100% !important; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }
+    
+    @media screen and (max-width: 620px) {
+      .email-wrapper { padding: 10px 8px !important; }
+      .container-table { width: 100% !important; max-width: 100% !important; border-radius: 12px !important; }
+      .content-padding { padding: 20px 16px !important; }
+      .header-title { font-size: 20px !important; line-height: 1.3 !important; }
+      .app-id-text { font-size: 18px !important; }
+    }
+  </style>
 </head>
-<body style="margin:0; padding:0; background-color:#050505; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#e2e8f0;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#050505; padding:30px 10px;">
+<body style="margin:0; padding:0; background-color:#f1f5f9; -webkit-font-smoothing:antialiased;">
+  <!-- Outer Corporate Wrapper Table -->
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" class="email-wrapper" style="background-color:#f1f5f9; padding: 30px 12px;">
     <tr>
       <td align="center">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px; background-color:#0d0f17; border:1px solid #1e293b; border-radius:16px; overflow:hidden; box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
-          <!-- Header Banner -->
+        <!-- Main Container Card (Centered 620px Max Width) -->
+        <table role="presentation" class="container-table" width="620" border="0" cellspacing="0" cellpadding="0" style="width:620px; max-width:620px; background-color:#ffffff; border-radius:16px; overflow:hidden; box-shadow: 0 10px 30px rgba(15,23,42,0.08); border: 1px solid #cbd5e1; margin:0 auto;">
+          
+          <!-- 1. ZENEMOO BRAND HEADER -->
           <tr>
-            <td style="padding:32px 24px; background:linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #9333ea 100%); text-align:center;">
-              <h1 style="margin:0; font-size:26px; font-weight:800; color:#ffffff; letter-spacing:1.5px; text-transform:uppercase;">ZENEMOO</h1>
-              <p style="margin:6px 0 0 0; font-size:12px; color:#e0f2fe; text-transform:uppercase; letter-spacing:2px; font-weight:600;">AI Data Talent &amp; Partner Network</p>
+            <td style="background-color:#090d16; background-image: linear-gradient(135deg, #090d16 0%, #0f172a 100%); padding: 32px 24px; text-align: center; border-bottom: 3px solid #06b6d4;">
+              <a href="https://www.zenemoo.in" target="_blank" style="text-decoration:none; display:inline-block;">
+                <img src="https://raw.githubusercontent.com/zenemoo/zenemootech/main/frontend/public/assets/logo-email.png"
+                     srcset="https://www.zenemoo.in/assets/logo-email.png 1x, https://www.zenemoo.in/assets/logo.png 2x"
+                     width="56"
+                     height="56"
+                     alt="Zenemoo"
+                     style="display:block; margin:0 auto; width:56px; height:56px; max-width:56px; border-radius:50%; background:#ffffff; padding:2px; border:2px solid #06b6d4; object-fit:cover;">
+              </a>
+              <div style="font-family:'Segoe UI', Arial, sans-serif; font-size:22px; font-weight:800; color:#ffffff; letter-spacing:2px; margin-top:10px;">
+                ZENEMOO
+              </div>
+              <div style="font-family: monospace; font-size:10px; color:#38bdf8; letter-spacing:2.5px; text-transform:uppercase; margin-top:3px;">
+                AI DATA TALENT &amp; PARTNER NETWORK
+              </div>
             </td>
           </tr>
-          <!-- Main Content -->
+
+          <!-- 2. ACKNOWLEDGMENT HEADING -->
           <tr>
-            <td style="padding:32px 24px;">
-              <h2 style="margin:0 0 16px 0; font-size:18px; color:#ffffff; font-weight:700;">Registration Confirmed ✓</h2>
-              <p style="margin:0 0 20px 0; font-size:14px; line-height:1.6; color:#94a3b8;">
-                Dear <strong style="color:#ffffff;">${fullName.trim()}</strong>,<br>
-                Thank you for submitting your application to the <strong>Zenemoo AI Data Network</strong>. Your profile details have been securely recorded into our internal project matching engine.
+            <td class="content-padding" style="padding: 32px 32px 20px 32px; background-color:#ffffff;">
+              <h1 class="header-title" style="margin:0 0 10px 0; font-size:24px; font-weight:800; color:#0f172a; line-height:1.3;">
+                Registration Confirmed ✓
+              </h1>
+              <p style="margin:0 0 8px 0; font-size:15px; font-weight:600; color:#0284c7;">
+                Dear ${fullName.trim()},
               </p>
-              
-              <!-- Unique Tracking Code Box -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0; background-color:#061826; border:1px solid #0891b2; border-radius:12px; text-align:center; padding:18px;">
+              <p style="margin:0 0 10px 0; font-size:14px; color:#475569; line-height:1.6;">
+                Thank you for registering with the <strong style="color:#0f172a;">Zenemoo AI Data Talent &amp; Partner Network</strong>. Your profile details and technical capabilities have been recorded into our internal project matching system.
+              </p>
+              <p style="margin:0; font-size:13px; color:#64748b; line-height:1.5;">
+                Please save your unique tracking code below for any future profile updates or correspondence with our team.
+              </p>
+            </td>
+          </tr>
+
+          <!-- 3. UNIQUE TRACKING ID CARD -->
+          <tr>
+            <td class="content-padding" style="padding: 0 32px 20px 32px;">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; margin-bottom:12px;">
                 <tr>
-                  <td>
-                    <span style="font-size:11px; text-transform:uppercase; color:#22d3ee; letter-spacing:1px; display:block; font-weight:700; margin-bottom:6px;">Your Unique Registration Tracking ID</span>
-                    <span style="font-size:24px; font-weight:900; color:#ffffff; font-family:'Courier New', Courier, monospace; letter-spacing:3px;">${registrationCode}</span>
+                  <td style="padding:20px; text-align:center;">
+                    <div style="font-size:11px; font-family:monospace; font-weight:bold; color:#0284c7; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">
+                      YOUR UNIQUE REGISTRATION TRACKING ID
+                    </div>
+                    <div class="app-id-text" style="font-size:24px; font-weight:900; font-family:monospace; color:#0369a1; letter-spacing:3px; background:#ffffff; padding:10px 16px; border-radius:8px; border:1px solid #93c5fd; display:inline-block;">
+                      ${registrationCode}
+                    </div>
+                    <div style="font-size:11px; color:#64748b; margin-top:8px;">
+                      Recorded on: <strong style="color:#334155;">${formatIstDateTime(timestamp)}</strong>
+                    </div>
                   </td>
                 </tr>
               </table>
 
-              <!-- Registration Summary -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0; background-color:#161926; border-radius:12px; padding:18px;">
+              <!-- CANDIDATE PROFILE SUMMARY CARD -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
                 <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8; width:40%;">Primary Role:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#ffffff; font-weight:700;">${primaryRole}</td>
+                  <td style="padding:20px;">
+                    <div style="font-size:13px; font-weight:800; color:#0f172a; border-bottom:1px solid #e2e8f0; padding-bottom:10px; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px;">
+                      Registration Details Summary
+                    </div>
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:13px; color:#475569;">
+                      <tr>
+                        <td width="38%" style="padding:6px 0; color:#64748b; font-weight:600;">Full Name:</td>
+                        <td style="padding:6px 0; color:#0f172a; font-weight:700;">${fullName.trim()}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:600;">Gender:</td>
+                        <td style="padding:6px 0; color:#0f172a; font-weight:700;">${gender}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:600;">Primary Role:</td>
+                        <td style="padding:6px 0; color:#0284c7; font-weight:700;">${primaryRole}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:600;">Location:</td>
+                        <td style="padding:6px 0; color:#0f172a; font-weight:700;">${state.trim()}, ${cityDistrict.trim()}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:600;">Languages:</td>
+                        <td style="padding:6px 0; color:#0369a1; font-weight:700;">${langSummary}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0; color:#64748b; font-weight:600;">Availability:</td>
+                        <td style="padding:6px 0; color:#16a34a; font-weight:700;">${availability} (${workingPreference})</td>
+                      </tr>
+                    </table>
+                  </td>
                 </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 4. CONFIDENTIALITY & PRIVACY NOTICE CARD -->
+          <tr>
+            <td class="content-padding" style="padding: 0 32px 24px 32px;">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:16px;">
                 <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8;">Location:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#ffffff; font-weight:700;">${state.trim()}, ${cityDistrict.trim()}</td>
+                  <td>
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="30" valign="top" style="padding-right:10px;">
+                          <div style="font-size:20px;">🔒</div>
+                        </td>
+                        <td valign="top">
+                          <div style="font-size:11px; font-family:monospace; font-weight:bold; color:#6d28d9; text-transform:uppercase; letter-spacing:0.5px;">
+                            STRICT PRIVACY PROTECTION GUARANTEE
+                          </div>
+                          <div style="font-size:12px; color:#5b21b6; margin-top:4px; line-height:1.5;">
+                            Your profile is confidential and used ONLY by authorized Zenemoo administrators for project matching and recruitment coordination. Profiles are never displayed publicly anywhere.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
                 </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 5. WHAT HAPPENS NEXT & NEED HELP CARDS -->
+          <tr>
+            <td class="content-padding" style="padding: 0 32px 28px 32px;">
+              
+              <!-- WHAT HAPPENS NEXT -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:12px;">
                 <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8;">Languages:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#38bdf8; font-weight:700;">${langSummary}</td>
-                </tr>
-                <tr>
-                  <td style="padding:6px 0; font-size:13px; color:#94a3b8;">Availability:</td>
-                  <td style="padding:6px 0; font-size:13px; color:#4ade80; font-weight:700;">${availability}</td>
+                  <td style="padding:16px;">
+                    <div style="font-size:13px; font-weight:800; color:#0f172a; margin-bottom:10px;">What Happens Next?</div>
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:12px; color:#475569;">
+                      <tr>
+                        <td width="20" valign="top" style="padding-bottom:8px; color:#10b981; font-weight:bold;">✓</td>
+                        <td style="padding-bottom:8px; line-height:1.4;">Our team indexes your profile by language, role, and location.</td>
+                      </tr>
+                      <tr>
+                        <td width="20" valign="top" style="padding-bottom:8px; color:#3b82f6; font-weight:bold;">✓</td>
+                        <td style="padding-bottom:8px; line-height:1.4;">When a relevant AI data or annotation project matches your skillset, our team contacts you directly via WhatsApp or Email.</td>
+                      </tr>
+                      <tr>
+                        <td width="20" valign="top" style="color:#8b5cf6; font-weight:bold;">✓</td>
+                        <td style="line-height:1.4;">If you need to update your contact or availability details, contact <a href="mailto:contact@zenemoo.in" style="color:#0284c7; text-decoration:none; font-weight:600;">contact@zenemoo.in</a> with your tracking ID.</td>
+                      </tr>
+                    </table>
+                  </td>
                 </tr>
               </table>
 
-              <!-- Confidentiality Notice -->
-              <div style="background-color:#1e1b4b; border-left:4px solid #818cf8; padding:14px 16px; border-radius:8px; margin-bottom:24px;">
-                <p style="margin:0; font-size:12px; color:#c7d2fe; line-height:1.5;">
-                  🔒 <strong>Strict Privacy Protection:</strong> Your submitted profile is confidential and used ONLY by authorized Zenemoo administrators for project recruitment matching. Profiles are never displayed publicly anywhere.
-                </p>
+              <!-- NEED HELP -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
+                <tr>
+                  <td style="padding:16px;">
+                    <div style="font-size:13px; font-weight:800; color:#0f172a; margin-bottom:4px;">Need Help?</div>
+                    <div style="font-size:11px; color:#64748b; margin-bottom:8px;">If you have any questions, feel free to reach us:</div>
+                    <div style="font-size:11px; font-family:monospace; line-height:1.8; color:#0f172a;">
+                      &bull; Contact: <a href="mailto:contact@zenemoo.in" style="color:#0284c7; text-decoration:none;">contact@zenemoo.in</a><br>
+                      &bull; Support: <a href="mailto:support@zenemoo.in" style="color:#0284c7; text-decoration:none;">support@zenemoo.in</a><br>
+                      &bull; Website: <a href="https://www.zenemoo.in" target="_blank" style="color:#0284c7; text-decoration:none; font-weight:bold;">www.zenemoo.in</a>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- 6. OFFICIAL FOOTER BANNER WITH SOCIAL MEDIA ICONS -->
+          <tr>
+            <td style="background-color:#f8fafc; padding: 24px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <div style="font-size:13px; font-weight:700; color:#0f172a; margin-bottom:3px;">
+                Building the future with <span style="color:#0284c7;">AI and People</span>.
               </div>
 
-              <p style="margin:0; font-size:13px; color:#94a3b8; line-height:1.5;">
-                If you need to update your details, please contact our team at <a href="mailto:contact@zenemoo.in" style="color:#38bdf8; text-decoration:none; font-weight:600;">contact@zenemoo.in</a> referencing your Tracking ID (<strong>${registrationCode}</strong>).
-              </p>
+              <!-- Official Real Social Media Icons -->
+              <div style="margin:12px 0;">
+                <a href="https://www.linkedin.com/company/zenemoo/" target="_blank" style="display:inline-block; margin:0 6px; text-decoration:none;" title="Zenemoo LinkedIn">
+                  <img src="https://img.icons8.com/color/36/000000/linkedin.png" width="22" height="22" alt="LinkedIn" style="width:22px; height:22px; vertical-align:middle;">
+                </a>
+                <a href="https://x.com/zenemooofficial" target="_blank" style="display:inline-block; margin:0 6px; text-decoration:none;" title="Zenemoo X">
+                  <img src="https://img.icons8.com/color/36/000000/twitter--v1.png" width="22" height="22" alt="X (Twitter)" style="width:22px; height:22px; vertical-align:middle;">
+                </a>
+                <a href="https://www.instagram.com/zenemooofficial" target="_blank" style="display:inline-block; margin:0 6px; text-decoration:none;" title="Zenemoo Instagram">
+                  <img src="https://img.icons8.com/color/36/000000/instagram-new.png" width="22" height="22" alt="Instagram" style="width:22px; height:22px; vertical-align:middle;">
+                </a>
+                <a href="https://www.youtube.com/channel/UCj8ryPiPOeM_HrWqkNsFkTg" target="_blank" style="display:inline-block; margin:0 6px; text-decoration:none;" title="Zenemoo YouTube">
+                  <img src="https://img.icons8.com/color/36/000000/youtube-play.png" width="22" height="22" alt="YouTube" style="width:22px; height:22px; vertical-align:middle;">
+                </a>
+                <a href="https://whatsapp.com/channel/0029Vb8VOTHGOj9eWQiiPs08" target="_blank" style="display:inline-block; margin:0 6px; text-decoration:none;" title="Zenemoo WhatsApp">
+                  <img src="https://img.icons8.com/color/36/000000/whatsapp.png" width="22" height="22" alt="WhatsApp" style="width:22px; height:22px; vertical-align:middle;">
+                </a>
+              </div>
+
+              <!-- Links -->
+              <div style="font-size:11px; font-family:monospace; color:#64748b; margin-bottom:10px;">
+                <a href="https://www.zenemoo.in/#privacy" target="_blank" style="color:#0284c7; text-decoration:none;">Privacy Policy</a> &bull; 
+                <a href="https://www.zenemoo.in/#terms" target="_blank" style="color:#0284c7; text-decoration:none;">Terms &amp; Conditions</a> &bull; 
+                <a href="https://www.zenemoo.in" target="_blank" style="color:#0284c7; text-decoration:none;">Official Site</a>
+              </div>
+
+              <div style="font-size:10px; font-family:monospace; color:#94a3b8; line-height:1.4;">
+                This is an automated confirmation email from Zenemoo regarding your registration.<br>
+                Please do not reply directly to this automated email.<br>
+                &copy; 2026 Zenemoo Enterprise AI Data Solutions. All rights reserved.
+              </div>
             </td>
           </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="padding:24px; background-color:#07080c; border-top:1px solid #1e293b; text-align:center; font-size:11px; color:#64748b; line-height:1.6;">
-              Zenemoo Enterprise AI Language &amp; Data Solutions<br>
-              K. Barida, Main Road, Odisha, India – 761031 | <a href="https://www.zenemoo.in" style="color:#64748b; text-decoration:underline;">www.zenemoo.in</a>
-            </td>
-          </tr>
+
         </table>
       </td>
     </tr>
