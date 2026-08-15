@@ -200,7 +200,9 @@ CREATE TABLE opportunity_applications (
 -- Table 8: talent_registrations (Zenemoo AI Data Talent & Partner Registration System)
 CREATE TABLE IF NOT EXISTS talent_registrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  registration_code TEXT UNIQUE,
   full_name TEXT NOT NULL,
+  gender TEXT DEFAULT 'Male',
   email TEXT NOT NULL,
   phone TEXT NOT NULL,
   country_code TEXT DEFAULT '+91',

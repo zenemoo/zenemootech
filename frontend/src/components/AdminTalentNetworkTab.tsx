@@ -470,9 +470,21 @@ export const AdminTalentNetworkTab: React.FC = () => {
                   return (
                     <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="p-4 space-y-0.5">
-                        <div className="text-white font-bold">{item.full_name}</div>
+                        <div className="text-white font-bold flex items-center gap-2">
+                          <span>{item.full_name}</span>
+                          {item.gender && (
+                            <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] text-slate-300 font-mono">
+                              {item.gender}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-400">{item.email}</div>
                         <div className="text-[11px] text-cyan-400">{item.country_code} {item.phone}</div>
+                        {item.registration_code && (
+                          <div className="text-[10px] font-mono text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 w-fit">
+                            ID: {item.registration_code}
+                          </div>
+                        )}
                       </td>
 
                       <td className="p-4">
@@ -634,14 +646,29 @@ export const AdminTalentNetworkTab: React.FC = () => {
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
                 <div className="font-bold text-cyan-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
                   <span>1. Contact &amp; Personal Details</span>
-                  <span className="text-slate-500">ID Verification</span>
+                  {selectedCandidate.registration_code ? (
+                    <span className="text-amber-300 font-mono font-bold bg-amber-500/20 px-2.5 py-0.5 rounded-lg border border-amber-500/40 text-[10px]">
+                      ID: {selectedCandidate.registration_code}
+                    </span>
+                  ) : (
+                    <span className="text-slate-500">ID Verification</span>
+                  )}
                 </div>
                 <div>Full Name: <span className="text-white font-bold">{selectedCandidate.full_name}</span></div>
+                <div>Gender: <span className="text-cyan-300 font-bold">{selectedCandidate.gender || 'Male'}</span></div>
                 <div>Email Address: <span className="text-white font-bold">{selectedCandidate.email}</span></div>
                 <div>Phone / WhatsApp: <span className="text-cyan-300 font-bold">{selectedCandidate.country_code} {selectedCandidate.phone}</span></div>
                 <div>State / UT: <span className="text-white font-bold">{selectedCandidate.state}</span></div>
                 <div>City / District: <span className="text-white font-bold">{selectedCandidate.city_district}</span></div>
                 <div>Preferred Contact: <span className="text-emerald-400 font-bold">{selectedCandidate.preferred_contact}</span></div>
+                {selectedCandidate.registration_code && (
+                  <div className="pt-1.5 border-t border-white/5 text-[11px]">
+                    <span className="text-slate-400">Unique Tracking Code: </span>
+                    <span className="text-amber-300 font-mono font-extrabold tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      {selectedCandidate.registration_code}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* 2. Role & Contribution Configuration */}

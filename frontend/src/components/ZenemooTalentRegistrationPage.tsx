@@ -158,6 +158,7 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
 
   // Step 1: Personal & Contact
   const [fullName, setFullName] = useState<string>('');
+  const [gender, setGender] = useState<string>('Male');
   const [email, setEmail] = useState<string>('');
   const [countryCode, setCountryCode] = useState<string>('+91');
   const [phone, setPhone] = useState<string>('');
@@ -312,6 +313,7 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
     try {
       const payload = {
         fullName,
+        gender,
         email,
         phone,
         countryCode,
@@ -554,6 +556,27 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                       onChange={(e) => setFullName(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
                     />
+                  </div>
+
+                  {/* Gender Selection */}
+                  <div className="space-y-2">
+                    <label className="text-slate-300 font-bold block">Gender *</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['Male', 'Female', 'Other'].map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => setGender(g)}
+                          className={`py-3 rounded-xl border text-center font-bold font-mono text-xs transition-all cursor-pointer ${
+                            gender === g
+                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-lg shadow-cyan-500/10'
+                              : 'bg-black/60 border-white/15 text-slate-400 hover:text-white hover:border-white/30'
+                          }`}
+                        >
+                          {g === 'Male' ? '👨 Male' : g === 'Female' ? '👩 Female' : '✨ Other'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="space-y-2">

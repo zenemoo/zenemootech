@@ -33,6 +33,29 @@ const saveDiskRegistrations = (list) => {
   }
 };
 
+const generateRandomAlphanumericSegment = (length = 4) => {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+const generateUniqueRegistrationCode = (existingCodes = new Set()) => {
+  let attempts = 0;
+  while (attempts < 100) {
+    const part1 = generateRandomAlphanumericSegment(4);
+    const part2 = generateRandomAlphanumericSegment(4);
+    const code = `ZEN-${part1}-${part2}`;
+    if (!existingCodes.has(code)) {
+      return code;
+    }
+    attempts++;
+  }
+  return `ZEN-${Date.now().toString(36).toUpperCase().substring(0, 4)}-${generateRandomAlphanumericSegment(4)}`;
+};
+
 /**
  * PUBLIC API: POST /api/talent-registration/register
  * Submit new candidate/partner registration
@@ -41,6 +64,7 @@ export const registerTalent = async (req, res) => {
   try {
     const {
       fullName,
+      gender = 'Male',
       email,
       phone,
       countryCode = '+91',
@@ -63,6 +87,9 @@ export const registerTalent = async (req, res) => {
     // Required Field Validations
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ success: false, message: 'Full name is required.' });
+    }
+    if (!gender || !['Male', 'Female', 'Other'].includes(gender)) {
+      return res.status(400).json({ success: false, message: 'Please select a valid gender selection (Male, Female, or Other).' });
     }
     if (!email || !email.includes('@')) {
       return res.status(400).json({ success: false, message: 'A valid email address is required.' });
@@ -89,8 +116,14 @@ export const registerTalent = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     // ── SECURITY CHECK: DUPLICATE EMAIL VERIFICATION ──
+    const existingCodes = new Set();
     try {
       const existingDbRecords = await supabaseService.selectAll('talent_registrations');
+      (existingDbRecords || []).forEach((r) => {
+        if (r.registration_code) existingCodes.add(r.registration_code);
+        if (r.id) existingCodes.add(r.id);
+      });
+
       const duplicateDb = (existingDbRecords || []).find((r) => (r.email || '').toLowerCase() === normalizedEmail);
       if (duplicateDb) {
         return res.status(400).json({
@@ -102,6 +135,11 @@ export const registerTalent = async (req, res) => {
     } catch (err) {}
 
     const diskList = loadDiskRegistrations();
+    diskList.forEach((r) => {
+      if (r.registration_code) existingCodes.add(r.registration_code);
+      if (r.id) existingCodes.add(r.id);
+    });
+
     const duplicateDisk = diskList.find((r) => (r.email || '').toLowerCase() === normalizedEmail);
     if (duplicateDisk) {
       return res.status(400).json({
@@ -112,16 +150,15 @@ export const registerTalent = async (req, res) => {
     }
 
     const timestamp = new Date().toISOString();
-    // ── GENERATE UNIQUE REGISTRATION TRACKING ID (ZEN-XXXX-XXXX) ──
-    const randPart1 = Math.floor(1000 + Math.random() * 9000);
-    const randPart2 = Math.floor(1000 + Math.random() * 9000);
-    const registrationCode = `ZEN-${randPart1}-${randPart2}`;
+    // ── GENERATE STRICTLY UNIQUE ALPHANUMERIC REGISTRATION CODE (ZEN-XXXX-XXXX) ──
+    const registrationCode = generateUniqueRegistrationCode(existingCodes);
     const generatedId = `reg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const registrationRecord = {
       id: generatedId,
       registration_code: registrationCode,
       full_name: fullName.trim(),
+      gender: gender.trim(),
       email: normalizedEmail,
       phone: phone.trim(),
       country_code: countryCode.trim(),
@@ -162,6 +199,7 @@ export const registerTalent = async (req, res) => {
       const dbPayload = {
         registration_code: registrationRecord.registration_code,
         full_name: registrationRecord.full_name,
+        gender: registrationRecord.gender,
         email: registrationRecord.email,
         phone: registrationRecord.phone,
         country_code: registrationRecord.country_code,
