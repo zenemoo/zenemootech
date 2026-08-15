@@ -17,10 +17,11 @@ import { CandidateApplicationsModal } from './CandidateApplicationsModal';
 import { EnterpriseOpportunityEditorModal } from './EnterpriseOpportunityEditorModal';
 import { AdminReviewsTab } from './AdminReviewsTab';
 import { AdminBrandLogoSettings } from './AdminBrandLogoSettings';
+import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network';
   isStandaloneEmailView?: boolean;
 }
 
@@ -1824,6 +1825,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'ENTERPRISE OPERATIONS',
       items: [
+        { id: 'talent-network', name: 'AI Data Network', icon: Users },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
@@ -3792,6 +3794,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               </motion.div>
             )}
           </div>
+        )}
+
+        {/* TAB: ZENEMOO AI DATA TALENT NETWORK */}
+        {activeTab === 'talent-network' && (
+          <AdminTalentNetworkTab />
         )}
 
         {/* TAB: ENTERPRISE PARTNERS MANAGEMENT */}

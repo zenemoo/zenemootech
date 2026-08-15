@@ -214,6 +214,13 @@ export const Footer: React.FC = () => {
           </div>
           <div className="flex items-center gap-3 text-slate-400 font-bold">
             <a
+              href="/talent-registration"
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Join AI Network
+            </a>
+            <span>·</span>
+            <a
               href="/privacy"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
             >

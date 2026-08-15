@@ -197,5 +197,85 @@ CREATE TABLE opportunity_applications (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Table 8: talent_registrations (Zenemoo AI Data Talent & Partner Registration System)
+CREATE TABLE IF NOT EXISTS talent_registrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  country_code TEXT DEFAULT '+91',
+  state TEXT NOT NULL,
+  city_district TEXT NOT NULL,
+  preferred_contact TEXT NOT NULL DEFAULT 'WhatsApp',
+  
+  -- Role & Contribution
+  primary_role TEXT NOT NULL,
+  role_details JSONB DEFAULT '{}',
+  
+  -- Experience & Capability
+  has_previous_experience BOOLEAN DEFAULT false,
+  work_capabilities TEXT[] DEFAULT '{}',
+  availability TEXT NOT NULL DEFAULT 'Immediately',
+  working_preference TEXT NOT NULL DEFAULT 'Project Basis',
+  
+  -- Equipment & Resources
+  equipment_resources JSONB DEFAULT '{}',
+  
+  -- Additional Info & Consents
+  additional_info JSONB DEFAULT '{}',
+  consents JSONB DEFAULT '{}',
+  
+  -- Internal Admin Fields (Protected - Never exposed publicly)
+  status TEXT DEFAULT 'pending', -- pending, verified, shortlisted, rejected, archived
+  internal_notes TEXT DEFAULT '',
+  internal_scoring INTEGER DEFAULT 0,
+  is_archived BOOLEAN DEFAULT false,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_talent_reg_state ON talent_registrations(state);
+CREATE INDEX IF NOT EXISTS idx_talent_reg_role ON talent_registrations(primary_role);
+CREATE INDEX IF NOT EXISTS idx_talent_reg_status ON talent_registrations(status);
+CREATE INDEX IF NOT EXISTS idx_talent_reg_availability ON talent_registrations(availability);
+
+-- Table 9: talent_languages
+CREATE TABLE IF NOT EXISTS talent_languages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  registration_id UUID REFERENCES talent_registrations(id) ON DELETE CASCADE,
+  language TEXT NOT NULL,
+  proficiency TEXT NOT NULL, -- Native, Fluent, Advanced, Intermediate
+  speaker_availability TEXT NOT NULL, -- I am a native speaker, I can arrange native speakers, Both
+  capacity INTEGER DEFAULT 1, -- Speaker count capacity if arrangeable
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_talent_lang_lang ON talent_languages(language);
+CREATE INDEX IF NOT EXISTS idx_talent_lang_reg ON talent_languages(registration_id);
+
+-- Table 10: talent_experiences
+CREATE TABLE IF NOT EXISTS talent_experiences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  registration_id UUID REFERENCES talent_registrations(id) ON DELETE CASCADE,
+  project_company_name TEXT,
+  type_of_work TEXT,
+  languages_used TEXT,
+  work_volume TEXT,
+  duration TEXT,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Table 11: talent_admin_notes
+CREATE TABLE IF NOT EXISTS talent_admin_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  registration_id UUID REFERENCES talent_registrations(id) ON DELETE CASCADE,
+  admin_email TEXT NOT NULL,
+  note TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
 
 

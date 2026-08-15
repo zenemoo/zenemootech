@@ -331,3 +331,16 @@ export const directoryApi = {
   getMembers: () => api.get('/directory/members'),
 };
 
+// Zenemoo AI Data Talent & Partner Registration API
+export const talentRegistrationApi = {
+  register: (data: any) => api.post('/talent-registration/register', data),
+  getAdminRegistrations: (params?: any) => api.get('/talent-registration/admin/list', { params }),
+  getAdminRegistrationDetail: (id: string) => api.get(`/talent-registration/admin/detail/${id}`),
+  updateAdminStatus: (id: string, data: { status?: string; internal_notes?: string; internal_scoring?: number; is_archived?: boolean }) =>
+    api.patch(`/talent-registration/admin/status/${id}`, data),
+  addAdminNote: (id: string, note: string) => api.post(`/talent-registration/admin/note/${id}`, { note }),
+  exportAdminRegistrations: () =>
+    api.get('/talent-registration/admin/export', { responseType: 'blob' }),
+};
+
+

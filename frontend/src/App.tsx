@@ -35,10 +35,11 @@ import { HRLoginPage } from './components/HRLoginPage';
 import { TeamDashboard } from './components/TeamDashboard';
 import { HRDashboard } from './components/HRDashboard';
 import { ReviewsPage } from './components/ReviewsPage';
+import { ZenemooTalentRegistrationPage } from './components/ZenemooTalentRegistrationPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | '404'
   >('home');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -96,6 +97,7 @@ export function App() {
         | 'zenemooai'
         | 'unsubscribe'
         | 'reviews'
+        | 'talent-registration'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -164,6 +166,16 @@ export function App() {
       } else if (path === '/unsubscribe' || path === '/unsubscribe/' || hash === '#unsubscribe' || hash === '#/unsubscribe') {
         matchedRoute = 'unsubscribe';
       } else if (
+        path === '/talent-registration' ||
+        path === '/talent-registration/' ||
+        path === '/register-talent' ||
+        path === '/register-talent/' ||
+        hash === '#talent-registration' ||
+        hash === '#register-talent' ||
+        hash === '#/register-talent'
+      ) {
+        matchedRoute = 'talent-registration';
+      } else if (
         path === '/review' ||
         path === '/review/' ||
         path === '/reviews' ||
@@ -225,6 +237,10 @@ export function App() {
         pageTitle = '404 – Page Not Found | Zenemoo';
         canonicalUrl = `https://www.zenemoo.in${path}`;
         metaDescription = "The page you requested could not be found. Explore Zenemoo's AI language services, data annotation, transcription, and enterprise solutions.";
+      } else if (matchedRoute === 'talent-registration') {
+        pageTitle = 'AI Data Talent & Partner Registration — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/talent-registration';
+        metaDescription = 'Join Zenemoo AI Data Network. Register as a native speaker, coordinator, vocalist, recording team, or vendor agency for AI projects.';
       } else if (path === '/terms' || hash.includes('#terms')) {
         pageTitle = 'Terms & Conditions — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/terms';
@@ -388,6 +404,8 @@ export function App() {
         <PrivacyPolicyPage onBack={handleBackToHome} />
       ) : currentRoute === 'terms' ? (
         <TermsConditionsPage onBack={handleBackToHome} />
+      ) : currentRoute === 'talent-registration' ? (
+        <ZenemooTalentRegistrationPage onBack={handleBackToHome} />
       ) : currentRoute === 'opportunities' ? (
         <OpportunitiesPage onBack={handleBackToHome} onSelectProgram={handleSelectProgram} />
       ) : currentRoute === 'opportunity-detail' ? (
