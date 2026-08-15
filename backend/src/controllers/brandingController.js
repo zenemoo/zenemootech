@@ -1,5 +1,12 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { cloudinaryService } from '../services/cloudinaryService.js';
 import { supabaseService } from '../services/supabaseService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PERSISTENT_FILE_PATH = path.join(__dirname, '../database/active_logo.json');
 
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
@@ -24,8 +31,44 @@ const DEFAULT_LOGO_PAYLOAD = {
   updated_at: new Date().toISOString(),
 };
 
-// Module-level in-memory state persistence for instantaneous updates
-let inMemoryActiveLogo = null;
+// Disk persistence helpers to survive server restarts/idle reboots
+const loadDiskActiveLogo = () => {
+  try {
+    if (fs.existsSync(PERSISTENT_FILE_PATH)) {
+      const data = fs.readFileSync(PERSISTENT_FILE_PATH, 'utf-8');
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (parsed && (parsed.url || parsed.secure_url)) {
+          return parsed;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading active_logo.json persistent file:', e.message);
+  }
+  return null;
+};
+
+const saveDiskActiveLogo = (payload) => {
+  try {
+    const dir = path.dirname(PERSISTENT_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    if (payload && (payload.url || payload.secure_url)) {
+      fs.writeFileSync(PERSISTENT_FILE_PATH, JSON.stringify(payload, null, 2), 'utf-8');
+    } else {
+      if (fs.existsSync(PERSISTENT_FILE_PATH)) {
+        fs.unlinkSync(PERSISTENT_FILE_PATH);
+      }
+    }
+  } catch (e) {
+    console.warn('Error writing active_logo.json persistent file:', e.message);
+  }
+};
+
+// In-memory active logo state initialized from disk fallback
+let inMemoryActiveLogo = loadDiskActiveLogo();
 
 /**
  * GET /api/branding/active, /branding/active, /api/branding/logo, /branding/logo, /api/branding, /branding
@@ -37,7 +80,7 @@ export const getActiveLogo = async (req, res) => {
     try {
       const records = await supabaseService.selectAll('site_branding', 'updated_at', false);
       if (Array.isArray(records) && records.length > 0) {
-        activeRecord = records.find((r) => r.asset_type === 'site_logo' && r.is_active === true) || null;
+        activeRecord = records.find((r) => r.asset_type === 'site_logo' && (r.is_active === true || r.is_active === 'true')) || null;
       }
     } catch (dbErr) {
       console.warn('Supabase site_branding select warning:', dbErr.message);
@@ -69,11 +112,15 @@ export const getActiveLogo = async (req, res) => {
       };
 
       inMemoryActiveLogo = payload;
+      saveDiskActiveLogo(payload);
       return res.status(200).json({ success: true, data: payload });
     }
 
-    if (inMemoryActiveLogo) {
-      return res.status(200).json({ success: true, data: inMemoryActiveLogo });
+    // Fall back to memory / disk file payload before reverting to default
+    const diskFallback = inMemoryActiveLogo || loadDiskActiveLogo();
+    if (diskFallback && (diskFallback.url || diskFallback.secure_url)) {
+      inMemoryActiveLogo = diskFallback;
+      return res.status(200).json({ success: true, data: diskFallback });
     }
 
     return res.status(200).json({
@@ -83,9 +130,10 @@ export const getActiveLogo = async (req, res) => {
     });
   } catch (err) {
     console.error('getActiveLogo Server Error:', err.message);
+    const diskFallback = inMemoryActiveLogo || loadDiskActiveLogo();
     return res.status(200).json({
       success: true,
-      data: inMemoryActiveLogo || null,
+      data: diskFallback || null,
       defaultFallback: DEFAULT_LOGO_PAYLOAD,
     });
   }
@@ -98,6 +146,22 @@ export const getActiveLogo = async (req, res) => {
 export const uploadOrReplaceLogo = async (req, res) => {
   try {
     const directUrlInput = req.body?.url || req.body?.image_url || req.body?.cloudinary_secure_url;
+
+    // Helper to deactivate previous records in Supabase
+    const deactivatePreviousLogos = async () => {
+      try {
+        const records = await supabaseService.selectAll('site_branding', 'created_at', false);
+        if (Array.isArray(records)) {
+          for (const r of records) {
+            if (r.asset_type === 'site_logo' && (r.is_active || r.is_active === 'true')) {
+              await supabaseService.update('site_branding', r.id, { is_active: false, updated_at: new Date().toISOString() });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Warning deactivating previous branding records:', e.message);
+      }
+    };
 
     // Case 1: Uploading via File
     if (req.file) {
@@ -120,13 +184,11 @@ export const uploadOrReplaceLogo = async (req, res) => {
       }
 
       let oldPublicId = null;
-      let existingRecordId = null;
       try {
         const records = await supabaseService.selectAll('site_branding', 'created_at', false);
         const currentActive = (records || []).find((r) => r.asset_type === 'site_logo' && r.is_active === true);
         if (currentActive) {
           oldPublicId = currentActive.cloudinary_public_id || currentActive.public_id || null;
-          existingRecordId = currentActive.id || null;
         }
       } catch (e) {}
 
@@ -147,24 +209,19 @@ export const uploadOrReplaceLogo = async (req, res) => {
       const seoFilename = `zenemoo-official-logo.${fileExt === 'jpeg' ? 'jpg' : fileExt}`;
       const fileSizeFormatted = (req.file.size / 1024).toFixed(1) + ' KB';
 
+      // Deactivate older logo records
+      await deactivatePreviousLogos();
+
+      // Database Payload (Compatible with site_branding table columns)
       const dbPayload = {
         asset_type: 'site_logo',
-        asset_name: 'Zenemoo Official Site Logo',
-        original_filename: req.file.originalname,
-        seo_filename: seoFilename,
-        alt_text: userAltText,
-        title: userTitle,
-        description: 'Official primary site logo for Zenemoo platform header and branding',
-        folder,
+        asset_name: userTitle || 'Zenemoo Official Site Logo',
         cloudinary_public_id: cloudinaryRes.public_id,
         cloudinary_secure_url: cloudinaryRes.secure_url,
-        public_id: cloudinaryRes.public_id,
-        image_url: cloudinaryRes.secure_url,
         resource_type: 'image',
         format: cloudinaryRes.format || fileExt,
         width: cloudinaryRes.width || 0,
         height: cloudinaryRes.height || 0,
-        bytes: req.file.size,
         version: String(timestamp),
         is_active: true,
         created_at: new Date().toISOString(),
@@ -174,17 +231,13 @@ export const uploadOrReplaceLogo = async (req, res) => {
 
       let savedRecord = null;
       try {
-        if (existingRecordId) {
-          savedRecord = await supabaseService.update('site_branding', existingRecordId, dbPayload);
-        } else {
-          savedRecord = await supabaseService.insert('site_branding', dbPayload);
-        }
+        savedRecord = await supabaseService.insert('site_branding', dbPayload);
       } catch (dbErr) {
-        console.warn('Supabase site_branding insert/update warning:', dbErr.message);
+        console.warn('Supabase site_branding insert warning:', dbErr.message);
       }
 
       const responseData = {
-        id: savedRecord?.id || existingRecordId || `logo_${timestamp}`,
+        id: savedRecord?.id || `logo_${timestamp}`,
         url: cloudinaryRes.secure_url,
         secure_url: cloudinaryRes.secure_url,
         publicId: cloudinaryRes.public_id,
@@ -203,6 +256,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
       };
 
       inMemoryActiveLogo = responseData;
+      saveDiskActiveLogo(responseData);
 
       if (oldPublicId && oldPublicId !== cloudinaryRes.public_id) {
         try {
@@ -224,22 +278,18 @@ export const uploadOrReplaceLogo = async (req, res) => {
       const userTitle = req.body?.title || 'Zenemoo Official Logo';
       const cleanUrl = directUrlInput.trim();
 
+      await deactivatePreviousLogos();
+
       const dbPayload = {
         asset_type: 'site_logo',
-        asset_name: 'Zenemoo Official Site Logo (Direct URL)',
-        original_filename: 'direct-url-logo.png',
-        seo_filename: 'zenemoo-official-logo.png',
-        alt_text: userAltText,
-        title: userTitle,
-        folder: 'zenemoo/site-branding/logo',
+        asset_name: userTitle || 'Zenemoo Official Site Logo (Direct URL)',
         cloudinary_public_id: '',
         cloudinary_secure_url: cleanUrl,
-        public_id: '',
-        image_url: cleanUrl,
         resource_type: 'image',
         format: 'png',
         width: 512,
         height: 512,
+        version: String(timestamp),
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -272,6 +322,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
       };
 
       inMemoryActiveLogo = responseData;
+      saveDiskActiveLogo(responseData);
 
       return res.status(200).json({
         success: true,
@@ -323,6 +374,7 @@ export const deleteLogo = async (req, res) => {
     }
 
     inMemoryActiveLogo = null;
+    saveDiskActiveLogo(null);
 
     return res.status(200).json({
       success: true,
@@ -338,3 +390,4 @@ export const deleteLogo = async (req, res) => {
     });
   }
 };
+
