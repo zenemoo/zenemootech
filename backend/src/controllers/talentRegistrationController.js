@@ -160,6 +160,7 @@ export const registerTalent = async (req, res) => {
     let savedSupabaseId = null;
     try {
       const dbPayload = {
+        registration_code: registrationRecord.registration_code,
         full_name: registrationRecord.full_name,
         email: registrationRecord.email,
         phone: registrationRecord.phone,
@@ -222,8 +223,8 @@ export const registerTalent = async (req, res) => {
     }
 
     // Save to local disk backup
-    currentList.unshift(registrationRecord);
-    saveDiskRegistrations(currentList);
+    diskList.unshift(registrationRecord);
+    saveDiskRegistrations(diskList);
 
     return res.status(201).json({
       success: true,
