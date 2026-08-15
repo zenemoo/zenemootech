@@ -768,22 +768,52 @@ export const AdminTalentNetworkTab: React.FC = () => {
             )}
 
             {/* 7. Additional Info & Referrals */}
-            {selectedCandidate.additional_info && Object.keys(selectedCandidate.additional_info).length > 0 && (
+            {selectedCandidate.additional_info && (
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
-                <div className="font-bold text-cyan-300 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5">
-                  7. Additional Information &amp; Special Capabilities
+                <div className="font-bold text-cyan-300 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>7. Additional Information &amp; Special Capabilities</span>
+                  <span className="text-slate-400">Background &amp; Capabilities</span>
                 </div>
-                {selectedCandidate.additional_info.referral_source && (
-                  <div>Referral Source: <span className="text-white font-bold">{selectedCandidate.additional_info.referral_source}</span></div>
-                )}
-                {selectedCandidate.additional_info.additional_notes && (
+                
+                {/* How did you hear about Zenemoo? */}
+                {(selectedCandidate.additional_info.hearAboutSource ||
+                  selectedCandidate.additional_info.referral_source ||
+                  selectedCandidate.additional_info.hear_about_source) && (
                   <div>
-                    <span className="text-slate-400 block text-[10px] mb-1">Custom Capabilities Description:</span>
-                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 text-slate-200 text-[11px] leading-relaxed">
-                      {selectedCandidate.additional_info.additional_notes}
+                    <span className="text-slate-400">Referral / How Heard: </span>
+                    <span className="text-white font-bold">
+                      {selectedCandidate.additional_info.hearAboutSource ||
+                        selectedCandidate.additional_info.referral_source ||
+                        selectedCandidate.additional_info.hear_about_source}
+                    </span>
+                  </div>
+                )}
+
+                {/* Additional Capabilities & Special Notes Text */}
+                {(selectedCandidate.additional_info.additionalDetailsText ||
+                  selectedCandidate.additional_info.additional_notes ||
+                  selectedCandidate.additional_info.additional_details_text) && (
+                  <div className="pt-1">
+                    <span className="text-slate-400 block text-[10px] mb-1">Capabilities &amp; Special Experience Notes:</span>
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 text-slate-200 text-[11px] leading-relaxed whitespace-pre-wrap">
+                      {selectedCandidate.additional_info.additionalDetailsText ||
+                        selectedCandidate.additional_info.additional_notes ||
+                        selectedCandidate.additional_info.additional_details_text}
                     </div>
                   </div>
                 )}
+
+                {/* Dynamic key fallback for any other keys in additional_info */}
+                {Object.entries(selectedCandidate.additional_info).map(([k, v]: [string, any]) => {
+                  if (['hearAboutSource', 'referral_source', 'hear_about_source', 'additionalDetailsText', 'additional_notes', 'additional_details_text'].includes(k)) return null;
+                  if (!v) return null;
+                  return (
+                    <div key={k} className="text-[11px]">
+                      <span className="text-slate-400 capitalize">{k.replace(/_/g, ' ')}: </span>
+                      <span className="text-white font-bold">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
 

@@ -50,18 +50,20 @@ const saveLocalApplications = (list: CandidateApplication[]): CandidateApplicati
 
 // Fetch candidate applications directly from Supabase (with fallback)
 export const getStoredCandidateApplications = async (opportunity_id?: string): Promise<CandidateApplication[]> => {
-  try {
-    let query = supabase.from('opportunity_applications').select('*').order('created_at', { ascending: false });
-    if (opportunity_id) {
-      query = query.eq('opportunity_id', opportunity_id);
+  if (supabase) {
+    try {
+      let query = supabase.from('opportunity_applications').select('*').order('created_at', { ascending: false });
+      if (opportunity_id) {
+        query = query.eq('opportunity_id', opportunity_id);
+      }
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        saveLocalApplications(data as CandidateApplication[]);
+        return data as CandidateApplication[];
+      }
+    } catch (err: any) {
+      console.warn('Direct Supabase fetch candidate applications error:', err.message);
     }
-    const { data, error } = await query;
-    if (!error && Array.isArray(data)) {
-      saveLocalApplications(data as CandidateApplication[]);
-      return data as CandidateApplication[];
-    }
-  } catch (err: any) {
-    console.warn('Direct Supabase fetch candidate applications error:', err.message);
   }
 
   try {
