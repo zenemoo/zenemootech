@@ -579,22 +579,35 @@ export const deleteRegistrationAdmin = async (req, res) => {
 
     // 1. Delete child & parent rows in Supabase Database
     try {
-      await supabaseService.deleteByField('talent_languages', 'registration_id', id).catch(() => {});
-      await supabaseService.deleteByField('talent_experiences', 'registration_id', id).catch(() => {});
-      await supabaseService.deleteByField('talent_admin_notes', 'registration_id', id).catch(() => {});
-      await supabaseService.delete('talent_registrations', id).catch(() => {});
+      const allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
+      const targetDbRecord = (allDbRecords || []).find(
+        (r) => r.id === id || r.registration_code === id || (r.email || '').toLowerCase() === id.toLowerCase()
+      );
+
+      const targetId = targetDbRecord ? targetDbRecord.id : id;
+
+      await supabaseService.deleteByField('talent_languages', 'registration_id', targetId).catch(() => {});
+      await supabaseService.deleteByField('talent_experiences', 'registration_id', targetId).catch(() => {});
+      await supabaseService.deleteByField('talent_admin_notes', 'registration_id', targetId).catch(() => {});
+      await supabaseService.delete('talent_registrations', targetId).catch(() => {});
+
+      if (targetDbRecord && targetDbRecord.registration_code) {
+        await supabaseService.deleteByField('talent_registrations', 'registration_code', targetDbRecord.registration_code).catch(() => {});
+      }
     } catch (dbErr) {
       console.warn('Supabase delete error (continuing local disk delete):', dbErr.message);
     }
 
     // 2. Delete from Local Disk persistent store
     const diskList = loadDiskRegistrations();
-    const filteredDisk = diskList.filter((item) => item.id !== id && item.registration_code !== id);
+    const filteredDisk = diskList.filter(
+      (item) => item.id !== id && item.registration_code !== id && (item.email || '').toLowerCase() !== id.toLowerCase()
+    );
     saveDiskRegistrations(filteredDisk);
 
     return res.status(200).json({
       success: true,
-      message: 'Registration record permanently deleted.',
+      message: 'Registration record permanently deleted from database and local disk.',
     });
   } catch (err) {
     console.error('deleteRegistrationAdmin Error:', err);
