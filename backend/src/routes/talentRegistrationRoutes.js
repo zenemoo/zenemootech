@@ -7,14 +7,19 @@ import {
   addAdminNote,
   exportRegistrationsAdmin,
   deleteRegistrationAdmin,
+  getSupportedLanguages,
+  addAdminSupportedLanguage,
+  updateAdminSupportedLanguage,
+  updateAdminCandidateProfile,
 } from '../controllers/talentRegistrationController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Public Anonymous Registration Submit
+// Public Anonymous Endpoints
 router.post('/register', registerTalent);
 router.post('/', registerTalent);
+router.get('/supported-languages', getSupportedLanguages);
 
 // Protected Admin Operations (Requires JWT auth)
 router.get('/admin/list', authMiddleware, getRegistrationsAdmin);
@@ -24,5 +29,11 @@ router.post('/admin/note/:id', authMiddleware, addAdminNote);
 router.get('/admin/export', authMiddleware, exportRegistrationsAdmin);
 router.delete('/admin/delete/:id', authMiddleware, deleteRegistrationAdmin);
 router.delete('/admin/:id', authMiddleware, deleteRegistrationAdmin);
+
+// Admin Language Management & Candidate Profile Editing
+router.get('/admin/languages', authMiddleware, getSupportedLanguages);
+router.post('/admin/languages', authMiddleware, addAdminSupportedLanguage);
+router.put('/admin/languages/:id', authMiddleware, updateAdminSupportedLanguage);
+router.put('/admin/update-profile/:id', authMiddleware, updateAdminCandidateProfile);
 
 export default router;

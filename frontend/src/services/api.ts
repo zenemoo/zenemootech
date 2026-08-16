@@ -334,6 +334,7 @@ export const directoryApi = {
 // Zenemoo AI Data Talent & Partner Registration API
 export const talentRegistrationApi = {
   register: (data: any) => api.post('/talent-registration/register', data),
+  getSupportedLanguages: () => api.get('/talent-registration/supported-languages'),
   getAdminRegistrations: (params?: any) => api.get('/talent-registration/admin/list', { params }),
   getAdminRegistrationDetail: (id: string) => api.get(`/talent-registration/admin/detail/${id}`),
   updateAdminStatus: (id: string, data: { status?: string; internal_notes?: string; internal_scoring?: number; is_archived?: boolean }) =>
@@ -343,6 +344,15 @@ export const talentRegistrationApi = {
     api.get('/talent-registration/admin/export', { responseType: 'blob' }),
   deleteAdminRegistration: (id: string) =>
     api.delete(`/talent-registration/admin/delete/${id}`),
+
+  // Supported Languages & Candidate Profile Editing
+  adminGetSupportedLanguages: () => api.get('/talent-registration/admin/languages'),
+  adminAddSupportedLanguage: (data: { language: string; code?: string; status?: string }) =>
+    api.post('/talent-registration/admin/languages', data),
+  adminUpdateSupportedLanguage: (id: string, data: { language?: string; code?: string; status?: string }) =>
+    api.put(`/talent-registration/admin/languages/${id}`, data),
+  adminUpdateCandidateProfile: (id: string, data: any) =>
+    api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
 
 

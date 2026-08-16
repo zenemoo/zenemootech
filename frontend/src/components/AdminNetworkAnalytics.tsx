@@ -254,9 +254,10 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       const isImmed = (r.availability || '').toLowerCase().includes('immediately');
 
       (r.languages || []).forEach((l: any) => {
-        const langName = typeof l === 'string' ? l : (l?.language || '').trim();
-        if (!langName) return;
+        const rawLangName = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (!rawLangName) return;
 
+        const langName = rawLangName === 'Other' ? 'Other / Unspecified' : rawLangName;
         const isNative = typeof l === 'object' && (l?.proficiency || '').toLowerCase().includes('native');
         const capVal = typeof l === 'object' ? Number(l?.capacity) || 1 : 1;
 

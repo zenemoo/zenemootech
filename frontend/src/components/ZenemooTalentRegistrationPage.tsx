@@ -166,9 +166,106 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   const [cityDistrict, setCityDistrict] = useState<string>('');
   const [preferredContact, setPreferredContact] = useState<string>('WhatsApp');
 
-  // Step 2: Languages
+  // Step 2: Languages & Searchable Multi-Select
   const [selectedLanguageList, setSelectedLanguageList] = useState<string[]>([]);
   const [languageDetails, setLanguageDetails] = useState<Record<string, SelectedLanguageDetail>>({});
+  const [officialLanguagesList, setOfficialLanguagesList] = useState<string[]>(AVAILABLE_LANGUAGES);
+  const [languageSearchQuery, setLanguageSearchQuery] = useState<string>('');
+  const [customOtherLanguages, setCustomOtherLanguages] = useState<
+    Array<{
+      id: string;
+      name: string;
+      proficiency: 'Native' | 'Fluent' | 'Advanced' | 'Intermediate';
+      speakerAvailability: 'I am a native speaker' | 'I can arrange native speakers' | 'Both';
+      capacity: number;
+    }>
+  >([]);
+
+  useEffect(() => {
+    const fetchSupported = async () => {
+      try {
+        const res = await talentRegistrationApi.getSupportedLanguages();
+        if (res?.data?.success && Array.isArray(res.data.data)) {
+          const names = res.data.data
+            .filter((item: any) => item.status !== 'inactive')
+            .map((item: any) => item.language);
+          if (names.length > 0) {
+            setOfficialLanguagesList(Array.from(new Set([...names, 'Other'])));
+          }
+        }
+      } catch (err) {}
+    };
+    fetchSupported();
+  }, []);
+
+  // Toggle Official Language Checkbox / Chip
+  const handleToggleLanguage = (lang: string) => {
+    if (lang === 'Other') {
+      if (selectedLanguageList.includes('Other')) {
+        setSelectedLanguageList(selectedLanguageList.filter((l) => l !== 'Other'));
+        setCustomOtherLanguages([]);
+      } else {
+        setSelectedLanguageList([...selectedLanguageList, 'Other']);
+        if (customOtherLanguages.length === 0) {
+          setCustomOtherLanguages([
+            {
+              id: `custom_${Date.now()}`,
+              name: '',
+              proficiency: 'Native',
+              speakerAvailability: 'I am a native speaker',
+              capacity: 1,
+            },
+          ]);
+        }
+      }
+      return;
+    }
+
+    if (selectedLanguageList.includes(lang)) {
+      setSelectedLanguageList(selectedLanguageList.filter((l) => l !== lang));
+      const nextDetails = { ...languageDetails };
+      delete nextDetails[lang];
+      setLanguageDetails(nextDetails);
+    } else {
+      setSelectedLanguageList([...selectedLanguageList, lang]);
+      setLanguageDetails({
+        ...languageDetails,
+        [lang]: {
+          language: lang,
+          proficiency: 'Native',
+          speakerAvailability: 'I am a native speaker',
+          capacity: 1,
+        },
+      });
+    }
+  };
+
+  const handleAddCustomLanguage = () => {
+    setCustomOtherLanguages([
+      ...customOtherLanguages,
+      {
+        id: `custom_${Date.now()}`,
+        name: '',
+        proficiency: 'Native',
+        speakerAvailability: 'I am a native speaker',
+        capacity: 1,
+      },
+    ]);
+  };
+
+  const handleUpdateCustomLanguage = (id: string, field: string, value: any) => {
+    setCustomOtherLanguages(
+      customOtherLanguages.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleRemoveCustomLanguage = (id: string) => {
+    const updated = customOtherLanguages.filter((item) => item.id !== id);
+    setCustomOtherLanguages(updated);
+    if (updated.length === 0) {
+      setSelectedLanguageList(selectedLanguageList.filter((l) => l !== 'Other'));
+    }
+  };
 
   // Step 3: Role & Contribution
   const [primaryRole, setPrimaryRole] = useState<string>('Individual Participant');
@@ -260,7 +357,31 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
     }
 
     if (currentStep === 2) {
-      if (selectedLanguageList.length === 0) return setErrorMsg('Please select at least one language you can support.');
+      if (selectedLanguageList.length === 0 && customOtherLanguages.length === 0) {
+        return setErrorMsg('Please select at least one language you can support.');
+      }
+
+      if (selectedLanguageList.includes('Other') || customOtherLanguages.length > 0) {
+        if (customOtherLanguages.length === 0) {
+          return setErrorMsg('Please enter the language name before continuing.');
+        }
+        for (const customItem of customOtherLanguages) {
+          if (!customItem.name.trim()) {
+            return setErrorMsg('Please enter the language name before continuing.');
+          }
+
+          // Duplicate check against official languages list
+          const cleanName = customItem.name.trim().toLowerCase();
+          const matchOfficial = officialLanguagesList.find(
+            (l) => l.toLowerCase() === cleanName && l.toLowerCase() !== 'other'
+          );
+          if (matchOfficial) {
+            return setErrorMsg(
+              `"${customItem.name.trim()}" is already available in the official language list. Please select "${matchOfficial}" directly from the languages list above.`
+            );
+          }
+        }
+      }
     }
 
     if (currentStep === 3) {
@@ -340,12 +461,24 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
           privacyAccepted,
         },
         turnstileToken,
-        languages: selectedLanguageList.map((lang) => ({
-          language: lang,
-          proficiency: languageDetails[lang]?.proficiency || 'Native',
-          speakerAvailability: languageDetails[lang]?.speakerAvailability || 'I am a native speaker',
-          capacity: languageDetails[lang]?.capacity || 1,
-        })),
+        languages: [
+          ...selectedLanguageList
+            .filter((lang) => lang !== 'Other')
+            .map((lang) => ({
+              language: lang,
+              proficiency: languageDetails[lang]?.proficiency || 'Native',
+              speakerAvailability: languageDetails[lang]?.speakerAvailability || 'I am a native speaker',
+              capacity: languageDetails[lang]?.capacity || 1,
+            })),
+          ...customOtherLanguages
+            .filter((c) => c.name.trim() !== '')
+            .map((c) => ({
+              language: c.name.trim(),
+              proficiency: c.proficiency || 'Native',
+              speakerAvailability: c.speakerAvailability || 'I am a native speaker',
+              capacity: c.capacity || 1,
+            })),
+        ],
         experiences: hasPreviousExperience ? experiences.filter((e) => e.projectName.trim() || e.description.trim()) : [],
       };
 
@@ -674,69 +807,265 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                     <Languages className="w-5 h-5 text-cyan-400" /> 2. Language &amp; Regional Capability
                   </h2>
                   <p className="text-xs font-mono text-slate-400 mt-1">
-                    Tell us which languages you or your network can support. Select all languages that apply.
+                    Tell us which languages you or your network can support. Type to search or select languages below.
                   </p>
                 </div>
 
                 <div className="space-y-4 font-mono text-xs">
-                  <label className="text-slate-300 font-bold block">Which languages can you support? *</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-64 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
-                    {AVAILABLE_LANGUAGES.map((lang) => {
-                      const isSelected = selectedLanguageList.includes(lang);
-                      return (
+                  {/* Searchable Language Input Header */}
+                  <div className="space-y-2">
+                    <label className="text-slate-300 font-bold block flex items-center justify-between">
+                      <span>Which languages can you support? *</span>
+                      <span className="text-[10px] text-cyan-400 font-normal">Searchable Multi-Select</span>
+                    </label>
+
+                    <div className="relative w-full">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        placeholder="🔍 Search languages (e.g. Odia, Telugu, Assamese, English)..."
+                        value={languageSearchQuery}
+                        onChange={(e) => setLanguageSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-8 py-2.5 rounded-2xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      />
+                      {languageSearchQuery && (
                         <button
-                          key={lang}
                           type="button"
-                          onClick={() => handleToggleLanguage(lang)}
-                          className={`p-2.5 rounded-xl border text-left font-bold transition-all flex items-center justify-between cursor-pointer ${
-                            isSelected
-                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
-                              : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white'
-                          }`}
+                          onClick={() => setLanguageSearchQuery('')}
+                          className="absolute right-3 top-3 text-slate-400 hover:text-white"
                         >
-                          <span>{lang}</span>
-                          {isSelected && <CheckCircle className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                          <X className="w-4 h-4" />
                         </button>
-                      );
-                    })}
+                      )}
+                    </div>
                   </div>
 
-                  {/* DYNAMIC PROFICIENCY & CAPACITY MATRIX PER SELECTED LANGUAGE */}
-                  {selectedLanguageList.length > 0 && (
+                  {/* Active Selected Languages Removable Chips Container */}
+                  {(selectedLanguageList.length > 0 || customOtherLanguages.length > 0) && (
+                    <div className="p-3 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 space-y-2">
+                      <span className="text-[10px] text-cyan-400 uppercase font-bold tracking-wider block">
+                        Selected Languages ({selectedLanguageList.filter((l) => l !== 'Other').length + customOtherLanguages.length}):
+                      </span>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {selectedLanguageList
+                          .filter((l) => l !== 'Other')
+                          .map((lang) => (
+                            <span
+                              key={lang}
+                              className="px-3 py-1.5 rounded-xl bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-bold text-xs flex items-center gap-2 animate-in fade-in"
+                            >
+                              <span>{lang}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLanguage(lang)}
+                                className="text-cyan-400 hover:text-white transition-colors cursor-pointer"
+                                title={`Remove ${lang}`}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          ))}
+
+                        {customOtherLanguages.map((c) => (
+                          <span
+                            key={c.id}
+                            className="px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-400 text-purple-300 font-bold text-xs flex items-center gap-2 animate-in fade-in"
+                          >
+                            <span>Other: {c.name.trim() || 'Custom Language'}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCustomLanguage(c.id)}
+                              className="text-purple-300 hover:text-white transition-colors cursor-pointer"
+                              title="Remove custom language"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Filtered Official Languages Selection Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
+                    {officialLanguagesList
+                      .filter((lang) => lang.toLowerCase().includes(languageSearchQuery.toLowerCase().trim()))
+                      .map((lang) => {
+                        const isSelected = selectedLanguageList.includes(lang);
+                        return (
+                          <button
+                            key={lang}
+                            type="button"
+                            onClick={() => handleToggleLanguage(lang)}
+                            className={`p-2.5 rounded-xl border text-left font-bold transition-all flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-md shadow-cyan-500/10'
+                                : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white hover:border-white/20'
+                            }`}
+                          >
+                            <span>{lang}</span>
+                            {isSelected && <CheckCircle className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                  </div>
+
+                  {/* DYNAMIC PROFICIENCY & CAPACITY MATRIX PER STANDARD SELECTED LANGUAGE */}
+                  {selectedLanguageList.filter((l) => l !== 'Other').length > 0 && (
                     <div className="space-y-4 pt-4 border-t border-white/10">
                       <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                        Language Proficiency &amp; Speaker Availability Details:
+                        Standard Language Proficiency &amp; Availability:
                       </h4>
 
-                      {selectedLanguageList.map((lang) => {
-                        const detail = languageDetails[lang] || {
-                          language: lang,
-                          proficiency: 'Native',
-                          speakerAvailability: 'I am a native speaker',
-                          capacity: 1,
-                        };
+                      {selectedLanguageList
+                        .filter((l) => l !== 'Other')
+                        .map((lang) => {
+                          const detail = languageDetails[lang] || {
+                            language: lang,
+                            proficiency: 'Native',
+                            speakerAvailability: 'I am a native speaker',
+                            capacity: 1,
+                          };
 
+                          const canArrangeOthers =
+                            detail.speakerAvailability === 'I can arrange native speakers' ||
+                            detail.speakerAvailability === 'Both';
+
+                          return (
+                            <div key={lang} className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
+                              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                                <span className="font-bold text-white text-sm flex items-center gap-2">
+                                  <Globe className="w-4 h-4 text-cyan-400" /> Language: {lang}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleLanguage(lang)}
+                                  className="text-xs text-red-400 hover:text-red-300 font-bold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" /> Remove
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-slate-400 block text-[11px]">Proficiency Level:</label>
+                                  <select
+                                    value={detail.proficiency}
+                                    onChange={(e) => handleUpdateLanguageDetail(lang, 'proficiency', e.target.value)}
+                                    className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                                  >
+                                    <option value="Native">Native</option>
+                                    <option value="Fluent">Fluent</option>
+                                    <option value="Advanced">Advanced</option>
+                                    <option value="Intermediate">Intermediate</option>
+                                  </select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <label className="text-slate-400 block text-[11px]">Speaker Availability:</label>
+                                  <select
+                                    value={detail.speakerAvailability}
+                                    onChange={(e) => handleUpdateLanguageDetail(lang, 'speakerAvailability', e.target.value)}
+                                    className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                                  >
+                                    <option value="I am a native speaker">I am a native speaker</option>
+                                    <option value="I can arrange native speakers">I can arrange native speakers</option>
+                                    <option value="Both">Both (Native speaker &amp; Can arrange others)</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {canArrangeOthers && (
+                                <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 space-y-1.5 animate-in fade-in duration-200">
+                                  <label className="text-cyan-300 font-bold block text-[11px]">
+                                    How many native speakers can you currently arrange for {lang}?
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={detail.capacity}
+                                    onChange={(e) => handleUpdateLanguageDetail(lang, 'capacity', Number(e.target.value))}
+                                    className="w-full px-3 py-2 rounded-xl bg-black/80 border border-cyan-400/40 text-cyan-300 font-bold focus:outline-none"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {/* MULTI-CUSTOM "OTHER" LANGUAGES CARDS SECTION */}
+                  {(selectedLanguageList.includes('Other') || customOtherLanguages.length > 0) && (
+                    <div className="space-y-4 pt-4 border-t border-white/10">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-purple-400" /> Custom / Other Languages ({customOtherLanguages.length}):
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomLanguage}
+                          className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add another language
+                        </button>
+                      </div>
+
+                      {customOtherLanguages.map((c, idx) => {
                         const canArrangeOthers =
-                          detail.speakerAvailability === 'I can arrange native speakers' || detail.speakerAvailability === 'Both';
+                          c.speakerAvailability === 'I can arrange native speakers' || c.speakerAvailability === 'Both';
+
+                        const cleanTypedName = c.name.trim().toLowerCase();
+                        const duplicateMatch = officialLanguagesList.find(
+                          (l) => l.toLowerCase() === cleanTypedName && l.toLowerCase() !== 'other'
+                        );
 
                         return (
-                          <div key={lang} className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
-                            <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                              <span className="font-bold text-white text-sm flex items-center gap-2">
-                                <Globe className="w-4 h-4 text-purple-400" /> Language: {lang}
+                          <div
+                            key={c.id}
+                            className="p-5 rounded-2xl bg-purple-950/20 border border-purple-500/40 space-y-4 relative shadow-xl"
+                          >
+                            <div className="flex items-center justify-between border-b border-purple-500/20 pb-2">
+                              <span className="font-bold text-purple-300 text-sm">
+                                Custom Language #{idx + 1}
                               </span>
-                              <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                Configured
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveCustomLanguage(c.id)}
+                                className="text-xs text-red-400 hover:text-red-300 font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" /> Remove
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-slate-200 font-bold block">Other Language Name *</label>
+                              <input
+                                type="text"
+                                placeholder="Enter custom language name (e.g. Kui, Ho, Santali Variant, Mizo)"
+                                value={c.name}
+                                onChange={(e) => handleUpdateCustomLanguage(c.id, 'name', e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl bg-black/80 border border-purple-500/40 text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 font-bold"
+                              />
+
+                              {duplicateMatch && (
+                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2 animate-in fade-in">
+                                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                                  <span>
+                                    <strong>"{c.name.trim()}"</strong> is already available in the official list above. Please select <strong>"{duplicateMatch}"</strong> directly from the languages list.
+                                  </span>
+                                </div>
+                              )}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div className="space-y-1.5">
-                                <label className="text-slate-400 block text-[11px]">Proficiency Level:</label>
+                                <label className="text-slate-400 block text-[11px]">Proficiency Level *</label>
                                 <select
-                                  value={detail.proficiency}
-                                  onChange={(e) => handleUpdateLanguageDetail(lang, 'proficiency', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                                  value={c.proficiency}
+                                  onChange={(e) => handleUpdateCustomLanguage(c.id, 'proficiency', e.target.value)}
+                                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-purple-400"
                                 >
                                   <option value="Native">Native</option>
                                   <option value="Fluent">Fluent</option>
@@ -746,11 +1075,11 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                               </div>
 
                               <div className="space-y-1.5">
-                                <label className="text-slate-400 block text-[11px]">Speaker Availability:</label>
+                                <label className="text-slate-400 block text-[11px]">Speaker Availability *</label>
                                 <select
-                                  value={detail.speakerAvailability}
-                                  onChange={(e) => handleUpdateLanguageDetail(lang, 'speakerAvailability', e.target.value)}
-                                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                                  value={c.speakerAvailability}
+                                  onChange={(e) => handleUpdateCustomLanguage(c.id, 'speakerAvailability', e.target.value)}
+                                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-purple-400"
                                 >
                                   <option value="I am a native speaker">I am a native speaker</option>
                                   <option value="I can arrange native speakers">I can arrange native speakers</option>
@@ -759,19 +1088,17 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                               </div>
                             </div>
 
-                            {/* CONDITIONAL CAPACITY INPUT ONLY IF CAN ARRANGE OTHERS */}
                             {canArrangeOthers && (
-                              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 space-y-1.5 animate-in fade-in duration-200">
-                                <label className="text-cyan-300 font-bold block text-[11px]">
-                                  How many native speakers can you currently arrange for {lang}?
+                              <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 space-y-1.5 animate-in fade-in duration-200">
+                                <label className="text-purple-300 font-bold block text-[11px]">
+                                  How many native speakers can you currently arrange for {c.name.trim() || 'this custom language'}?
                                 </label>
                                 <input
                                   type="number"
                                   min="1"
-                                  placeholder="e.g. 25 or 50"
-                                  value={detail.capacity}
-                                  onChange={(e) => handleUpdateLanguageDetail(lang, 'capacity', Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-cyan-500/40 text-white focus:outline-none focus:border-cyan-300 font-bold"
+                                  value={c.capacity}
+                                  onChange={(e) => handleUpdateCustomLanguage(c.id, 'capacity', Number(e.target.value))}
+                                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-purple-400/40 text-purple-300 font-bold focus:outline-none"
                                 />
                               </div>
                             )}

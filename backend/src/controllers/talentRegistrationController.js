@@ -979,3 +979,255 @@ export const deleteRegistrationAdmin = async (req, res) => {
     });
   }
 };
+
+// ── SUPPORTED LANGUAGES & CANDIDATE PROFILE EDIT CONTROLLERS ──
+const PERSISTENT_LANGUAGES_PATH = path.join(__dirname, '../database/talent_supported_languages.json');
+
+const DEFAULT_SUPPORTED_LANGUAGES = [
+  { id: 'lang_1', language: 'Assamese', code: 'AS', status: 'active' },
+  { id: 'lang_2', language: 'Bengali', code: 'BN', status: 'active' },
+  { id: 'lang_3', language: 'Bodo', code: 'brx', status: 'active' },
+  { id: 'lang_4', language: 'Dogri', code: 'doi', status: 'active' },
+  { id: 'lang_5', language: 'English', code: 'EN', status: 'active' },
+  { id: 'lang_6', language: 'Gujarati', code: 'GU', status: 'active' },
+  { id: 'lang_7', language: 'Hindi', code: 'HI', status: 'active' },
+  { id: 'lang_8', language: 'Kannada', code: 'KN', status: 'active' },
+  { id: 'lang_9', language: 'Kashmiri', code: 'KS', status: 'active' },
+  { id: 'lang_10', language: 'Konkani', code: 'kok', status: 'active' },
+  { id: 'lang_11', language: 'Maithili', code: 'mai', status: 'active' },
+  { id: 'lang_12', language: 'Malayalam', code: 'ML', status: 'active' },
+  { id: 'lang_13', language: 'Manipuri', code: 'mni', status: 'active' },
+  { id: 'lang_14', language: 'Marathi', code: 'MR', status: 'active' },
+  { id: 'lang_15', language: 'Nepali', code: 'NE', status: 'active' },
+  { id: 'lang_16', language: 'Odia', code: 'OR', status: 'active' },
+  { id: 'lang_17', language: 'Punjabi', code: 'PA', status: 'active' },
+  { id: 'lang_18', language: 'Sanskrit', code: 'SA', status: 'active' },
+  { id: 'lang_19', language: 'Santali', code: 'sat', status: 'active' },
+  { id: 'lang_20', language: 'Sindhi', code: 'SD', status: 'active' },
+  { id: 'lang_21', language: 'Tamil', code: 'TA', status: 'active' },
+  { id: 'lang_22', language: 'Telugu', code: 'TE', status: 'active' },
+  { id: 'lang_23', language: 'Urdu', code: 'UR', status: 'active' },
+  { id: 'lang_24', language: 'Other', code: 'OTH', status: 'active' },
+];
+
+const loadDiskSupportedLanguages = () => {
+  try {
+    if (fs.existsSync(PERSISTENT_LANGUAGES_PATH)) {
+      const data = fs.readFileSync(PERSISTENT_LANGUAGES_PATH, 'utf-8');
+      if (data) return JSON.parse(data);
+    }
+  } catch (e) {
+    console.warn('Error reading talent_supported_languages.json:', e.message);
+  }
+  saveDiskSupportedLanguages(DEFAULT_SUPPORTED_LANGUAGES);
+  return DEFAULT_SUPPORTED_LANGUAGES;
+};
+
+const saveDiskSupportedLanguages = (list) => {
+  try {
+    const dir = path.dirname(PERSISTENT_LANGUAGES_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(PERSISTENT_LANGUAGES_PATH, JSON.stringify(list, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Error writing talent_supported_languages.json:', e.message);
+  }
+};
+
+/**
+ * PUBLIC & ADMIN API: GET /api/talent-registration/supported-languages
+ */
+export const getSupportedLanguages = async (req, res) => {
+  try {
+    let list = [];
+    try {
+      list = await supabaseService.selectAll('talent_supported_languages', 'language', true);
+    } catch (e) {}
+
+    if (!Array.isArray(list) || list.length === 0) {
+      list = loadDiskSupportedLanguages();
+    }
+
+    return res.status(200).json({ success: true, data: list });
+  } catch (err) {
+    return res.status(200).json({ success: true, data: loadDiskSupportedLanguages() });
+  }
+};
+
+/**
+ * ADMIN API: POST /api/talent-registration/admin/languages
+ */
+export const addAdminSupportedLanguage = async (req, res) => {
+  try {
+    const { language, code = '', status = 'active' } = req.body;
+    if (!language || !language.trim()) {
+      return res.status(400).json({ success: false, message: 'Language name is required.' });
+    }
+
+    const cleanLang = language.trim();
+    const diskList = loadDiskSupportedLanguages();
+    const duplicate = diskList.find((l) => l.language.toLowerCase() === cleanLang.toLowerCase());
+    if (duplicate) {
+      return res.status(400).json({ success: false, message: `Language "${cleanLang}" already exists in supported languages list.` });
+    }
+
+    const newLangItem = {
+      id: `lang_${Date.now()}`,
+      language: cleanLang,
+      code: code.trim().toUpperCase(),
+      status: status === 'inactive' ? 'inactive' : 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await supabaseService.insert('talent_supported_languages', newLangItem);
+    } catch (e) {}
+
+    diskList.push(newLangItem);
+    saveDiskSupportedLanguages(diskList);
+
+    return res.status(201).json({ success: true, message: `Language "${cleanLang}" added successfully.`, data: newLangItem });
+  } catch (err) {
+    console.error('addAdminSupportedLanguage Error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to add supported language.' });
+  }
+};
+
+/**
+ * ADMIN API: PUT /api/talent-registration/admin/languages/:id
+ */
+export const updateAdminSupportedLanguage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { language, code, status } = req.body;
+
+    const diskList = loadDiskSupportedLanguages();
+    const idx = diskList.findIndex((l) => l.id === id || l.language.toLowerCase() === id.toLowerCase());
+    if (idx === -1) {
+      return res.status(404).json({ success: false, message: 'Supported language record not found.' });
+    }
+
+    const updates = {
+      updated_at: new Date().toISOString(),
+    };
+    if (language) updates.language = language.trim();
+    if (code !== undefined) updates.code = code.trim().toUpperCase();
+    if (status) updates.status = status;
+
+    diskList[idx] = { ...diskList[idx], ...updates };
+    saveDiskSupportedLanguages(diskList);
+
+    try {
+      await supabaseService.update('talent_supported_languages', diskList[idx].id, updates);
+    } catch (e) {}
+
+    return res.status(200).json({ success: true, message: 'Supported language updated.', data: diskList[idx] });
+  } catch (err) {
+    console.error('updateAdminSupportedLanguage Error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update supported language.' });
+  }
+};
+
+/**
+ * ADMIN API: PUT /api/talent-registration/admin/update-profile/:id
+ * Full candidate profile editing with audit logging
+ */
+export const updateAdminCandidateProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminEmail = req.user?.email || 'admin@zenemoo.in';
+    const {
+      full_name,
+      email,
+      phone,
+      country_code,
+      gender,
+      state,
+      city_district,
+      preferred_contact,
+      primary_role,
+      role_details,
+      work_capabilities,
+      availability,
+      working_preference,
+      languages,
+    } = req.body;
+
+    const diskList = loadDiskRegistrations();
+    const candidateIdx = diskList.findIndex((r) => r.id === id || r.registration_code === id);
+    if (candidateIdx === -1) {
+      return res.status(404).json({ success: false, message: 'Candidate record not found.' });
+    }
+
+    const oldRecord = diskList[candidateIdx];
+    const changedFields = [];
+
+    if (full_name && full_name !== oldRecord.full_name) changedFields.push(`Name ("${oldRecord.full_name}" -> "${full_name}")`);
+    if (email && email !== oldRecord.email) changedFields.push(`Email ("${oldRecord.email}" -> "${email}")`);
+    if (phone && phone !== oldRecord.phone) changedFields.push(`Phone ("${oldRecord.phone}" -> "${phone}")`);
+    if (gender && gender !== oldRecord.gender) changedFields.push(`Gender ("${oldRecord.gender}" -> "${gender}")`);
+    if (state && state !== oldRecord.state) changedFields.push(`State ("${oldRecord.state}" -> "${state}")`);
+    if (city_district && city_district !== oldRecord.city_district) changedFields.push(`City ("${oldRecord.city_district}" -> "${city_district}")`);
+    if (primary_role && primary_role !== oldRecord.primary_role) changedFields.push(`Role ("${oldRecord.primary_role}" -> "${primary_role}")`);
+    if (languages) changedFields.push(`Languages updated (${languages.length} configured)`);
+    if (work_capabilities) changedFields.push(`Work Capabilities updated`);
+    if (availability && availability !== oldRecord.availability) changedFields.push(`Availability ("${oldRecord.availability}" -> "${availability}")`);
+
+    const updatedRecord = {
+      ...oldRecord,
+      updated_at: new Date().toISOString(),
+    };
+    if (full_name) updatedRecord.full_name = full_name.trim();
+    if (email) updatedRecord.email = email.trim().toLowerCase();
+    if (phone) updatedRecord.phone = phone.trim();
+    if (country_code) updatedRecord.country_code = country_code.trim();
+    if (gender) updatedRecord.gender = gender;
+    if (state) updatedRecord.state = state.trim();
+    if (city_district) updatedRecord.city_district = city_district.trim();
+    if (preferred_contact) updatedRecord.preferred_contact = preferred_contact;
+    if (primary_role) updatedRecord.primary_role = primary_role;
+    if (role_details) updatedRecord.role_details = role_details;
+    if (work_capabilities) updatedRecord.work_capabilities = work_capabilities;
+    if (availability) updatedRecord.availability = availability;
+    if (working_preference) updatedRecord.working_preference = working_preference;
+    if (Array.isArray(languages)) {
+      updatedRecord.languages = languages.map((l) => ({
+        language: l.language || l.name || 'Unspecified',
+        proficiency: l.proficiency || 'Native',
+        speaker_availability: l.speaker_availability || l.speakerAvailability || 'I am a native speaker',
+        capacity: Number(l.capacity) || 1,
+      }));
+    }
+
+    // Record Audit Log in admin_notes_history
+    if (changedFields.length > 0) {
+      const auditNote = {
+        registration_id: oldRecord.id,
+        admin_email: adminEmail,
+        note: `[AUDIT LOG] Candidate profile updated by ${adminEmail}: ${changedFields.join('; ')}`,
+        created_at: new Date().toISOString(),
+      };
+
+      if (!updatedRecord.admin_notes_history) updatedRecord.admin_notes_history = [];
+      updatedRecord.admin_notes_history.unshift(auditNote);
+
+      try {
+        await supabaseService.insert('talent_admin_notes', auditNote);
+      } catch (e) {}
+    }
+
+    diskList[candidateIdx] = updatedRecord;
+    saveDiskRegistrations(diskList);
+
+    try {
+      await supabaseService.update('talent_registrations', oldRecord.id, updatedRecord);
+    } catch (e) {}
+
+    return res.status(200).json({ success: true, message: 'Candidate profile updated successfully.', data: updatedRecord });
+  } catch (err) {
+    console.error('updateAdminCandidateProfile Error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to update candidate profile.' });
+  }
+};
