@@ -178,9 +178,9 @@ export const Footer: React.FC = () => {
               <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Hindi (हिन्दी)</a></li>
               <li><a href="#languages" className="hover:text-cyan-400 transition-colors">English (Indian)</a></li>
               <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Odia (ଓଡ଼ିଆ)</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Bengali (On Request)</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Telugu (On Request)</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Tamil (On Request)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Bengali (Supported)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Telugu (Supported)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Tamil (Supported)</a></li>
             </ul>
           </div>
 

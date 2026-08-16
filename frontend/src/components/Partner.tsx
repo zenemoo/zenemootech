@@ -103,11 +103,11 @@ export const Partner: React.FC = () => {
                   <div className="text-[10px] text-slate-400">Collaboration</div>
                 </div>
                 <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                  <div className="text-lg font-bold text-cyan-400">20+</div>
-                  <div className="text-[10px] text-slate-400">Team Members</div>
+                  <div className="text-lg font-bold text-cyan-400">50+</div>
+                  <div className="text-[10px] text-slate-400">Members Across India</div>
                 </div>
                 <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                  <div className="text-lg font-bold text-purple-400">3</div>
+                  <div className="text-lg font-bold text-purple-400">23+</div>
                   <div className="text-[10px] text-slate-400">Languages</div>
                 </div>
                 <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">

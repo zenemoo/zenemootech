@@ -113,10 +113,10 @@ export const Hero: React.FC = () => {
 
           <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-blue-500/30 transition-all">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-blue-400 mb-1">
-              <CountUp end={20} decimals={0} suffix="+" />
+              <CountUp end={50} decimals={0} suffix="+" />
             </div>
-            <div className="text-xs font-semibold text-slate-200">Trained Specialists</div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1">Hindi • English • Odia</div>
+            <div className="text-xs font-semibold text-slate-200">Members</div>
+            <div className="text-[11px] text-slate-400 font-mono mt-1">Across India • 23+ Languages</div>
           </div>
         </div>
 

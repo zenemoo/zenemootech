@@ -93,7 +93,7 @@ export const Services: React.FC = () => {
       subtitle: 'Dedicated Enterprise Teams',
       desc: 'Support for ongoing and large-volume data projects with dedicated teams, structured workflows, and regular delivery schedules.',
       features: [
-        'Dedicated project teams (20+ specialists)',
+        'Dedicated project teams (50+ members across India)',
         'Regular delivery schedules (180+ mins/day)',
         'Workflow and project coordination',
         'Scalable team capacity on demand',
