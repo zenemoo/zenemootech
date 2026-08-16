@@ -1356,6 +1356,10 @@ export const updateAdminCandidateProfile = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Candidate profile updated successfully.', data: updatedRecord });
   } catch (err) {
     console.error('updateAdminCandidateProfile Error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to update candidate profile.' });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update candidate profile: ' + (err?.message || String(err)),
+      errorDetails: err?.stack || String(err),
+    });
   }
 };
