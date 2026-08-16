@@ -1138,6 +1138,8 @@ export const updateAdminCandidateProfile = async (req, res) => {
   try {
     const { id } = req.params;
     const adminEmail = req.user?.email || 'admin@zenemoo.in';
+    const body = req.body || {};
+
     const {
       full_name,
       email,
@@ -1153,69 +1155,82 @@ export const updateAdminCandidateProfile = async (req, res) => {
       availability,
       working_preference,
       languages,
-    } = req.body;
+      experiences,
+      equipment_resources,
+      additional_info,
+      status,
+      internal_notes,
+      internal_scoring,
+    } = body;
 
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    const searchId = String(id || '').trim().toLowerCase();
+
+    // 1. Load from Disk
     const diskList = loadDiskRegistrations();
-    const searchId = (id || '').trim().toLowerCase();
-
-    let candidateIdx = diskList.findIndex(
-      (r) =>
-        (r.id || '').toLowerCase() === searchId ||
-        (r.registration_code || '').toLowerCase() === searchId ||
-        (r.email || '').toLowerCase() === searchId
-    );
-
-    let dbRecord = null;
-    try {
-      const allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
-      dbRecord = (allDbRecords || []).find(
+    let candidateIdx = -1;
+    if (Array.isArray(diskList)) {
+      candidateIdx = diskList.findIndex(
         (r) =>
-          (r.id || '').toLowerCase() === searchId ||
-          (r.registration_code || '').toLowerCase() === searchId ||
-          (r.email || '').toLowerCase() === searchId
+          r &&
+          (String(r.id || '').toLowerCase() === searchId ||
+            String(r.registration_code || '').toLowerCase() === searchId ||
+            String(r.email || '').toLowerCase() === searchId)
       );
+    }
+
+    // 2. Load from Supabase DB fallback
+    let dbRecord = null;
+    let allDbRecords = [];
+    try {
+      allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
+      if (Array.isArray(allDbRecords)) {
+        dbRecord = allDbRecords.find(
+          (r) =>
+            r &&
+            (String(r.id || '').toLowerCase() === searchId ||
+              String(r.registration_code || '').toLowerCase() === searchId ||
+              String(r.email || '').toLowerCase() === searchId)
+        );
+      }
     } catch (e) {}
 
     if (candidateIdx === -1 && !dbRecord) {
       return res.status(404).json({ success: false, message: 'Candidate record not found.' });
     }
 
-    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    const oldRecord = candidateIdx !== -1 ? diskList[candidateIdx] : (dbRecord || {});
 
-    const oldRecord = candidateIdx !== -1 ? diskList[candidateIdx] : dbRecord;
-
-    // Resolve real Supabase UUID for database queries
+    // Resolve real Supabase UUID for DB queries
     let realUuid = isUuid(oldRecord?.id) ? oldRecord.id : null;
-    if (!realUuid) {
-      try {
-        const allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
-        const match = (allDbRecords || []).find(
-          (r) =>
-            isUuid(r.id) &&
-            ((r.registration_code || '').toLowerCase() === searchId ||
-              (r.email || '').toLowerCase() === (oldRecord?.email || '').toLowerCase())
-        );
-        if (match) realUuid = match.id;
-      } catch (e) {}
+    if (!realUuid && Array.isArray(allDbRecords)) {
+      const match = allDbRecords.find(
+        (r) =>
+          r &&
+          isUuid(r.id) &&
+          (String(r.registration_code || '').toLowerCase() === searchId ||
+            String(r.email || '').toLowerCase() === String(oldRecord?.email || '').toLowerCase())
+      );
+      if (match) realUuid = match.id;
     }
 
     const changedFields = [];
-
-    if (full_name && full_name !== oldRecord.full_name) changedFields.push(`Name ("${oldRecord.full_name}" -> "${full_name}")`);
-    if (email && email !== oldRecord.email) changedFields.push(`Email ("${oldRecord.email}" -> "${email}")`);
-    if (phone && phone !== oldRecord.phone) changedFields.push(`Phone ("${oldRecord.phone}" -> "${phone}")`);
-    if (gender && gender !== oldRecord.gender) changedFields.push(`Gender ("${oldRecord.gender}" -> "${gender}")`);
-    if (state && state !== oldRecord.state) changedFields.push(`State ("${oldRecord.state}" -> "${state}")`);
-    if (city_district && city_district !== oldRecord.city_district) changedFields.push(`City ("${oldRecord.city_district}" -> "${city_district}")`);
-    if (primary_role && primary_role !== oldRecord.primary_role) changedFields.push(`Role ("${oldRecord.primary_role}" -> "${primary_role}")`);
+    if (full_name && full_name !== oldRecord.full_name) changedFields.push(`Name ("${oldRecord.full_name || ''}" -> "${full_name}")`);
+    if (email && email !== oldRecord.email) changedFields.push(`Email ("${oldRecord.email || ''}" -> "${email}")`);
+    if (phone && phone !== oldRecord.phone) changedFields.push(`Phone ("${oldRecord.phone || ''}" -> "${phone}")`);
+    if (gender && gender !== oldRecord.gender) changedFields.push(`Gender ("${oldRecord.gender || ''}" -> "${gender}")`);
+    if (state && state !== oldRecord.state) changedFields.push(`State ("${oldRecord.state || ''}" -> "${state}")`);
+    if (city_district && city_district !== oldRecord.city_district) changedFields.push(`City ("${oldRecord.city_district || ''}" -> "${city_district}")`);
+    if (primary_role && primary_role !== oldRecord.primary_role) changedFields.push(`Role ("${oldRecord.primary_role || ''}" -> "${primary_role}")`);
     if (Array.isArray(languages)) changedFields.push(`Languages updated (${languages.length} configured)`);
     if (work_capabilities) changedFields.push(`Work Capabilities updated`);
-    if (availability && availability !== oldRecord.availability) changedFields.push(`Availability ("${oldRecord.availability}" -> "${availability}")`);
+    if (availability && availability !== oldRecord.availability) changedFields.push(`Availability ("${oldRecord.availability || ''}" -> "${availability}")`);
 
     const updatedRecord = {
       ...oldRecord,
       updated_at: new Date().toISOString(),
     };
+
     if (full_name) updatedRecord.full_name = String(full_name).trim();
     if (email) updatedRecord.email = String(email).trim().toLowerCase();
     if (phone) updatedRecord.phone = String(phone).trim();
@@ -1232,13 +1247,9 @@ export const updateAdminCandidateProfile = async (req, res) => {
 
     if (Array.isArray(languages)) {
       updatedRecord.languages = languages.map((l) => {
+        if (!l) return { language: 'Unspecified', proficiency: 'Native', speaker_availability: 'I am a native speaker', capacity: 1 };
         if (typeof l === 'string') {
-          return {
-            language: l,
-            proficiency: 'Native',
-            speaker_availability: 'I am a native speaker',
-            capacity: 1,
-          };
+          return { language: l, proficiency: 'Native', speaker_availability: 'I am a native speaker', capacity: 1 };
         }
         return {
           language: l.language || l.name || 'Unspecified',
@@ -1256,16 +1267,18 @@ export const updateAdminCandidateProfile = async (req, res) => {
     if (internal_notes !== undefined) updatedRecord.internal_notes = internal_notes;
     if (internal_scoring !== undefined) updatedRecord.internal_scoring = Number(internal_scoring);
 
-    // Record Audit Log in admin_notes_history
+    // Record Audit Log
     if (changedFields.length > 0) {
       const auditNote = {
-        registration_id: realUuid || oldRecord.id,
+        registration_id: realUuid || oldRecord.id || id,
         admin_email: adminEmail,
         note: `[AUDIT LOG] Candidate profile updated by ${adminEmail}: ${changedFields.join('; ')}`,
         created_at: new Date().toISOString(),
       };
 
-      if (!updatedRecord.admin_notes_history) updatedRecord.admin_notes_history = [];
+      if (!Array.isArray(updatedRecord.admin_notes_history)) {
+        updatedRecord.admin_notes_history = [];
+      }
       updatedRecord.admin_notes_history.unshift(auditNote);
 
       if (realUuid) {
@@ -1326,12 +1339,12 @@ export const updateAdminCandidateProfile = async (req, res) => {
           for (const e of experiences) {
             await supabaseService.insert('talent_experiences', {
               registration_id: realUuid,
-              project_company_name: e.projectName || e.project_company_name || '',
-              type_of_work: e.typeOfWork || e.type_of_work || '',
-              languages_used: e.languagesUsed || e.languages_used || '',
-              work_volume: e.workVolume || e.work_volume || '',
-              duration: e.duration || '',
-              description: e.description || '',
+              project_company_name: e?.projectName || e?.project_company_name || '',
+              type_of_work: e?.typeOfWork || e?.type_of_work || '',
+              languages_used: e?.languagesUsed || e?.languages_used || '',
+              work_volume: e?.workVolume || e?.work_volume || '',
+              duration: e?.duration || '',
+              description: e?.description || '',
             }).catch(() => {});
           }
         }
