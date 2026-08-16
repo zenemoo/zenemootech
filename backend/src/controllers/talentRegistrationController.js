@@ -1252,36 +1252,62 @@ export const updateAdminCandidateProfile = async (req, res) => {
     saveDiskRegistrations(diskList);
 
     try {
-      await supabaseService.update('talent_registrations', oldRecord.id, updatedRecord);
+      const dbUpdatePayload = {
+        full_name: updatedRecord.full_name,
+        email: updatedRecord.email,
+        phone: updatedRecord.phone,
+        country_code: updatedRecord.country_code,
+        gender: updatedRecord.gender,
+        state: updatedRecord.state,
+        city_district: updatedRecord.city_district,
+        preferred_contact: updatedRecord.preferred_contact,
+        primary_role: updatedRecord.primary_role,
+        role_details: updatedRecord.role_details,
+        work_capabilities: updatedRecord.work_capabilities,
+        availability: updatedRecord.availability,
+        working_preference: updatedRecord.working_preference,
+        equipment_resources: updatedRecord.equipment_resources,
+        additional_info: updatedRecord.additional_info,
+        status: updatedRecord.status,
+        internal_notes: updatedRecord.internal_notes,
+        internal_scoring: updatedRecord.internal_scoring,
+        updated_at: updatedRecord.updated_at,
+      };
 
-      if (Array.isArray(languages)) {
-        await supabaseService.deleteByField('talent_languages', 'registration_id', oldRecord.id).catch(() => {});
-        for (const l of updatedRecord.languages) {
-          await supabaseService.insert('talent_languages', {
-            registration_id: oldRecord.id,
-            language: l.language,
-            proficiency: l.proficiency,
-            speaker_availability: l.speaker_availability,
-            capacity: l.capacity,
-          }).catch(() => {});
+      if (oldRecord && oldRecord.id) {
+        await supabaseService.update('talent_registrations', oldRecord.id, dbUpdatePayload).catch(() => {});
+
+        if (Array.isArray(languages)) {
+          await supabaseService.deleteByField('talent_languages', 'registration_id', oldRecord.id).catch(() => {});
+          for (const l of updatedRecord.languages) {
+            await supabaseService.insert('talent_languages', {
+              registration_id: oldRecord.id,
+              language: l.language,
+              proficiency: l.proficiency,
+              speaker_availability: l.speaker_availability,
+              capacity: l.capacity,
+            }).catch(() => {});
+          }
+        }
+
+        if (Array.isArray(experiences)) {
+          await supabaseService.deleteByField('talent_experiences', 'registration_id', oldRecord.id).catch(() => {});
+          for (const e of experiences) {
+            await supabaseService.insert('talent_experiences', {
+              registration_id: oldRecord.id,
+              project_company_name: e.projectName || e.project_company_name || '',
+              type_of_work: e.typeOfWork || e.type_of_work || '',
+              languages_used: e.languagesUsed || e.languages_used || '',
+              work_volume: e.workVolume || e.work_volume || '',
+              duration: e.duration || '',
+              description: e.description || '',
+            }).catch(() => {});
+          }
         }
       }
-
-      if (Array.isArray(experiences)) {
-        await supabaseService.deleteByField('talent_experiences', 'registration_id', oldRecord.id).catch(() => {});
-        for (const e of experiences) {
-          await supabaseService.insert('talent_experiences', {
-            registration_id: oldRecord.id,
-            project_company_name: e.projectName || e.project_company_name || '',
-            type_of_work: e.typeOfWork || e.type_of_work || '',
-            languages_used: e.languagesUsed || e.languages_used || '',
-            work_volume: e.workVolume || e.work_volume || '',
-            duration: e.duration || '',
-            description: e.description || '',
-          }).catch(() => {});
-        }
-      }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Supabase sync warning:', e.message);
+    }
 
     return res.status(200).json({ success: true, message: 'Candidate profile updated successfully.', data: updatedRecord });
   } catch (err) {
