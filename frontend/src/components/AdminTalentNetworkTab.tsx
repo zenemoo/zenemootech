@@ -275,19 +275,105 @@ export const AdminTalentNetworkTab: React.FC = () => {
   const filteredAndSortedCandidates = useMemo(() => {
     let result = [...registrations];
 
-    // Local client search filter
+    // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (r) =>
-          (r.full_name || '').toLowerCase().includes(q) ||
-          (r.email || '').toLowerCase().includes(q) ||
-          (r.phone || '').includes(q) ||
-          (r.state || '').toLowerCase().includes(q) ||
-          (r.city_district || '').toLowerCase().includes(q) ||
-          (r.registration_code || '').toLowerCase().includes(q) ||
-          (r.id || '').toLowerCase().includes(q)
-      );
+      result = result.filter((r) => {
+        const roleDetailsText = typeof r.role_details === 'object' ? JSON.stringify(r.role_details) : String(r.role_details || '');
+        const equipmentText = typeof r.equipment_resources === 'object' ? JSON.stringify(r.equipment_resources) : String(r.equipment_resources || '');
+        const addInfoText = typeof r.additional_info === 'object' ? JSON.stringify(r.additional_info) : String(r.additional_info || '');
+        const expList = Array.isArray(r.experiences) ? r.experiences : [];
+        const expText = expList.map((e: any) => `${e.project_company_name || e.projectName || ''} ${e.type_of_work || e.typeOfWork || ''} ${e.description || ''}`).join(' ');
+        const langList = Array.isArray(r.languages) ? r.languages : [];
+        const langText = langList.map((l: any) => typeof l === 'string' ? l : `${l.language || ''} ${l.proficiency || ''} ${l.speaker_availability || ''}`).join(' ');
+        const capsList = Array.isArray(r.work_capabilities) ? r.work_capabilities : [];
+        const capsText = capsList.join(' ');
+
+        const searchableString = `${r.full_name || ''} ${r.email || ''} ${r.phone || ''} ${r.country_code || ''} ${r.state || ''} ${r.city_district || ''} ${r.primary_role || ''} ${r.registration_code || ''} ${r.id || ''} ${roleDetailsText} ${equipmentText} ${addInfoText} ${expText} ${langText} ${capsText}`.toLowerCase();
+        return searchableString.includes(q);
+      });
+    }
+
+    // Language Filter
+    if (selectedLanguage !== 'All Languages' && selectedLanguage.toLowerCase() !== 'all') {
+      const targetLang = selectedLanguage.toLowerCase().trim();
+      result = result.filter((r) => {
+        const langList = Array.isArray(r.languages) ? r.languages : [];
+        return langList.some((l: any) => {
+          const lName = (typeof l === 'string' ? l : (l?.language || '')).toLowerCase();
+          return lName.includes(targetLang) || targetLang.includes(lName);
+        });
+      });
+    }
+
+    // State Filter
+    if (selectedState !== 'All States' && selectedState.toLowerCase() !== 'all') {
+      const targetState = selectedState.toLowerCase().replace(/\([^)]*\)/g, '').trim();
+      result = result.filter((r) => {
+        const itemState = (r.state || '').toLowerCase().trim();
+        return itemState.includes(targetState) || targetState.includes(itemState);
+      });
+    }
+
+    // Role Filter
+    if (selectedRole !== 'All Roles' && selectedRole.toLowerCase() !== 'all') {
+      const targetRole = selectedRole.toLowerCase().trim();
+      const roleTokens = targetRole.split(/[\/\s,]+/).filter((t) => t.length > 2);
+      result = result.filter((r) => {
+        const itemRole = (r.primary_role || '').toLowerCase();
+        return (
+          itemRole.includes(targetRole) ||
+          targetRole.includes(itemRole) ||
+          roleTokens.some((tok) => itemRole.includes(tok))
+        );
+      });
+    }
+
+    // Work Type Filter
+    if (selectedWorkType !== 'All Work Types' && selectedWorkType.toLowerCase() !== 'all') {
+      const wt = selectedWorkType.toLowerCase().trim();
+      const wtTokens = wt.split(/[\/\s,]+/).filter((t) => t.length > 2);
+      result = result.filter((r) => {
+        const capsList = Array.isArray(r.work_capabilities) ? r.work_capabilities : [];
+        return capsList.some((c: any) => {
+          const cStr = (typeof c === 'string' ? c : String(c)).toLowerCase();
+          return cStr.includes(wt) || wt.includes(cStr) || wtTokens.some((tok) => cStr.includes(tok));
+        });
+      });
+    }
+
+    // Availability Filter
+    if (selectedAvailability !== 'all') {
+      const targetAvail = selectedAvailability.toLowerCase().trim();
+      result = result.filter((r) => {
+        const itemAvail = (r.availability || '').toLowerCase();
+        return itemAvail.includes(targetAvail) || targetAvail.includes(itemAvail);
+      });
+    }
+
+    // Min Capacity Filter
+    if (selectedMinCapacity !== 'all' && !isNaN(Number(selectedMinCapacity))) {
+      const targetCap = Number(selectedMinCapacity);
+      result = result.filter((r) => {
+        const langList = Array.isArray(r.languages) ? r.languages : [];
+        const maxLangCap = Math.max(0, ...langList.map((l: any) => Number(l.capacity) || 1));
+        const recordCap = Number(r.capacity) || 1;
+        const effectiveCap = Math.max(maxLangCap, recordCap);
+        return effectiveCap >= targetCap;
+      });
+    }
+
+    // Status Filter
+    if (selectedStatus !== 'all') {
+      const targetStatus = selectedStatus.toLowerCase().trim();
+      result = result.filter((r) => (r.status || 'pending').toLowerCase() === targetStatus);
+    }
+
+    // Archive Filter
+    if (showArchived) {
+      result = result.filter((r) => Boolean(r.is_archived));
+    } else {
+      result = result.filter((r) => !Boolean(r.is_archived));
     }
 
     // Client sort
@@ -309,7 +395,20 @@ export const AdminTalentNetworkTab: React.FC = () => {
     });
 
     return result;
-  }, [registrations, searchQuery, sortField, sortOrder]);
+  }, [
+    registrations,
+    searchQuery,
+    selectedLanguage,
+    selectedState,
+    selectedRole,
+    selectedWorkType,
+    selectedAvailability,
+    selectedMinCapacity,
+    selectedStatus,
+    showArchived,
+    sortField,
+    sortOrder,
+  ]);
 
   // Paginated Subset
   const paginatedCandidates = useMemo(() => {

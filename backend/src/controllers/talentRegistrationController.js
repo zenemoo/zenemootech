@@ -589,18 +589,33 @@ export const getRegistrationsAdmin = async (req, res) => {
       const exps = await supabaseService.selectAll('talent_experiences', 'created_at', false);
 
       if (Array.isArray(records) && records.length > 0) {
-        items = records.map((reg) => ({
-          ...reg,
-          languages: (langs || []).filter((l) => l.registration_id === reg.id),
-          experiences: (exps || []).filter((e) => e.registration_id === reg.id),
-        }));
+        const diskItems = loadDiskRegistrations();
+        const mergedMap = new Map();
+
+        records.forEach((reg) => {
+          const lList = (langs || []).filter((l) => String(l.registration_id) === String(reg.id));
+          const eList = (exps || []).filter((e) => String(e.registration_id) === String(reg.id));
+          const finalLangs = lList.length > 0 ? lList : (Array.isArray(reg.languages) ? reg.languages : []);
+          const finalExps = eList.length > 0 ? eList : (Array.isArray(reg.experiences) ? reg.experiences : []);
+          mergedMap.set(reg.id || reg.email, {
+            ...reg,
+            languages: finalLangs,
+            experiences: finalExps,
+          });
+        });
+
+        diskItems.forEach((dItem) => {
+          const key = dItem.id || dItem.email;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, dItem);
+          }
+        });
+        items = Array.from(mergedMap.values());
+      } else {
+        items = loadDiskRegistrations();
       }
     } catch (dbErr) {
       console.warn('Supabase fetch warning, fallback to disk:', dbErr.message);
-    }
-
-    // Merge/Fallback with local disk
-    if (items.length === 0) {
       items = loadDiskRegistrations();
     }
 
@@ -614,8 +629,9 @@ export const getRegistrationsAdmin = async (req, res) => {
       }
 
       // Status Filter
-      if (status && status.toLowerCase() !== 'all') {
-        if ((item.status || 'pending').toLowerCase() !== status.toLowerCase()) return false;
+      if (status && status.trim().length > 0 && status.toLowerCase() !== 'all') {
+        const itemStatus = (item.status || 'pending').toLowerCase();
+        if (itemStatus !== status.toLowerCase().trim()) return false;
       }
 
       // Search (Name, Email, Phone, State, City, Role, Role Details, Experiences, Capabilities, Equipment, Additional Info)
@@ -624,24 +640,36 @@ export const getRegistrationsAdmin = async (req, res) => {
         const roleDetailsText = typeof item.role_details === 'object' ? JSON.stringify(item.role_details) : String(item.role_details || '');
         const equipmentText = typeof item.equipment_resources === 'object' ? JSON.stringify(item.equipment_resources) : String(item.equipment_resources || '');
         const addInfoText = typeof item.additional_info === 'object' ? JSON.stringify(item.additional_info) : String(item.additional_info || '');
-        const expText = (item.experiences || []).map((e) => `${e.project_company_name || e.projectName || ''} ${e.type_of_work || e.typeOfWork || ''} ${e.description || ''}`).join(' ');
-        const langText = (item.languages || []).map((l) => `${l.language} ${l.proficiency} ${l.speaker_availability}`).join(' ');
-        const capsText = (item.work_capabilities || []).join(' ');
+        
+        const expList = Array.isArray(item.experiences) ? item.experiences : [];
+        const expText = expList.map((e) => `${e.project_company_name || e.projectName || ''} ${e.type_of_work || e.typeOfWork || ''} ${e.description || ''}`).join(' ');
+        
+        const langList = Array.isArray(item.languages) ? item.languages : [];
+        const langText = langList.map((l) => `${typeof l === 'string' ? l : `${l.language || ''} ${l.proficiency || ''} ${l.speaker_availability || ''}`}`).join(' ');
+        
+        const capsList = Array.isArray(item.work_capabilities) ? item.work_capabilities : [];
+        const capsText = capsList.join(' ');
 
-        const textToMatch = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.state || ''} ${item.city_district || ''} ${item.primary_role || ''} ${roleDetailsText} ${equipmentText} ${addInfoText} ${expText} ${langText} ${capsText}`.toLowerCase();
+        const textToMatch = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.country_code || ''} ${item.state || ''} ${item.city_district || ''} ${item.primary_role || ''} ${item.registration_code || ''} ${item.id || ''} ${roleDetailsText} ${equipmentText} ${addInfoText} ${expText} ${langText} ${capsText}`.toLowerCase();
         if (!textToMatch.includes(q)) return false;
       }
 
       // Language Filter
-      if (language && language.trim().length > 0 && language.toLowerCase() !== 'all') {
+      if (language && language.trim().length > 0 && language.toLowerCase() !== 'all' && language.toLowerCase() !== 'all languages') {
         const targetLang = language.toLowerCase().trim();
-        const hasLang = (item.languages || []).some((l) => (l.language || '').toLowerCase().includes(targetLang));
+        const langList = Array.isArray(item.languages) ? item.languages : [];
+        const hasLang = langList.some((l) => {
+          const lName = (typeof l === 'string' ? l : (l?.language || '')).toLowerCase();
+          return lName.includes(targetLang) || targetLang.includes(lName);
+        });
         if (!hasLang) return false;
       }
 
       // State Filter
-      if (state && state.trim().length > 0 && state.toLowerCase() !== 'all') {
-        if ((item.state || '').toLowerCase() !== state.toLowerCase().trim()) return false;
+      if (state && state.trim().length > 0 && state.toLowerCase() !== 'all' && state.toLowerCase() !== 'all states') {
+        const targetState = state.toLowerCase().replace(/\([^)]*\)/g, '').trim();
+        const itemState = (item.state || '').toLowerCase().trim();
+        if (!itemState.includes(targetState) && !targetState.includes(itemState)) return false;
       }
 
       // City Filter
@@ -650,30 +678,44 @@ export const getRegistrationsAdmin = async (req, res) => {
       }
 
       // Role Filter
-      if (role && role.trim().length > 0 && role.toLowerCase() !== 'all') {
-        if ((item.primary_role || '').toLowerCase() !== role.toLowerCase().trim()) return false;
+      if (role && role.trim().length > 0 && role.toLowerCase() !== 'all' && role.toLowerCase() !== 'all roles') {
+        const targetRole = role.toLowerCase().trim();
+        const itemRole = (item.primary_role || '').toLowerCase();
+        const roleTokens = targetRole.split(/[\/\s,]+/).filter((t) => t.length > 2);
+        const matches =
+          itemRole.includes(targetRole) ||
+          targetRole.includes(itemRole) ||
+          roleTokens.some((tok) => itemRole.includes(tok));
+        if (!matches) return false;
       }
 
       // Work Type Filter
-      if (workType && workType.trim().length > 0 && workType.toLowerCase() !== 'all') {
+      if (workType && workType.trim().length > 0 && workType.toLowerCase() !== 'all' && workType.toLowerCase() !== 'all work types') {
         const wt = workType.toLowerCase().trim();
-        const hasWork = (item.work_capabilities || []).some((c) => (c || '').toLowerCase().includes(wt));
+        const capsList = Array.isArray(item.work_capabilities) ? item.work_capabilities : [];
+        const wtTokens = wt.split(/[\/\s,]+/).filter((t) => t.length > 2);
+        const hasWork = capsList.some((c) => {
+          const cStr = (typeof c === 'string' ? c : String(c)).toLowerCase();
+          return cStr.includes(wt) || wt.includes(cStr) || wtTokens.some((tok) => cStr.includes(tok));
+        });
         if (!hasWork) return false;
       }
 
       // Availability Filter
       if (availability && availability.trim().length > 0 && availability.toLowerCase() !== 'all') {
-        if ((item.availability || '').toLowerCase() !== availability.toLowerCase().trim()) return false;
+        const targetAvail = availability.toLowerCase().trim();
+        const itemAvail = (item.availability || '').toLowerCase();
+        if (!itemAvail.includes(targetAvail) && !targetAvail.includes(itemAvail)) return false;
       }
 
       // Minimum Capacity Filter
-      if (minCapacity && !isNaN(Number(minCapacity))) {
+      if (minCapacity && minCapacity.toLowerCase() !== 'all' && !isNaN(Number(minCapacity))) {
         const targetCap = Number(minCapacity);
-        const maxCapacityInRecord = Math.max(
-          1,
-          ...(item.languages || []).map((l) => Number(l.capacity) || 1)
-        );
-        if (maxCapacityInRecord < targetCap) return false;
+        const langList = Array.isArray(item.languages) ? item.languages : [];
+        const maxLangCap = Math.max(0, ...langList.map((l) => Number(l.capacity) || 1));
+        const recordCap = Number(item.capacity) || 1;
+        const effectiveCap = Math.max(maxLangCap, recordCap);
+        if (effectiveCap < targetCap) return false;
       }
 
       return true;
