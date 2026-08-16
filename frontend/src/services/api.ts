@@ -229,6 +229,24 @@ export const aiApi = {
   getAnalytics: () => api.get('/ai/analytics'),
 };
 
+// Zenemoo Private Admin & HR AI Communication Assistant APIs
+export const adminHrAiApi = {
+  generate: (data: {
+    category?: string;
+    recipientType?: string;
+    purpose?: string;
+    userPrompt: string;
+    tone?: string;
+    length?: string;
+    language?: string;
+    signature?: any;
+  }) => api.post('/admin-hr-ai/generate', data),
+  modify: (data: {
+    existingMessage: string;
+    action: string;
+  }) => api.post('/admin-hr-ai/modify', data),
+};
+
 // Zenemoo Brevo Email Engine APIs
 export const emailApi = {
   send: (data: any) => api.post('/email/send', data, { timeout: 30000 }),

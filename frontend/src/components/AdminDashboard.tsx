@@ -18,10 +18,11 @@ import { EnterpriseOpportunityEditorModal } from './EnterpriseOpportunityEditorM
 import { AdminReviewsTab } from './AdminReviewsTab';
 import { AdminBrandLogoSettings } from './AdminBrandLogoSettings';
 import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
+import { AdminHrAiPage } from './AdminHrAiPage';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai';
   isStandaloneEmailView?: boolean;
 }
 
@@ -212,7 +213,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network'>((initialTab as any) || 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai'>((initialTab as any) || 'team');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -1811,6 +1812,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'directory', name: 'Team Directory', icon: UserCheck },
         { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
         { id: 'talent-network', name: 'AI Data Network', icon: Users },
+        { id: 'admin-hr-ai', name: 'Admin & HR AI', icon: Sparkles },
       ],
     },
     {
@@ -3875,6 +3877,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: ZENEMOO AI DATA TALENT NETWORK */}
         {activeTab === 'talent-network' && (
           <AdminTalentNetworkTab />
+        )}
+
+        {/* TAB: ZENEMOO ADMIN & HR AI */}
+        {activeTab === 'admin-hr-ai' && (
+          <AdminHrAiPage onShowStatus={showStatus} activeAdminEmail={adminEmail} />
         )}
 
         {/* TAB: ENTERPRISE PARTNERS MANAGEMENT */}
