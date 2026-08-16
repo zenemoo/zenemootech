@@ -5,7 +5,7 @@
   <!-- 1. Homepage & Primary Brand Hub -->
   <url>
     <loc>https://www.zenemoo.in/</loc>
-    <lastmod>2026-07-29</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <image:image>
@@ -20,10 +20,10 @@
     </image:image>
   </url>
 
-  <!-- 2. Official Zenemoo AI Assistant -->
+  <!-- 2. AI Data Talent & Partner Registration -->
   <url>
-    <loc>https://www.zenemoo.in/zenemooai</loc>
-    <lastmod>2026-07-29</lastmod>
+    <loc>https://www.zenemoo.in/talent-registration</loc>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.98</priority>
   </url>
@@ -31,63 +31,31 @@
   <!-- 3. Program Opportunities & Careers Portal -->
   <url>
     <loc>https://www.zenemoo.in/opportunities</loc>
-    <lastmod>2026-07-29</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
   </url>
 
-  <!-- 3. Data Team Roster & Executive Directory -->
+  <!-- 4. Data Team Roster & Executive Directory -->
   <url>
     <loc>https://www.zenemoo.in/team-directory</loc>
-    <lastmod>2026-07-29</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
 
-  <!-- 4. AI Services & Solutions Section -->
+  <!-- 5. Official Zenemoo AI Assistant -->
   <url>
-    <loc>https://www.zenemoo.in/#services</loc>
-    <lastmod>2026-07-29</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
+    <loc>https://www.zenemoo.in/zenemooai</loc>
+    <lastmod>2026-08-17</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.95</priority>
   </url>
 
-  <!-- 5. Enterprise Partners & Ecosystem -->
-  <url>
-    <loc>https://www.zenemoo.in/#partner</loc>
-    <lastmod>2026-07-29</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <!-- 6. Contact & Enterprise Sales Inquiry -->
-  <url>
-    <loc>https://www.zenemoo.in/#contact</loc>
-    <lastmod>2026-07-29</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-
-  <!-- 7. Standalone Privacy Policy Page -->
-  <url>
-    <loc>https://www.zenemoo.in/privacy</loc>
-    <lastmod>2026-07-29</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-
-  <!-- 8. Standalone Terms & Conditions Page -->
-  <url>
-    <loc>https://www.zenemoo.in/terms</loc>
-    <lastmod>2026-07-29</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-
-  <!-- 9. Community & Client Reviews Page -->
+  <!-- 6. Community & Client Reviews Page -->
   <url>
     <loc>https://www.zenemoo.in/review</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-08-17</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
     <image:image>
@@ -95,6 +63,22 @@
       <image:title>Zenemoo Community Reviews &amp; Ratings</image:title>
       <image:caption>Zenemoo AI Data Solutions Reviews &amp; Client Testimonials</image:caption>
     </image:image>
+  </url>
+
+  <!-- 7. Standalone Privacy Policy Page -->
+  <url>
+    <loc>https://www.zenemoo.in/privacy</loc>
+    <lastmod>2026-08-17</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- 8. Standalone Terms & Conditions Page -->
+  <url>
+    <loc>https://www.zenemoo.in/terms</loc>
+    <lastmod>2026-08-17</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
 
 </urlset>
