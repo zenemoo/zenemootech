@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Mail,
@@ -24,6 +24,9 @@ import {
   Lock,
   Copy,
   Check,
+  Search,
+  X,
+  Plus,
 } from 'lucide-react';
 import { talentRegistrationApi } from '../services/api';
 import { SeoImage } from '../seo/components/SeoImage';
@@ -294,27 +297,6 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   // Step 8: Consents
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
   const [privacyAccepted, setPrivacyAccepted] = useState<boolean>(false);
-
-  // Toggle Language Checkbox
-  const handleToggleLanguage = (lang: string) => {
-    if (selectedLanguageList.includes(lang)) {
-      setSelectedLanguageList(selectedLanguageList.filter((l) => l !== lang));
-      const nextDetails = { ...languageDetails };
-      delete nextDetails[lang];
-      setLanguageDetails(nextDetails);
-    } else {
-      setSelectedLanguageList([...selectedLanguageList, lang]);
-      setLanguageDetails({
-        ...languageDetails,
-        [lang]: {
-          language: lang,
-          proficiency: 'Native',
-          speakerAvailability: 'I am a native speaker',
-          capacity: 1,
-        },
-      });
-    }
-  };
 
   const handleUpdateLanguageDetail = (lang: string, field: keyof SelectedLanguageDetail, value: any) => {
     setLanguageDetails({
