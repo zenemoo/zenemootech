@@ -101,7 +101,8 @@ export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = (
         languages: validLanguages,
       };
 
-      const res = await talentRegistrationApi.adminUpdateCandidateProfile(candidate.id, payload);
+      const targetId = candidate.id || candidate.registration_code;
+      const res = await talentRegistrationApi.adminUpdateCandidateProfile(targetId, payload);
       if (res?.data?.success) {
         onSuccess(`Candidate profile updated & audit log recorded.`, res.data.data);
         onClose();

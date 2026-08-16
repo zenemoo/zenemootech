@@ -1156,12 +1156,31 @@ export const updateAdminCandidateProfile = async (req, res) => {
     } = req.body;
 
     const diskList = loadDiskRegistrations();
-    const candidateIdx = diskList.findIndex((r) => r.id === id || r.registration_code === id);
-    if (candidateIdx === -1) {
+    const searchId = (id || '').trim().toLowerCase();
+
+    let candidateIdx = diskList.findIndex(
+      (r) =>
+        (r.id || '').toLowerCase() === searchId ||
+        (r.registration_code || '').toLowerCase() === searchId ||
+        (r.email || '').toLowerCase() === searchId
+    );
+
+    let dbRecord = null;
+    try {
+      const allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
+      dbRecord = (allDbRecords || []).find(
+        (r) =>
+          (r.id || '').toLowerCase() === searchId ||
+          (r.registration_code || '').toLowerCase() === searchId ||
+          (r.email || '').toLowerCase() === searchId
+      );
+    } catch (e) {}
+
+    if (candidateIdx === -1 && !dbRecord) {
       return res.status(404).json({ success: false, message: 'Candidate record not found.' });
     }
 
-    const oldRecord = diskList[candidateIdx];
+    const oldRecord = candidateIdx !== -1 ? diskList[candidateIdx] : dbRecord;
     const changedFields = [];
 
     if (full_name && full_name !== oldRecord.full_name) changedFields.push(`Name ("${oldRecord.full_name}" -> "${full_name}")`);
@@ -1225,7 +1244,11 @@ export const updateAdminCandidateProfile = async (req, res) => {
       } catch (e) {}
     }
 
-    diskList[candidateIdx] = updatedRecord;
+    if (candidateIdx !== -1) {
+      diskList[candidateIdx] = updatedRecord;
+    } else {
+      diskList.unshift(updatedRecord);
+    }
     saveDiskRegistrations(diskList);
 
     try {

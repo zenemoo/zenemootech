@@ -221,9 +221,13 @@ export const AdminTalentNetworkTab: React.FC = () => {
   };
 
   // ── DYNAMICALLY DERIVED REGISTERED CANDIDATE FILTERS ──
+  const filterDataset = useMemo(() => {
+    return allRegistrations.length > 0 ? allRegistrations : registrations;
+  }, [allRegistrations, registrations]);
+
   const uniqueRegisteredLanguages = useMemo(() => {
     const set = new Set<string>();
-    allRegistrations.forEach((r) => {
+    filterDataset.forEach((r) => {
       (r.languages || []).forEach((l: any) => {
         const name = typeof l === 'string' ? l : (l?.language || '').trim();
         if (name) {
@@ -232,51 +236,55 @@ export const AdminTalentNetworkTab: React.FC = () => {
         }
       });
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allRegistrations]);
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return list.length > 0 ? list : LANGUAGES_LIST.filter((l) => l !== 'All Languages');
+  }, [filterDataset]);
 
   const uniqueRegisteredStates = useMemo(() => {
     const set = new Set<string>();
-    allRegistrations.forEach((r) => {
+    filterDataset.forEach((r) => {
       if (r.state && r.state.trim()) set.add(r.state.trim());
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allRegistrations]);
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return list.length > 0 ? list : INDIAN_STATES_UT.filter((s) => s !== 'All States');
+  }, [filterDataset]);
 
   const uniqueRegisteredRoles = useMemo(() => {
     const set = new Set<string>();
-    allRegistrations.forEach((r) => {
+    filterDataset.forEach((r) => {
       if (r.primary_role && r.primary_role.trim()) set.add(r.primary_role.trim());
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allRegistrations]);
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return list.length > 0 ? list : ROLES_LIST.filter((r) => r !== 'All Roles');
+  }, [filterDataset]);
 
   const uniqueRegisteredWorkTypes = useMemo(() => {
     const set = new Set<string>();
-    allRegistrations.forEach((r) => {
+    filterDataset.forEach((r) => {
       (r.work_capabilities || []).forEach((cap: string) => {
         if (cap && cap.trim()) set.add(cap.trim());
       });
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allRegistrations]);
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    return list.length > 0 ? list : WORK_TYPES_LIST.filter((w) => w !== 'All Work Types');
+  }, [filterDataset]);
 
   const uniqueRegisteredAvailabilities = useMemo(() => {
     const set = new Set<string>();
-    allRegistrations.forEach((r) => {
+    filterDataset.forEach((r) => {
       if (r.availability && r.availability.trim()) set.add(r.availability.trim());
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allRegistrations]);
+  }, [filterDataset]);
 
   const uniqueRegisteredStatuses = useMemo(() => {
     const set = new Set<string>();
-    allRegistrations.forEach((r) => {
+    filterDataset.forEach((r) => {
       const st = r.status || 'pending';
       set.add(st.toLowerCase());
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allRegistrations]);
+  }, [filterDataset]);
 
   const handleAnalyticsFilterSelect = (filterType: string, value: string) => {
     if (filterType === 'language') {
@@ -858,7 +866,9 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedLanguage(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All Languages">All Languages ({uniqueRegisteredLanguages.length})</option>
+            <option value="All Languages">
+              {allRegistrations.length > 0 ? `All Languages (${uniqueRegisteredLanguages.length})` : 'All Languages'}
+            </option>
             {uniqueRegisteredLanguages.map((l) => (
               <option key={l} value={l}>
                 {l}
@@ -872,7 +882,9 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedState(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All States">All States ({uniqueRegisteredStates.length})</option>
+            <option value="All States">
+              {allRegistrations.length > 0 ? `All States (${uniqueRegisteredStates.length})` : 'All States'}
+            </option>
             {uniqueRegisteredStates.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -886,7 +898,9 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedRole(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All Roles">All Roles ({uniqueRegisteredRoles.length})</option>
+            <option value="All Roles">
+              {allRegistrations.length > 0 ? `All Roles (${uniqueRegisteredRoles.length})` : 'All Roles'}
+            </option>
             {uniqueRegisteredRoles.map((r) => (
               <option key={r} value={r}>
                 {r}
@@ -900,7 +914,9 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedWorkType(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All Work Types">All Work Types ({uniqueRegisteredWorkTypes.length})</option>
+            <option value="All Work Types">
+              {allRegistrations.length > 0 ? `All Work Types (${uniqueRegisteredWorkTypes.length})` : 'All Work Types'}
+            </option>
             {uniqueRegisteredWorkTypes.map((wt) => (
               <option key={wt} value={wt}>
                 {wt}
