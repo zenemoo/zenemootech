@@ -13,8 +13,10 @@ import {
   Check,
   X,
   AlertCircle,
+  Tag,
 } from 'lucide-react';
 import { talentRegistrationApi } from '../services/api';
+import { normalizeLanguageKey, formatLanguageDisplayName, isSameLanguage } from '../utils/languageUtils';
 
 interface AdminLanguageManagementProps {
   registrations: any[];
@@ -58,7 +60,7 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
     fetchLanguages();
   }, []);
 
-  // Compute live resource metrics per language from authentic candidate database
+  // Compute live resource metrics per language from authentic candidate database using canonical key
   const langMetrics = useMemo(() => {
     const map = new Map<
       string,
@@ -67,10 +69,13 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
 
     registrations.forEach((r) => {
       (r.languages || []).forEach((l: any) => {
-        const langName = typeof l === 'string' ? l : (l?.language || '').trim();
-        if (!langName) return;
+        const rawName = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (!rawName) return;
 
-        const key = langName.toLowerCase();
+        const canonicalName = formatLanguageDisplayName(rawName);
+        const key = normalizeLanguageKey(canonicalName);
+        if (!key) return;
+
         const isNative = typeof l === 'object' && (l?.proficiency || '').toLowerCase().includes('native');
         const capVal = typeof l === 'object' ? Number(l?.capacity) || 1 : 1;
 
@@ -85,13 +90,62 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
     return map;
   }, [registrations]);
 
-  // Combined and filtered language list
+  // Combined Directory: Merge Official Languages + Custom Registered Languages
+  const combinedDirectory = useMemo(() => {
+    const map = new Map<string, any>();
+
+    // 1. Add Official Supported Languages
+    languages.forEach((l) => {
+      const formatted = formatLanguageDisplayName(l.language);
+      const key = normalizeLanguageKey(formatted);
+      map.set(key, {
+        id: l.id,
+        language: formatted,
+        code: l.code || '',
+        status: l.status || 'active',
+        source: 'Official',
+        isOfficial: true,
+      });
+    });
+
+    // 2. Add Registered Custom Languages present in candidates
+    registrations.forEach((r) => {
+      (r.languages || []).forEach((l: any) => {
+        const rawName = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (!rawName) return;
+
+        const formatted = formatLanguageDisplayName(rawName);
+        const key = normalizeLanguageKey(formatted);
+        if (!key) return;
+
+        if (!map.has(key)) {
+          map.set(key, {
+            id: `custom_${key}`,
+            language: formatted,
+            code: '',
+            status: 'active',
+            source: 'Custom / Registered',
+            isOfficial: false,
+          });
+        }
+      });
+    });
+
+    return Array.from(map.values());
+  }, [languages, registrations]);
+
+  // Combined and filtered language list with fuzzy search
   const filteredLanguages = useMemo(() => {
-    let list = [...languages];
+    let list = [...combinedDirectory];
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter((l) => l.language.toLowerCase().includes(q) || (l.code || '').toLowerCase().includes(q));
+      const q = normalizeLanguageKey(searchQuery);
+      list = list.filter(
+        (l) =>
+          normalizeLanguageKey(l.language).includes(q) ||
+          (l.code || '').toLowerCase().includes(q) ||
+          (l.source || '').toLowerCase().includes(q)
+      );
     }
 
     if (statusFilter !== 'all') {
@@ -100,7 +154,7 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
 
     list.sort((a, b) => a.language.localeCompare(b.language));
     return list;
-  }, [languages, searchQuery, statusFilter]);
+  }, [combinedDirectory, searchQuery, statusFilter]);
 
   const handleOpenAddModal = () => {
     setEditingLang(null);
@@ -122,43 +176,54 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
 
   const handleSaveLanguage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputName.trim()) {
+    const formattedName = formatLanguageDisplayName(inputName);
+    const targetKey = normalizeLanguageKey(formattedName);
+
+    if (!targetKey) {
       return setFormError('Language name is required.');
+    }
+
+    // Enforce case-insensitive duplicate check
+    const isDuplicate = combinedDirectory.some(
+      (l) => (!editingLang || l.id !== editingLang.id) && normalizeLanguageKey(l.language) === targetKey
+    );
+    if (isDuplicate) {
+      return setFormError('Language already exists.');
     }
 
     setIsSaving(true);
     setFormError('');
 
     try {
-      if (editingLang) {
-        // Edit
+      if (editingLang && editingLang.isOfficial) {
+        // Edit Official Language
         const res = await talentRegistrationApi.adminUpdateSupportedLanguage(editingLang.id, {
-          language: inputName.trim(),
-          code: inputCode.trim(),
+          language: formattedName,
+          code: inputCode.trim().toUpperCase(),
           status: inputStatus,
         });
         if (res?.data?.success) {
-          setSuccessMsg(`Language "${inputName.trim()}" updated successfully.`);
+          setSuccessMsg(`Language "${formattedName}" updated successfully.`);
           setIsModalOpen(false);
           fetchLanguages();
           setTimeout(() => setSuccessMsg(''), 3500);
         }
       } else {
-        // Add
+        // Add Official Language
         const res = await talentRegistrationApi.adminAddSupportedLanguage({
-          language: inputName.trim(),
-          code: inputCode.trim(),
+          language: formattedName,
+          code: inputCode.trim().toUpperCase(),
           status: inputStatus,
         });
         if (res?.data?.success) {
-          setSuccessMsg(`Language "${inputName.trim()}" added to official supported list.`);
+          setSuccessMsg(`Language "${formattedName}" added to official supported list.`);
           setIsModalOpen(false);
           fetchLanguages();
           setTimeout(() => setSuccessMsg(''), 3500);
         }
       }
     } catch (err: any) {
-      setFormError(err.response?.data?.message || 'Failed to save language.');
+      setFormError(err.response?.data?.message || 'Language already exists.');
     } finally {
       setIsSaving(false);
     }
@@ -264,6 +329,7 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
               <tr className="border-b border-white/10 bg-white/[0.02] text-slate-400 uppercase text-[10px] tracking-wider">
                 <th className="p-4">Language Name</th>
                 <th className="p-4 text-center">Language Code</th>
+                <th className="p-4 text-center">Source</th>
                 <th className="p-4 text-center">Registered Resources</th>
                 <th className="p-4 text-center">Native Speakers</th>
                 <th className="p-4 text-center">Total Capacity</th>
@@ -274,13 +340,13 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
             <tbody className="divide-y divide-white/5 text-slate-300">
               {filteredLanguages.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center text-slate-500 font-mono">
-                    No supported languages found matching search parameters.
+                  <td colSpan={8} className="p-12 text-center text-slate-500 font-mono">
+                    No supported or registered languages found matching search parameters.
                   </td>
                 </tr>
               ) : (
                 filteredLanguages.map((item) => {
-                  const key = item.language.toLowerCase();
+                  const key = normalizeLanguageKey(item.language);
                   const m = langMetrics.get(key) || { resources: 0, nativeCount: 0, capacity: 0 };
                   const isActive = item.status === 'active' || !item.status;
 
@@ -301,6 +367,18 @@ export const AdminLanguageManagement: React.FC<AdminLanguageManagementProps> = (
                         ) : (
                           <span className="text-slate-600">—</span>
                         )}
+                      </td>
+
+                      <td className="p-4 text-center">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            item.isOfficial
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                          }`}
+                        >
+                          {item.source}
+                        </span>
                       </td>
 
                       <td className="p-4 text-center font-bold text-cyan-300">{m.resources}</td>

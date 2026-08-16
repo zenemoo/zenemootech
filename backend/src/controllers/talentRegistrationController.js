@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
+import { normalizeLanguageKey, formatLanguageDisplayName, isSameLanguage } from '../utils/languageUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1065,12 +1066,23 @@ export const addAdminSupportedLanguage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Language name is required.' });
     }
 
-    const cleanLang = language.trim();
+    const cleanLang = formatLanguageDisplayName(language);
+    const langKey = normalizeLanguageKey(cleanLang);
+
     const diskList = loadDiskSupportedLanguages();
-    const duplicate = diskList.find((l) => l.language.toLowerCase() === cleanLang.toLowerCase());
+    const duplicate = diskList.find((l) => normalizeLanguageKey(l.language) === langKey);
     if (duplicate) {
-      return res.status(400).json({ success: false, message: `Language "${cleanLang}" already exists in supported languages list.` });
+      return res.status(400).json({ success: false, message: 'Language already exists.' });
     }
+
+    // Also check Supabase table case-insensitively
+    try {
+      const dbLangs = await supabaseService.selectAll('talent_supported_languages').catch(() => []);
+      const dbDuplicate = (dbLangs || []).find((l) => normalizeLanguageKey(l.language) === langKey);
+      if (dbDuplicate) {
+        return res.status(400).json({ success: false, message: 'Language already exists.' });
+      }
+    } catch (e) {}
 
     const newLangItem = {
       id: `lang_${Date.now()}`,

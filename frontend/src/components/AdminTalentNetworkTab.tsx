@@ -45,6 +45,7 @@ import { talentRegistrationApi } from '../services/api';
 import { AdminNetworkAnalytics } from './AdminNetworkAnalytics';
 import { AdminLanguageManagement } from './AdminLanguageManagement';
 import { AdminCandidateEditModal } from './AdminCandidateEditModal';
+import { formatLanguageDisplayName, normalizeLanguageKey } from '../utils/languageUtils';
 
 const INDIAN_STATES_UT = [
   'All States',
@@ -229,10 +230,10 @@ export const AdminTalentNetworkTab: React.FC = () => {
     const set = new Set<string>();
     filterDataset.forEach((r) => {
       (r.languages || []).forEach((l: any) => {
-        const name = typeof l === 'string' ? l : (l?.language || '').trim();
-        if (name) {
-          if (name === 'Other') set.add('Other / Unspecified');
-          else set.add(name);
+        const rawName = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (rawName) {
+          const canonical = formatLanguageDisplayName(rawName);
+          set.add(canonical);
         }
       });
     });

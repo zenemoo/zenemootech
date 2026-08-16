@@ -28,6 +28,7 @@ import {
   Award,
   Check,
 } from 'lucide-react';
+import { normalizeLanguageKey, formatLanguageDisplayName } from '../utils/languageUtils';
 
 interface AdminNetworkAnalyticsProps {
   registrations: any[];
@@ -257,12 +258,15 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
         const rawLangName = typeof l === 'string' ? l : (l?.language || '').trim();
         if (!rawLangName) return;
 
-        const langName = rawLangName === 'Other' ? 'Other / Unspecified' : rawLangName;
+        const displayName = formatLanguageDisplayName(rawLangName);
+        const key = normalizeLanguageKey(displayName);
+        if (!key) return;
+
         const isNative = typeof l === 'object' && (l?.proficiency || '').toLowerCase().includes('native');
         const capVal = typeof l === 'object' ? Number(l?.capacity) || 1 : 1;
 
-        const existing = map.get(langName) || {
-          language: langName,
+        const existing = map.get(key) || {
+          language: displayName,
           resources: 0,
           nativeCount: 0,
           coordinators: 0,
@@ -276,7 +280,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
         existing.capacity += capVal;
         if (isImmed) existing.immediate += 1;
 
-        map.set(langName, existing);
+        map.set(key, existing);
       });
     });
 
