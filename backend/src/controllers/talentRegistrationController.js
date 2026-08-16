@@ -1201,6 +1201,13 @@ export const updateAdminCandidateProfile = async (req, res) => {
       }));
     }
 
+    if (experiences !== undefined && Array.isArray(experiences)) updatedRecord.experiences = experiences;
+    if (equipment_resources !== undefined) updatedRecord.equipment_resources = equipment_resources;
+    if (additional_info !== undefined) updatedRecord.additional_info = additional_info;
+    if (status !== undefined) updatedRecord.status = status;
+    if (internal_notes !== undefined) updatedRecord.internal_notes = internal_notes;
+    if (internal_scoring !== undefined) updatedRecord.internal_scoring = Number(internal_scoring);
+
     // Record Audit Log in admin_notes_history
     if (changedFields.length > 0) {
       const auditNote = {
@@ -1223,6 +1230,34 @@ export const updateAdminCandidateProfile = async (req, res) => {
 
     try {
       await supabaseService.update('talent_registrations', oldRecord.id, updatedRecord);
+
+      if (Array.isArray(languages)) {
+        await supabaseService.deleteByField('talent_languages', 'registration_id', oldRecord.id).catch(() => {});
+        for (const l of updatedRecord.languages) {
+          await supabaseService.insert('talent_languages', {
+            registration_id: oldRecord.id,
+            language: l.language,
+            proficiency: l.proficiency,
+            speaker_availability: l.speaker_availability,
+            capacity: l.capacity,
+          }).catch(() => {});
+        }
+      }
+
+      if (Array.isArray(experiences)) {
+        await supabaseService.deleteByField('talent_experiences', 'registration_id', oldRecord.id).catch(() => {});
+        for (const e of experiences) {
+          await supabaseService.insert('talent_experiences', {
+            registration_id: oldRecord.id,
+            project_company_name: e.projectName || e.project_company_name || '',
+            type_of_work: e.typeOfWork || e.type_of_work || '',
+            languages_used: e.languagesUsed || e.languages_used || '',
+            work_volume: e.workVolume || e.work_volume || '',
+            duration: e.duration || '',
+            description: e.description || '',
+          }).catch(() => {});
+        }
+      }
     } catch (e) {}
 
     return res.status(200).json({ success: true, message: 'Candidate profile updated successfully.', data: updatedRecord });

@@ -19,7 +19,7 @@ import { talentRegistrationApi } from '../services/api';
 interface AdminCandidateEditModalProps {
   candidate: any;
   onClose: () => void;
-  onSuccess: (msg: string) => void;
+  onSuccess: (msg: string, updatedRecord?: any) => void;
 }
 
 export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = ({
@@ -103,13 +103,13 @@ export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = (
 
       const res = await talentRegistrationApi.adminUpdateCandidateProfile(candidate.id, payload);
       if (res?.data?.success) {
-        onSuccess(`Candidate profile updated & audit log recorded.`);
+        onSuccess(`Candidate profile updated & audit log recorded.`, res.data.data);
         onClose();
       } else {
-        throw new Error(res?.data?.message || 'Failed to update candidate profile.');
+        throw new Error(res?.data?.message || 'Unable to save all profile changes. Please try again.');
       }
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.message || err.message || 'Failed to save profile updates.');
+      setErrorMsg(err.response?.data?.message || err.message || 'Unable to save all profile changes. Please try again.');
     } finally {
       setIsSaving(false);
     }

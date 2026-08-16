@@ -220,9 +220,63 @@ export const AdminTalentNetworkTab: React.FC = () => {
     } catch (err) {}
   };
 
-  useEffect(() => {
-    fetchAllRegistrations();
-  }, []);
+  // ── DYNAMICALLY DERIVED REGISTERED CANDIDATE FILTERS ──
+  const uniqueRegisteredLanguages = useMemo(() => {
+    const set = new Set<string>();
+    allRegistrations.forEach((r) => {
+      (r.languages || []).forEach((l: any) => {
+        const name = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (name) {
+          if (name === 'Other') set.add('Other / Unspecified');
+          else set.add(name);
+        }
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allRegistrations]);
+
+  const uniqueRegisteredStates = useMemo(() => {
+    const set = new Set<string>();
+    allRegistrations.forEach((r) => {
+      if (r.state && r.state.trim()) set.add(r.state.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allRegistrations]);
+
+  const uniqueRegisteredRoles = useMemo(() => {
+    const set = new Set<string>();
+    allRegistrations.forEach((r) => {
+      if (r.primary_role && r.primary_role.trim()) set.add(r.primary_role.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allRegistrations]);
+
+  const uniqueRegisteredWorkTypes = useMemo(() => {
+    const set = new Set<string>();
+    allRegistrations.forEach((r) => {
+      (r.work_capabilities || []).forEach((cap: string) => {
+        if (cap && cap.trim()) set.add(cap.trim());
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allRegistrations]);
+
+  const uniqueRegisteredAvailabilities = useMemo(() => {
+    const set = new Set<string>();
+    allRegistrations.forEach((r) => {
+      if (r.availability && r.availability.trim()) set.add(r.availability.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allRegistrations]);
+
+  const uniqueRegisteredStatuses = useMemo(() => {
+    const set = new Set<string>();
+    allRegistrations.forEach((r) => {
+      const st = r.status || 'pending';
+      set.add(st.toLowerCase());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allRegistrations]);
 
   const handleAnalyticsFilterSelect = (filterType: string, value: string) => {
     if (filterType === 'language') {
@@ -804,7 +858,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedLanguage(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            {LANGUAGES_LIST.map((l) => (
+            <option value="All Languages">All Languages ({uniqueRegisteredLanguages.length})</option>
+            {uniqueRegisteredLanguages.map((l) => (
               <option key={l} value={l}>
                 {l}
               </option>
@@ -817,7 +872,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedState(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            {INDIAN_STATES_UT.map((s) => (
+            <option value="All States">All States ({uniqueRegisteredStates.length})</option>
+            {uniqueRegisteredStates.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -830,7 +886,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedRole(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            {ROLES_LIST.map((r) => (
+            <option value="All Roles">All Roles ({uniqueRegisteredRoles.length})</option>
+            {uniqueRegisteredRoles.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
@@ -843,7 +900,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedWorkType(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            {WORK_TYPES_LIST.map((wt) => (
+            <option value="All Work Types">All Work Types ({uniqueRegisteredWorkTypes.length})</option>
+            {uniqueRegisteredWorkTypes.map((wt) => (
               <option key={wt} value={wt}>
                 {wt}
               </option>
@@ -1452,9 +1510,9 @@ export const AdminTalentNetworkTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Profile Grid Detail Sections */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* 1. Contact Information */}
+            {/* Profile Detail 11-Section Accordion / Stack */}
+            <div className="space-y-4">
+              {/* 1. Contact & Personal Details */}
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
                 <div className="font-bold text-cyan-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
                   <span>1. Contact &amp; Personal Details</span>
@@ -1464,25 +1522,28 @@ export const AdminTalentNetworkTab: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <div>Full Name: <span className="text-white font-bold">{selectedCandidate.full_name}</span></div>
-                <div>Gender: <span className="text-cyan-300 font-bold">{selectedCandidate.gender || 'Male'}</span></div>
-                <div>Email Address: <span className="text-white font-bold">{selectedCandidate.email}</span></div>
-                <div>Phone / WhatsApp: <span className="text-cyan-300 font-bold">{selectedCandidate.country_code || '+91'} {selectedCandidate.phone}</span></div>
-                <div>State / UT: <span className="text-white font-bold">{selectedCandidate.state}</span></div>
-                <div>City / District: <span className="text-white font-bold">{selectedCandidate.city_district}</span></div>
-                <div>Preferred Contact: <span className="text-emerald-400 font-bold">{selectedCandidate.preferred_contact}</span></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div>Full Name: <span className="text-white font-bold">{selectedCandidate.full_name}</span></div>
+                  <div>Gender: <span className="text-cyan-300 font-bold">{selectedCandidate.gender || 'Male'}</span></div>
+                  <div>Email Address: <span className="text-white font-bold">{selectedCandidate.email}</span></div>
+                  <div>Phone / WhatsApp: <span className="text-cyan-300 font-bold">{selectedCandidate.country_code || '+91'} {selectedCandidate.phone}</span></div>
+                  <div>State / UT: <span className="text-white font-bold">{selectedCandidate.state}</span></div>
+                  <div>City / District: <span className="text-white font-bold">{selectedCandidate.city_district}</span></div>
+                  <div>Preferred Contact: <span className="text-emerald-400 font-bold">{selectedCandidate.preferred_contact}</span></div>
+                  <div>Registration Date: <span className="text-slate-300 font-bold">{selectedCandidate.created_at ? new Date(selectedCandidate.created_at).toLocaleDateString('en-IN') : 'N/A'}</span></div>
+                </div>
               </div>
 
               {/* 2. Role Configuration */}
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
                 <div className="font-bold text-purple-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
                   <span>2. Role &amp; Contribution Details</span>
-                  <span className="text-slate-500">{selectedCandidate.primary_role}</span>
+                  <span className="text-purple-300 font-bold">{selectedCandidate.primary_role}</span>
                 </div>
                 <div>Primary Role: <span className="text-purple-300 font-bold">{selectedCandidate.primary_role}</span></div>
-                
+
                 {selectedCandidate.role_details && Object.keys(selectedCandidate.role_details).length > 0 && (
-                  <div className="space-y-1 pt-1 border-t border-white/5">
+                  <div className="space-y-1 pt-1.5 border-t border-white/5">
                     {Object.entries(selectedCandidate.role_details).map(([k, v]: [string, any]) => (
                       <div key={k} className="text-[11px]">
                         <span className="text-slate-400 capitalize">{k.replace(/_/g, ' ')}: </span>
@@ -1492,89 +1553,254 @@ export const AdminTalentNetworkTab: React.FC = () => {
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* 3. Supported Language Matrix & Speaker Capacities */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-              <div className="font-bold text-white uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
-                <span>3. Supported Language Matrix &amp; Speaker Capacities</span>
-                <span className="text-cyan-400 font-bold">{(selectedCandidate.languages || []).length} Languages</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {(selectedCandidate.languages || []).map((l: any, idx: number) => (
-                  <div key={idx} className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                    <div className="text-white font-bold flex items-center justify-between">
-                      <span className="text-sm">{l.language}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">{l.proficiency}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400">{l.speaker_availability}</div>
-                    {Number(l.capacity) > 1 && (
-                      <div className="text-[10px] text-emerald-400 font-bold pt-0.5">
-                        Capacity: {l.capacity} Native Speakers
+              {/* 3. Supported Language Matrix & Speaker Capacities */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                <div className="font-bold text-white uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>3. Supported Language Matrix &amp; Speaker Capacities</span>
+                  <span className="text-cyan-400 font-bold">{(selectedCandidate.languages || []).length} Configured</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {(selectedCandidate.languages || []).map((l: any, idx: number) => {
+                    const lName = typeof l === 'string' ? l : (l?.language || '').trim();
+                    const isLegacyOther = !lName || lName === 'Other';
+
+                    return (
+                      <div key={idx} className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                        <div className="text-white font-bold flex items-center justify-between gap-1">
+                          <span className="text-sm">
+                            {isLegacyOther ? (
+                              <span className="text-amber-300 font-bold flex flex-col">
+                                <span>Other / Unspecified ⚠️</span>
+                                <span className="text-[9px] text-slate-400 font-normal">
+                                  Original registration did not specify the language name.
+                                </span>
+                              </span>
+                            ) : (
+                              lName
+                            )}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
+                            {typeof l === 'object' ? l.proficiency || 'Native' : 'Native'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {typeof l === 'object' ? l.speaker_availability || l.speakerAvailability : 'Native Speaker'}
+                        </div>
+                        {typeof l === 'object' && Number(l.capacity) > 1 && (
+                          <div className="text-[10px] text-emerald-400 font-bold pt-0.5">
+                            Capacity: {l.capacity} Native Speakers
+                          </div>
+                        )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. Work Capabilities */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                <div className="font-bold text-emerald-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>4. Work Capabilities ({ (selectedCandidate.work_capabilities || []).length })</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(selectedCandidate.work_capabilities || []).length > 0 ? (
+                    selectedCandidate.work_capabilities.map((cap: string) => (
+                      <span
+                        key={cap}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold"
+                      >
+                        ✓ {cap}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500 text-[11px] italic">No work capabilities specified.</span>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. Availability & Timeframe */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                <div className="font-bold text-amber-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>5. Availability &amp; Working Preference</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Availability Timeframe:</span>
+                    <span className="text-amber-300 font-bold">{selectedCandidate.availability || 'Immediately'}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 4. Capabilities & Availability */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
-              <div className="font-bold text-emerald-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
-                <span>4. Work Capabilities &amp; Time Availability</span>
-                <span className="text-slate-400">{selectedCandidate.availability}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Availability Timeframe:</span>
-                  <span className="text-emerald-400 font-bold">{selectedCandidate.availability || 'Immediately'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Working Preference:</span>
-                  <span className="text-white font-bold">{selectedCandidate.working_preference || 'Project Basis'}</span>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Working Preference:</span>
+                    <span className="text-white font-bold">{selectedCandidate.working_preference || 'Project Basis'}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* 5. Private Admin Notes Section */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-              <div className="font-bold text-amber-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
-                <span>🔒 Private Admin Notes Timeline</span>
-                <span className="text-slate-500">Internal Only</span>
-              </div>
+              {/* 6. Experience & Previous Work Entries */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                <div className="font-bold text-cyan-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>6. Experience &amp; Previous Work</span>
+                  <span className="text-slate-400">{(selectedCandidate.experiences || []).length} Entries</span>
+                </div>
 
-              {/* Note History */}
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {(selectedCandidate.admin_notes_history || []).length > 0 ? (
-                  selectedCandidate.admin_notes_history.map((n: any, idx: number) => (
-                    <div key={idx} className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-1">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400">
-                        <span>{n.admin_email || 'Admin'}</span>
-                        <span>{n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}</span>
+                {(selectedCandidate.experiences || []).length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedCandidate.experiences.map((exp: any, idx: number) => (
+                      <div key={idx} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                          <span className="text-white font-bold text-xs">
+                            Experience #{idx + 1}: {exp.projectName || exp.project_company_name || 'Project'}
+                          </span>
+                          {exp.duration && (
+                            <span className="text-[10px] text-cyan-300 bg-cyan-500/20 px-2 py-0.5 rounded">
+                              Duration: {exp.duration}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                          {exp.typeOfWork || exp.type_of_work ? (
+                            <div>Work Type: <span className="text-cyan-300 font-bold">{exp.typeOfWork || exp.type_of_work}</span></div>
+                          ) : null}
+                          {exp.languagesUsed || exp.languages_used ? (
+                            <div>Languages: <span className="text-purple-300 font-bold">{exp.languagesUsed || exp.languages_used}</span></div>
+                          ) : null}
+                          {exp.workVolume || exp.work_volume ? (
+                            <div>Work Volume: <span className="text-amber-300 font-bold">{exp.workVolume || exp.work_volume}</span></div>
+                          ) : null}
+                        </div>
+
+                        {exp.description && (
+                          <div className="text-[11px] text-slate-300 bg-black/40 p-2 rounded-lg border border-white/5 leading-relaxed">
+                            {exp.description}
+                          </div>
+                        )}
                       </div>
-                      <p className="text-slate-200 text-[11px]">{n.note}</p>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 ) : (
-                  <div className="text-slate-500 text-[11px] italic">No internal admin notes recorded yet.</div>
+                  <div className="text-slate-500 text-[11px] italic">No previous experience entries submitted.</div>
                 )}
               </div>
 
-              {/* Add Note Input */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Type internal note..."
-                  value={newAdminNote}
-                  onChange={(e) => setNewAdminNote(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/15 text-white placeholder-slate-500 focus:outline-none text-xs"
-                />
-                <button
-                  onClick={handleAddAdminNote}
-                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold cursor-pointer transition-all shrink-0"
-                >
-                  Add Note
-                </button>
+              {/* 7. Equipment & Recording Resources */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                <div className="font-bold text-purple-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>7. Equipment &amp; Recording Resources</span>
+                </div>
+
+                {selectedCandidate.equipment_resources && Object.keys(selectedCandidate.equipment_resources).length > 0 ? (
+                  <div className="space-y-2 text-[11px]">
+                    {Array.isArray(selectedCandidate.equipment_resources.equipmentList) && selectedCandidate.equipment_resources.equipmentList.length > 0 ? (
+                      <div className="space-y-1">
+                        <span className="text-slate-400 block text-[10px]">Available Equipment:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedCandidate.equipment_resources.equipmentList.map((eq: string) => (
+                            <span key={eq} className="px-2.5 py-1 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 font-bold">
+                              ✓ {eq}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-white/5">
+                      {selectedCandidate.equipment_resources.recordingEnvironment && (
+                        <div>Recording Environment: <span className="text-white font-bold">{selectedCandidate.equipment_resources.recordingEnvironment}</span></div>
+                      )}
+                      {selectedCandidate.equipment_resources.internetQuality && (
+                        <div>Internet Quality: <span className="text-emerald-400 font-bold">{selectedCandidate.equipment_resources.internetQuality}</span></div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-slate-500 text-[11px] italic">No equipment information submitted.</div>
+                )}
+              </div>
+
+              {/* 8. Additional Information */}
+              {selectedCandidate.additional_info && Object.keys(selectedCandidate.additional_info).length > 0 && (
+                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                  <div className="font-bold text-cyan-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                    <span>8. Additional Information</span>
+                  </div>
+                  <div className="space-y-1 text-[11px]">
+                    {selectedCandidate.additional_info.hearAboutSource && (
+                      <div>How did you hear about Zenemoo?: <span className="text-cyan-300 font-bold">{selectedCandidate.additional_info.hearAboutSource}</span></div>
+                    )}
+                    {selectedCandidate.additional_info.additionalDetailsText && (
+                      <div className="text-slate-300 bg-black/40 p-2.5 rounded-xl border border-white/10 leading-relaxed mt-1">
+                        {selectedCandidate.additional_info.additionalDetailsText}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 9. Consents & Privacy */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                <div className="font-bold text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>9. Consents &amp; Terms Acceptance</span>
+                </div>
+                <div className="flex flex-wrap gap-3 text-[11px]">
+                  <span className="text-emerald-400 font-bold">✓ Terms &amp; Conditions Accepted</span>
+                  <span className="text-emerald-400 font-bold">✓ Privacy Policy Accepted</span>
+                </div>
+              </div>
+
+              {/* 10. Verification Status */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                <div className="font-bold text-emerald-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>10. Verification &amp; Status</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    {selectedCandidate.status || 'Pending'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  Profile Record Status: <strong className="text-white uppercase">{selectedCandidate.status || 'Pending'}</strong>
+                </div>
+              </div>
+
+              {/* 11. Private Admin Notes Section */}
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                <div className="font-bold text-amber-400 uppercase text-[10px] tracking-wider border-b border-white/10 pb-1.5 flex items-center justify-between">
+                  <span>🔒 11. Private Admin Notes &amp; Audit Trail</span>
+                  <span className="text-slate-500">Internal Only</span>
+                </div>
+
+                {/* Note History */}
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {(selectedCandidate.admin_notes_history || []).length > 0 ? (
+                    selectedCandidate.admin_notes_history.map((n: any, idx: number) => (
+                      <div key={idx} className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>{n.admin_email || 'Admin'}</span>
+                          <span>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</span>
+                        </div>
+                        <p className="text-slate-200 text-[11px]">{n.note}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-slate-500 text-[11px] italic">No internal admin notes recorded yet.</div>
+                  )}
+                </div>
+
+                {/* Add Note Input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type internal note..."
+                    value={newAdminNote}
+                    onChange={(e) => setNewAdminNote(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/15 text-white placeholder-slate-500 focus:outline-none text-xs"
+                  />
+                  <button
+                    onClick={handleAddAdminNote}
+                    className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold cursor-pointer transition-all shrink-0"
+                  >
+                    Add Note
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1729,14 +1955,19 @@ export const AdminTalentNetworkTab: React.FC = () => {
         <AdminCandidateEditModal
           candidate={editingCandidate}
           onClose={() => setEditingCandidate(null)}
-          onSuccess={(msg) => {
+          onSuccess={(msg, updatedRecord) => {
             setActionSuccessMsg(msg);
-            fetchRegistrations();
-            if (selectedCandidate && selectedCandidate.id === editingCandidate.id) {
-              talentRegistrationApi.getAdminRegistrationDetail(editingCandidate.id).then((res) => {
-                if (res?.data?.success) setSelectedCandidate(res.data.data);
-              });
+            if (updatedRecord) {
+              setSelectedCandidate(updatedRecord);
+              setRegistrations((prev) =>
+                prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r))
+              );
+              setAllRegistrations((prev) =>
+                prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r))
+              );
             }
+            fetchRegistrations();
+            fetchAllRegistrations();
             setTimeout(() => setActionSuccessMsg(''), 4000);
           }}
         />
