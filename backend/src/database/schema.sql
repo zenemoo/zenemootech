@@ -273,10 +273,47 @@ CREATE TABLE IF NOT EXISTS talent_experiences (
 CREATE TABLE IF NOT EXISTS talent_admin_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   registration_id UUID REFERENCES talent_registrations(id) ON DELETE CASCADE,
-  admin_email TEXT NOT NULL,
-  note TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- Table 12: talent_supported_languages (Admin Supported Languages Directory)
+CREATE TABLE IF NOT EXISTS talent_supported_languages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  language TEXT UNIQUE NOT NULL,
+  code TEXT,
+  status TEXT DEFAULT 'active', -- active, inactive
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_supported_lang_name ON talent_supported_languages(language);
+CREATE INDEX IF NOT EXISTS idx_supported_lang_status ON talent_supported_languages(status);
+
+-- Initial seed for supported languages
+INSERT INTO talent_supported_languages (language, code, status) VALUES
+  ('Assamese', 'AS', 'active'),
+  ('Bengali', 'BN', 'active'),
+  ('Bodo', 'brx', 'active'),
+  ('Dogri', 'doi', 'active'),
+  ('English', 'EN', 'active'),
+  ('Gujarati', 'GU', 'active'),
+  ('Hindi', 'HI', 'active'),
+  ('Kannada', 'KN', 'active'),
+  ('Kashmiri', 'KS', 'active'),
+  ('Konkani', 'kok', 'active'),
+  ('Maithili', 'mai', 'active'),
+  ('Malayalam', 'ML', 'active'),
+  ('Manipuri', 'mni', 'active'),
+  ('Marathi', 'MR', 'active'),
+  ('Nepali', 'NE', 'active'),
+  ('Odia', 'OR', 'active'),
+  ('Punjabi', 'PA', 'active'),
+  ('Sanskrit', 'SA', 'active'),
+  ('Santali', 'sat', 'active'),
+  ('Sindhi', 'SD', 'active'),
+  ('Tamil', 'TA', 'active'),
+  ('Telugu', 'TE', 'active'),
+  ('Urdu', 'UR', 'active'),
+  ('Other', 'OTH', 'active')
+ON CONFLICT (language) DO NOTHING;
+
 
 
 
