@@ -37,8 +37,11 @@ import {
   RotateCcw,
   Sparkles,
   Layers,
+  PieChart,
+  BarChart2,
 } from 'lucide-react';
 import { talentRegistrationApi } from '../services/api';
+import { AdminNetworkAnalytics } from './AdminNetworkAnalytics';
 
 const INDIAN_STATES_UT = [
   'All States',
@@ -197,6 +200,47 @@ export const AdminTalentNetworkTab: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Analytics & Roster State
+  const [allRegistrations, setAllRegistrations] = useState<any[]>([]);
+  const [showAnalytics, setShowAnalytics] = useState<boolean>(false);
+
+  const fetchAllRegistrations = async () => {
+    try {
+      const res = await talentRegistrationApi.getAdminRegistrations({});
+      if (res?.data?.success && Array.isArray(res.data.data)) {
+        setAllRegistrations(res.data.data);
+      }
+    } catch (err) {}
+  };
+
+  useEffect(() => {
+    fetchAllRegistrations();
+  }, []);
+
+  const handleAnalyticsFilterSelect = (filterType: string, value: string) => {
+    if (filterType === 'language') {
+      setSelectedLanguage(value);
+      setActionSuccessMsg(`Filtered Talent Network by Language: ${value}`);
+    } else if (filterType === 'role') {
+      setSelectedRole(value);
+      setActionSuccessMsg(`Filtered Talent Network by Role: ${value}`);
+    } else if (filterType === 'state') {
+      setSelectedState(value);
+      setActionSuccessMsg(`Filtered Talent Network by State: ${value}`);
+    } else if (filterType === 'availability') {
+      setSelectedAvailability(value);
+      setActionSuccessMsg(`Filtered Talent Network by Availability: ${value}`);
+    } else if (filterType === 'workType') {
+      setSelectedWorkType(value);
+      setActionSuccessMsg(`Filtered Talent Network by Work Type: ${value}`);
+    } else if (filterType === 'status') {
+      setSelectedStatus(value);
+      setActionSuccessMsg(`Filtered Talent Network by Status: ${value.toUpperCase()}`);
+    }
+    setShowAnalytics(false);
+    setTimeout(() => setActionSuccessMsg(''), 4000);
   };
 
   useEffect(() => {
@@ -585,6 +629,12 @@ export const AdminTalentNetworkTab: React.FC = () => {
 
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button
+            onClick={() => setShowAnalytics(!showAnalytics)}
+            className="w-full md:w-auto px-5 py-3 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/50 font-extrabold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-all"
+          >
+            <PieChart className="w-4 h-4 text-cyan-400" /> {showAnalytics ? 'Hide Analytics' : '📊 Network Analytics'}
+          </button>
+          <button
             onClick={handleExportCsv}
             className="w-full md:w-auto px-5 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all"
           >
@@ -592,6 +642,16 @@ export const AdminTalentNetworkTab: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {showAnalytics ? (
+        <AdminNetworkAnalytics
+          registrations={allRegistrations.length > 0 ? allRegistrations : registrations}
+          onFilterSelect={handleAnalyticsFilterSelect}
+          onClose={() => setShowAnalytics(false)}
+          onExportCsv={handleExportCsv}
+        />
+      ) : (
+        <>
 
       {/* ── 2. RESPONSIVE STATISTICS METRICS ROW ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 font-mono text-xs">
@@ -1247,6 +1307,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* ── 7. VIEW CANDIDATE PROFILE DRAWER / MODAL ── */}
