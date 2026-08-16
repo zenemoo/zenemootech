@@ -183,6 +183,7 @@ I am grounded in verified company knowledge and live database records. I can ass
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [lengthPref, setLengthPref] = useState<'auto' | 'short' | 'normal' | 'detailed'>('auto');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -294,7 +295,8 @@ I am grounded in verified company knowledge and live database records. I can ass
 
       const res = await aiApi.chat(
         apiPayload.length > 0 ? apiPayload : [{ role: 'user', content: query }],
-        currentLanguage
+        currentLanguage,
+        lengthPref
       );
 
       const rawReply = res.data?.reply || "I don't currently have verified information about that. Please contact the Zenemoo team at contact@zenemoo.in.";
@@ -683,6 +685,25 @@ I am grounded in verified company knowledge and live database records. I can ass
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Length Mode Control Selector */}
+              <div className="hidden md:flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 text-[11px] font-mono">
+                {(['auto', 'short', 'normal', 'detailed'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setLengthPref(mode)}
+                    className={`px-2 py-0.5 rounded-lg capitalize transition-all cursor-pointer ${
+                      lengthPref === mode
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title={`Answer length mode: ${mode}`}
+                  >
+                    {mode}
+                  </button>
+                ))}
               </div>
 
               <button

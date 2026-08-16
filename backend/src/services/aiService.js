@@ -234,24 +234,62 @@ export const buildDynamicRAGContext = async (userQuery = '') => {
 };
 
 // ─────────────────────────────────────────────────────────────
+//  Truncation & Completeness Checker
+// ─────────────────────────────────────────────────────────────
+const isIncompleteResponse = (text = '', finishReason = '') => {
+  if (!text || text.trim().length < 25) return false;
+  if (finishReason === 'length') return true;
+
+  const trimmed = text.trim();
+
+  // Ends with unclosed markdown link or brackets
+  if (/\[[^\]]*$/.test(trimmed) || /\([^\)]*$/.test(trimmed)) return true;
+  if (/https?:\/\/[^\s\)]*$/i.test(trimmed)) return true;
+
+  // Ends with trailing colon, comma, dash, or ellipsis
+  if (/[:,\-–—…]$/.test(trimmed)) return true;
+
+  // Ends with trailing conjunctions/prepositions that imply a missing clause
+  if (/\b(and|or|including|such as|for example|with|is|are|the|a|an|ସହିତ|ଏବଂ|ଓ|तथा|एवं|और|जैसे|इत्यादि)$/i.test(trimmed)) return true;
+
+  // Terminal sentence punctuation check (. ! ? " ' ) ] } > ।)
+  const hasTerminalPunctuation = /[\.\!\?\"\'\)\}\>\।]$/.test(trimmed);
+  if (!hasTerminalPunctuation) {
+    const lines = trimmed.split('\n').filter((l) => l.trim().length > 0);
+    const lastLine = lines[lines.length - 1] || '';
+    if (!/[\.\!\?\"\'\)\}\>\।]$/.test(lastLine.trim())) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+// ─────────────────────────────────────────────────────────────
 //  System Prompt Builder
 // ─────────────────────────────────────────────────────────────
-export const buildSystemPrompt = (ragContext, language = 'en') => {
+export const buildSystemPrompt = (ragContext, language = 'en', lengthMode = 'normal') => {
   let langInstruction = 'Respond in clear, professional English.';
   if (language === 'hi') {
     langInstruction = `MANDATORY LANGUAGE RULE: You MUST write your ENTIRE response in Hindi (हिन्दी / देवनागरी script).
 Do NOT include any English paragraphs — only Hindi.
 Emails, URLs, phone numbers, and numbers may stay in their original format.
-Translate all service descriptions, team names, and explanations into Hindi.`;
+Technical terms (e.g. AI Data Collection, Transcription, Voice Over, Zenemoo, Super QC) may remain in English script for clarity.`;
   } else if (language === 'or') {
     langInstruction = `MANDATORY LANGUAGE RULE: You MUST write your ENTIRE response in Odia (ଓଡ଼ିଆ script / ଓଡ଼ିଆ ଭାଷା).
 Do NOT include any English paragraphs — only Odia script.
 Emails, URLs, phone numbers, and numbers may stay in their original format.
-Translate all service descriptions, team names, and company information into Odia.
-Odia uses the unique ଓ script. If you write a single English word as a paragraph, you have violated this rule.`;
+Technical terms (e.g. AI Data Collection, Transcription, Voice Over, Zenemoo, Super QC) may remain in English script for clarity.`;
   }
 
-  // Truncate context to avoid token overflow (especially for Odia which has longer system prompt)
+  let lengthInstruction = 'Provide a clear, useful, complete answer in 2–4 short paragraphs or 3–6 bullet points.';
+  if (lengthMode === 'short') {
+    lengthInstruction = 'SHORT ANSWER MODE: Provide a concise, complete answer of 1–3 sentences or 3–5 short bullet points. Do NOT provide long intro paragraphs.';
+  } else if (lengthMode === 'detailed') {
+    lengthInstruction = 'DETAILED ANSWER MODE: Provide a comprehensive, complete answer with clear markdown headings, short paragraphs, and structured bullet points or numbered steps. Do NOT truncate or cut off.';
+  }
+
+  // Truncate context to avoid token overflow
   const maxContextLength = language === 'or' ? 6000 : 8000;
   const truncatedContext = ragContext.length > maxContextLength
     ? ragContext.substring(0, maxContextLength) + '\n[Context truncated for length]'
@@ -265,23 +303,25 @@ STRICT OPERATING RULES:
 
 1. LANGUAGE: ${langInstruction}
 
-2. GROUNDING: Answer ONLY using the verified knowledge base and database records below.
+2. ANSWER LENGTH: ${lengthInstruction}
+
+3. GROUNDING: Answer ONLY using the verified knowledge base and database records below.
    NEVER invent team members, services, pricing, or facts not present in the context.
 
-3. FALLBACK: If information is not in the context, say so politely and suggest contacting [contact@zenemoo.in](mailto:contact@zenemoo.in)
+4. COMPLETENESS RULE: Never end a response mid-sentence, mid-bullet, or with an incomplete link. Complete every thought naturally.
 
-4. TONE: Professional, warm, enterprise-grade. Like a helpful company representative.
+5. TONE: Professional, warm, enterprise-grade. Like a helpful company representative.
 
-5. FORMATTING:
+6. FORMATTING:
    - Use **bold** for key terms and important facts.
    - Use bullet lists for multiple items (- item).
    - Use numbered lists for step-by-step processes.
-   - Keep responses concise (under 300 words unless user requests detail).
    - Format emails as [email](mailto:email) for clickable rendering.
+   - Ensure all URLs are complete (e.g. https://www.zenemoo.in/talent-registration).
 
-6. TEAM QUESTIONS: Always check the [LIVE DATABASE: ZENEMOO TEAM MEMBERS] section first for questions about people, roles, departments.
+7. TEAM QUESTIONS: Always check the [LIVE DATABASE: ZENEMOO TEAM MEMBERS] section first for questions about people, roles, departments.
 
-7. ACTION TOKENS: Include relevant navigation tokens when applicable:
+8. ACTION TOKENS: Include relevant navigation tokens when applicable:
    - Career/jobs: {{ACTION:opportunities}}
    - Contact: {{ACTION:contact}}
    - Services: {{ACTION:services}}
@@ -301,15 +341,28 @@ ${truncatedContext}`;
 // ─────────────────────────────────────────────────────────────
 //  Main AI Execution Routine
 // ─────────────────────────────────────────────────────────────
-export const processAiChat = async (messages = [], language = 'en') => {
+export const processAiChat = async (messages = [], language = 'en', lengthPreference = 'auto') => {
   const startTime = Date.now();
   const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
 
   if (!apiKey) throw new Error('AI Provider API key is missing on the server.');
 
   const lastUserMsg = messages.length > 0 ? messages[messages.length - 1].content || '' : '';
+  const lowerMsg = lastUserMsg.toLowerCase();
+
+  // Auto infer length mode if lengthPreference is 'auto'
+  let lengthMode = lengthPreference;
+  if (!lengthMode || lengthMode === 'auto') {
+    const isShortQuery = /\b(short|brief|one line|small|shortly|সংକ୍ଷିପ୍ତ|संक्षिप्त)\b/i.test(lowerMsg);
+    const isDetailedQuery = /\b(explain|details|full details|complete|how does it work|tell me everything|ବିସ୍ତୃତ|विस्तार|सब कुछ|ସମ୍ପୂର୍ଣ୍ଣ)\b/i.test(lowerMsg);
+
+    if (isShortQuery) lengthMode = 'short';
+    else if (isDetailedQuery) lengthMode = 'detailed';
+    else lengthMode = 'normal';
+  }
+
   const ragContext = await buildDynamicRAGContext(lastUserMsg);
-  const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext, language) };
+  const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext, language, lengthMode) };
 
   // For Odia: send fewer history messages to reduce token usage
   const historyLimit = language === 'or' ? 6 : 12;
@@ -317,7 +370,6 @@ export const processAiChat = async (messages = [], language = 'en') => {
 
   // Telemetry update
   aiTelemetry.totalMessages += 1;
-  const lowerMsg = lastUserMsg.toLowerCase();
   if (lowerMsg.includes('transcription') || lowerMsg.includes('audio')) aiTelemetry.topicCounts['Audio Transcription'] += 1;
   else if (lowerMsg.includes('odia') || lowerMsg.includes('language') || lowerMsg.includes('ଓଡ଼ିଆ')) aiTelemetry.topicCounts['Odia Speech Data'] += 1;
   else if (lowerMsg.includes('desicrew') || lowerMsg.includes('partner')) aiTelemetry.topicCounts['DesiCrew Partnership'] += 1;
@@ -330,6 +382,8 @@ export const processAiChat = async (messages = [], language = 'en') => {
   const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
   const modelName = 'llama-3.3-70b-versatile';
 
+  const tokenLimit = lengthMode === 'short' ? 500 : lengthMode === 'detailed' ? 3000 : 2048;
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -340,7 +394,7 @@ export const processAiChat = async (messages = [], language = 'en') => {
       model: modelName,
       messages: fullMessages,
       temperature: 0.25,
-      max_tokens: 1200,
+      max_tokens: tokenLimit,
       stream: false,
     }),
   });
@@ -352,13 +406,70 @@ export const processAiChat = async (messages = [], language = 'en') => {
   }
 
   const data = await response.json();
-  const replyText = data.choices?.[0]?.message?.content || 'I am ready to assist you with Zenemoo services.';
-  const duration = Date.now() - startTime;
+  let replyText = data.choices?.[0]?.message?.content || 'I am ready to assist you with Zenemoo services.';
+  const finishReason = data.choices?.[0]?.finish_reason || '';
 
+  // Controlled 1-Shot Continuation Check for Incomplete Answers
+  if (isIncompleteResponse(replyText, finishReason)) {
+    try {
+      const continuationMessages = [
+        ...fullMessages,
+        { role: 'assistant', content: replyText },
+        {
+          role: 'user',
+          content: 'Continue your response from the EXACT word where it was interrupted. Do NOT repeat any text already written. Finish the current sentence and complete the answer naturally.',
+        },
+      ];
+
+      const contResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: continuationMessages,
+          temperature: 0.2,
+          max_tokens: 1200,
+          stream: false,
+        }),
+      });
+
+      if (contResponse.ok) {
+        const contData = await contResponse.json();
+        const contText = contData.choices?.[0]?.message?.content || '';
+        if (contText.trim()) {
+          // Stitch PART 1 + PART 2 cleanly with space, eliminating accidental repeated boundary words
+          const cleanCont = contText.trim();
+          const lastWords = replyText.trim().split(/\s+/).slice(-3).join(' ');
+          if (lastWords && cleanCont.startsWith(lastWords)) {
+            replyText = replyText.trim() + ' ' + cleanCont.substring(lastWords.length).trim();
+          } else {
+            replyText = replyText.trim() + ' ' + cleanCont;
+          }
+        }
+      }
+    } catch (contErr) {
+      console.warn('AI continuation request failed silently:', contErr.message || contErr);
+    }
+  }
+
+  // Final Terminal Safety Check: ensure reply doesn't end abruptly without punctuation
+  let finalReply = replyText.trim();
+  if (finalReply.length > 30 && !/[\.\!\?\"\'\)\}\>\।]$/.test(finalReply)) {
+    if (/[:,\-–—…]$/.test(finalReply)) {
+      finalReply = finalReply.substring(0, finalReply.length - 1).trim();
+    }
+    const endSymbol = language === 'or' || language === 'hi' ? '।' : '.';
+    finalReply += endSymbol;
+  }
+
+  const duration = Date.now() - startTime;
   aiTelemetry.responseTimes.push(duration);
   if (aiTelemetry.responseTimes.length > 20) aiTelemetry.responseTimes.shift();
 
-  return { reply: replyText, durationMs: duration, model: modelName };
+  return { reply: finalReply, durationMs: duration, model: modelName };
 };
 
 // ─────────────────────────────────────────────────────────────

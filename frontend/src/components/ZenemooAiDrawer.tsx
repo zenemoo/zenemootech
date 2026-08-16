@@ -101,6 +101,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
   const [historySearch, setHistorySearch] = useState('');
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [lengthPref, setLengthPref] = useState<'auto' | 'short' | 'normal' | 'detailed'>('auto');
 
   // ── Refs ──
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -255,7 +256,8 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
 
       const res = await aiApi.chat(
         apiPayload.length > 0 ? apiPayload : [{ role: 'user', content: promptText }],
-        currentLanguage
+        currentLanguage,
+        lengthPref
       );
 
       const rawReply: string =

@@ -6,7 +6,7 @@ import { processAiChat, getAiAnalyticsMetrics } from '../services/aiService.js';
  */
 export const chatWithAi = async (req, res, next) => {
   try {
-    const { messages, language } = req.body;
+    const { messages, language, lengthPreference } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -22,7 +22,8 @@ export const chatWithAi = async (req, res, next) => {
     }));
 
     const targetLang = language === 'hi' || language === 'or' ? language : 'en';
-    const result = await processAiChat(sanitizedMessages, targetLang);
+    const validLengthPref = ['short', 'normal', 'detailed', 'auto'].includes(lengthPreference) ? lengthPreference : 'auto';
+    const result = await processAiChat(sanitizedMessages, targetLang, validLengthPref);
 
     return res.json({
       success: true,

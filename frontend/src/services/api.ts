@@ -221,8 +221,11 @@ export const uploadApi = mediaApi;
 
 // Zenemoo AI Assistant APIs
 export const aiApi = {
-  chat: (messages: { role: string; content: string }[], language: 'en' | 'hi' | 'or' = 'en') =>
-    api.post('/ai/chat', { messages, language }),
+  chat: (
+    messages: { role: string; content: string }[],
+    language: 'en' | 'hi' | 'or' = 'en',
+    lengthPreference: 'auto' | 'short' | 'normal' | 'detailed' = 'auto'
+  ) => api.post('/ai/chat', { messages, language, lengthPreference }),
   getAnalytics: () => api.get('/ai/analytics'),
 };
 
