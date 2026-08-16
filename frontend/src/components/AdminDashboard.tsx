@@ -1807,10 +1807,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'CORE MANAGEMENT',
       items: [
-        { id: 'talent-network', name: 'AI Data Network', icon: Users },
         { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
         { id: 'directory', name: 'Team Directory', icon: UserCheck },
         { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
+        { id: 'talent-network', name: 'AI Data Network', icon: Users },
       ],
     },
     {
