@@ -379,30 +379,52 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
   else if (language === 'or') aiTelemetry.languageBreakdown['Odia'] += 1;
   else aiTelemetry.languageBreakdown['English'] += 1;
 
-  const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-  const modelName = 'llama-3.3-70b-versatile';
+  const candidateModels = Array.from(new Set([
+    process.env.GROQ_AI_MODEL,
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama3-70b-8192',
+    'llama-3.1-8b-instant',
+  ].filter(Boolean)));
 
   const tokenLimit = lengthMode === 'short' ? 500 : lengthMode === 'detailed' ? 3000 : 2048;
+  const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: fullMessages,
-      temperature: 0.25,
-      max_tokens: tokenLimit,
-      stream: false,
-    }),
-  });
+  let response;
+  let usedModel = candidateModels[0];
+  let errText = '';
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error('AI Provider Error:', response.status, errText);
-    throw new Error(`AI Service Provider returned error status ${response.status}`);
+  for (const modelName of candidateModels) {
+    usedModel = modelName;
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: fullMessages,
+        temperature: 0.25,
+        max_tokens: tokenLimit,
+        stream: false,
+      }),
+    });
+
+    if (response.ok) {
+      break;
+    }
+
+    errText = await response.text();
+    console.warn(`[Zenemoo AI] Model ${modelName} returned status ${response.status}: ${errText}`);
+    if (response.status !== 404 && !errText.includes('model_not_found')) {
+      break;
+    }
+  }
+
+  if (!response || !response.ok) {
+    console.error('AI Provider Error:', response ? response.status : 'No response', errText);
+    throw new Error(`AI Service Provider returned error status ${response ? response.status : 500}`);
   }
 
   const data = await response.json();
@@ -428,7 +450,7 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: modelName,
+          model: usedModel,
           messages: continuationMessages,
           temperature: 0.2,
           max_tokens: 1200,

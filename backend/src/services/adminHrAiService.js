@@ -65,7 +65,15 @@ export const generateAdminHrCommunication = async ({
     throw new Error('Server API key for Admin & HR AI is missing.');
   }
 
-  const modelName = process.env.ADMIN_HR_AI_MODEL || 'llama-3.3-70b-versatile';
+  const candidateModels = Array.from(new Set([
+    process.env.ADMIN_HR_AI_MODEL,
+    process.env.GROQ_AI_MODEL,
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama3-70b-8192',
+    'llama-3.1-8b-instant',
+  ].filter(Boolean)));
+
   const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
   // Construct specific task prompt
@@ -107,32 +115,48 @@ INSTRUCTIONS:
 5. Deliver ONLY the final ready-to-send content. Do NOT add meta commentary.
 `;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: [
-        { role: 'system', content: ADMIN_HR_SYSTEM_PROMPT },
-        { role: 'user', content: taskInstruction },
-      ],
-      temperature: 0.2,
-      max_tokens: length === 'short' ? 600 : length === 'detailed' ? 2500 : 1500,
-    }),
-  });
+  let response;
+  let usedModel = candidateModels[0];
+  let errBody = '';
 
-  if (!response.ok) {
-    const errBody = await response.text();
-    console.error('Admin & HR AI Error:', response.status, errBody);
-    throw new Error(`Admin AI Provider returned error status ${response.status}`);
+  for (const modelName of candidateModels) {
+    usedModel = modelName;
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          { role: 'system', content: ADMIN_HR_SYSTEM_PROMPT },
+          { role: 'user', content: taskInstruction },
+        ],
+        temperature: 0.2,
+        max_tokens: length === 'short' ? 600 : length === 'detailed' ? 2500 : 1500,
+      }),
+    });
+
+    if (response.ok) {
+      break;
+    }
+
+    errBody = await response.text();
+    console.warn(`[Admin & HR AI] Model ${modelName} returned status ${response.status}: ${errBody}`);
+    if (response.status !== 404 && !errBody.includes('model_not_found')) {
+      break;
+    }
+  }
+
+  if (!response || !response.ok) {
+    console.error('Admin & HR AI Error:', response ? response.status : 'No response', errBody);
+    throw new Error(`Admin AI Provider returned error status ${response ? response.status : 500}`);
   }
 
   const data = await response.json();
   const replyText = data.choices?.[0]?.message?.content || '';
-  return { reply: replyText.trim(), model: modelName };
+  return { reply: replyText.trim(), model: usedModel };
 };
 
 /**
@@ -153,7 +177,15 @@ export const modifyAdminHrCommunication = async ({
     throw new Error('Server API key for Admin & HR AI is missing.');
   }
 
-  const modelName = process.env.ADMIN_HR_AI_MODEL || 'llama-3.3-70b-versatile';
+  const candidateModels = Array.from(new Set([
+    process.env.ADMIN_HR_AI_MODEL,
+    process.env.GROQ_AI_MODEL,
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama3-70b-8192',
+    'llama-3.1-8b-instant',
+  ].filter(Boolean)));
+
   const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
   let actionInstruction = 'Improve the tone and clarity of this message.';
@@ -181,30 +213,46 @@ INSTRUCTIONS:
 Output ONLY the modified ready-to-send message. Do NOT repeat intro conversational sentences. Maintain bracket placeholders [like this] intact.
 `;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: [
-        { role: 'system', content: ADMIN_HR_SYSTEM_PROMPT },
-        { role: 'user', content: promptText },
-      ],
-      temperature: 0.2,
-      max_tokens: 2000,
-    }),
-  });
+  let response;
+  let usedModel = candidateModels[0];
+  let errBody = '';
 
-  if (!response.ok) {
-    const errBody = await response.text();
-    console.error('Admin AI Modifier Error:', response.status, errBody);
-    throw new Error(`Admin AI Modifier returned error status ${response.status}`);
+  for (const modelName of candidateModels) {
+    usedModel = modelName;
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          { role: 'system', content: ADMIN_HR_SYSTEM_PROMPT },
+          { role: 'user', content: promptText },
+        ],
+        temperature: 0.2,
+        max_tokens: 2000,
+      }),
+    });
+
+    if (response.ok) {
+      break;
+    }
+
+    errBody = await response.text();
+    console.warn(`[Admin AI Modifier] Model ${modelName} returned status ${response.status}: ${errBody}`);
+    if (response.status !== 404 && !errBody.includes('model_not_found')) {
+      break;
+    }
+  }
+
+  if (!response || !response.ok) {
+    console.error('Admin AI Modifier Error:', response ? response.status : 'No response', errBody);
+    throw new Error(`Admin AI Modifier returned error status ${response ? response.status : 500}`);
   }
 
   const data = await response.json();
   const replyText = data.choices?.[0]?.message?.content || '';
-  return { reply: replyText.trim(), model: modelName };
+  return { reply: replyText.trim(), model: usedModel };
 };
