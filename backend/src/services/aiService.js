@@ -381,6 +381,7 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
 
   const candidateModels = Array.from(new Set([
     process.env.GROQ_AI_MODEL,
+    'openai/gpt-oss-120b',
     'llama-3.3-70b-versatile',
     'llama-3.1-70b-versatile',
     'llama3-70b-8192',
@@ -491,7 +492,7 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
   aiTelemetry.responseTimes.push(duration);
   if (aiTelemetry.responseTimes.length > 20) aiTelemetry.responseTimes.shift();
 
-  return { reply: finalReply, durationMs: duration, model: modelName };
+  return { reply: finalReply, durationMs: duration, model: usedModel };
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -509,13 +510,13 @@ export const getAiAnalyticsMetrics = async () => {
     unknownQuestions: aiTelemetry.unknownQuestions,
     languageBreakdown: aiTelemetry.languageBreakdown,
     status: 'ACTIVE',
-    model: 'Llama-3.3-70b-versatile (Groq)',
+    model: 'openai/gpt-oss-120b (Groq)',
     lastSyncAt: new Date().toISOString(),
   };
 };
 
 // ─────────────────────────────────────────────────────────────
-//  AI Team Member Executive Summary Generator (Groq Llama 3.3 70B)
+//  AI Team Member Executive Summary Generator (Groq GPT-OSS 120B)
 // ─────────────────────────────────────────────────────────────
 export const generateTeamMemberSummary = async (member = {}) => {
   const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
@@ -548,7 +549,7 @@ Rule: Output ONLY the concise 2-3 sentence summary paragraph. Do not include tit
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: process.env.GROQ_AI_MODEL || 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 250,

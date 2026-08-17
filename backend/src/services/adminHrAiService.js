@@ -68,6 +68,7 @@ export const generateAdminHrCommunication = async ({
   const candidateModels = Array.from(new Set([
     process.env.ADMIN_HR_AI_MODEL,
     process.env.GROQ_AI_MODEL,
+    'openai/gpt-oss-120b',
     'llama-3.3-70b-versatile',
     'llama-3.1-70b-versatile',
     'llama3-70b-8192',
@@ -180,6 +181,7 @@ export const modifyAdminHrCommunication = async ({
   const candidateModels = Array.from(new Set([
     process.env.ADMIN_HR_AI_MODEL,
     process.env.GROQ_AI_MODEL,
+    'openai/gpt-oss-120b',
     'llama-3.3-70b-versatile',
     'llama-3.1-70b-versatile',
     'llama3-70b-8192',
