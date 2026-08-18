@@ -5,7 +5,7 @@
  * 
  * IMPORTANT ARCHITECTURE RULES:
  * 1. Supabase stores ONLY metadata (no raw binary file uploads to Supabase DB).
- * 2. Google Drive API integration handles binary storage via backend Express server endpoints.
+ * 2. Google Drive API integration handles binary storage via backend Express server endpoints on Google Cloud Run.
  * 3. Never expose Google credentials inside React frontend bundle.
  */
 
@@ -20,23 +20,41 @@ export interface StorageUploadResult {
 }
 
 const getApiBaseUrl = (): string => {
+  // Option 1: VITE_CLOUD_RUN_API_URL environment variable
   const cloudRunUrl = (import.meta as any).env?.VITE_CLOUD_RUN_API_URL;
   if (cloudRunUrl && typeof cloudRunUrl === 'string' && cloudRunUrl.trim() !== '') {
     return cloudRunUrl.trim().replace(/\/$/, '');
   }
+  // Option 2: General VITE_API_URL environment variable
   const envUrl = (import.meta as any).env?.VITE_API_URL;
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
     return envUrl.trim().replace(/\/$/, '');
   }
-  // Production fallback
+  // Option 3: Production Cloud Run backend fallback
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return 'https://zenemoo-website.onrender.com';
+    return 'https://zenemoo-api-1032144750022.asia-south1.run.app';
   }
+  // Option 4: Local development fallback
   return 'http://localhost:5000';
 };
 
 /**
- * Upload Dataset File to Google Drive via Backend API
+ * Health Check: Query Google Drive API ADC status on Cloud Run
+ */
+export const checkDriveHealthStatus = async (): Promise<{ success: boolean; message: string; folderName?: string; folderId?: string }> => {
+  const baseUrl = getApiBaseUrl();
+  const targetUrl = `${baseUrl}/api/portfolio/drive-health`;
+  try {
+    const res = await fetch(targetUrl);
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, message: `Failed to connect to Cloud Run Drive health endpoint: ${err.message}` };
+  }
+};
+
+/**
+ * Upload Dataset File to Google Drive via Cloud Run Backend API
  */
 export const uploadDatasetFile = async (
   file: File,
@@ -127,7 +145,7 @@ export const uploadDatasetFile = async (
 };
 
 /**
- * Delete Dataset File from Google Drive via Backend API
+ * Delete Dataset File from Google Drive via Cloud Run Backend API
  */
 export const deleteDatasetFile = async (storageFileId?: string): Promise<{ success: boolean; message: string }> => {
   if (!storageFileId || storageFileId.trim() === '') {

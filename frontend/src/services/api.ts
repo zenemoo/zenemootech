@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabaseClient';
 
-let rawApiUrl = (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
+let rawApiUrl = (import.meta as any).env?.VITE_CLOUD_RUN_API_URL || (import.meta as any).env?.VITE_API_URL || 'https://zenemoo-api-1032144750022.asia-south1.run.app/api';
 
 // On localhost, default to local backend if running
 if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
