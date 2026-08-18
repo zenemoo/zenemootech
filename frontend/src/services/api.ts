@@ -1,11 +1,7 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabaseClient';
 
-let rawApiUrl = (import.meta as any).env?.VITE_CLOUD_RUN_API_URL || (import.meta as any).env?.VITE_API_URL || 'https://zenemoo-api-1032144750022.asia-south1.run.app/api';
-
-if (rawApiUrl.includes('onrender.com')) {
-  rawApiUrl = 'https://zenemoo-api-1032144750022.asia-south1.run.app/api';
-}
+let rawApiUrl = (import.meta as any).env?.VITE_MAIN_API_URL || (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
 
 // On localhost, default to local backend if running
 if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
@@ -118,20 +114,18 @@ export const authApi = {
   resetPassword: async (email: string, otp: string, newPassword: string) => {
     const cleanEmail = email.trim().toLowerCase();
     return await api.post('/auth/reset-password', { email: cleanEmail, otp, newPassword });
-  },};
+  },
+};
 
 // Team APIs
 export const teamApi = {
   getAll: () => api.get('/team'),
-  // create/update/reorder use 30s timeout: AI summary generation (Groq) + DB insert +
-  // two-phase position normalisation can easily exceed the global 6s default.
   create: (data: any) => api.post('/team', data, { timeout: 30000 }),
   reorder: (id: string, newPosition: number) => api.put('/team/reorder', { id, newPosition }, { timeout: 30000 }),
   generateSummary: (id: string) => api.post(`/team/${id}/generate-summary`, {}, { timeout: 30000 }),
   update: (id: string, data: any) => api.put(`/team/${id}`, data, { timeout: 30000 }),
   delete: (id: string) => api.delete(`/team/${id}`),
 };
-
 
 // Services APIs
 export const serviceApi = {
@@ -379,5 +373,3 @@ export const talentRegistrationApi = {
   adminUpdateCandidateProfile: (id: string, data: any) =>
     api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
-
-
