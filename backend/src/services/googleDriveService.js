@@ -4,12 +4,11 @@ import stream from 'stream';
 /**
  * ZENEMOO Production Google Drive Storage Integration Service
  * 
- * Authenticates server-side using:
- * 1. Workload Identity / Credentials JSON string (GOOGLE_APPLICATION_CREDENTIALS_JSON)
- * 2. Service Account JWT Key (GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
- * 3. Application Default Credentials (ADC) for Google Cloud Run
+ * Authenticates server-side using Google Application Default Credentials (ADC).
+ * Seamlessly authenticates on Google Cloud Run using the attached Service Account.
  * 
  * Scope: https://www.googleapis.com/auth/drive
+ * 
  * NEVER expose Google credentials to the frontend React bundle.
  */
 
@@ -17,50 +16,17 @@ import stream from 'stream';
 const folderIdCache = new Map();
 
 /**
- * Initialize Google Drive Auth Client
+ * Initialize Google Drive Auth Client via Application Default Credentials (ADC)
  */
 export const getDriveClient = () => {
-  const scopes = [
-    'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/drive',
-  ];
-
-  // Option 1: Credentials JSON string in environment variable (Render / Custom Host)
-  const wifJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (wifJson && typeof wifJson === 'string' && wifJson.trim() !== '') {
-    try {
-      const parsedConfig = JSON.parse(wifJson.trim());
-      const auth = google.auth.fromJSON(parsedConfig);
-      auth.scopes = scopes;
-      return google.drive({ version: 'v3', auth });
-    } catch (wifErr) {
-      console.error('[Google Drive WIF JSON Parse Error]:', wifErr.message);
-    }
-  }
-
-  // Option 2: Service Account JWT Private Key (Render / Custom Host)
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-  if (clientEmail && privateKey) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-    try {
-      const auth = new google.auth.JWT({
-        email: clientEmail,
-        key: privateKey,
-        scopes: scopes,
-      });
-      return google.drive({ version: 'v3', auth });
-    } catch (err) {
-      console.error('[Google Drive Service Account JWT Error]:', err.message);
-    }
-  }
-
-  // Option 3: Application Default Credentials (GCP Cloud Run)
   try {
-    const auth = new google.auth.GoogleAuth({ scopes });
+    const auth = new google.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    });
+
     return google.drive({ version: 'v3', auth });
-  } catch (adcErr) {
-    console.error('[Google Drive ADC Auth Initialization Error]:', adcErr.message);
+  } catch (err) {
+    console.error('[Google Drive ADC Auth Initialization Error]:', err.message);
     return null;
   }
 };
@@ -164,12 +130,12 @@ const resolveTargetFolderId = async (drive, category, fileMimeType, originalName
 };
 
 /**
- * Upload file buffer/stream to Google Drive
+ * Upload file buffer/stream to Google Drive via Application Default Credentials
  */
 export const uploadFileToDrive = async ({ buffer, originalName, mimeType, category }) => {
   const drive = getDriveClient();
   if (!drive) {
-    throw new Error('Google Drive API client failed to initialize. Please check Google Drive credentials.');
+    throw new Error('Google Drive API client failed to initialize using Application Default Credentials (ADC).');
   }
 
   try {
@@ -238,7 +204,7 @@ export const deleteFileFromDrive = async (fileId) => {
 
   const drive = getDriveClient();
   if (!drive) {
-    throw new Error('Google Drive API client failed to initialize.');
+    throw new Error('Google Drive API client failed to initialize using Application Default Credentials (ADC).');
   }
 
   try {
@@ -259,14 +225,14 @@ export const deleteFileFromDrive = async (fileId) => {
 };
 
 /**
- * Health Check: Verify Google Drive API Authentication & Root Folder Access
+ * Health Check: Verify Google Drive API ADC Authentication & Root Folder Access
  */
 export const verifyDriveHealth = async () => {
   const drive = getDriveClient();
   if (!drive) {
     return {
       success: false,
-      message: 'Google Drive API client failed to initialize.',
+      message: 'Google Drive API client failed to initialize using Application Default Credentials (ADC).',
     };
   }
 
@@ -287,7 +253,7 @@ export const verifyDriveHealth = async () => {
 
     return {
       success: true,
-      message: 'Google Drive API client is fully operational.',
+      message: 'Google Drive API client is fully operational via Cloud Run ADC.',
       folderName: res.data.name,
       folderId: res.data.id,
     };
@@ -298,3 +264,4 @@ export const verifyDriveHealth = async () => {
     };
   }
 };
+
