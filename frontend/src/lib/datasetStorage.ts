@@ -20,20 +20,23 @@ export interface StorageUploadResult {
 }
 
 const getApiBaseUrl = (): string => {
-  // Option 1: VITE_CLOUD_RUN_API_URL environment variable
+  // Option 1: Explicit VITE_CLOUD_RUN_API_URL environment variable
   const cloudRunUrl = (import.meta as any).env?.VITE_CLOUD_RUN_API_URL;
   if (cloudRunUrl && typeof cloudRunUrl === 'string' && cloudRunUrl.trim() !== '') {
     return cloudRunUrl.trim().replace(/\/$/, '');
   }
-  // Option 2: General VITE_API_URL environment variable
+
+  // Option 2: General VITE_API_URL environment variable (ignore legacy Render URL for Google Drive storage)
   const envUrl = (import.meta as any).env?.VITE_API_URL;
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '' && !envUrl.includes('onrender.com')) {
     return envUrl.trim().replace(/\/$/, '');
   }
-  // Option 3: Production Cloud Run backend fallback
+
+  // Option 3: Production Cloud Run backend fallback for Google Drive API operations
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     return 'https://zenemoo-api-1032144750022.asia-south1.run.app';
   }
+
   // Option 4: Local development fallback
   return 'http://localhost:5000';
 };
