@@ -6,8 +6,8 @@ import stream from 'stream';
  * 
  * Authenticates with Google Drive API server-side using:
  * 1. Workload Identity Federation (WIF) via GOOGLE_APPLICATION_CREDENTIALS_JSON
- * 2. Direct Service Account Access Token (GOOGLE_ACCESS_TOKEN / GOOGLE_SERVICE_ACCOUNT_ACCESS_TOKEN)
- * 3. Service Account JWT Private Key (GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
+ * 2. Service Account JWT Private Key (GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
+ * 3. Direct Service Account Access Token (GOOGLE_SERVICE_ACCOUNT_ACCESS_TOKEN)
  * 
  * Manages folder structure: ZENEMOO_DATA_PORTFOLIO / PUBLIC_SAMPLES / [CATEGORY]
  * NEVER expose Google credentials to the frontend React bundle.
@@ -181,12 +181,12 @@ const resolveTargetFolderId = async (drive, category, fileMimeType, originalName
 };
 
 /**
- * Upload file buffer/stream to Google Drive via WIF / Service Account
+ * Upload file buffer/stream to Google Drive
  */
 export const uploadFileToDrive = async ({ buffer, originalName, mimeType, category }) => {
   const drive = getDriveClient();
   if (!drive) {
-    throw new Error('Google Drive API client is not configured on Render. Please set GOOGLE_APPLICATION_CREDENTIALS_JSON or GOOGLE_ACCESS_TOKEN or GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY in backend environment variables.');
+    throw new Error('Google Drive API client is not configured on Render. Please set Google credentials in Render environment variables.');
   }
 
   try {
@@ -255,7 +255,7 @@ export const deleteFileFromDrive = async (fileId) => {
 
   const drive = getDriveClient();
   if (!drive) {
-    throw new Error('Google Drive API client is not configured on Render. Please check backend environment variables.');
+    throw new Error('Google Drive API client is not configured on Render. Please set Google credentials in Render environment variables.');
   }
 
   try {
