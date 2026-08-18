@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, ArrowLeft, Briefcase, Home, Star } from 'lucide-react';
+import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, ArrowLeft, Briefcase, Home, Star, Database } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { useActiveLogo } from '../lib/useActiveLogo';
 
@@ -26,6 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
     { name: 'Home', href: '/', icon: Home },
     { name: 'Services', href: '/#services', icon: Mic },
     { name: 'Languages', href: '/#languages', icon: Languages },
+    { name: 'AI Data', href: '/ai-data', icon: Database },
     { name: 'Opportunities', href: '/opportunities', icon: Briefcase },
     { name: 'Reviews', href: '/review', icon: Star },
     { name: 'Team', href: '/team-directory', icon: Users },

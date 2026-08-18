@@ -19,10 +19,11 @@ import { AdminReviewsTab } from './AdminReviewsTab';
 import { AdminBrandLogoSettings } from './AdminBrandLogoSettings';
 import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
 import { AdminHrAiPage } from './AdminHrAiPage';
+import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'ai-data-portfolio';
   isStandaloneEmailView?: boolean;
 }
 
@@ -213,7 +214,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai'>((initialTab as any) || 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'ai-data-portfolio'>((initialTab as any) || 'team');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -1829,6 +1830,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'ENTERPRISE OPERATIONS',
       items: [
+        { id: 'ai-data-portfolio', name: 'AI Data Portfolio', icon: Database },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
@@ -3877,6 +3879,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: ZENEMOO AI DATA TALENT NETWORK */}
         {activeTab === 'talent-network' && (
           <AdminTalentNetworkTab />
+        )}
+
+        {/* TAB: AI DATA PORTFOLIO */}
+        {activeTab === 'ai-data-portfolio' && (
+          <AdminDataPortfolioTab addToast={addToast} showConfirm={showConfirm} />
         )}
 
         {/* TAB: ZENEMOO ADMIN & HR AI */}
