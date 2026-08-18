@@ -4,12 +4,11 @@ import stream from 'stream';
 /**
  * ZENEMOO Production Google Drive Storage Integration Service
  * 
- * Authenticates with Google Drive API server-side using:
- * 1. Workload Identity Federation (WIF) via GOOGLE_APPLICATION_CREDENTIALS_JSON
- * 2. Service Account JWT Private Key (GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)
- * 3. Direct Service Account Access Token (GOOGLE_SERVICE_ACCOUNT_ACCESS_TOKEN)
+ * Authenticates server-side using Google Application Default Credentials (ADC).
+ * Seamlessly authenticates on Google Cloud Run using the attached Service Account.
  * 
- * Manages folder structure: ZENEMOO_DATA_PORTFOLIO / PUBLIC_SAMPLES / [CATEGORY]
+ * Scope: https://www.googleapis.com/auth/drive
+ * 
  * NEVER expose Google credentials to the frontend React bundle.
  */
 
@@ -17,69 +16,19 @@ import stream from 'stream';
 const folderIdCache = new Map();
 
 /**
- * Initialize Google Drive Auth Client
+ * Initialize Google Drive Auth Client via Application Default Credentials (ADC)
  */
 export const getDriveClient = () => {
-  const scopes = [
-    'https://www.googleapis.com/auth/drive.file',
-    'https://www.googleapis.com/auth/drive',
-  ];
+  try {
+    const auth = new google.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    });
 
-  // Option 1: Workload Identity Federation (WIF) via JSON string in environment variable
-  const wifJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (wifJson && typeof wifJson === 'string' && wifJson.trim() !== '') {
-    try {
-      const parsedConfig = JSON.parse(wifJson.trim());
-      const auth = google.auth.fromJSON(parsedConfig);
-      auth.scopes = scopes;
-      return google.drive({ version: 'v3', auth });
-    } catch (wifErr) {
-      console.error('[Google Drive WIF JSON Parse Error]:', wifErr.message);
-    }
+    return google.drive({ version: 'v3', auth });
+  } catch (err) {
+    console.error('[Google Drive ADC Auth Initialization Error]:', err.message);
+    return null;
   }
-
-  // Option 2: Workload Identity Federation via GOOGLE_APPLICATION_CREDENTIALS file path
-  const credentialFilePath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (credentialFilePath && typeof credentialFilePath === 'string' && credentialFilePath.trim() !== '') {
-    try {
-      const auth = new google.auth.GoogleAuth({ scopes: scopes });
-      return google.drive({ version: 'v3', auth });
-    } catch (fileErr) {
-      console.error('[Google Drive WIF File Auth Error]:', fileErr.message);
-    }
-  }
-
-  // Option 3: Direct Access Token (Short-lived bearer token)
-  const accessToken = process.env.GOOGLE_ACCESS_TOKEN || process.env.GOOGLE_SERVICE_ACCOUNT_ACCESS_TOKEN;
-  if (accessToken && typeof accessToken === 'string' && accessToken.trim() !== '') {
-    try {
-      const oauth2Client = new google.auth.OAuth2();
-      oauth2Client.setCredentials({ access_token: accessToken.trim() });
-      return google.drive({ version: 'v3', auth: oauth2Client });
-    } catch (tokenErr) {
-      console.error('[Google Drive Access Token Init Error]:', tokenErr.message);
-    }
-  }
-
-  // Option 4: Service Account JWT Private Key (Fallback)
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-
-  if (clientEmail && privateKey) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-    try {
-      const auth = new google.auth.JWT({
-        email: clientEmail,
-        key: privateKey,
-        scopes: scopes,
-      });
-      return google.drive({ version: 'v3', auth });
-    } catch (err) {
-      console.error('[Google Drive Service Account Init Error]:', err.message);
-    }
-  }
-
-  return null;
 };
 
 /**
@@ -181,12 +130,12 @@ const resolveTargetFolderId = async (drive, category, fileMimeType, originalName
 };
 
 /**
- * Upload file buffer/stream to Google Drive
+ * Upload file buffer/stream to Google Drive via Application Default Credentials
  */
 export const uploadFileToDrive = async ({ buffer, originalName, mimeType, category }) => {
   const drive = getDriveClient();
   if (!drive) {
-    throw new Error('Google Drive API client is not configured on Render. Please set Google credentials in Render environment variables.');
+    throw new Error('Google Drive API client failed to initialize using Application Default Credentials (ADC).');
   }
 
   try {
@@ -255,7 +204,7 @@ export const deleteFileFromDrive = async (fileId) => {
 
   const drive = getDriveClient();
   if (!drive) {
-    throw new Error('Google Drive API client is not configured on Render. Please set Google credentials in Render environment variables.');
+    throw new Error('Google Drive API client failed to initialize using Application Default Credentials (ADC).');
   }
 
   try {
