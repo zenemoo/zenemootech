@@ -223,3 +223,45 @@ export const deleteFileFromDrive = async (fileId) => {
     throw new Error(`Google Drive File Deletion Failed: ${err.message}`);
   }
 };
+
+/**
+ * Health Check: Verify Google Drive API ADC Authentication & Root Folder Access
+ */
+export const verifyDriveHealth = async () => {
+  const drive = getDriveClient();
+  if (!drive) {
+    return {
+      success: false,
+      message: 'Google Drive API client failed to initialize using Application Default Credentials (ADC).',
+    };
+  }
+
+  try {
+    const rootEnvId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+    if (!rootEnvId) {
+      return {
+        success: false,
+        message: 'GOOGLE_DRIVE_ROOT_FOLDER_ID environment variable is missing.',
+      };
+    }
+
+    const res = await drive.files.get({
+      fileId: rootEnvId,
+      fields: 'id, name, mimeType',
+      supportsAllDrives: true,
+    });
+
+    return {
+      success: true,
+      message: 'Google Drive API client is fully operational via Cloud Run ADC.',
+      folderName: res.data.name,
+      folderId: res.data.id,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: `Google Drive Health Check Failed: ${err.message}`,
+    };
+  }
+};
+

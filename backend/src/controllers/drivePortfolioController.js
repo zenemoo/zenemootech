@@ -1,5 +1,5 @@
 import multer from 'multer';
-import { uploadFileToDrive, deleteFileFromDrive } from '../services/googleDriveService.js';
+import { uploadFileToDrive, deleteFileFromDrive, verifyDriveHealth } from '../services/googleDriveService.js';
 
 // Configure Multer for Memory Storage (up to 100MB per dataset sample)
 const storage = multer.memoryStorage();
@@ -80,3 +80,20 @@ export const deleteDatasetDriveFile = async (req, res, next) => {
     });
   }
 };
+
+/**
+ * Controller: Drive API Health Check Endpoint
+ */
+export const checkDriveHealth = async (req, res) => {
+  try {
+    const health = await verifyDriveHealth();
+    if (health.success) {
+      return res.status(200).json(health);
+    } else {
+      return res.status(500).json(health);
+    }
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+

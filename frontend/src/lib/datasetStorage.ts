@@ -20,11 +20,15 @@ export interface StorageUploadResult {
 }
 
 const getApiBaseUrl = (): string => {
-  const envUrl = (import.meta as any).env?.VITE_API_URL;
-  if (envUrl && typeof envUrl === 'string') {
-    return envUrl.replace(/\/$/, '');
+  const cloudRunUrl = (import.meta as any).env?.VITE_CLOUD_RUN_API_URL;
+  if (cloudRunUrl && typeof cloudRunUrl === 'string' && cloudRunUrl.trim() !== '') {
+    return cloudRunUrl.trim().replace(/\/$/, '');
   }
-  // Production vs local dev fallback
+  const envUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    return envUrl.trim().replace(/\/$/, '');
+  }
+  // Production fallback
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     return 'https://zenemoo-website.onrender.com';
   }

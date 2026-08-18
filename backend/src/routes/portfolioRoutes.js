@@ -4,6 +4,7 @@ import {
   uploadMiddleware,
   uploadDatasetDriveFile,
   deleteDatasetDriveFile,
+  checkDriveHealth,
 } from '../controllers/drivePortfolioController.js';
 
 const router = Router();
@@ -12,7 +13,8 @@ const router = Router();
 router.get('/', getPortfolio);
 router.post('/', createPortfolio);
 
-// Google Drive API Integration routes (Service Account Architecture)
+// Google Drive API Integration routes (Service Account ADC Architecture)
+router.get('/drive-health', checkDriveHealth);
 router.post('/upload-drive', uploadMiddleware, uploadDatasetDriveFile);
 router.delete('/delete-drive/:fileId', deleteDatasetDriveFile);
 router.delete('/delete-drive', deleteDatasetDriveFile);
