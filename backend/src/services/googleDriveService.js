@@ -60,7 +60,7 @@ const getOrCreateSubfolder = async (drive, folderName, parentId = null) => {
       return folderId;
     }
 
-    // Create folder if missing
+    // Create folder if missing using requestBody
     const fileMetadata = {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
@@ -68,7 +68,7 @@ const getOrCreateSubfolder = async (drive, folderName, parentId = null) => {
     };
 
     const created = await drive.files.create({
-      resource: fileMetadata,
+      requestBody: fileMetadata,
       fields: 'id',
       supportsAllDrives: true,
     });
@@ -155,9 +155,9 @@ export const uploadFileToDrive = async ({ buffer, originalName, mimeType, catego
       body: bufferStream,
     };
 
-    // Upload file
+    // Upload file using requestBody (correct parameter in googleapis v3 client)
     const uploadRes = await drive.files.create({
-      resource: fileMetadata,
+      requestBody: fileMetadata,
       media: media,
       fields: 'id, name, webViewLink, webContentLink, size',
       supportsAllDrives: true,
@@ -264,4 +264,3 @@ export const verifyDriveHealth = async () => {
     };
   }
 };
-
