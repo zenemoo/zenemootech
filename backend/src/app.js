@@ -29,9 +29,18 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
-// Global Middleware
+// Global Middleware & Dynamic CORS with Credentials Support
 app.use(helmet());
-app.use(cors({ origin: '*', credentials: true, exposedHeaders: ['X-New-Token'] }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Reflect requesting origin dynamically to comply with credentials: true
+      callback(null, origin || true);
+    },
+    credentials: true,
+    exposedHeaders: ['X-New-Token'],
+  })
+);
 app.use(morgan('dev'));
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
