@@ -285,17 +285,6 @@ export const uploadFile = async (req, res) => {
       }
     }
 
-    let driveRes = null;
-    try {
-      driveRes = await googleAppsScriptService.uploadFile({
-        targetFolderId: targetFolder || 'root',
-        category: fileType || 'AUDIO',
-        fileName,
-        mimeType,
-        base64Data,
-      });
-    } catch (gErr) {}
-
     // Extract raw text for text/JSON/CSV files if possible
     let rawContent = null;
     try {
@@ -305,7 +294,6 @@ export const uploadFile = async (req, res) => {
     } catch (e) {}
 
     const fallbackDataUrl = `data:${mimeType || 'application/octet-stream'};base64,${base64Data}`;
-    const realDriveUrl = driveRes?.file?.url;
 
     const fileRecord = {
       id: `f_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -314,15 +302,17 @@ export const uploadFile = async (req, res) => {
       file_type: fileType || 'AUDIO',
       mime_type: mimeType || 'application/octet-stream',
       file_size: fileSize || Math.round(base64Data.length * 0.75),
-      drive_file_id: driveRes?.file?.id || `drive_${Date.now()}`,
+      drive_file_id: `drive_${Date.now()}`,
       drive_folder_id: targetFolder,
-      drive_url: realDriveUrl || fallbackDataUrl,
-      thumbnail_url: driveRes?.file?.thumbnailUrl || (mimeType?.startsWith('image/') ? fallbackDataUrl : null),
+      drive_url: fallbackDataUrl,
+      thumbnail_url: mimeType?.startsWith('image/') ? fallbackDataUrl : null,
       raw_content: rawContent,
       status: 'ready',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    let insertedDbFile = null;
 
     if (supabase) {
       try {
@@ -345,22 +335,66 @@ export const uploadFile = async (req, res) => {
           .single();
 
         if (dbFile) {
-          return res.status(201).json({ success: true, file: dbFile });
+          insertedDbFile = dbFile;
         }
       } catch (dbErr) {
         console.error('Error writing file record to Supabase:', dbErr);
       }
     }
 
-    fallbackFiles.unshift(fileRecord);
-    const parentDataset = fallbackDatasets.find((d) => d.id === id);
-    if (parentDataset) {
-      parentDataset.total_files += 1;
-      parentDataset.total_size_bytes += fileRecord.file_size;
-      parentDataset.updated_at = new Date().toISOString();
+    if (!insertedDbFile) {
+      fallbackFiles.unshift(fileRecord);
+      const parentDataset = fallbackDatasets.find((d) => d.id === id);
+      if (parentDataset) {
+        parentDataset.total_files += 1;
+        parentDataset.total_size_bytes += fileRecord.file_size;
+        parentDataset.updated_at = new Date().toISOString();
+      }
     }
 
-    res.status(201).json({ success: true, file: fileRecord });
+    // ⚡ Respond to client immediately (< 500ms) so Render proxy NEVER times out
+    res.status(201).json({ success: true, file: insertedDbFile || fileRecord });
+
+    // 🚀 ASYNCHRONOUS BACKGROUND TASK: Upload to Google Drive without blocking HTTP response
+    (async () => {
+      try {
+        const driveRes = await googleAppsScriptService.uploadFile({
+          targetFolderId: targetFolder || 'root',
+          category: fileType || 'AUDIO',
+          fileName,
+          mimeType,
+          base64Data,
+        });
+
+        if (driveRes?.file?.url) {
+          const driveUrl = driveRes.file.url;
+          const driveFileId = driveRes.file.id;
+          const thumbnailUrl = driveRes.file.thumbnailUrl;
+
+          if (supabase && insertedDbFile?.id) {
+            await supabase
+              .from('dataset_files')
+              .update({
+                drive_url: driveUrl,
+                drive_file_id: driveFileId,
+                thumbnail_url: thumbnailUrl || insertedDbFile.thumbnail_url,
+              })
+              .eq('id', insertedDbFile.id);
+          } else {
+            const memFile = fallbackFiles.find((f) => f.id === fileRecord.id);
+            if (memFile) {
+              memFile.drive_url = driveUrl;
+              memFile.drive_file_id = driveFileId;
+              if (thumbnailUrl) memFile.thumbnail_url = thumbnailUrl;
+            }
+          }
+          console.log(`✅ Background Google Drive upload completed for ${fileName}`);
+        }
+      } catch (bgErr) {
+        console.warn(`⚠️ Background Google Drive upload warning for ${fileName}:`, bgErr?.message || bgErr);
+      }
+    })();
+
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
