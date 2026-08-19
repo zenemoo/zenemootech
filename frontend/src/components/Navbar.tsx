@@ -214,16 +214,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
             aria-hidden="true"
           />
 
-          {/* Floating Glassmorphic Slide-in Drawer Card */}
+          {/* Floating Glassmorphic Slide-in Drawer Card (1-View Fit - No Internal Scrollbar) */}
           <div
             id="mobile-navigation-drawer"
-            className="absolute top-3 right-3 bottom-3 w-[calc(100%-24px)] max-w-sm sm:max-w-md bg-[#080912]/95 border border-cyan-500/25 backdrop-blur-2xl rounded-3xl p-5 shadow-2xl flex flex-col justify-between overflow-y-auto z-50 text-slate-100"
+            className="absolute top-3 right-3 bottom-3 w-[calc(100%-24px)] max-w-sm sm:max-w-md h-[calc(100dvh-24px)] max-h-[calc(100dvh-24px)] bg-[#080912]/95 border border-cyan-500/25 backdrop-blur-2xl rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col justify-between overflow-hidden z-50 text-slate-100"
           >
-            <div className="space-y-6">
+            {/* Top Container: Header + Return Button + Navigation Links */}
+            <div className="flex-1 flex flex-col justify-between min-h-0">
               {/* Drawer Top Header: Logo, Title, Subtitle & Close Button */}
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <a href="/" className="flex items-center gap-3 group" onClick={() => setMobileOpen(false)}>
-                  <div className="relative h-10 w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2.5 sm:pb-3 shrink-0">
+                <a href="/" className="flex items-center gap-2.5 group" onClick={() => setMobileOpen(false)}>
+                  <div className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 shrink-0">
                     <SeoImage
                       src={logoUrl || '/assets/logo.png'}
                       alt="Zenemoo Logo"
@@ -234,7 +235,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                     />
                   </div>
                   <div>
-                    <h3 className="text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-tight">
+                    <h3 className="text-base sm:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-tight">
                       ZENEMOO
                     </h3>
                     <p className="text-[10px] font-mono text-cyan-400 tracking-tight">
@@ -245,7 +246,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
 
                 <button
                   onClick={() => setMobileOpen(false)}
-                  className="p-2 rounded-2xl bg-slate-900 border border-white/10 text-slate-400 hover:text-white hover:border-cyan-500/40 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-xl bg-slate-900 border border-white/10 text-slate-400 hover:text-white hover:border-cyan-500/40 transition-colors cursor-pointer shrink-0"
                   aria-label="Close navigation menu"
                 >
                   <X className="w-5 h-5 text-slate-300" />
@@ -259,15 +260,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                     setMobileOpen(false);
                     onBack();
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/40 transition-all hover:bg-cyan-500/30 cursor-pointer shadow-lg shadow-cyan-500/10"
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/40 transition-all hover:bg-cyan-500/30 cursor-pointer shadow-lg shadow-cyan-500/10 shrink-0 my-1"
                 >
                   <ArrowLeft className="w-4 h-4 text-cyan-400" />
                   <span>Return to Zenemoo Home</span>
                 </button>
               )}
 
-              {/* Drawer Vertical Navigation Links */}
-              <nav className="space-y-2">
+              {/* Drawer Vertical Navigation Links (Fits inside available height) */}
+              <nav className="flex-1 flex flex-col justify-evenly gap-1 sm:gap-1.5 py-2 min-h-0 overflow-hidden">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
                   const active = isLinkActive(link.href);
@@ -282,26 +283,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                           onBack();
                         }
                       }}
-                      className={`group flex items-center justify-between p-3.5 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                      className={`group flex items-center justify-between px-3 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-pointer border ${
                         active
                           ? 'bg-gradient-to-r from-cyan-500/20 via-cyan-500/10 to-transparent border-cyan-500/40 text-white font-bold shadow-md shadow-cyan-500/10'
                           : 'bg-white/[0.02] hover:bg-white/[0.07] border-white/5 text-slate-300 hover:text-white font-medium'
                       }`}
                     >
-                      <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div
-                          className={`p-2 rounded-xl border transition-all ${
+                          className={`p-1.5 rounded-lg border transition-all shrink-0 ${
                             active
                               ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
                               : 'bg-slate-900 border-white/10 text-cyan-400 group-hover:border-cyan-500/30'
                           }`}
                         >
-                          <Icon className="w-4 h-4" />
+                          <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </div>
-                        <span className="text-sm font-semibold truncate">{link.name}</span>
+                        <span className="text-xs sm:text-sm font-semibold truncate">{link.name}</span>
                       </div>
                       <ChevronRight
-                        className={`w-4 h-4 transition-all ${
+                        className={`w-3.5 h-3.5 transition-all shrink-0 ${
                           active
                             ? 'text-cyan-400 translate-x-0.5'
                             : 'text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1'
@@ -313,18 +314,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
               </nav>
             </div>
 
-            {/* Drawer Bottom Action Section: Zenemoo AI Button & Shield Badge */}
-            <div className="pt-6 border-t border-white/10 space-y-3 mt-6">
+            {/* Drawer Bottom Section: Zenemoo AI Card & Official Copyright Footer */}
+            <div className="pt-2.5 sm:pt-3 border-t border-white/10 space-y-2 shrink-0 mt-auto">
               {/* Zenemoo AI Launcher Button */}
               <button
                 onClick={() => {
                   setMobileOpen(false);
                   if (onOpenAiDrawer) onOpenAiDrawer();
                 }}
-                className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-gradient-to-r from-cyan-500/15 via-purple-500/15 to-indigo-500/15 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all shadow-lg shadow-cyan-500/10 cursor-pointer"
+                className="w-full flex items-center justify-between px-3.5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-cyan-500/15 via-purple-500/15 to-indigo-500/15 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all shadow-lg shadow-cyan-500/10 cursor-pointer shrink-0"
               >
                 <div className="flex items-center gap-2.5">
-                  <div className="relative w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse shrink-0">
+                  <div className="relative w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse shrink-0">
                     <SeoImage
                       src="/assets/logo.png"
                       alt="Zenemoo AI Assistant"
@@ -335,16 +336,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                   </div>
                   <div className="text-left">
                     <div className="text-xs font-mono font-bold text-white leading-tight">Zenemoo AI</div>
-                    <div className="text-[10px] text-cyan-400/80 font-mono">Ask Multilingual AI Assistant</div>
+                    <div className="text-[9.5px] text-cyan-400/80 font-mono leading-none">Ask Multilingual AI Assistant</div>
                   </div>
                 </div>
-                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
               </button>
 
-              {/* Empowering Bharat Shield Badge */}
-              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-slate-900/60 border border-white/5 text-[11px] text-slate-400 font-mono">
-                <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span className="leading-tight">Building AI for Languages. Empowering Bharat.</span>
+              {/* Official Copyright Footer (Replaced Tagline) */}
+              <div className="pt-1 text-center shrink-0">
+                <p className="text-[10px] sm:text-[11px] font-mono text-slate-500 tracking-tight leading-tight">
+                  Copyright &copy; 2026 Zenemoo. <span className="inline-block sm:inline">All Rights Reserved.</span>
+                </p>
               </div>
             </div>
           </div>
