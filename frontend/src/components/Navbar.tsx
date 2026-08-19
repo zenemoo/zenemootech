@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Mic, Languages, Cpu, Users, Handshake, Mail, Menu, X, ArrowLeft, Briefcase, Home, Star, Database } from 'lucide-react';
+import {
+  Sparkles,
+  Mic,
+  Languages,
+  Users,
+  Mail,
+  Menu,
+  X,
+  ArrowLeft,
+  Briefcase,
+  Home,
+  Star,
+  ChevronRight,
+  ShieldCheck,
+} from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { useActiveLogo } from '../lib/useActiveLogo';
 
@@ -13,6 +27,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { logoUrl, isLoading } = useActiveLogo();
+  const [currentHash, setCurrentHash] = useState('');
+  const [currentPath, setCurrentPath] = useState('');
 
   useEffect(() => {
     const handleScroll = () => {
@@ -21,6 +37,41 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCurrentPath(window.location.pathname);
+      setCurrentHash(window.location.hash);
+
+      const handleLocationChange = () => {
+        setCurrentPath(window.location.pathname);
+        setCurrentHash(window.location.hash);
+      };
+      window.addEventListener('hashchange', handleLocationChange);
+      return () => window.removeEventListener('hashchange', handleLocationChange);
+    }
+  }, []);
+
+  // Lock body scroll & listen for Escape key when mobile drawer is open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mobileOpen) {
+        setMobileOpen(false);
+      }
+    };
+
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileOpen]);
 
   const navLinks = [
     { name: 'Home', href: '/', icon: Home },
@@ -32,136 +83,274 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
     { name: 'Contact', href: '/#contact', icon: Mail },
   ];
 
+  const isLinkActive = (href: string) => {
+    if (href === '/') {
+      return currentPath === '/' && (!currentHash || currentHash === '#');
+    }
+    if (href.startsWith('/#')) {
+      const hash = href.replace('/', '');
+      return (currentPath === '/' || currentPath === '') && currentHash === hash;
+    }
+    return currentPath === href;
+  };
+
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3 shadow-2xl shadow-cyan-950/30'
-          : 'bg-transparent py-5'
-      }`}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          {/* Logo & Company Name (ZENEMOO) */}
-          <a href="/" className="flex items-center gap-3 group shrink-0">
-            {isLoading ? (
-              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-slate-900 animate-pulse border border-white/10 shrink-0" />
+    <>
+      <header
+        aria-label="Main Navigation"
+        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+          scrolled
+            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3 shadow-2xl shadow-cyan-950/30'
+            : 'bg-transparent py-4 sm:py-5'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-3">
+            {/* Logo & Company Name (ZENEMOO) */}
+            <a href="/" className="flex items-center gap-3 group shrink-0" aria-label="Zenemoo Home">
+              {isLoading ? (
+                <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-slate-900 animate-pulse border border-white/10 shrink-0" />
+              ) : (
+                <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300 shrink-0">
+                  <SeoImage
+                    src={logoUrl || '/assets/logo.png'}
+                    alt="Zenemoo Official Logo — Enterprise AI Language & Data Solutions"
+                    priority={true}
+                    width={44}
+                    height={44}
+                    className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                    fallbackSrc="/assets/logo.png"
+                  />
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="text-xl sm:text-2xl font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
+                  ZENEMOO
+                </span>
+                <span className="text-[9px] font-mono text-cyan-400 tracking-tight hidden sm:block mt-0.5">
+                  Enterprise AI Language &amp; Data Solutions
+                </span>
+              </div>
+            </a>
+
+            {/* Center Navigation OR Dedicated Page Back Button */}
+            {showBackButton && onBack ? (
+              <button
+                onClick={onBack}
+                className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer group shadow-lg shadow-cyan-500/10"
+              >
+                <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
+                <span>Return to Zenemoo Home</span>
+              </button>
             ) : (
-              <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300">
-                <SeoImage
-                  src={logoUrl || '/assets/logo.png'}
-                  alt="Zenemoo Official Logo — Enterprise AI Language & Data Solutions"
-                  priority={true}
-                  width={44}
-                  height={44}
-                  className="w-full h-full object-contain rounded-full bg-white p-0.5"
-                  fallbackSrc="/assets/logo.png"
-                />
-              </div>
+              <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md">
+                {navLinks.map((link) => {
+                  const Icon = link.icon;
+                  const active = isLinkActive(link.href);
+                  return (
+                    <a
+                      key={link.name}
+                      href={link.href}
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
+                        active
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm shadow-cyan-500/20'
+                          : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${active ? 'text-cyan-300' : 'text-cyan-400'}`} />
+                      <span>{link.name}</span>
+                    </a>
+                  );
+                })}
+              </nav>
             )}
-            <span className="text-xl sm:text-2xl font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors">
-              ZENEMOO
-            </span>
-          </a>
 
-          {/* Center Navigation OR Dedicated Page Back Button */}
-          {showBackButton && onBack ? (
-            <button
-              onClick={onBack}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer group shadow-lg shadow-cyan-500/10"
-            >
-              <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-              <span>Return to Zenemoo Home</span>
-            </button>
-          ) : (
-            <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md">
-              {navLinks.map((link) => {
-                const Icon = link.icon;
-                return (
-                  <a
-                    key={link.name}
-                    href={link.href}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium text-slate-300 hover:text-white hover:bg-white/10 transition-all duration-200"
-                  >
-                    <Icon className="w-3.5 h-3.5 text-cyan-400" />
-                    {link.name}
-                  </a>
-                );
-              })}
-            </nav>
-          )}
+            {/* Right Action Bar: Zenemoo AI Button & Mobile Hamburger Toggle */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Desktop/Tablet Zenemoo AI Button */}
+              <button
+                onClick={onOpenAiDrawer}
+                className="relative group flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
+                title="Ask Zenemoo AI"
+                aria-label="Ask Zenemoo AI"
+              >
+                <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse shrink-0">
+                  <SeoImage
+                    src="/assets/logo.png"
+                    alt="Zenemoo AI Assistant Engine"
+                    priority={true}
+                    width={20}
+                    height={20}
+                    className="w-full h-full object-cover rounded-full bg-white p-0.2"
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
+                </div>
+                <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">Zenemoo AI</span>
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform shrink-0" />
+              </button>
 
-          {/* Global Floating AI Icon Button & Mobile Toggle */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Global Floating AI Icon Button */}
-            <button
-              onClick={onOpenAiDrawer}
-              className="relative group flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
-              title="Ask Zenemoo AI"
-              aria-label="Ask Zenemoo AI"
-            >
-              <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse">
-                <SeoImage src="/assets/logo.png" alt="Zenemoo AI Assistant Engine" priority={true} width={20} height={20} className="w-full h-full object-cover rounded-full bg-white p-0.2" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
-              </div>
-              <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">Zenemoo AI</span>
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            </button>
-
-            {/* Mobile Drawer Hamburger Button */}
-            <button
-              onClick={() => setMobileOpen(!mobileOpen)}
-              className="xl:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white"
-              aria-label="Toggle Navigation Menu"
-            >
-              {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+              {/* Mobile / Tablet Drawer Toggle Button */}
+              <button
+                onClick={() => setMobileOpen(!mobileOpen)}
+                className="xl:hidden p-2 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white hover:border-cyan-500/40 transition-all cursor-pointer"
+                aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={mobileOpen}
+                aria-controls="mobile-navigation-drawer"
+              >
+                {mobileOpen ? <X className="w-5 h-5 text-cyan-400" /> : <Menu className="w-5 h-5 text-cyan-400" />}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Mobile Menu Drawer */}
+      {/* MOBILE & TABLET SLIDE-IN NAVIGATION DRAWER SYSTEM */}
       {mobileOpen && (
-        <div className="xl:hidden mt-3 px-4 pt-2 pb-6 bg-[#090a0f]/95 border-b border-white/10 backdrop-blur-2xl shadow-2xl rounded-b-2xl">
-          <div className="flex flex-col gap-2">
-            {/* Top Back Button inside Drawer if on dedicated page */}
-            {showBackButton && onBack && (
+        <div className="xl:hidden fixed inset-0 z-50 overflow-hidden">
+          {/* Dark Translucent Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300 cursor-pointer animate-fade-in"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Floating Glassmorphic Slide-in Drawer Card */}
+          <div
+            id="mobile-navigation-drawer"
+            className="absolute top-3 right-3 bottom-3 w-[calc(100%-24px)] max-w-sm sm:max-w-md bg-[#080912]/95 border border-cyan-500/25 backdrop-blur-2xl rounded-3xl p-5 shadow-2xl flex flex-col justify-between overflow-y-auto z-50 text-slate-100"
+          >
+            <div className="space-y-6">
+              {/* Drawer Top Header: Logo, Title, Subtitle & Close Button */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <a href="/" className="flex items-center gap-3 group" onClick={() => setMobileOpen(false)}>
+                  <div className="relative h-10 w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30">
+                    <SeoImage
+                      src={logoUrl || '/assets/logo.png'}
+                      alt="Zenemoo Logo"
+                      width={40}
+                      height={40}
+                      className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                      fallbackSrc="/assets/logo.png"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-tight">
+                      ZENEMOO
+                    </h3>
+                    <p className="text-[10px] font-mono text-cyan-400 tracking-tight">
+                      Enterprise AI Language &amp; Data
+                    </p>
+                  </div>
+                </a>
+
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  className="p-2 rounded-2xl bg-slate-900 border border-white/10 text-slate-400 hover:text-white hover:border-cyan-500/40 transition-colors cursor-pointer"
+                  aria-label="Close navigation menu"
+                >
+                  <X className="w-5 h-5 text-slate-300" />
+                </button>
+              </div>
+
+              {/* Dedicated Page Return Button (if applicable) */}
+              {showBackButton && onBack && (
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    onBack();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/40 transition-all hover:bg-cyan-500/30 cursor-pointer shadow-lg shadow-cyan-500/10"
+                >
+                  <ArrowLeft className="w-4 h-4 text-cyan-400" />
+                  <span>Return to Zenemoo Home</span>
+                </button>
+              )}
+
+              {/* Drawer Vertical Navigation Links */}
+              <nav className="space-y-2">
+                {navLinks.map((link) => {
+                  const Icon = link.icon;
+                  const active = isLinkActive(link.href);
+
+                  return (
+                    <a
+                      key={link.name}
+                      href={showBackButton && onBack ? `/#team` : link.href}
+                      onClick={() => {
+                        setMobileOpen(false);
+                        if (showBackButton && onBack) {
+                          onBack();
+                        }
+                      }}
+                      className={`group flex items-center justify-between p-3.5 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                        active
+                          ? 'bg-gradient-to-r from-cyan-500/20 via-cyan-500/10 to-transparent border-cyan-500/40 text-white font-bold shadow-md shadow-cyan-500/10'
+                          : 'bg-white/[0.02] hover:bg-white/[0.07] border-white/5 text-slate-300 hover:text-white font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div
+                          className={`p-2 rounded-xl border transition-all ${
+                            active
+                              ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+                              : 'bg-slate-900 border-white/10 text-cyan-400 group-hover:border-cyan-500/30'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <span className="text-sm font-semibold truncate">{link.name}</span>
+                      </div>
+                      <ChevronRight
+                        className={`w-4 h-4 transition-all ${
+                          active
+                            ? 'text-cyan-400 translate-x-0.5'
+                            : 'text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1'
+                        }`}
+                      />
+                    </a>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* Drawer Bottom Action Section: Zenemoo AI Button & Shield Badge */}
+            <div className="pt-6 border-t border-white/10 space-y-3 mt-6">
+              {/* Zenemoo AI Launcher Button */}
               <button
                 onClick={() => {
                   setMobileOpen(false);
-                  onBack();
+                  if (onOpenAiDrawer) onOpenAiDrawer();
                 }}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/30 mb-1 transition-all hover:bg-cyan-500/30"
+                className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-gradient-to-r from-cyan-500/15 via-purple-500/15 to-indigo-500/15 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all shadow-lg shadow-cyan-500/10 cursor-pointer"
               >
-                <ArrowLeft className="w-4 h-4 text-cyan-400" />
-                Return to Zenemoo Home
+                <div className="flex items-center gap-2.5">
+                  <div className="relative w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse shrink-0">
+                    <SeoImage
+                      src="/assets/logo.png"
+                      alt="Zenemoo AI Assistant"
+                      width={24}
+                      height={24}
+                      className="w-full h-full object-cover rounded-full bg-white p-0.2"
+                    />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-mono font-bold text-white leading-tight">Zenemoo AI</div>
+                    <div className="text-[10px] text-cyan-400/80 font-mono">Ask Multilingual AI Assistant</div>
+                  </div>
+                </div>
+                <Sparkles className="w-4 h-4 text-cyan-400" />
               </button>
-            )}
 
-            {navLinks.map((link) => {
-              const Icon = link.icon;
-              return (
-                <a
-                  key={link.name}
-                  href={showBackButton && onBack ? `/#team` : link.href}
-                  onClick={() => {
-                    setMobileOpen(false);
-                    if (showBackButton && onBack) {
-                      onBack();
-                    }
-                  }}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-200 hover:bg-white/10 transition-all"
-                >
-                  <Icon className="w-4 h-4 text-cyan-400" />
-                  {link.name}
-                </a>
-              );
-            })}
+              {/* Empowering Bharat Shield Badge */}
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-slate-900/60 border border-white/5 text-[11px] text-slate-400 font-mono">
+                <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="leading-tight">Building AI for Languages. Empowering Bharat.</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-    </header>
+    </>
   );
 };
 
