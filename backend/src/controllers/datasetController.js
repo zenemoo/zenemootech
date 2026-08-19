@@ -8,6 +8,80 @@ const fallbackFiles = [];
 // Chunk store map for multi-part large file uploads: uploadId -> { chunks, fileName, ... }
 const chunkStore = new Map();
 
+// Permanent sequence counter in-memory fallback map: key = `${datasetId}_${fileType}` -> number
+const memoryFileCounters = new Map();
+
+/**
+ * Get next permanent sequential number for a given dataset and file category (Never-reused)
+ */
+async function getNextSequenceNumber(datasetId, fileType) {
+  let nextNum = 1;
+
+  if (supabase) {
+    try {
+      const { data: existing } = await supabase
+        .from('dataset_file_counters')
+        .select('last_number')
+        .eq('dataset_id', datasetId)
+        .eq('file_type', fileType)
+        .maybeSingle();
+
+      if (existing && typeof existing.last_number === 'number') {
+        nextNum = existing.last_number + 1;
+        await supabase
+          .from('dataset_file_counters')
+          .update({ last_number: nextNum })
+          .eq('dataset_id', datasetId)
+          .eq('file_type', fileType);
+      } else {
+        nextNum = 1;
+        await supabase
+          .from('dataset_file_counters')
+          .insert({ dataset_id: datasetId, file_type: fileType, last_number: nextNum });
+      }
+
+      const memKey = `${datasetId}_${fileType}`;
+      memoryFileCounters.set(memKey, Math.max(nextNum, memoryFileCounters.get(memKey) || 0));
+      return nextNum;
+    } catch (e) {
+      console.warn('Supabase sequence counter skipped, using memory counter:', e.message);
+    }
+  }
+
+  const memKey = `${datasetId}_${fileType}`;
+  const curr = memoryFileCounters.get(memKey) || 0;
+  nextNum = curr + 1;
+  memoryFileCounters.set(memKey, nextNum);
+  return nextNum;
+}
+
+/**
+ * Generate standard Zenemoo filename: Zenemoo ({Language/Dataset}_{TYPE}) Sample File {NUMBER}.{EXT}
+ */
+function generateZenemooFileName(datasetName, language, fileType, originalName, seqNum) {
+  const categoryType = fileType || 'AUDIO';
+  let tag = (language && language !== 'Multilingual' && language.trim()) ? language : datasetName;
+  tag = tag.trim().replace(/[^a-zA-Z0-9\s_-]/g, '').replace(/\s+/g, '_');
+  if (!tag) tag = 'AI';
+
+  let ext = '';
+  const dotIdx = originalName.lastIndexOf('.');
+  if (dotIdx !== -1) {
+    ext = originalName.substring(dotIdx).toLowerCase();
+  } else {
+    const defaultExts = { AUDIO: '.wav', VIDEO: '.mp4', IMAGE: '.jpg', JSON: '.json', CSV: '.csv', PDF: '.pdf' };
+    ext = defaultExts[categoryType] || '';
+  }
+
+  const paddedNum = String(seqNum).padStart(3, '0');
+  const zenemooFileName = `Zenemoo (${tag}_${categoryType}) Sample File ${paddedNum}${ext}`;
+
+  return {
+    zenemooFileName,
+    originalFileName: originalName,
+  };
+}
+
 export const getDatasets = async (req, res) => {
   try {
     const { search, category, status } = req.query;
@@ -276,20 +350,36 @@ export const uploadFile = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing fileName, base64Data, or driveUrl' });
     }
 
-    // Lookup root dataset drive folder ID if not passed
+    const categoryType = fileType || 'AUDIO';
+
+    // 1. Fetch Dataset details to get language and name
+    let datasetName = 'Dataset';
+    let datasetLang = 'Multilingual';
     let targetFolder = driveFolderId;
-    if (!targetFolder || targetFolder === 'root') {
-      if (supabase) {
-        try {
-          const { data: ds } = await supabase.from('datasets').select('drive_folder_id').eq('id', id).maybeSingle();
-          if (ds?.drive_folder_id) targetFolder = ds.drive_folder_id;
-        } catch (e) {}
-      }
-      if (!targetFolder || targetFolder === 'root') {
-        const ds = fallbackDatasets.find((d) => d.id === id);
-        if (ds?.drive_folder_id) targetFolder = ds.drive_folder_id;
+
+    if (supabase) {
+      try {
+        const { data: ds } = await supabase.from('datasets').select('name, language, drive_folder_id').eq('id', id).maybeSingle();
+        if (ds) {
+          datasetName = ds.name || 'Dataset';
+          datasetLang = ds.language || 'Multilingual';
+          if (!targetFolder || targetFolder === 'root') targetFolder = ds.drive_folder_id;
+        }
+      } catch (e) {}
+    }
+
+    if (datasetName === 'Dataset') {
+      const memDs = fallbackDatasets.find((d) => d.id === id);
+      if (memDs) {
+        datasetName = memDs.name;
+        datasetLang = memDs.language || 'Multilingual';
+        if (!targetFolder || targetFolder === 'root') targetFolder = memDs.drive_folder_id;
       }
     }
+
+    // 2. Generate Permanent Sequential Zenemoo Filename
+    const seqNum = await getNextSequenceNumber(id, categoryType);
+    const { zenemooFileName, originalFileName } = generateZenemooFileName(datasetName, datasetLang, categoryType, fileName, seqNum);
 
     let finalDriveUrl = driveUrl || null;
     let finalDriveFileId = `drive_${Date.now()}`;
@@ -315,7 +405,7 @@ export const uploadFile = async (req, res) => {
     let rawContent = null;
     if (base64Data && computedSize < 1024 * 1024) {
       try {
-        if (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv')))) {
+        if (categoryType === 'JSON' || categoryType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv')))) {
           rawContent = Buffer.from(base64Data, 'base64').toString('utf-8');
         }
       } catch (e) {}
@@ -324,14 +414,15 @@ export const uploadFile = async (req, res) => {
     const fileRecord = {
       id: `f_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       dataset_id: id,
-      file_name: fileName,
-      file_type: fileType || 'AUDIO',
+      file_name: zenemooFileName,
+      original_file_name: originalFileName,
+      file_type: categoryType,
       mime_type: mimeType || 'application/octet-stream',
       file_size: computedSize,
       drive_file_id: finalDriveFileId,
       drive_folder_id: targetFolder || 'root',
       drive_url: finalDriveUrl,
-      thumbnail_url: fileType === 'IMAGE' ? finalDriveUrl : null,
+      thumbnail_url: categoryType === 'IMAGE' ? finalDriveUrl : null,
       raw_content: rawContent,
       status: 'ready',
       created_at: new Date().toISOString(),
@@ -346,8 +437,9 @@ export const uploadFile = async (req, res) => {
           .from('dataset_files')
           .insert({
             dataset_id: id,
-            file_name: fileName,
-            file_type: fileType || 'AUDIO',
+            file_name: zenemooFileName,
+            original_file_name: originalFileName,
+            file_type: categoryType,
             mime_type: mimeType,
             file_size: fileRecord.file_size,
             drive_file_id: fileRecord.drive_file_id,
@@ -381,14 +473,14 @@ export const uploadFile = async (req, res) => {
     // ⚡ Respond to client immediately (< 500ms)
     res.status(201).json({ success: true, file: insertedDbFile || fileRecord });
 
-    // If base64Data was provided, run background Google Drive upload
+    // If base64Data was provided, run background Google Drive upload with zenemooFileName
     if (base64Data) {
       (async () => {
         try {
           const driveRes = await googleAppsScriptService.uploadFile({
             targetFolderId: targetFolder || 'root',
-            category: fileType || 'AUDIO',
-            fileName,
+            category: categoryType,
+            fileName: zenemooFileName,
             mimeType,
             base64Data,
           });
@@ -415,10 +507,10 @@ export const uploadFile = async (req, res) => {
                 if (thumbnailUrlRes) memFile.thumbnail_url = thumbnailUrlRes;
               }
             }
-            console.log(`✅ Background Google Drive upload completed for ${fileName}`);
+            console.log(`✅ Background Google Drive upload completed for ${zenemooFileName}`);
           }
         } catch (bgErr) {
-          console.warn(`⚠️ Background Google Drive upload warning for ${fileName}:`, bgErr?.message || bgErr);
+          console.warn(`⚠️ Background Google Drive upload warning for ${zenemooFileName}:`, bgErr?.message || bgErr);
         }
       })();
     }

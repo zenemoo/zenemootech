@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.dataset_files (
     dataset_id UUID NOT NULL REFERENCES public.datasets(id) ON DELETE CASCADE,
     folder_id UUID REFERENCES public.dataset_folders(id) ON DELETE SET NULL,
     file_name TEXT NOT NULL,
+    original_file_name TEXT,
     file_type TEXT NOT NULL,
     mime_type TEXT,
     file_size BIGINT DEFAULT 0,
@@ -46,7 +47,16 @@ CREATE TABLE IF NOT EXISTS public.dataset_files (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ensure raw_content column exists if table was previously created
+-- 4. Dataset File Permanent Sequence Counters Table (Never-reused numbers)
+CREATE TABLE IF NOT EXISTS public.dataset_file_counters (
+    dataset_id UUID REFERENCES public.datasets(id) ON DELETE CASCADE,
+    file_type TEXT NOT NULL,
+    last_number INTEGER DEFAULT 0,
+    PRIMARY KEY (dataset_id, file_type)
+);
+
+-- Ensure optional columns exist if tables were previously created
+ALTER TABLE public.dataset_files ADD COLUMN IF NOT EXISTS original_file_name TEXT;
 ALTER TABLE public.dataset_files ADD COLUMN IF NOT EXISTS raw_content TEXT;
 
 -- Indexes for maximum query performance
@@ -61,8 +71,9 @@ CREATE INDEX IF NOT EXISTS idx_dataset_files_file_type ON public.dataset_files(f
 ALTER TABLE public.datasets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dataset_folders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dataset_files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dataset_file_counters ENABLE ROW LEVEL SECURITY;
 
--- Public Read Access Policies (Drop if exists first to allow re-running)
+-- Public Read Access Policies
 DROP POLICY IF EXISTS "Public read access for active datasets" ON public.datasets;
 CREATE POLICY "Public read access for active datasets" ON public.datasets
     FOR SELECT USING (true);
@@ -75,7 +86,7 @@ DROP POLICY IF EXISTS "Public read access for dataset files" ON public.dataset_f
 CREATE POLICY "Public read access for dataset files" ON public.dataset_files
     FOR SELECT USING (true);
 
--- Admin Full Access Policies (Service Role / Authorized Admin)
+-- Admin Full Access Policies
 DROP POLICY IF EXISTS "Admin full management for datasets" ON public.datasets;
 CREATE POLICY "Admin full management for datasets" ON public.datasets
     FOR ALL USING (true) WITH CHECK (true);
@@ -86,6 +97,10 @@ CREATE POLICY "Admin full management for dataset folders" ON public.dataset_fold
 
 DROP POLICY IF EXISTS "Admin full management for dataset files" ON public.dataset_files;
 CREATE POLICY "Admin full management for dataset files" ON public.dataset_files
+    FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admin full management for dataset_file_counters" ON public.dataset_file_counters;
+CREATE POLICY "Admin full management for dataset_file_counters" ON public.dataset_file_counters
     FOR ALL USING (true) WITH CHECK (true);
 
 -- Trigger to automatically update dataset file counts & size upon file insert/delete

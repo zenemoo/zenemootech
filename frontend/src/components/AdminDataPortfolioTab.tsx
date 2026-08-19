@@ -46,6 +46,7 @@ interface DatasetFileItem {
   id: string;
   dataset_id: string;
   file_name: string;
+  original_file_name?: string;
   file_type: DatasetCategoryType;
   mime_type?: string;
   file_size: number;
@@ -854,7 +855,11 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                             </span>
                             <div>
                               <p className="font-bold text-white">{file.file_name}</p>
-                              <p className="text-[10px] text-slate-500 font-mono">{file.mime_type || 'Unknown MIME'}</p>
+                              {file.original_file_name && file.original_file_name !== file.file_name ? (
+                                <p className="text-[10px] text-slate-400 font-mono">Original: {file.original_file_name}</p>
+                              ) : (
+                                <p className="text-[10px] text-slate-500 font-mono">{file.mime_type || 'Unknown MIME'}</p>
+                              )}
                             </div>
                           </td>
                           <td className="p-4">

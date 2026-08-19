@@ -39,6 +39,7 @@ interface DatasetFileItem {
   id: string;
   dataset_id: string;
   file_name: string;
+  original_file_name?: string;
   file_type: DatasetCategoryType;
   mime_type?: string;
   file_size: number;
