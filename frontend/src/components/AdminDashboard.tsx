@@ -1808,14 +1808,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   const navGroups = [
     {
-      group: 'AI DATA PORTFOLIO',
-      items: [
-        { id: 'datasets', name: 'Datasets', icon: Folder },
-        { id: 'data-upload', name: 'Upload Files', icon: Upload },
-        { id: 'data-folders', name: 'Folders', icon: Layers },
-      ],
-    },
-    {
       group: 'CORE MANAGEMENT',
       items: [
         { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
@@ -1842,6 +1834,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
+      ],
+    },
+    {
+      group: 'AI DATA PORTFOLIO',
+      items: [
+        { id: 'datasets', name: 'Datasets', icon: Folder },
       ],
     },
     {
