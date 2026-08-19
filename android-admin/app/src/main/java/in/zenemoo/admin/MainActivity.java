@@ -1,13 +1,15 @@
 package in.zenemoo.admin;
 
+import android.Manifest;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,6 +17,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -29,11 +32,14 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 public class MainActivity extends BridgeActivity {
@@ -42,6 +48,14 @@ public class MainActivity extends BridgeActivity {
     private static final String PREFS_NAME = "ZenemooAdminBiometricPrefs";
     private static final String KEY_BIOMETRIC_ENABLED = "biometric_enabled";
     private static final String KEY_PROMPT_ASKED = "prompt_asked";
+
+    private static final int FILECHOOSER_RESULTCODE = 2001;
+    private static final int PERMISSION_REQUEST_CODE_FILE = 2002;
+    private static final int PERMISSION_REQUEST_CODE_CAMERA_MIC = 2003;
+
+    private ValueCallback<Uri[]> mUploadMessage;
+    private WebChromeClient.FileChooserParams mFileChooserParams;
+    private PermissionRequest mPendingWebPermissionRequest;
 
     private View biometricOverlayView;
     private boolean isOverlayVisible = false;
@@ -114,19 +128,37 @@ public class MainActivity extends BridgeActivity {
             cookieManager.setAcceptCookie(true);
             cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-            // Enable WebRTC Camera & Microphone permission handling
+            // WebChromeClient: File Chooser & Camera / Microphone WebRTC handling
             webView.setWebChromeClient(new WebChromeClient() {
                 @Override
+                public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                    if (mUploadMessage != null) {
+                        mUploadMessage.onReceiveValue(null);
+                        mUploadMessage = null;
+                    }
+                    mUploadMessage = filePathCallback;
+                    mFileChooserParams = fileChooserParams;
+
+                    if (hasFilePermissions()) {
+                        launchFileChooser();
+                    } else {
+                        requestFilePermissions();
+                    }
+                    return true;
+                }
+
+                @Override
                 public void onPermissionRequest(final PermissionRequest request) {
-                    runOnUiThread(() -> {
-                        if (request != null && request.getResources() != null) {
-                            request.grant(request.getResources());
-                        }
-                    });
+                    mPendingWebPermissionRequest = request;
+                    if (hasCameraAndMicPermissions()) {
+                        grantPendingWebPermissions();
+                    } else {
+                        requestCameraAndMicPermissions();
+                    }
                 }
             });
 
-            // Setup custom WebViewClient interceptor for links, authentication detection & biometric prompt
+            // Setup custom WebViewClient interceptor for links, network errors & biometric enable prompt
             WebViewClient defaultClient = webView.getWebViewClient();
             webView.setWebViewClient(new WebViewClient() {
                 @Override
@@ -207,6 +239,165 @@ public class MainActivity extends BridgeActivity {
         // Initialize Biometric Unlock Overlay if Biometric is enabled
         setupBiometricOverlayIfEnabled();
     }
+
+    // ==========================================
+    // RUNTIME PERMISSION & FILE PICKER HELPERS
+    // ==========================================
+
+    private boolean hasFilePermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                   ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED ||
+                   ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+        }
+        return true;
+    }
+
+    private void requestFilePermissions() {
+        List<String> permissions = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO);
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+        ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), PERMISSION_REQUEST_CODE_FILE);
+    }
+
+    private boolean hasCameraAndMicPermissions() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+               ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestCameraAndMicPermissions() {
+        ActivityCompat.requestPermissions(
+            this,
+            new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO},
+            PERMISSION_REQUEST_CODE_CAMERA_MIC
+        );
+    }
+
+    private void grantPendingWebPermissions() {
+        if (mPendingWebPermissionRequest != null) {
+            runOnUiThread(() -> {
+                if (mPendingWebPermissionRequest != null && mPendingWebPermissionRequest.getResources() != null) {
+                    mPendingWebPermissionRequest.grant(mPendingWebPermissionRequest.getResources());
+                }
+                mPendingWebPermissionRequest = null;
+            });
+        }
+    }
+
+    private void launchFileChooser() {
+        try {
+            Intent intent = null;
+            if (mFileChooserParams != null) {
+                intent = mFileChooserParams.createIntent();
+            }
+            if (intent == null) {
+                intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+            }
+            startActivityForResult(Intent.createChooser(intent, "Select File for Zenemoo Admin"), FILECHOOSER_RESULTCODE);
+        } catch (Exception e) {
+            cancelFileChooser();
+            Toast.makeText(this, "Unable to open file picker", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void cancelFileChooser() {
+        if (mUploadMessage != null) {
+            mUploadMessage.onReceiveValue(null);
+            mUploadMessage = null;
+        }
+    }
+
+    private void openAppSettings() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            Uri uri = Uri.fromParts("package", getPackageName(), null);
+            intent.setData(uri);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Please open Android Settings to grant permissions", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == PERMISSION_REQUEST_CODE_FILE) {
+            boolean granted = false;
+            for (int result : grantResults) {
+                if (result == PackageManager.PERMISSION_GRANTED) {
+                    granted = true;
+                    break;
+                }
+            }
+
+            if (granted) {
+                if (mUploadMessage != null) {
+                    launchFileChooser();
+                }
+            } else {
+                boolean shouldShowRationale = false;
+                for (String perm : permissions) {
+                    if (ActivityCompat.shouldShowRequestPermissionRationale(this, perm)) {
+                        shouldShowRationale = true;
+                        break;
+                    }
+                }
+
+                if (shouldShowRationale) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Permission Required")
+                            .setMessage("Zenemoo Admin needs file access to upload datasets and media.")
+                            .setPositiveButton("Try Again", (dialog, which) -> requestFilePermissions())
+                            .setNegativeButton("Cancel", (dialog, which) -> cancelFileChooser())
+                            .setCancelable(false)
+                            .show();
+                } else {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Permission Denied")
+                            .setMessage("File permission was permanently denied. Please allow file access in App Settings to upload datasets.")
+                            .setPositiveButton("Open Settings", (dialog, which) -> {
+                                cancelFileChooser();
+                                openAppSettings();
+                            })
+                            .setNegativeButton("Cancel", (dialog, which) -> cancelFileChooser())
+                            .setCancelable(false)
+                            .show();
+                }
+            }
+        } else if (requestCode == PERMISSION_REQUEST_CODE_CAMERA_MIC) {
+            if (hasCameraAndMicPermissions()) {
+                grantPendingWebPermissions();
+            } else {
+                Toast.makeText(this, "Camera and Microphone permissions are required for media capture", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == FILECHOOSER_RESULTCODE) {
+            if (mUploadMessage == null) return;
+            Uri[] results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            mUploadMessage.onReceiveValue(results);
+            mUploadMessage = null;
+        }
+    }
+
+    // ==========================================
+    // NATIVE BIOMETRIC UNLOCK CONTROLLER
+    // ==========================================
 
     private void setupBiometricOverlayIfEnabled() {
         boolean isBiometricEnabled = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false);
