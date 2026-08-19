@@ -1,0 +1,39 @@
+{
+  "appId": "in.zenemoo.admin",
+  "appName": "Zenemoo Admin",
+  "webDir": "frontend/dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://www.zenemoo.in/portal/9KqvA2Nz8",
+    "cleartext": true,
+    "allowNavigation": [
+      "www.zenemoo.in",
+      "zenemoo.in",
+      "zenemootech-api.onrender.com",
+      "wkbkomwjuywdeaxgchxw.supabase.co",
+      "res.cloudinary.com"
+    ]
+  },
+  "android": {
+    "path": "android-admin",
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#050505",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#050505"
+    }
+  }
+}
