@@ -1,14 +1,6 @@
 /**
- * ZENEMOO AI Data Portfolio — Google Apps Script Drive Bridge (v2.0)
+ * ZENEMOO AI Data Portfolio — Google Apps Script Drive Bridge (v2.1)
  * Deployed as a Web App (Execute as me, Access: Anyone)
- * 
- * Features:
- * 1. Root folder: ZENEMOO_DATA_PORTFOLIO
- * 2. Automatic Dataset subfolder creation: ZENEMOO_DATA_PORTFOLIO / <Dataset Name>
- * 3. Automatic Category subfolders: AUDIO, VIDEO, IMAGE, JSON, CSV, PDF
- * 4. File uploads placed directly inside the dataset's category subfolder
- * 5. Direct Google Drive file deletion (trashes files in Drive when deleted in Admin)
- * 6. Direct Google Drive folder deletion (trashes entire dataset folder when deleted in Admin)
  */
 
 const SECRET_TOKEN = "ZENEMOO_DRIVE_SECRET_2026_PORTFOLIO";
@@ -199,8 +191,9 @@ function handleUploadFile(data) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
   const fileId = file.getId();
-  const directViewUrl = "https://lh3.googleusercontent.com/d/" + fileId;
+  const driveViewUrl = file.getUrl(); // https://drive.google.com/file/d/FILE_ID/view
   const downloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
+  const directViewUrl = "https://drive.google.com/uc?export=view&id=" + fileId;
 
   return responseJSON({
     success: true,
@@ -210,9 +203,10 @@ function handleUploadFile(data) {
       mimeType: file.getMimeType(),
       size: file.getSize(),
       folderId: parentFolder.getId(),
-      url: directViewUrl,
+      url: downloadUrl,
       downloadUrl: downloadUrl,
-      thumbnailUrl: directViewUrl
+      thumbnailUrl: directViewUrl,
+      viewUrl: driveViewUrl
     }
   });
 }
@@ -268,12 +262,13 @@ function handleListFiles(data) {
 
   while (filesIter.hasNext()) {
     const f = filesIter.next();
+    const fId = f.getId();
     fileList.push({
-      id: f.getId(),
+      id: fId,
       name: f.getName(),
       mimeType: f.getMimeType(),
       size: f.getSize(),
-      url: "https://lh3.googleusercontent.com/d/" + f.getId(),
+      url: "https://drive.google.com/uc?export=download&id=" + fId,
       created: f.getDateCreated().toISOString()
     });
   }

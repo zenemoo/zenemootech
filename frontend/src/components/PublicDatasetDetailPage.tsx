@@ -102,11 +102,14 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     const url = file.drive_url || file.thumbnail_url;
     if (!url) return '';
 
-    if (url.includes('drive.google.com')) {
-      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) {
-        return `https://lh3.googleusercontent.com/d/${match[1]}`;
+    // Handle old stored lh3.googleusercontent.com or drive.google.com URLs
+    const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (fileIdMatch && fileIdMatch[1]) {
+      const fileId = fileIdMatch[1];
+      if (file.file_type === 'IMAGE') {
+        return `https://drive.google.com/uc?export=view&id=${fileId}`;
       }
+      return `https://drive.google.com/uc?export=download&id=${fileId}`;
     }
 
     return url;
@@ -149,13 +152,13 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else if (url.includes('drive.google.com')) {
-      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) {
-        window.open(`https://drive.google.com/uc?export=download&id=${match[1]}`, '_blank');
-      } else {
-        window.open(url, '_blank');
-      }
+      return;
+    }
+
+    const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (fileIdMatch && fileIdMatch[1]) {
+      const fileId = fileIdMatch[1];
+      window.open(`https://drive.google.com/uc?export=download&id=${fileId}`, '_blank');
     } else {
       window.open(url, '_blank');
     }
