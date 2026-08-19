@@ -21,6 +21,7 @@ import { datasetApi } from '../services/api';
 import { formatFileSize, DatasetCategoryType } from '../utils/fileTypeDetector';
 import { useActiveLogo } from '../lib/useActiveLogo';
 import { SeoImage } from '../seo/components/SeoImage';
+import { SeoMeta } from '../seo/components/SeoMeta';
 
 interface DatasetItem {
   id: string;
@@ -98,6 +99,32 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Enterprise Professional SEO Tags */}
+      <SeoMeta
+        title="AI Data Portfolio & Multilingual Speech Datasets | Zenemoo"
+        description="Explore Zenemoo's enterprise AI dataset repository. High-quality Odia, Hindi, and Indian English speech recognition audio, computer vision, NLP, and model training datasets."
+        canonicalUrl="https://www.zenemoo.in/ai-data"
+      />
+
+      {/* Structured Google Search DataCatalog Schema */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'DataCatalog',
+            name: 'Zenemoo AI Data Portfolio',
+            description: 'Enterprise multilingual speech recognition audio, computer vision, and NLP datasets.',
+            url: 'https://www.zenemoo.in/ai-data',
+            provider: {
+              '@type': 'Organization',
+              name: 'Zenemoo Tech',
+              url: 'https://www.zenemoo.in',
+            },
+          }),
+        }}
+      />
+
       {/* Top Navbar */}
       <Navbar onBack={onBack} showBackButton={true} onOpenAiDrawer={onOpenAiDrawer} />
 

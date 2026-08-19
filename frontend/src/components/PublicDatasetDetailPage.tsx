@@ -23,6 +23,7 @@ import { Footer } from './Footer';
 import { datasetApi } from '../services/api';
 import { formatFileSize, detectFileType, DatasetCategoryType } from '../utils/fileTypeDetector';
 import { PreviewWatermark } from './PreviewWatermark';
+import { SeoMeta } from '../seo/components/SeoMeta';
 
 interface DatasetItem {
   id: string;
@@ -206,6 +207,11 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+      <SeoMeta
+        title={`${dataset?.name || 'Dataset Detail'} | Zenemoo AI Data Portfolio`}
+        description={dataset?.description || `Download and preview ${dataset?.name || 'multilingual AI speech and training datasets'} on Zenemoo.`}
+        canonicalUrl={`https://www.zenemoo.in/dataset/${slug}`}
+      />
       <Navbar onBack={onBack} showBackButton={true} onOpenAiDrawer={onOpenAiDrawer} />
 
       <main className="pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
