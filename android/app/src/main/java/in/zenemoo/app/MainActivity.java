@@ -3,6 +3,7 @@ package in.zenemoo.app;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Window;
 import android.view.WindowManager;
@@ -16,6 +17,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -43,16 +45,33 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Customize Status Bar & Navigation Bar to match Zenemoo dark design (#050505)
         Window window = getWindow();
+        int darkColor = Color.parseColor("#050505");
+
+        // Edge-to-Edge & System Bar Customization for Zenemoo Visual Identity (#050505)
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        window.setStatusBarColor(Color.parseColor("#050505"));
-        window.setNavigationBarColor(Color.parseColor("#050505"));
+        window.setStatusBarColor(darkColor);
+        window.setNavigationBarColor(darkColor);
+
+        // Display Cutout / Notch Layout blending
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
+
+        // Configure light icons on dark status & navigation bars
+        WindowInsetsControllerCompat insetsController = new WindowInsetsControllerCompat(window, window.getDecorView());
+        insetsController.setAppearanceLightStatusBars(false);
+        insetsController.setAppearanceLightNavigationBars(false);
+
+        // Set decor view background color to #050505 to eliminate any white flash
+        window.getDecorView().setBackgroundColor(darkColor);
 
         // Configure WebView settings & handlers
         WebView webView = getBridge().getWebView();
         if (webView != null) {
+            webView.setBackgroundColor(darkColor);
+
             WebSettings settings = webView.getSettings();
             settings.setJavaScriptEnabled(true);
             settings.setDomStorageEnabled(true);
