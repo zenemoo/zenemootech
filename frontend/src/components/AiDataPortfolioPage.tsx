@@ -65,6 +65,21 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
     fetchDatasets();
   }, []);
 
+  // Compute dynamic stats metrics from real datasets
+  const statsMetrics = useMemo(() => {
+    const totalDatasets = datasets.length;
+    const languagesCount = new Set(datasets.map((d) => d.language).filter(Boolean)).size;
+    const totalFilesCount = datasets.reduce((sum, d) => sum + (d.total_files || 0), 0);
+    const totalBytes = datasets.reduce((sum, d) => sum + (d.total_size_bytes || 0), 0);
+
+    return {
+      datasets: totalDatasets > 0 ? `${totalDatasets}` : '0',
+      languages: languagesCount > 0 ? `${languagesCount}` : '0',
+      files: totalFilesCount > 0 ? `${totalFilesCount}` : '0',
+      storage: totalBytes > 0 ? formatFileSize(totalBytes) : '0 B',
+    };
+  }, [datasets]);
+
   // Filter datasets
   const filteredDatasets = useMemo(() => {
     return datasets.filter((ds) => {
@@ -117,14 +132,14 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
               </div>
             </div>
 
-            {/* STATS METRICS BAR */}
+            {/* DYNAMIC STATS METRICS BAR */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 border-t border-white/10">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
                   <Database className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xl font-extrabold text-white font-display">50+</p>
+                  <p className="text-xl font-extrabold text-white font-display">{statsMetrics.datasets}</p>
                   <p className="text-[11px] text-slate-400 font-mono">Datasets</p>
                 </div>
               </div>
@@ -134,7 +149,7 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
                   <Globe className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xl font-extrabold text-white font-display">12+</p>
+                  <p className="text-xl font-extrabold text-white font-display">{statsMetrics.languages}</p>
                   <p className="text-[11px] text-slate-400 font-mono">Languages</p>
                 </div>
               </div>
@@ -144,7 +159,7 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
                   <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xl font-extrabold text-white font-display">100K+</p>
+                  <p className="text-xl font-extrabold text-white font-display">{statsMetrics.files}</p>
                   <p className="text-[11px] text-slate-400 font-mono">Files</p>
                 </div>
               </div>
@@ -154,7 +169,7 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
                   <Folder className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xl font-extrabold text-white font-display">500GB+</p>
+                  <p className="text-xl font-extrabold text-white font-display">{statsMetrics.storage}</p>
                   <p className="text-[11px] text-slate-400 font-mono">Data</p>
                 </div>
               </div>
@@ -190,24 +205,17 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
         {/* DATASETS CATALOG GRID */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+            {[1, 2, 3].map((i) => (
               <div key={i} className="h-64 bg-[#090a0f] rounded-3xl border border-white/5 animate-pulse p-6" />
             ))}
           </div>
         ) : filteredDatasets.length === 0 ? (
           <div className="bg-[#090a0f] border border-white/10 rounded-3xl p-12 text-center">
             <Folder className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-white font-display">No datasets match your search</h3>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1">Try clearing your search query or selecting another category.</p>
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('ALL');
-              }}
-              className="mt-4 px-4 py-2 rounded-xl bg-cyan-500 text-white text-xs font-bold"
-            >
-              Reset Filters
-            </button>
+            <h3 className="text-lg font-bold text-white font-display">No datasets created yet</h3>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">
+              Datasets created by the admin in the Admin Dashboard will automatically appear here.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
