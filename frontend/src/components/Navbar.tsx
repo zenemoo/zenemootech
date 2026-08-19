@@ -24,7 +24,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
 
   const navLinks = [
     { name: 'Home', href: '/', icon: Home },
-    { name: 'AI Data Portfolio', href: '/ai-data', icon: Database },
     { name: 'Services', href: '/#services', icon: Mic },
     { name: 'Languages', href: '/#languages', icon: Languages },
     { name: 'Opportunities', href: '/opportunities', icon: Briefcase },
