@@ -383,7 +383,7 @@ export const datasetApi = {
     api.post('/datasets', data),
   createFolder: (datasetId: string, data: { folderName: string }) =>
     api.post(`/datasets/${datasetId}/folders`, data),
-  uploadFile: (datasetId: string, data: { fileName: string; fileType?: string; mimeType?: string; fileSize?: number; base64Data: string; driveFolderId?: string }) =>
+  uploadFile: (datasetId: string, data: { fileName: string; fileType?: string; mimeType?: string; fileSize?: number; base64Data?: string; driveUrl?: string; driveFolderId?: string }) =>
     api.post(`/datasets/${datasetId}/upload`, data, { timeout: 180000 }),
   uploadChunk: (datasetId: string, data: { uploadId: string; chunkIndex: number; totalChunks: number; fileName: string; fileType?: string; mimeType?: string; fileSize?: number; chunkData: string; driveFolderId?: string }) =>
     api.post(`/datasets/${datasetId}/upload-chunk`, data, { timeout: 60000 }),

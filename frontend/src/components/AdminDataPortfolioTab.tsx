@@ -1,38 +1,31 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Folder,
-  Plus,
-  Search,
+  FolderPlus,
   Upload,
+  Search,
+  Trash2,
+  Eye,
   FileText,
   Volume2,
   Video,
   Image as ImageIcon,
   FileCode,
   FileSpreadsheet,
-  Trash2,
-  ArrowLeft,
-  RefreshCw,
+  Plus,
+  CheckCircle2,
   X,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  HardDrive,
-  Grid,
-  List,
+  ExternalLink,
   ChevronRight,
-  Filter,
-  ArrowUpDown,
-  Download,
-  Eye,
+  Folder,
   FileUp,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { datasetApi } from '../services/api';
 import { detectFileType, formatFileSize, DatasetCategoryType } from '../utils/fileTypeDetector';
 
 interface AdminDataPortfolioTabProps {
-  addToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
-  showConfirm: (title: string, message: string, onConfirm: () => void, opts?: { confirmText?: string; cancelText?: string; intent?: 'danger' | 'warning' | 'info' }) => void;
+  addToast: (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+  showConfirm: (title: string, message: string, onConfirm: () => void) => void;
 }
 
 interface DatasetItem {
@@ -41,10 +34,10 @@ interface DatasetItem {
   slug: string;
   description?: string;
   language?: string;
-  drive_folder_id?: string;
-  status: string;
   total_files: number;
   total_size_bytes: number;
+  drive_folder_id?: string;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -91,68 +84,72 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [fileSortBy, setFileSortBy] = useState<'latest' | 'name' | 'size'>('latest');
 
-  // Modal States
+  // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [newDatasetName, setNewDatasetName] = useState('');
   const [newDatasetDesc, setNewDatasetDesc] = useState('');
   const [newDatasetLang, setNewDatasetLang] = useState('Multilingual');
-  const [isCreating, setIsCreating] = useState(false);
-
-  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [isCreatingDataset, setIsCreatingDataset] = useState(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
-  // Drag and Drop & Upload Queue state
-  const [isDragOver, setIsDragOver] = useState(false);
+  // Link Upload Modal State
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [urlFileName, setUrlFileName] = useState('');
+  const [urlCategory, setUrlCategory] = useState<DatasetCategoryType>('VIDEO');
+  const [urlLink, setUrlLink] = useState('');
+  const [urlFileSizeText, setUrlFileSizeText] = useState('50 MB');
+  const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
+
+  // File Upload Queue state
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
   const [isUploadingQueue, setIsUploadingQueue] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load datasets on mount
-  const loadDatasets = async () => {
+  // Load Datasets List
+  const fetchDatasets = async () => {
     setIsLoading(true);
     try {
-      const res = await datasetApi.getDatasets();
+      const res = await datasetApi.getDatasets({ search: searchQuery, status: statusFilter });
       if (res.data && res.data.success) {
         setDatasets(res.data.datasets || []);
       }
     } catch (err: any) {
-      console.error('Failed to load datasets:', err);
-      addToast('Error', 'Could not fetch datasets list.', 'error');
+      console.error('Fetch datasets error:', err);
+      addToast('Error', 'Failed to fetch datasets.', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadDatasets();
-  }, []);
+    fetchDatasets();
+  }, [searchQuery, statusFilter]);
 
-  // Open dataset detail
-  const handleOpenDataset = async (dataset: DatasetItem) => {
-    setSelectedDataset(dataset);
+  // Load Selected Dataset Files
+  const fetchDatasetDetails = async (identifier: string) => {
     setIsLoadingFiles(true);
     try {
-      const res = await datasetApi.getDatasetBySlugOrId(dataset.id);
+      const res = await datasetApi.getDatasetBySlugOrId(identifier);
       if (res.data && res.data.success) {
+        setSelectedDataset(res.data.dataset);
         setDatasetFiles(res.data.files || []);
       }
-    } catch (err) {
-      addToast('Error', 'Could not load dataset files.', 'error');
+    } catch (err: any) {
+      addToast('Error', 'Failed to load dataset details.', 'error');
     } finally {
       setIsLoadingFiles(false);
     }
   };
 
-  // Create Dataset Handler
+  // Create New Dataset
   const handleCreateDataset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDatasetName.trim()) {
-      addToast('Validation', 'Please enter a dataset name.', 'warning');
-      return;
-    }
+    if (!newDatasetName.trim()) return;
 
-    setIsCreating(true);
+    setIsCreatingDataset(true);
     try {
       const res = await datasetApi.createDataset({
         name: newDatasetName.trim(),
@@ -161,20 +158,24 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
       });
 
       if (res.data && res.data.success) {
-        addToast('Success', 'Dataset created successfully with Google Drive structure!', 'success');
+        addToast('Success', `Dataset "${newDatasetName}" created!`, 'success');
         setNewDatasetName('');
         setNewDatasetDesc('');
         setIsCreateModalOpen(false);
-        await loadDatasets();
+        fetchDatasets();
+        if (res.data.dataset) {
+          setSelectedDataset(res.data.dataset);
+          setDatasetFiles([]);
+        }
       }
     } catch (err: any) {
       addToast('Error', err.response?.data?.message || 'Failed to create dataset.', 'error');
     } finally {
-      setIsCreating(false);
+      setIsCreatingDataset(false);
     }
   };
 
-  // Create Custom Folder Handler
+  // Create Custom Folder
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolderName.trim() || !selectedDataset) return;
@@ -191,6 +192,59 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
       addToast('Error', 'Failed to create folder.', 'error');
     } finally {
       setIsCreatingFolder(false);
+    }
+  };
+
+  // Handle Add File via Link
+  const handleAddUrlFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDataset || !urlFileName.trim() || !urlLink.trim()) {
+      addToast('Error', 'Please provide a file name and valid link.', 'error');
+      return;
+    }
+
+    setIsSubmittingUrl(true);
+    try {
+      let sizeBytes = 10 * 1024 * 1024;
+      const numMatch = urlFileSizeText.match(/([\d.]+)/);
+      if (numMatch && numMatch[1]) {
+        const val = parseFloat(numMatch[1]);
+        if (urlFileSizeText.toUpperCase().includes('GB')) sizeBytes = val * 1024 * 1024 * 1024;
+        else if (urlFileSizeText.toUpperCase().includes('MB')) sizeBytes = val * 1024 * 1024;
+        else if (urlFileSizeText.toUpperCase().includes('KB')) sizeBytes = val * 1024;
+        else sizeBytes = val;
+      }
+
+      const res = await datasetApi.uploadFile(selectedDataset.id, {
+        fileName: urlFileName.trim(),
+        fileType: urlCategory,
+        mimeType: urlCategory === 'VIDEO' ? 'video/mp4' : urlCategory === 'AUDIO' ? 'audio/wav' : 'application/octet-stream',
+        fileSize: Math.round(sizeBytes),
+        driveUrl: urlLink.trim(),
+      });
+
+      if (res.data && res.data.success) {
+        addToast('Success', `File "${urlFileName}" added via Google Drive link!`, 'success');
+        setDatasetFiles((prev) => [res.data.file, ...prev]);
+        setSelectedDataset((prev) =>
+          prev
+            ? {
+                ...prev,
+                total_files: prev.total_files + 1,
+                total_size_bytes: prev.total_size_bytes + Math.round(sizeBytes),
+              }
+            : null
+        );
+        setIsUrlModalOpen(false);
+        setUrlFileName('');
+        setUrlLink('');
+      } else {
+        throw new Error(res.data?.message || 'Failed to add link');
+      }
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to add file link.', 'error');
+    } finally {
+      setIsSubmittingUrl(false);
     }
   };
 
@@ -228,7 +282,6 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
       setUploadQueue((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'uploading', progress: 20 } : t)));
 
       try {
-        // Read file as Base64 string
         const base64Data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => {
@@ -240,7 +293,7 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
           reader.readAsDataURL(task.file);
         });
 
-        const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB base64 chunks
+        const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB base64 chunks
         if (base64Data.length > CHUNK_SIZE) {
           const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
           const uploadId = `upl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -333,45 +386,50 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
         try {
           const res = await datasetApi.deleteFile(fileId);
           if (res.data && res.data.success) {
-            addToast('Deleted', `File "${fileName}" deleted successfully.`, 'info');
+            addToast('Success', `File "${fileName}" deleted.`, 'success');
             setDatasetFiles((prev) => prev.filter((f) => f.id !== fileId));
-            setSelectedDataset((prev) => (prev ? { ...prev, total_files: Math.max(0, prev.total_files - 1) } : null));
+            if (selectedDataset) {
+              const target = datasetFiles.find((f) => f.id === fileId);
+              const sz = target ? target.file_size : 0;
+              setSelectedDataset({
+                ...selectedDataset,
+                total_files: Math.max(0, selectedDataset.total_files - 1),
+                total_size_bytes: Math.max(0, selectedDataset.total_size_bytes - sz),
+              });
+            }
           }
-        } catch (err) {
+        } catch (err: any) {
           addToast('Error', 'Failed to delete file.', 'error');
         }
       }
     );
   };
 
-  // Overall Statistics computation
-  const stats = useMemo(() => {
-    const totalDatasetsCount = datasets.length;
-    const totalFilesCount = datasets.reduce((acc, curr) => acc + (curr.total_files || 0), 0);
-    const totalSizeBytes = datasets.reduce((acc, curr) => acc + (curr.total_size_bytes || 0), 0);
-    return {
-      totalDatasetsCount,
-      totalFilesCount,
-      totalSizeFormatted: formatFileSize(totalSizeBytes),
-    };
-  }, [datasets]);
+  // Dataset Deletion Handler
+  const handleDeleteDataset = (datasetId: string, datasetName: string) => {
+    showConfirm(
+      'Delete Dataset',
+      `Are you sure you want to delete dataset "${datasetName}"? This will permanently delete all associated Google Drive folders and database indexes.`,
+      async () => {
+        try {
+          const res = await datasetApi.deleteDataset(datasetId);
+          if (res.data && res.data.success) {
+            addToast('Success', `Dataset "${datasetName}" deleted.`, 'success');
+            if (selectedDataset?.id === datasetId) {
+              setSelectedDataset(null);
+            }
+            fetchDatasets();
+          }
+        } catch (err: any) {
+          addToast('Error', 'Failed to delete dataset.', 'error');
+        }
+      }
+    );
+  };
 
-  // Filtered Datasets for Dashboard
-  const filteredDatasets = useMemo(() => {
-    return datasets.filter((ds) => {
-      const matchSearch =
-        ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (ds.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (ds.language || '').toLowerCase().includes(searchQuery.toLowerCase());
-      const matchStatus = statusFilter === 'all' || ds.status === statusFilter;
-      return matchSearch && matchStatus;
-    });
-  }, [datasets, searchQuery, statusFilter]);
-
-  // Category file counts for selected dataset
+  // Compute Statistics per category
   const categoryCounts = useMemo(() => {
-    const counts: Record<DatasetCategoryType | 'ALL', { count: number; size: number }> = {
-      ALL: { count: datasetFiles.length, size: datasetFiles.reduce((a, b) => a + (b.file_size || 0), 0) },
+    const counts: Record<DatasetCategoryType, { count: number; size: number }> = {
       AUDIO: { count: 0, size: 0 },
       VIDEO: { count: 0, size: 0 },
       IMAGE: { count: 0, size: 0 },
@@ -381,23 +439,23 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
       OTHER: { count: 0, size: 0 },
     };
 
-    datasetFiles.forEach((f) => {
-      const cat = f.file_type || 'OTHER';
-      if (counts[cat]) {
-        counts[cat].count += 1;
-        counts[cat].size += f.file_size || 0;
+    datasetFiles.forEach((file) => {
+      const type = file.file_type || 'AUDIO';
+      if (counts[type]) {
+        counts[type].count += 1;
+        counts[type].size += file.file_size;
       }
     });
 
     return counts;
   }, [datasetFiles]);
 
-  // Filtered & Sorted Files in Dataset Detail
+  // Filtered files inside selected dataset
   const filteredFiles = useMemo(() => {
     let list = datasetFiles.filter((f) => {
       const matchCat = activeCategoryTab === 'ALL' || f.file_type === activeCategoryTab;
-      const matchSearch = f.file_name.toLowerCase().includes(fileSearchQuery.toLowerCase());
-      return matchCat && matchSearch;
+      const matchQuery = f.file_name.toLowerCase().includes(fileSearchQuery.toLowerCase());
+      return matchCat && matchQuery;
     });
 
     if (fileSortBy === 'name') {
@@ -413,86 +471,45 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
 
   return (
     <div className="space-y-6">
-      {/* SECTION HEADER */}
+      {/* TOP ACTION BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#090a0f] p-6 rounded-3xl border border-white/10 shadow-2xl">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <Folder className="w-5 h-5" />
+            </span>
+            <h1 className="text-xl font-bold text-white font-display">AI Data Portfolio & Datasets</h1>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Enterprise multilingual speech, video, image, JSON, CSV & PDF AI training dataset catalog.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {selectedDataset && (
+            <button
+              onClick={() => setSelectedDataset(null)}
+              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-mono inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>← Back to Catalog</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold text-xs inline-flex items-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Dataset</span>
+          </button>
+        </div>
+      </div>
+
       {!selectedDataset ? (
-        <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight font-display flex items-center gap-2.5">
-                <Folder className="w-7 h-7 text-cyan-400" />
-                Datasets Dashboard
-              </h1>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">
-                Manage all your enterprise AI training datasets, categories, and Google Drive folder structures.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={loadDatasets}
-                className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer"
-                title="Refresh Datasets"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Dataset</span>
-              </button>
-            </div>
-          </div>
-
-          {/* TOP METRICS SUMMARY */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-            <div className="bg-[#090a0f] p-4 rounded-2xl border border-white/10 relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-400">Total Datasets</span>
-                <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                  <Folder className="w-4 h-4" />
-                </div>
-              </div>
-              <p className="text-2xl font-extrabold text-white mt-2">{stats.totalDatasetsCount}</p>
-              <span className="text-[10px] text-emerald-400 font-mono mt-1 inline-block">Active Repositories</span>
-            </div>
-
-            <div className="bg-[#090a0f] p-4 rounded-2xl border border-white/10 relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-400">Total Files</span>
-                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  <FileText className="w-4 h-4" />
-                </div>
-              </div>
-              <p className="text-2xl font-extrabold text-white mt-2">{stats.totalFilesCount.toLocaleString()}</p>
-              <span className="text-[10px] text-indigo-300 font-mono mt-1 inline-block">Indexed Records</span>
-            </div>
-
-            <div className="bg-[#090a0f] p-4 rounded-2xl border border-white/10 relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-400">Total Storage</span>
-                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                  <HardDrive className="w-4 h-4" />
-                </div>
-              </div>
-              <p className="text-2xl font-extrabold text-white mt-2">{stats.totalSizeFormatted}</p>
-              <span className="text-[10px] text-purple-300 font-mono mt-1 inline-block">Google Drive Storage</span>
-            </div>
-
-            <div className="bg-[#090a0f] p-4 rounded-2xl border border-white/10 relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-400">File Types</span>
-                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  <FileCode className="w-4 h-4" />
-                </div>
-              </div>
-              <p className="text-2xl font-extrabold text-white mt-2">6 Categories</p>
-              <span className="text-[10px] text-amber-300 font-mono mt-1 inline-block">Audio, Video, Image, JSON, CSV, PDF</span>
-            </div>
-          </div>
-
-          {/* SEARCH & FILTERS BAR */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#090a0f] p-3 rounded-2xl border border-white/10">
+        /* CATALOG DATASET LIST VIEW */
+        <div className="space-y-6">
+          {/* SEARCH & FILTERS */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#090a0f] p-4 rounded-2xl border border-white/10">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -500,186 +517,103 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                 placeholder="Search datasets..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <select
                 value={statusFilter}
                 onChange={(e: any) => setStatusFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none"
               >
-                <option value="all">All Status</option>
+                <option value="all">Status: All</option>
                 <option value="active">Active</option>
                 <option value="draft">Draft</option>
               </select>
-
-              <div className="flex items-center p-1 bg-slate-900 rounded-xl border border-slate-800">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
-                  title="Grid View"
-                >
-                  <Grid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
-                  title="List View"
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* DATASETS GRID / LIST */}
+          {/* DATASETS GRID */}
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="h-44 bg-[#090a0f] rounded-2xl border border-white/5 animate-pulse p-5" />
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="h-44 bg-[#090a0f] border border-white/10 rounded-2xl animate-pulse" />
               ))}
             </div>
-          ) : filteredDatasets.length === 0 ? (
-            <div className="bg-[#090a0f] border border-white/10 rounded-2xl p-12 text-center">
-              <Folder className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <h3 className="text-lg font-bold text-white">No datasets found</h3>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-md mx-auto">
-                Create your first dataset to automatically generate Google Drive folder structures and organize speech, video, image, JSON, CSV and PDF training data.
+          ) : datasets.length === 0 ? (
+            <div className="bg-[#090a0f] border border-white/10 rounded-3xl p-12 text-center space-y-4">
+              <Folder className="w-12 h-12 text-slate-600 mx-auto" />
+              <h3 className="text-base font-bold text-white">No AI Datasets Found</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Create your first speech or text AI training dataset to start organizing audio, video, image, and JSON files.
               </p>
               <button
                 onClick={() => setIsCreateModalOpen(true)}
-                className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 text-white font-medium text-xs shadow-lg shadow-cyan-500/20 hover:bg-cyan-400 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create First Dataset</span>
               </button>
             </div>
-          ) : viewMode === 'grid' ? (
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredDatasets.map((ds) => (
+              {datasets.map((ds) => (
                 <div
                   key={ds.id}
-                  onClick={() => handleOpenDataset(ds)}
-                  className="group bg-[#090a0f] hover:bg-slate-900/80 border border-white/10 hover:border-cyan-500/50 rounded-2xl p-5 transition-all cursor-pointer shadow-lg hover:shadow-cyan-500/10 flex flex-col justify-between"
+                  className="bg-[#090a0f] border border-white/10 hover:border-cyan-500/40 rounded-3xl p-5 space-y-4 transition-all group relative shadow-lg"
                 >
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 group-hover:scale-105 transition-transform">
-                        <Folder className="w-6 h-6" />
-                      </div>
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 uppercase">
-                        {ds.status || 'ACTIVE'}
-                      </span>
-                    </div>
+                  <div className="flex items-start justify-between">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase">
+                      {ds.language || 'Multilingual'}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteDataset(ds.id, ds.name)}
+                      className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+                      title="Delete dataset"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
 
+                  <div>
                     <h3 className="text-base font-bold text-white group-hover:text-cyan-400 transition-colors font-display line-clamp-1">
                       {ds.name}
                     </h3>
                     <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                      {ds.description || 'No description provided.'}
+                      {ds.description || 'Enterprise AI training dataset.'}
                     </p>
                   </div>
 
-                  <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-slate-400">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-cyan-300 font-semibold">{ds.total_files || 0} Files</span>
-                      <span>•</span>
-                      <span>{formatFileSize(ds.total_size_bytes || 0)}</span>
+                  <div className="pt-3 border-t border-white/5 flex items-center justify-between text-xs">
+                    <div className="space-y-0.5">
+                      <p className="text-slate-400 font-mono text-[11px]">{ds.total_files} files</p>
+                      <p className="text-cyan-400 font-mono font-bold text-xs">{formatFileSize(ds.total_size_bytes)}</p>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+
+                    <button
+                      onClick={() => fetchDatasetDetails(ds.slug || ds.id)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 group-hover:bg-cyan-500/20 text-slate-300 group-hover:text-cyan-300 border border-slate-800 group-hover:border-cyan-500/30 text-xs font-mono inline-flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                      <span>Manage</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="bg-[#090a0f] border border-white/10 rounded-2xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-white/10 bg-slate-900/50 text-[11px] font-mono uppercase text-slate-400">
-                      <th className="p-4">Dataset Name</th>
-                      <th className="p-4">Language</th>
-                      <th className="p-4">Files</th>
-                      <th className="p-4">Storage Size</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-xs text-slate-300">
-                    {filteredDatasets.map((ds) => (
-                      <tr key={ds.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="p-4 font-semibold text-white flex items-center gap-3">
-                          <Folder className="w-4 h-4 text-cyan-400 shrink-0" />
-                          <div>
-                            <p className="font-bold text-white">{ds.name}</p>
-                            <p className="text-[11px] text-slate-400 line-clamp-1">{ds.description}</p>
-                          </div>
-                        </td>
-                        <td className="p-4 font-mono">{ds.language || 'Multilingual'}</td>
-                        <td className="p-4 font-mono font-bold text-cyan-300">{ds.total_files || 0}</td>
-                        <td className="p-4 font-mono">{formatFileSize(ds.total_size_bytes || 0)}</td>
-                        <td className="p-4">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            {ds.status}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right">
-                          <button
-                            onClick={() => handleOpenDataset(ds)}
-                            className="px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer"
-                          >
-                            Open Dataset
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           )}
-        </>
+        </div>
       ) : (
-        /* SECTION: DATASET DETAIL VIEW */
+        /* SELECTED DATASET FILE MANAGEMENT VIEW */
         <div className="space-y-6">
-          {/* TOP BREADCRUMB NAV */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <button
-              onClick={() => setSelectedDataset(null)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 text-xs font-mono transition-all cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4 text-cyan-400" />
-              <span>Back to Datasets</span>
-            </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsFolderModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-slate-300 hover:text-white border border-slate-800 text-xs font-mono transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-cyan-400" />
-                <span>New Folder</span>
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-cyan-500 text-white font-medium text-xs shadow-lg shadow-cyan-500/20 hover:bg-cyan-400 transition-all cursor-pointer"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload Files</span>
-              </button>
-            </div>
-          </div>
-
-          {/* DATASET TITLE & SUMMARY BAR */}
-          <div className="bg-[#090a0f] p-5 rounded-2xl border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* DATASET HEADER SUMMARY */}
+          <div className="bg-[#090a0f] border border-white/10 rounded-3xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                  {selectedDataset.language || 'Multilingual'}
-                </span>
-                <span className="text-xs text-slate-400">ID: {selectedDataset.id}</span>
+                <span className="text-xs font-mono text-cyan-400">{selectedDataset.language || 'Multilingual'}</span>
+                <span className="text-slate-600">•</span>
+                <span className="text-xs font-mono text-slate-400">ID: {selectedDataset.slug}</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-bold text-white mt-1 font-display">{selectedDataset.name}</h2>
               <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">{selectedDataset.description || 'Enterprise AI Dataset'}</p>
@@ -730,7 +664,7 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
             })}
           </div>
 
-          {/* DRAG AND DROP UPLOAD DROPZONE */}
+          {/* UPLOAD SECTIONS: DROPZONE + DRIVE LINK BUTTON */}
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -762,16 +696,26 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
             <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mx-auto flex items-center justify-center mb-3">
               <Upload className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-white">Drag & drop files here</h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Supports Audio (.mp3, .wav), Video (.mp4), Image (.png, .jpg), JSON, CSV, and PDF.
+            <h3 className="text-base font-bold text-white">Upload Files to Dataset</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-lg mx-auto">
+              Direct computer upload or paste Google Drive public links for video and large datasets.
             </p>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-4 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium transition-all cursor-pointer"
-            >
-              Select Files from Computer
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium transition-all cursor-pointer"
+              >
+                Select Files from Computer
+              </button>
+
+              <button
+                onClick={() => setIsUrlModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <LinkIcon className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Add via Google Drive Link / URL</span>
+              </button>
+            </div>
           </div>
 
           {/* UPLOAD QUEUE PROGRESS PANEL */}
@@ -790,55 +734,44 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {uploadQueue.map((task) => (
-                  <div key={task.id} className="flex items-center justify-between text-xs bg-slate-900/60 p-2.5 rounded-xl border border-white/5">
-                    <div className="flex items-center gap-2.5 truncate max-w-md">
-                      <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                        {task.type}
-                      </span>
-                      <span className="font-medium text-slate-200 truncate">{task.name}</span>
-                      <span className="text-[10px] text-slate-500 font-mono">({formatFileSize(task.size)})</span>
+                  <div key={task.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-white/5 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 truncate max-w-md">
+                        <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          {task.type}
+                        </span>
+                        <span className="text-white font-medium truncate">{task.name}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">({formatFileSize(task.size)})</span>
+                      </div>
+
+                      {task.status === 'completed' && <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Completed</span>}
+                      {task.status === 'failed' && <span className="text-[11px] font-mono text-rose-400">Failed</span>}
+                      {task.status === 'uploading' && <span className="text-[11px] font-mono text-cyan-400 animate-pulse">{task.progress}%</span>}
+                      {task.status === 'queued' && <span className="text-[11px] font-mono text-slate-400">Queued</span>}
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      {task.status === 'completed' && (
-                        <span className="text-emerald-400 text-[11px] font-mono flex items-center gap-1">
-                          <CheckCircle className="w-3.5 h-3.5" /> Completed
-                        </span>
-                      )}
-                      {task.status === 'uploading' && (
-                        <span className="text-cyan-400 text-[11px] font-mono flex items-center gap-1 animate-pulse">
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {task.progress}%
-                        </span>
-                      )}
-                      {task.status === 'queued' && <span className="text-slate-400 text-[11px] font-mono">Queued</span>}
-                      {task.status === 'failed' && (
-                        <span className="text-rose-400 text-[11px] font-mono flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5" /> Failed
-                        </span>
-                      )}
-                    </div>
+                    {task.status === 'uploading' && (
+                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-cyan-400 h-full transition-all duration-300" style={{ width: `${task.progress}%` }} />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* FILES LIST TABLE */}
-          <div className="bg-[#090a0f] border border-white/10 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* FILES INDEX TABLE */}
+          <div className="bg-[#090a0f] border border-white/10 rounded-3xl overflow-hidden shadow-2xl space-y-4">
+            <div className="p-4 border-b border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">Files ({filteredFiles.length})</h3>
-                {activeCategoryTab !== 'ALL' && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                    Category: {activeCategoryTab}
-                  </span>
-                )}
+                <span className="text-xs font-mono font-bold text-white uppercase">Files ({filteredFiles.length})</span>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="relative w-full sm:w-64">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="relative w-full sm:w-60">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
@@ -951,12 +884,9 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
       {/* CREATE DATASET MODAL */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#090a0f] border border-white/10 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+          <div className="bg-[#090a0f] border border-white/10 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-cyan-400" />
-                Create New Dataset
-              </h3>
+              <h3 className="text-base font-bold text-white font-display">Create New AI Dataset</h3>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
@@ -968,10 +898,10 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Odia Speech Dataset"
+                  placeholder="e.g. Odia Speech Recognition Corpus"
                   value={newDatasetName}
                   onChange={(e) => setNewDatasetName(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
               </div>
 
@@ -982,7 +912,7 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                   placeholder="e.g. Odia, Hindi, Multilingual"
                   value={newDatasetLang}
                   onChange={(e) => setNewDatasetLang(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
               </div>
 
@@ -990,54 +920,9 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                 <label className="block text-xs font-mono text-slate-300 mb-1">Description</label>
                 <textarea
                   rows={3}
-                  placeholder="Short description of the training dataset content..."
+                  placeholder="Describe dataset domain, audio hours, or sample rate..."
                   value={newDatasetDesc}
                   onChange={(e) => setNewDatasetDesc(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 disabled:opacity-50"
-                >
-                  {isCreating ? 'Creating Drive Folder...' : 'Create Dataset'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* CREATE CUSTOM FOLDER MODAL */}
-      {isFolderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#090a0f] border border-white/10 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="text-base font-bold text-white">Create Custom Folder</h3>
-              <button onClick={() => setIsFolderModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateFolder} className="space-y-4">
-              <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">Folder Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Training, Validation"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
               </div>
@@ -1045,17 +930,109 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setIsFolderModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-slate-300 text-xs font-medium"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-slate-300 text-xs font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isCreatingFolder}
-                  className="px-4 py-2 rounded-xl bg-cyan-500 text-white font-bold text-xs disabled:opacity-50"
+                  disabled={isCreatingDataset}
+                  className="px-4 py-2 rounded-xl bg-cyan-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
                 >
-                  {isCreatingFolder ? 'Creating...' : 'Create Folder'}
+                  {isCreatingDataset ? 'Creating...' : 'Create Dataset'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD VIA GOOGLE DRIVE LINK MODAL */}
+      {isUrlModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#090a0f] border border-white/10 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <LinkIcon className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-base font-bold text-white font-display">Add File via Google Drive Link</h3>
+              </div>
+              <button onClick={() => setIsUrlModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddUrlFile} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">File Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Clothing_lacha_Amroha_244235.mp4"
+                  value={urlFileName}
+                  onChange={(e) => setUrlFileName(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-mono text-slate-300 mb-1">Category *</label>
+                  <select
+                    value={urlCategory}
+                    onChange={(e: any) => setUrlCategory(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="VIDEO">VIDEO</option>
+                    <option value="AUDIO">AUDIO</option>
+                    <option value="IMAGE">IMAGE</option>
+                    <option value="JSON">JSON</option>
+                    <option value="CSV">CSV</option>
+                    <option value="PDF">PDF</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-slate-300 mb-1">Approx. File Size</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 58.5 MB"
+                    value={urlFileSizeText}
+                    onChange={(e) => setUrlFileSizeText(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-slate-300 mb-1">Google Drive Link / Public File URL *</label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://drive.google.com/file/d/1qIS832Ixs5Q_QoNW_0Gh0uT6jIHzleIa/view"
+                  value={urlLink}
+                  onChange={(e) => setUrlLink(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Tip: Make sure link sharing is set to "Anyone with the link can view".
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setIsUrlModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingUrl}
+                  className="px-4 py-2 rounded-xl bg-cyan-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingUrl ? 'Adding...' : 'Add File Record'}
                 </button>
               </div>
             </form>

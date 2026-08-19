@@ -264,10 +264,10 @@ export const createFolder = async (req, res) => {
 export const uploadFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fileName, fileType, mimeType, fileSize, base64Data, driveFolderId } = req.body;
+    const { fileName, fileType, mimeType, fileSize, base64Data, driveUrl, driveFolderId } = req.body;
 
-    if (!fileName || !base64Data) {
-      return res.status(400).json({ success: false, message: 'Missing fileName or base64Data' });
+    if (!fileName || (!base64Data && !driveUrl)) {
+      return res.status(400).json({ success: false, message: 'Missing fileName, base64Data, or driveUrl' });
     }
 
     // Lookup root dataset drive folder ID if not passed
@@ -285,18 +285,35 @@ export const uploadFile = async (req, res) => {
       }
     }
 
-    const computedSize = fileSize || Math.round(base64Data.length * 0.75);
+    let finalDriveUrl = driveUrl || null;
+    let finalDriveFileId = `drive_${Date.now()}`;
+    let computedSize = fileSize || 0;
+
+    if (driveUrl) {
+      const fileIdMatch = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || driveUrl.match(/id=([a-zA-Z0-9_-]+)/);
+      if (fileIdMatch && fileIdMatch[1]) {
+        finalDriveFileId = fileIdMatch[1];
+        finalDriveUrl = `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`;
+      } else {
+        finalDriveUrl = driveUrl;
+      }
+    }
+
+    if (base64Data) {
+      computedSize = fileSize || Math.round(base64Data.length * 0.75);
+      const fallbackDataUrl = computedSize < 1024 * 1024 ? `data:${mimeType || 'application/octet-stream'};base64,${base64Data}` : null;
+      if (!finalDriveUrl) finalDriveUrl = fallbackDataUrl;
+    }
 
     // Memory Guard: Extract raw text ONLY for small text/JSON/CSV files (< 1MB)
     let rawContent = null;
-    try {
-      if (computedSize < 1024 * 1024 && (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv'))))) {
-        rawContent = Buffer.from(base64Data, 'base64').toString('utf-8');
-      }
-    } catch (e) {}
-
-    // Memory Guard: Create Data URL fallback ONLY for small files (< 1MB), NEVER for large binary video/audio files
-    const fallbackDataUrl = computedSize < 1024 * 1024 ? `data:${mimeType || 'application/octet-stream'};base64,${base64Data}` : null;
+    if (base64Data && computedSize < 1024 * 1024) {
+      try {
+        if (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv')))) {
+          rawContent = Buffer.from(base64Data, 'base64').toString('utf-8');
+        }
+      } catch (e) {}
+    }
 
     const fileRecord = {
       id: `f_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -305,10 +322,10 @@ export const uploadFile = async (req, res) => {
       file_type: fileType || 'AUDIO',
       mime_type: mimeType || 'application/octet-stream',
       file_size: computedSize,
-      drive_file_id: `drive_${Date.now()}`,
-      drive_folder_id: targetFolder,
-      drive_url: fallbackDataUrl,
-      thumbnail_url: mimeType?.startsWith('image/') ? fallbackDataUrl : null,
+      drive_file_id: finalDriveFileId,
+      drive_folder_id: targetFolder || 'root',
+      drive_url: finalDriveUrl,
+      thumbnail_url: fileType === 'IMAGE' ? finalDriveUrl : null,
       raw_content: rawContent,
       status: 'ready',
       created_at: new Date().toISOString(),
@@ -328,7 +345,7 @@ export const uploadFile = async (req, res) => {
             mime_type: mimeType,
             file_size: fileRecord.file_size,
             drive_file_id: fileRecord.drive_file_id,
-            drive_folder_id: targetFolder,
+            drive_folder_id: targetFolder || 'root',
             drive_url: fileRecord.drive_url,
             thumbnail_url: fileRecord.thumbnail_url,
             raw_content: rawContent,
@@ -355,48 +372,50 @@ export const uploadFile = async (req, res) => {
       }
     }
 
-    // ⚡ Respond to client immediately (< 500ms) so Render proxy NEVER times out
+    // ⚡ Respond to client immediately (< 500ms)
     res.status(201).json({ success: true, file: insertedDbFile || fileRecord });
 
-    // 🚀 ASYNCHRONOUS BACKGROUND TASK: Upload to Google Drive without blocking HTTP response
-    (async () => {
-      try {
-        const driveRes = await googleAppsScriptService.uploadFile({
-          targetFolderId: targetFolder || 'root',
-          category: fileType || 'AUDIO',
-          fileName,
-          mimeType,
-          base64Data,
-        });
+    // If base64Data was provided, run background Google Drive upload
+    if (base64Data) {
+      (async () => {
+        try {
+          const driveRes = await googleAppsScriptService.uploadFile({
+            targetFolderId: targetFolder || 'root',
+            category: fileType || 'AUDIO',
+            fileName,
+            mimeType,
+            base64Data,
+          });
 
-        if (driveRes?.file?.url) {
-          const driveUrl = driveRes.file.url;
-          const driveFileId = driveRes.file.id;
-          const thumbnailUrl = driveRes.file.thumbnailUrl;
+          if (driveRes?.file?.url) {
+            const driveUrlRes = driveRes.file.url;
+            const driveFileIdRes = driveRes.file.id;
+            const thumbnailUrlRes = driveRes.file.thumbnailUrl;
 
-          if (supabase && insertedDbFile?.id) {
-            await supabase
-              .from('dataset_files')
-              .update({
-                drive_url: driveUrl,
-                drive_file_id: driveFileId,
-                thumbnail_url: thumbnailUrl || insertedDbFile.thumbnail_url,
-              })
-              .eq('id', insertedDbFile.id);
-          } else {
-            const memFile = fallbackFiles.find((f) => f.id === fileRecord.id);
-            if (memFile) {
-              memFile.drive_url = driveUrl;
-              memFile.drive_file_id = driveFileId;
-              if (thumbnailUrl) memFile.thumbnail_url = thumbnailUrl;
+            if (supabase && insertedDbFile?.id) {
+              await supabase
+                .from('dataset_files')
+                .update({
+                  drive_url: driveUrlRes,
+                  drive_file_id: driveFileIdRes,
+                  thumbnail_url: thumbnailUrlRes || insertedDbFile.thumbnail_url,
+                })
+                .eq('id', insertedDbFile.id);
+            } else {
+              const memFile = fallbackFiles.find((f) => f.id === fileRecord.id);
+              if (memFile) {
+                memFile.drive_url = driveUrlRes;
+                memFile.drive_file_id = driveFileIdRes;
+                if (thumbnailUrlRes) memFile.thumbnail_url = thumbnailUrlRes;
+              }
             }
+            console.log(`✅ Background Google Drive upload completed for ${fileName}`);
           }
-          console.log(`✅ Background Google Drive upload completed for ${fileName}`);
+        } catch (bgErr) {
+          console.warn(`⚠️ Background Google Drive upload warning for ${fileName}:`, bgErr?.message || bgErr);
         }
-      } catch (bgErr) {
-        console.warn(`⚠️ Background Google Drive upload warning for ${fileName}:`, bgErr?.message || bgErr);
-      }
-    })();
+      })();
+    }
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
