@@ -1,10 +1,24 @@
-import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_WEB_APP_URL || '';
 const APPS_SCRIPT_SECRET = process.env.APPS_SCRIPT_SECRET_TOKEN || 'ZENEMOO_DRIVE_SECRET_2026_PORTFOLIO';
+
+async function postToAppsScript(payload) {
+  if (typeof fetch !== 'undefined') {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, ...payload }),
+    });
+    return await res.json();
+  } else {
+    const axios = (await import('axios')).default;
+    const res = await axios.post(APPS_SCRIPT_URL, { secret: APPS_SCRIPT_SECRET, ...payload });
+    return res.data;
+  }
+}
 
 export const googleAppsScriptService = {
   isConfigured: () => Boolean(APPS_SCRIPT_URL),
@@ -31,13 +45,10 @@ export const googleAppsScriptService = {
       };
     }
 
-    const response = await axios.post(APPS_SCRIPT_URL, {
-      secret: APPS_SCRIPT_SECRET,
+    return await postToAppsScript({
       action: 'createDataset',
       datasetName,
-    }, { timeout: 45000 });
-
-    return response.data;
+    });
   },
 
   createFolder: async (folderName, parentFolderId) => {
@@ -54,14 +65,11 @@ export const googleAppsScriptService = {
       };
     }
 
-    const response = await axios.post(APPS_SCRIPT_URL, {
-      secret: APPS_SCRIPT_SECRET,
+    return await postToAppsScript({
       action: 'createFolder',
       folderName,
       parentFolderId,
-    }, { timeout: 30000 });
-
-    return response.data;
+    });
   },
 
   uploadFile: async ({ targetFolderId, fileName, mimeType, base64Data }) => {
@@ -81,16 +89,13 @@ export const googleAppsScriptService = {
       };
     }
 
-    const response = await axios.post(APPS_SCRIPT_URL, {
-      secret: APPS_SCRIPT_SECRET,
+    return await postToAppsScript({
       action: 'uploadFile',
       targetFolderId,
       fileName,
       mimeType,
       base64Data,
-    }, { timeout: 60000 });
-
-    return response.data;
+    });
   },
 
   deleteFile: async (driveFileId) => {
@@ -98,23 +103,18 @@ export const googleAppsScriptService = {
       return { success: true, fileId: driveFileId, message: 'Mock Drive file trashed' };
     }
 
-    const response = await axios.post(APPS_SCRIPT_URL, {
-      secret: APPS_SCRIPT_SECRET,
+    return await postToAppsScript({
       action: 'deleteFile',
       fileId: driveFileId,
-    }, { timeout: 30000 });
-
-    return response.data;
+    });
   },
 
   healthCheck: async () => {
     if (!APPS_SCRIPT_URL) {
       return { success: false, message: 'APPS_SCRIPT_WEB_APP_URL is not configured' };
     }
-    const response = await axios.post(APPS_SCRIPT_URL, {
-      secret: APPS_SCRIPT_SECRET,
+    return await postToAppsScript({
       action: 'healthCheck',
-    }, { timeout: 15000 });
-    return response.data;
+    });
   },
 };

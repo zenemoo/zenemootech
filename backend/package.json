@@ -11,6 +11,7 @@
   "dependencies": {
     "@getbrevo/brevo": "^6.0.2",
     "@supabase/supabase-js": "^2.48.1",
+    "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.5.1",
     "cookie-parser": "^1.4.7",
