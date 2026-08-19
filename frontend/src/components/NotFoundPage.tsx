@@ -14,6 +14,10 @@ import {
   HelpCircle,
   Compass,
   X,
+  Star,
+  UserCheck,
+  ShieldCheck,
+  FileText,
 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -37,14 +41,19 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({ onOpenAiDrawer }) =>
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const searchablePages = [
-    { name: 'Home & Platform Overview', path: '/', category: 'Main Page', icon: Home, keyword: 'home main platform overview landing' },
-    { name: 'AI Language Services', path: '/#languages', category: 'Solutions', icon: Languages, keyword: 'languages speech nlp translation indic global' },
-    { name: 'Audio & Speech Annotation', path: '/#services', category: 'Solutions', icon: Mic, keyword: 'services audio transcription annotation speech data' },
-    { name: 'Data Annotation & Quality QA', path: '/#services', category: 'Solutions', icon: Database, keyword: 'data annotation quality validation datasets vision' },
+    { name: 'Home & Platform Overview', path: '/', category: 'Main Page', icon: Home, keyword: 'home main platform overview landing zenemoo' },
+    { name: 'AI Data Portfolio & Public Datasets', path: '/ai-data', category: 'Datasets', icon: Database, keyword: 'ai data portfolio datasets audio video json csv speech samples dataset' },
+    { name: 'Community & Client Reviews', path: '/review', category: 'Reviews', icon: Star, keyword: 'reviews review feedback ratings testimonials client community worker' },
+    { name: 'Career & Program Opportunities', path: '/opportunities', category: 'Careers', icon: Briefcase, keyword: 'opportunities careers jobs desicrew roles programs work remote wfh' },
+    { name: 'AI Language Services', path: '/#languages', category: 'Solutions', icon: Languages, keyword: 'languages speech nlp translation indic global odia hindi' },
+    { name: 'Audio & Speech Annotation', path: '/#services', category: 'Solutions', icon: Mic, keyword: 'services audio transcription annotation speech data segmentation' },
+    { name: 'Data Annotation & Quality QA', path: '/#services', category: 'Solutions', icon: Database, keyword: 'data annotation quality validation datasets vision LLM tuning' },
     { name: 'Executive Team & Staff Directory', path: '/team-directory', category: 'Company', icon: Users, keyword: 'team directory leadership roster members staff' },
-    { name: 'Career & Program Opportunities', path: '/opportunities', category: 'Careers', icon: Briefcase, keyword: 'opportunities careers jobs desicrew roles programs' },
+    { name: 'AI Data Talent & Partner Registration', path: '/talent-registration', category: 'Network', icon: UserCheck, keyword: 'talent registration register partner native speaker coordinator vendor agency contributor' },
     { name: 'Contact & Enterprise Inquiries', path: '/#contact', category: 'Support', icon: Mail, keyword: 'contact email support sales enterprise inquiry' },
-    { name: 'Zenemoo AI Assistant', path: 'ai_drawer', category: 'AI Tools', icon: Sparkles, keyword: 'ai assistant bot help search query chat' },
+    { name: 'Zenemoo AI Assistant', path: 'ai_drawer', category: 'AI Tools', icon: Sparkles, keyword: 'ai assistant bot help search query chat prompt' },
+    { name: 'Terms & Conditions', path: '/terms', category: 'Legal', icon: FileText, keyword: 'terms conditions agreement policies rules usage legal' },
+    { name: 'Privacy Policy', path: '/privacy', category: 'Legal', icon: ShieldCheck, keyword: 'privacy policy data protection security gdpr confidential' },
   ];
 
   const filteredSuggestions = searchQuery.trim()
@@ -71,46 +80,53 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({ onOpenAiDrawer }) =>
 
   const quickLinks: QuickLinkItem[] = [
     {
-      title: 'AI Language Services',
-      description: 'Speech recognition, translation, and NLP tools for 50+ global & Indic languages.',
-      href: '/#languages',
-      icon: Languages,
-      badge: 'Multilingual',
-    },
-    {
-      title: 'Audio Transcription',
-      description: 'High-precision, human-in-the-loop audio-to-text annotation at scale.',
-      href: '/#services',
-      icon: Mic,
-      badge: 'High Accuracy',
-    },
-    {
-      title: 'Data Annotation',
-      description: 'Enterprise dataset labeling across text, speech, vision, and custom LLM tuning.',
-      href: '/#services',
+      title: 'AI Data Portfolio',
+      description: 'Explore public speech audio samples, video datasets, image corpora, and metadata.',
+      href: '/ai-data',
       icon: Database,
-      badge: 'Enterprise QA',
+      badge: 'Public Datasets',
     },
     {
-      title: 'Team Directory',
-      description: 'Explore executive leadership, AI specialists, and project contributors.',
-      href: '/team-directory',
-      icon: Users,
-      badge: 'Leadership Roster',
+      title: 'Client & Community Reviews',
+      description: 'Read verified testimonials, worker feedback, and partner ratings for Zenemoo.',
+      href: '/review',
+      icon: Star,
+      badge: 'Verified Ratings',
     },
     {
-      title: 'Career Opportunities',
-      description: 'Join Zenemoo as an AI contributor, data annotator, or software engineer.',
+      title: 'Program Opportunities',
+      description: 'Join active AI annotation campaigns, partner projects, and remote work programs.',
       href: '/opportunities',
       icon: Briefcase,
       badge: 'We Are Hiring',
     },
     {
-      title: 'Contact Us',
-      description: 'Reach our customer solutions team for enterprise dataset partnerships.',
-      href: '/#contact',
-      icon: Mail,
-      badge: 'Support 24/7',
+      title: 'Team Directory',
+      description: 'Explore executive leadership, AI language specialists, and project leads.',
+      href: '/team-directory',
+      icon: Users,
+      badge: 'Leadership Roster',
+    },
+    {
+      title: 'Talent Network Registration',
+      description: 'Register as a native speaker, project coordinator, recording team, or vendor agency.',
+      href: '/talent-registration',
+      icon: UserCheck,
+      badge: 'Join Network',
+    },
+    {
+      title: 'AI Language Services',
+      description: 'Speech recognition, transcription, and NLP tools for 50+ global & Indic languages.',
+      href: '/#languages',
+      icon: Languages,
+      badge: 'Multilingual AI',
+    },
+    {
+      title: 'Terms & Privacy Policies',
+      description: 'Official enterprise terms of service, candidate agreements, and data privacy policies.',
+      href: '/terms',
+      icon: ShieldCheck,
+      badge: 'Legal & Safety',
     },
     {
       title: 'Zenemoo AI Assistant',
