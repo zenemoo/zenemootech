@@ -36,11 +36,14 @@ import { TeamDashboard } from './components/TeamDashboard';
 import { HRDashboard } from './components/HRDashboard';
 import { ReviewsPage } from './components/ReviewsPage';
 import { ZenemooTalentRegistrationPage } from './components/ZenemooTalentRegistrationPage';
+import { AiDataPortfolioPage } from './components/AiDataPortfolioPage';
+import { PublicDatasetDetailPage } from './components/PublicDatasetDetailPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | '404'
   >('home');
+  const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
   const [resetEmail, setResetEmail] = useState<string>('');
@@ -98,6 +101,8 @@ export function App() {
         | 'unsubscribe'
         | 'reviews'
         | 'talent-registration'
+        | 'ai-data'
+        | 'ai-data-detail'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -207,6 +212,14 @@ export function App() {
           : hash.replace('#opportunity/', '').replace('#program/', '');
         setSelectedOpportunityId(oppId || '');
         matchedRoute = 'opportunity-detail';
+      } else if (path === '/ai-data' || path === '/ai-data/' || hash === '#ai-data' || hash === '#/ai-data') {
+        matchedRoute = 'ai-data';
+      } else if (path.startsWith('/ai-data/') || hash.startsWith('#ai-data/')) {
+        const slug = path.startsWith('/ai-data/')
+          ? path.replace('/ai-data/', '').replace(/^\//, '')
+          : hash.replace('#ai-data/', '').replace(/^\//, '');
+        setSelectedDatasetSlug(slug || '');
+        matchedRoute = 'ai-data-detail';
       } else if (path === '/' || path === '') {
         matchedRoute = 'home';
       } else {
@@ -420,6 +433,25 @@ export function App() {
         <UnsubscribePage />
       ) : currentRoute === 'reviews' ? (
         <ReviewsPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+      ) : currentRoute === 'ai-data' ? (
+        <AiDataPortfolioPage
+          onBack={handleBackToHome}
+          onSelectDataset={(slug) => {
+            setSelectedDatasetSlug(slug);
+            window.history.pushState(null, '', `/ai-data/${slug}`);
+            setCurrentRoute('ai-data-detail');
+          }}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
+      ) : currentRoute === 'ai-data-detail' ? (
+        <PublicDatasetDetailPage
+          slug={selectedDatasetSlug}
+          onBack={() => {
+            window.history.pushState(null, '', '/ai-data');
+            setCurrentRoute('ai-data');
+          }}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

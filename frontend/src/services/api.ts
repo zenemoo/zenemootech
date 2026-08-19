@@ -376,4 +376,23 @@ export const talentRegistrationApi = {
     api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
 
+// AI Data Portfolio & Dataset Management API
+export const datasetApi = {
+  getDatasets: (params?: { search?: string; category?: string; status?: string }) =>
+    api.get('/datasets', { params }),
+  getDatasetBySlugOrId: (identifier: string) =>
+    api.get(`/datasets/${identifier}`),
+  createDataset: (data: { name: string; description?: string; language?: string }) =>
+    api.post('/datasets', data),
+  createFolder: (datasetId: string, data: { folderName: string }) =>
+    api.post(`/datasets/${datasetId}/folders`, data),
+  uploadFile: (datasetId: string, data: { fileName: string; fileType?: string; mimeType?: string; fileSize?: number; base64Data: string; driveFolderId?: string }) =>
+    api.post(`/datasets/${datasetId}/upload`, data),
+  deleteFile: (fileId: string) =>
+    api.delete(`/datasets/files/${fileId}`),
+  deleteDataset: (datasetId: string) =>
+    api.delete(`/datasets/${datasetId}`),
+};
+
+
 

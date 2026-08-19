@@ -18,11 +18,13 @@ import { EnterpriseOpportunityEditorModal } from './EnterpriseOpportunityEditorM
 import { AdminReviewsTab } from './AdminReviewsTab';
 import { AdminBrandLogoSettings } from './AdminBrandLogoSettings';
 import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
+import { Folder } from 'lucide-react';
+import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
 import { AdminHrAiPage } from './AdminHrAiPage';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders';
   isStandaloneEmailView?: boolean;
 }
 
@@ -213,7 +215,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai'>((initialTab as any) || 'team');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders'>((initialTab as any) || 'datasets');
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -1806,6 +1808,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   const navGroups = [
     {
+      group: 'AI DATA PORTFOLIO',
+      items: [
+        { id: 'datasets', name: 'Datasets', icon: Folder },
+        { id: 'data-upload', name: 'Upload Files', icon: Upload },
+        { id: 'data-folders', name: 'Folders', icon: Layers },
+      ],
+    },
+    {
       group: 'CORE MANAGEMENT',
       items: [
         { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
@@ -2374,6 +2384,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
         {/* 4. MAIN DYNAMIC DISPLAY PANEL */}
         <main className="flex-1 p-6 space-y-8 max-w-7xl mx-auto w-full">
+
+        {/* TAB: DATASETS & MEDIA MANAGEMENT */}
+        {(activeTab === 'datasets' || activeTab === 'data-upload' || activeTab === 'data-folders') && (
+          <AdminDataPortfolioTab addToast={addToast} showConfirm={showConfirm} />
+        )}
 
         {/* TAB: USER ACCESS & ROLE-BASED ACCESS CONTROL (RBAC) */}
         {activeTab === 'rbac' && (

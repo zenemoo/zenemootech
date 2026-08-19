@@ -25,6 +25,7 @@ import supportRoutes from './routes/supportRoutes.js';
 import exportRoutes from './routes/exportRoutes.js';
 import brandingRoutes from './routes/brandingRoutes.js';
 import talentRegistrationRoutes from './routes/talentRegistrationRoutes.js';
+import datasetRoutes from './routes/datasetRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -63,6 +64,7 @@ app.use('/api/partners', partnerRoutes);
 app.use('/api/opportunities', opportunityRoutes);
 app.use('/api/opportunity-applications', opportunityApplicationRoutes);
 app.use('/api/talent-registration', talentRegistrationRoutes);
+app.use('/api/datasets', datasetRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/contact', contactRoutes);
@@ -80,6 +82,9 @@ app.use('/api/directory', teamDirectoryRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/admin', exportRoutes);
 app.use('/api/export', exportRoutes);
+
+// Root Fallback Aliases
+app.use('/datasets', datasetRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
