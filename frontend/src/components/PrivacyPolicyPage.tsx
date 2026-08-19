@@ -53,7 +53,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onBack }) 
               🔐 Privacy Policy
             </h1>
             <p className="text-xs font-mono text-cyan-400">
-              Zenemoo &bull; Last Updated: April 2026
+              Zenemoo &bull; Last Updated: August 2026
             </p>
           </div>
 

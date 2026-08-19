@@ -305,7 +305,7 @@ export const Footer: React.FC = () => {
                     <Shield className="w-3.5 h-3.5 text-cyan-400" /> OFFICIAL PRIVACY STATEMENT
                   </div>
                   <h2 className="text-2xl font-bold font-display text-white">Privacy Policy</h2>
-                  <p className="text-xs font-mono text-slate-400 mt-1">QuantumCoders Data Solutions (Zenemoo) • Last Updated: April 2026</p>
+                  <p className="text-xs font-mono text-slate-400 mt-1">QuantumCoders Data Solutions (Zenemoo) • Last Updated: August 2026</p>
                 </div>
 
                 <div className="space-y-4">
@@ -374,7 +374,7 @@ export const Footer: React.FC = () => {
                     <FileText className="w-3.5 h-3.5 text-purple-400" /> SERVICE TERMS AGREEMENT
                   </div>
                   <h2 className="text-2xl font-bold font-display text-white">Terms &amp; Conditions</h2>
-                  <p className="text-xs font-mono text-slate-400 mt-1">QuantumCoders Data Solutions (Zenemoo) • Last Updated: April 2026</p>
+                  <p className="text-xs font-mono text-slate-400 mt-1">QuantumCoders Data Solutions (Zenemoo) • Last Updated: August 2026</p>
                 </div>
 
                 <div className="space-y-4">

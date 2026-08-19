@@ -53,7 +53,7 @@ export const TermsConditionsPage: React.FC<TermsConditionsPageProps> = ({ onBack
               📜 Terms &amp; Conditions
             </h1>
             <p className="text-xs font-mono text-purple-300">
-              Zenemoo &bull; Last Updated: April 2026
+              Zenemoo &bull; Last Updated: August 2026
             </p>
           </div>
 
