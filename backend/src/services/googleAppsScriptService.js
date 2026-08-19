@@ -135,6 +135,15 @@ export const googleAppsScriptService = {
     return res || { success: true, fileId: driveFileId, message: 'Drive file operation complete' };
   },
 
+  deleteFolder: async (driveFolderId) => {
+    const res = await postToAppsScript({
+      action: 'deleteFolder',
+      folderId: driveFolderId,
+    });
+
+    return res || { success: true, folderId: driveFolderId, message: 'Drive folder operation complete' };
+  },
+
   healthCheck: async () => {
     if (!APPS_SCRIPT_URL) {
       return { success: false, message: 'APPS_SCRIPT_WEB_APP_URL is not configured' };

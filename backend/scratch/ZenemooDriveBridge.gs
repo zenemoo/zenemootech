@@ -1,8 +1,14 @@
 /**
- * ZENEMOO AI Data Portfolio — Google Apps Script Drive Bridge
+ * ZENEMOO AI Data Portfolio — Google Apps Script Drive Bridge (v2.0)
  * Deployed as a Web App (Execute as me, Access: Anyone)
  * 
- * Configured with secret verification token for server-to-server security.
+ * Features:
+ * 1. Root folder: ZENEMOO_DATA_PORTFOLIO
+ * 2. Automatic Dataset subfolder creation: ZENEMOO_DATA_PORTFOLIO / <Dataset Name>
+ * 3. Automatic Category subfolders: AUDIO, VIDEO, IMAGE, JSON, CSV, PDF
+ * 4. File uploads placed directly inside the dataset's category subfolder
+ * 5. Direct Google Drive file deletion (trashes files in Drive when deleted in Admin)
+ * 6. Direct Google Drive folder deletion (trashes entire dataset folder when deleted in Admin)
  */
 
 const SECRET_TOKEN = "ZENEMOO_DRIVE_SECRET_2026_PORTFOLIO";
@@ -36,11 +42,11 @@ function doPost(e) {
       case "uploadFile":
         return handleUploadFile(postData);
 
-      case "uploadChunk":
-        return handleUploadChunk(postData);
-
       case "deleteFile":
         return handleDeleteFile(postData);
+
+      case "deleteFolder":
+        return handleDeleteFolder(postData);
 
       case "listFiles":
         return handleListFiles(postData);
@@ -76,7 +82,7 @@ function getOrCreateRootFolder() {
 }
 
 /**
- * Creates dataset folder and default category subfolders
+ * Creates dataset folder and default category subfolders inside ZENEMOO_DATA_PORTFOLIO
  */
 function handleCreateDataset(data) {
   const datasetName = data.datasetName;
@@ -127,9 +133,14 @@ function handleCreateFolder(data) {
     return responseJSON({ success: false, error: "Missing folderName or parentFolderId" }, 400);
   }
 
-  const parentFolder = DriveApp.getFolderById(parentFolderId);
-  let newFolder;
+  let parentFolder;
+  try {
+    parentFolder = DriveApp.getFolderById(parentFolderId);
+  } catch (e) {
+    parentFolder = getOrCreateRootFolder();
+  }
 
+  let newFolder;
   const existing = parentFolder.getFoldersByName(folderName);
   if (existing.hasNext()) {
     newFolder = existing.next();
@@ -142,7 +153,7 @@ function handleCreateFolder(data) {
     folder: {
       id: newFolder.getId(),
       name: newFolder.getName(),
-      parentFolderId: parentFolderId,
+      parentFolderId: parentFolder.getId(),
       url: newFolder.getUrl()
     }
   });
@@ -153,18 +164,27 @@ function handleCreateFolder(data) {
  */
 function handleUploadFile(data) {
   let targetFolderId = data.targetFolderId;
-  const category = data.category;
+  const category = data.category || "AUDIO";
   const fileName = data.fileName;
   const mimeType = data.mimeType || "application/octet-stream";
   const base64Data = data.base64Data;
 
-  if (!targetFolderId || !fileName || !base64Data) {
-    return responseJSON({ success: false, error: "Missing targetFolderId, fileName, or base64Data" }, 400);
+  if (!fileName || !base64Data) {
+    return responseJSON({ success: false, error: "Missing fileName or base64Data" }, 400);
   }
 
-  let parentFolder = DriveApp.getFolderById(targetFolderId);
+  let parentFolder;
+  if (targetFolderId && targetFolderId !== "root") {
+    try {
+      parentFolder = DriveApp.getFolderById(targetFolderId);
+    } catch (e) {
+      parentFolder = getOrCreateRootFolder();
+    }
+  } else {
+    parentFolder = getOrCreateRootFolder();
+  }
 
-  // Automatically place file inside category folder (AUDIO, VIDEO, IMAGE, JSON, CSV, PDF)
+  // Ensure file is placed inside the category subfolder (AUDIO, VIDEO, IMAGE, JSON, CSV, PDF)
   if (category) {
     const existingCat = parentFolder.getFoldersByName(category);
     if (existingCat.hasNext()) {
@@ -198,14 +218,7 @@ function handleUploadFile(data) {
 }
 
 /**
- * Upload chunked file payload for large files
- */
-function handleUploadChunk(data) {
-  return handleUploadFile(data);
-}
-
-/**
- * Deletes file by ID
+ * Deletes file by ID (Trashes file in Google Drive)
  */
 function handleDeleteFile(data) {
   const fileId = data.fileId;
@@ -213,10 +226,31 @@ function handleDeleteFile(data) {
     return responseJSON({ success: false, error: "Missing fileId" }, 400);
   }
 
-  const file = DriveApp.getFileById(fileId);
-  file.setTrashed(true);
+  try {
+    const file = DriveApp.getFileById(fileId);
+    file.setTrashed(true);
+    return responseJSON({ success: true, fileId: fileId, message: "File trashed successfully in Google Drive" });
+  } catch (err) {
+    return responseJSON({ success: false, error: err.toString() }, 404);
+  }
+}
 
-  return responseJSON({ success: true, fileId: fileId, message: "File trashed successfully" });
+/**
+ * Deletes entire folder by ID (Trashes dataset folder in Google Drive)
+ */
+function handleDeleteFolder(data) {
+  const folderId = data.folderId || data.driveFolderId;
+  if (!folderId) {
+    return responseJSON({ success: false, error: "Missing folderId" }, 400);
+  }
+
+  try {
+    const folder = DriveApp.getFolderById(folderId);
+    folder.setTrashed(true);
+    return responseJSON({ success: true, folderId: folderId, message: "Folder trashed successfully in Google Drive" });
+  } catch (err) {
+    return responseJSON({ success: false, error: err.toString() }, 404);
+  }
 }
 
 /**

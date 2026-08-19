@@ -370,7 +370,7 @@ export const deleteFile = async (req, res) => {
     if (supabase) {
       try {
         const { data: targetFile } = await supabase.from('dataset_files').select('*').eq('id', fileId).maybeSingle();
-        if (targetFile?.drive_file_id) {
+        if (targetFile?.drive_file_id && !targetFile.drive_file_id.startsWith('drive_')) {
           try {
             await googleAppsScriptService.deleteFile(targetFile.drive_file_id);
           } catch (gErr) {}
@@ -383,6 +383,11 @@ export const deleteFile = async (req, res) => {
     const idx = fallbackFiles.findIndex((f) => f.id === fileId);
     if (idx !== -1) {
       const removed = fallbackFiles.splice(idx, 1)[0];
+      if (removed.drive_file_id && !removed.drive_file_id.startsWith('drive_')) {
+        try {
+          await googleAppsScriptService.deleteFile(removed.drive_file_id);
+        } catch (gErr) {}
+      }
       const ds = fallbackDatasets.find((d) => d.id === removed.dataset_id);
       if (ds) {
         ds.total_files = Math.max(0, ds.total_files - 1);
@@ -400,16 +405,44 @@ export const deleteDataset = async (req, res) => {
   try {
     const { id } = req.params;
 
+    let targetFolderId = null;
+
     if (supabase) {
       try {
+        const { data: ds } = await supabase.from('datasets').select('drive_folder_id').eq('id', id).maybeSingle();
+        if (ds?.drive_folder_id) targetFolderId = ds.drive_folder_id;
+
+        // Delete all files in Google Drive associated with this dataset
+        const { data: files } = await supabase.from('dataset_files').select('drive_file_id').eq('dataset_id', id);
+        if (files) {
+          for (const f of files) {
+            if (f.drive_file_id && !f.drive_file_id.startsWith('drive_')) {
+              try {
+                await googleAppsScriptService.deleteFile(f.drive_file_id);
+              } catch (gErr) {}
+            }
+          }
+        }
+
+        if (targetFolderId && !targetFolderId.startsWith('drive_folder_') && !targetFolderId.startsWith('mock_')) {
+          try {
+            await googleAppsScriptService.deleteFolder(targetFolderId);
+          } catch (gErr) {}
+        }
+
         await supabase.from('datasets').delete().eq('id', id);
-        return res.json({ success: true, message: 'Dataset deleted' });
+        return res.json({ success: true, message: 'Dataset and associated Google Drive files deleted' });
       } catch (err) {}
     }
 
     const idx = fallbackDatasets.findIndex((d) => d.id === id);
     if (idx !== -1) {
-      fallbackDatasets.splice(idx, 1);
+      const removedDs = fallbackDatasets.splice(idx, 1)[0];
+      if (removedDs?.drive_folder_id && !removedDs.drive_folder_id.startsWith('drive_folder_')) {
+        try {
+          await googleAppsScriptService.deleteFolder(removedDs.drive_folder_id);
+        } catch (gErr) {}
+      }
     }
 
     res.json({ success: true, message: 'Dataset deleted' });
