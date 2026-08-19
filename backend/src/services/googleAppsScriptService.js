@@ -99,10 +99,11 @@ export const googleAppsScriptService = {
     };
   },
 
-  uploadFile: async ({ targetFolderId, fileName, mimeType, base64Data }) => {
+  uploadFile: async ({ targetFolderId, category, fileName, mimeType, base64Data }) => {
     const res = await postToAppsScript({
       action: 'uploadFile',
       targetFolderId,
+      category,
       fileName,
       mimeType,
       base64Data,
@@ -119,8 +120,8 @@ export const googleAppsScriptService = {
         mimeType: mimeType || 'application/octet-stream',
         size: Math.round(base64Data.length * 0.75),
         folderId: targetFolderId,
-        url: `https://drive.google.com/file/d/${mockFileId}/view`,
-        thumbnailUrl: mimeType?.startsWith('image/') ? `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200` : null,
+        url: `data:${mimeType || 'application/octet-stream'};base64,${base64Data}`,
+        thumbnailUrl: mimeType?.startsWith('image/') ? `data:${mimeType};base64,${base64Data}` : null,
       },
     };
   },

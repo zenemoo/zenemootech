@@ -97,6 +97,21 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     });
   }, [files, activeCategory, searchQuery]);
 
+  // Helper to extract direct playable/renderable media URL for audio, image, and video tags
+  const getFileMediaUrl = (file: DatasetFileItem): string => {
+    const url = file.drive_url || file.thumbnail_url;
+    if (!url) return '';
+
+    if (url.includes('drive.google.com')) {
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return `https://lh3.googleusercontent.com/d/${match[1]}`;
+      }
+    }
+
+    return url;
+  };
+
   // Extract & format real JSON content for preview
   const getRealJsonContent = (file: DatasetFileItem): string => {
     if (file.raw_content) {
@@ -127,7 +142,6 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     const url = file.drive_url || file.thumbnail_url;
     if (!url) return;
 
-    // Check if it's a real external Google Drive URL or data URI
     if (url.startsWith('data:') || url.startsWith('blob:')) {
       const link = document.createElement('a');
       link.href = url;
@@ -135,21 +149,15 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else if (url.startsWith('http://') || url.startsWith('https://')) {
-      if (url.includes('/file/d/sample/') || url.includes('/drive_file_')) {
-        // Fallback: If URL is a placeholder string, generate text blob download
-        const blob = new Blob([file.raw_content || `File: ${file.file_name}`], { type: file.mime_type || 'text/plain' });
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = file.file_name;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
+    } else if (url.includes('drive.google.com')) {
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        window.open(`https://drive.google.com/uc?export=download&id=${match[1]}`, '_blank');
       } else {
         window.open(url, '_blank');
       }
+    } else {
+      window.open(url, '_blank');
     }
   };
 
@@ -256,6 +264,7 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                   filteredFiles.map((file) => {
                     const catInfo = detectFileType(file.file_name, file.mime_type);
                     const isAudioPlaying = playingAudioId === file.id;
+                    const mediaSrc = getFileMediaUrl(file);
 
                     return (
                       <tr key={file.id} className="hover:bg-white/[0.02] transition-colors">
@@ -279,7 +288,7 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                             {isAudioPlaying && (
                               <div className="mt-1 flex items-center gap-2">
                                 <audio
-                                  src={file.drive_url}
+                                  src={mediaSrc}
                                   controls
                                   autoPlay
                                   className="h-6 w-48 text-xs"
@@ -350,14 +359,14 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                 <div className="bg-slate-900/80 p-6 rounded-2xl border border-white/5 text-center space-y-4">
                   <Volume2 className="w-12 h-12 text-indigo-400 mx-auto animate-pulse" />
                   <p className="text-xs text-slate-300 font-mono">{previewFile.file_name}</p>
-                  <audio src={previewFile.drive_url} controls className="w-full" />
+                  <audio src={getFileMediaUrl(previewFile)} controls className="w-full" />
                 </div>
               )}
 
               {/* Video Preview */}
               {previewFile.file_type === 'VIDEO' && (
                 <div className="bg-black rounded-2xl overflow-hidden border border-white/10">
-                  <video src={previewFile.drive_url} controls className="w-full max-h-96 object-contain" />
+                  <video src={getFileMediaUrl(previewFile)} controls className="w-full max-h-96 object-contain" />
                 </div>
               )}
 
@@ -365,7 +374,7 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
               {previewFile.file_type === 'IMAGE' && (
                 <div className="bg-slate-900 rounded-2xl p-2 border border-white/10 text-center">
                   <img
-                    src={previewFile.drive_url || previewFile.thumbnail_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600'}
+                    src={getFileMediaUrl(previewFile)}
                     alt={previewFile.file_name}
                     className="max-h-96 w-full object-contain rounded-xl mx-auto"
                   />

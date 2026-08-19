@@ -267,10 +267,26 @@ export const uploadFile = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing fileName or base64Data' });
     }
 
+    // Lookup root dataset drive folder ID if not passed
+    let targetFolder = driveFolderId;
+    if (!targetFolder || targetFolder === 'root') {
+      if (supabase) {
+        try {
+          const { data: ds } = await supabase.from('datasets').select('drive_folder_id').eq('id', id).maybeSingle();
+          if (ds?.drive_folder_id) targetFolder = ds.drive_folder_id;
+        } catch (e) {}
+      }
+      if (!targetFolder || targetFolder === 'root') {
+        const ds = fallbackDatasets.find((d) => d.id === id);
+        if (ds?.drive_folder_id) targetFolder = ds.drive_folder_id;
+      }
+    }
+
     let driveRes = null;
     try {
       driveRes = await googleAppsScriptService.uploadFile({
-        targetFolderId: driveFolderId || 'root',
+        targetFolderId: targetFolder || 'root',
+        category: fileType || 'AUDIO',
         fileName,
         mimeType,
         base64Data,
@@ -296,7 +312,7 @@ export const uploadFile = async (req, res) => {
       mime_type: mimeType || 'application/octet-stream',
       file_size: fileSize || Math.round(base64Data.length * 0.75),
       drive_file_id: driveRes?.file?.id || `drive_${Date.now()}`,
-      drive_folder_id: driveFolderId,
+      drive_folder_id: targetFolder,
       drive_url: realDriveUrl || fallbackDataUrl,
       thumbnail_url: driveRes?.file?.thumbnailUrl || (mimeType?.startsWith('image/') ? fallbackDataUrl : null),
       raw_content: rawContent,
@@ -316,7 +332,7 @@ export const uploadFile = async (req, res) => {
             mime_type: mimeType,
             file_size: fileRecord.file_size,
             drive_file_id: fileRecord.drive_file_id,
-            drive_folder_id: driveFolderId,
+            drive_folder_id: targetFolder,
             drive_url: fileRecord.drive_url,
             thumbnail_url: fileRecord.thumbnail_url,
             raw_content: rawContent,

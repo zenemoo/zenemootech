@@ -149,10 +149,11 @@ function handleCreateFolder(data) {
 }
 
 /**
- * Upload single file from Base64 string payload
+ * Upload single file into target dataset & category subfolder
  */
 function handleUploadFile(data) {
-  const targetFolderId = data.targetFolderId;
+  let targetFolderId = data.targetFolderId;
+  const category = data.category;
   const fileName = data.fileName;
   const mimeType = data.mimeType || "application/octet-stream";
   const base64Data = data.base64Data;
@@ -161,23 +162,37 @@ function handleUploadFile(data) {
     return responseJSON({ success: false, error: "Missing targetFolderId, fileName, or base64Data" }, 400);
   }
 
-  const targetFolder = DriveApp.getFolderById(targetFolderId);
+  let parentFolder = DriveApp.getFolderById(targetFolderId);
+
+  // Automatically place file inside category folder (AUDIO, VIDEO, IMAGE, JSON, CSV, PDF)
+  if (category) {
+    const existingCat = parentFolder.getFoldersByName(category);
+    if (existingCat.hasNext()) {
+      parentFolder = existingCat.next();
+    } else {
+      parentFolder = parentFolder.createFolder(category);
+    }
+  }
+
   const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
-  const file = targetFolder.createFile(blob);
-  
-  // Set public view permissions if desired
+  const file = parentFolder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  const fileId = file.getId();
+  const directViewUrl = "https://lh3.googleusercontent.com/d/" + fileId;
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
 
   return responseJSON({
     success: true,
     file: {
-      id: file.getId(),
+      id: fileId,
       name: file.getName(),
       mimeType: file.getMimeType(),
       size: file.getSize(),
-      folderId: targetFolderId,
-      url: file.getUrl(),
-      thumbnailUrl: file.getThumbnail() ? file.getThumbnail().getDownloadUrl() : null
+      folderId: parentFolder.getId(),
+      url: directViewUrl,
+      downloadUrl: downloadUrl,
+      thumbnailUrl: directViewUrl
     }
   });
 }
@@ -186,7 +201,6 @@ function handleUploadFile(data) {
  * Upload chunked file payload for large files
  */
 function handleUploadChunk(data) {
-  // Simple Base64 chunk concatenation or drive file update
   return handleUploadFile(data);
 }
 
@@ -225,7 +239,7 @@ function handleListFiles(data) {
       name: f.getName(),
       mimeType: f.getMimeType(),
       size: f.getSize(),
-      url: f.getUrl(),
+      url: "https://lh3.googleusercontent.com/d/" + f.getId(),
       created: f.getDateCreated().toISOString()
     });
   }

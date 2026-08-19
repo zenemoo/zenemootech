@@ -34,8 +34,8 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: '*', credentials: true, exposedHeaders: ['X-New-Token'] }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ limit: '20mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Health Check API Route
 app.get('/api/health', (req, res) => {
