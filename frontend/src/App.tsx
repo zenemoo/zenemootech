@@ -29,6 +29,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { SubscribeModal } from './components/SubscribeModal';
 import { UnsubscribePage } from './components/UnsubscribePage';
 import { NotFoundPage } from './components/NotFoundPage';
+import { ScrollProgressButton } from './components/ScrollProgressButton';
 
 import { TeamLoginPage } from './components/TeamLoginPage';
 import { HRLoginPage } from './components/HRLoginPage';
@@ -502,6 +503,7 @@ export function App() {
           />
           <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
           <SubscribeModal />
+          <ScrollProgressButton />
         </>
       )}
     </>
