@@ -285,15 +285,18 @@ export const uploadFile = async (req, res) => {
       }
     }
 
-    // Extract raw text for text/JSON/CSV files if possible
+    const computedSize = fileSize || Math.round(base64Data.length * 0.75);
+
+    // Memory Guard: Extract raw text ONLY for small text/JSON/CSV files (< 1MB)
     let rawContent = null;
     try {
-      if (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv')))) {
+      if (computedSize < 1024 * 1024 && (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv'))))) {
         rawContent = Buffer.from(base64Data, 'base64').toString('utf-8');
       }
     } catch (e) {}
 
-    const fallbackDataUrl = `data:${mimeType || 'application/octet-stream'};base64,${base64Data}`;
+    // Memory Guard: Create Data URL fallback ONLY for small files (< 1MB), NEVER for large binary video/audio files
+    const fallbackDataUrl = computedSize < 1024 * 1024 ? `data:${mimeType || 'application/octet-stream'};base64,${base64Data}` : null;
 
     const fileRecord = {
       id: `f_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -301,7 +304,7 @@ export const uploadFile = async (req, res) => {
       file_name: fileName,
       file_type: fileType || 'AUDIO',
       mime_type: mimeType || 'application/octet-stream',
-      file_size: fileSize || Math.round(base64Data.length * 0.75),
+      file_size: computedSize,
       drive_file_id: `drive_${Date.now()}`,
       drive_folder_id: targetFolder,
       drive_url: fallbackDataUrl,
