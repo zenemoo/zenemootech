@@ -205,13 +205,51 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     }
   };
 
+  // Google Dataset JSON-LD Schema
+  useEffect(() => {
+    if (!dataset) return;
+
+    const schemaId = 'zenemoo-single-dataset-jsonld';
+    let script = document.getElementById(schemaId) as HTMLScriptElement;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = schemaId;
+      script.type = 'application/ld+json';
+      document.head.appendChild(script);
+    }
+
+    const jsonLdData = {
+      '@context': 'https://schema.org/',
+      '@type': 'Dataset',
+      'name': dataset.name,
+      'description': dataset.description || `${dataset.name} enterprise AI training dataset by Zenemoo Tech.`,
+      'inLanguage': dataset.language || 'Odia',
+      'url': `https://www.zenemoo.in/dataset/${dataset.slug || dataset.id}`,
+      'publisher': {
+        '@type': 'Organization',
+        'name': 'Zenemoo Tech',
+        'url': 'https://www.zenemoo.in'
+      }
+    };
+
+    script.text = JSON.stringify(jsonLdData);
+
+    return () => {
+      const existing = document.getElementById(schemaId);
+      if (existing) existing.remove();
+    };
+  }, [dataset]);
+
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
-      <SeoMeta
-        title={`${dataset?.name || 'Dataset Detail'} | Zenemoo AI Data Portfolio`}
-        description={dataset?.description || `Download and preview ${dataset?.name || 'multilingual AI speech and training datasets'} on Zenemoo.`}
-        canonicalUrl={`https://www.zenemoo.in/dataset/${slug}`}
-      />
+      {dataset && (
+        <SeoMeta
+          title={`${dataset.name} — Zenemoo AI Datasets`}
+          description={dataset.description || `Explore and download ${dataset.name} AI training dataset on Zenemoo Tech.`}
+          canonicalUrl={`https://www.zenemoo.in/dataset/${dataset.slug || dataset.id}`}
+        />
+      )}
+
       <Navbar onBack={onBack} showBackButton={true} onOpenAiDrawer={onOpenAiDrawer} />
 
       <main className="pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">

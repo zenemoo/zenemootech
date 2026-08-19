@@ -92,18 +92,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
             </nav>
           )}
 
-          {/* AI Data Portfolio Header Button & Mobile Toggle */}
+          {/* Global Floating AI Icon Button & Mobile Toggle */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <a
-              href="/ai-data"
+            {/* Global Floating AI Icon Button */}
+            <button
+              onClick={onOpenAiDrawer}
               className="relative group flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
-              title="Explore AI Data Portfolio"
-              aria-label="Explore AI Data Portfolio"
+              title="Ask Zenemoo AI"
+              aria-label="Ask Zenemoo AI"
             >
-              <Database className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">AI Data Portfolio</span>
+              <div className="relative w-5 h-5 rounded-full bg-gradient-to-tr from-cyan-400 via-purple-500 to-indigo-600 p-[1px] shadow-sm animate-pulse">
+                <SeoImage src="/assets/logo.png" alt="Zenemoo AI Assistant Engine" priority={true} width={20} height={20} className="w-full h-full object-cover rounded-full bg-white p-0.2" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
+              </div>
+              <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">Zenemoo AI</span>
               <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            </a>
+            </button>
 
             {/* Mobile Drawer Hamburger Button */}
             <button

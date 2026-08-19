@@ -97,32 +97,56 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
     });
   }, [datasets, searchQuery]);
 
+  // Google Dataset Search JSON-LD Structured Data Schema
+  useEffect(() => {
+    const schemaId = 'zenemoo-datacatalog-jsonld';
+    let script = document.getElementById(schemaId) as HTMLScriptElement;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = schemaId;
+      script.type = 'application/ld+json';
+      document.head.appendChild(script);
+    }
+
+    const jsonLdData = {
+      '@context': 'https://schema.org/',
+      '@type': 'DataCatalog',
+      'name': 'Zenemoo AI Data Portfolio & Multilingual Datasets Repository',
+      'description': 'Enterprise AI language, speech recognition, audio transcription, NLP, and computer vision datasets by Zenemoo Tech.',
+      'url': 'https://www.zenemoo.in/ai-data',
+      'publisher': {
+        '@type': 'Organization',
+        'name': 'Zenemoo Tech',
+        'url': 'https://www.zenemoo.in',
+        'logo': 'https://www.zenemoo.in/assets/logo.png'
+      },
+      'dataset': datasets.map((d) => ({
+        '@type': 'Dataset',
+        'name': d.name,
+        'description': d.description || `${d.name} AI training dataset`,
+        'inLanguage': d.language || 'Odia',
+        'url': `https://www.zenemoo.in/dataset/${d.slug || d.id}`,
+        'publisher': {
+          '@type': 'Organization',
+          'name': 'Zenemoo Tech'
+        }
+      }))
+    };
+
+    script.text = JSON.stringify(jsonLdData);
+
+    return () => {
+      const existing = document.getElementById(schemaId);
+      if (existing) existing.remove();
+    };
+  }, [datasets]);
+
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Enterprise Professional SEO Tags */}
       <SeoMeta
-        title="AI Data Portfolio & Multilingual Speech Datasets | Zenemoo"
-        description="Explore Zenemoo's enterprise AI dataset repository. High-quality Odia, Hindi, and Indian English speech recognition audio, computer vision, NLP, and model training datasets."
+        title="Zenemoo AI Data Portfolio | Enterprise Speech & Multilingual Datasets"
+        description="Official Zenemoo enterprise AI data portfolio repository. Explore & download high-quality Odia, Hindi, and Indian regional speech, audio, text, video, and computer vision training datasets."
         canonicalUrl="https://www.zenemoo.in/ai-data"
-      />
-
-      {/* Structured Google Search DataCatalog Schema */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'DataCatalog',
-            name: 'Zenemoo AI Data Portfolio',
-            description: 'Enterprise multilingual speech recognition audio, computer vision, and NLP datasets.',
-            url: 'https://www.zenemoo.in/ai-data',
-            provider: {
-              '@type': 'Organization',
-              name: 'Zenemoo Tech',
-              url: 'https://www.zenemoo.in',
-            },
-          }),
-        }}
       />
 
       {/* Top Navbar */}

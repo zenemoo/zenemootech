@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield, Users } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Heart, Github, Linkedin, Mail, Twitter, Check, CheckCircle2, X, Lock, FileText, Shield, Users, Database } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { subscriberApi } from '../services/api';
 import { ZENEMOO_SOCIAL_LINKS } from './SocialData';
@@ -154,46 +154,47 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Services & Solutions */}
+          {/* Services */}
           <div>
             <h4 className="text-xs font-mono uppercase tracking-wider text-white font-bold mb-4">
-              Services &amp; Solutions
+              Services
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
               <li><a href="#services" className="hover:text-cyan-400 transition-colors">Audio Transcription</a></li>
               <li><a href="#services" className="hover:text-cyan-400 transition-colors">AI Data Collection</a></li>
-              <li><a href="#services" className="hover:text-cyan-400 transition-colors">Data Annotation &amp; QC</a></li>
+              <li><a href="#services" className="hover:text-cyan-400 transition-colors">Data Annotation</a></li>
               <li><a href="#services" className="hover:text-cyan-400 transition-colors">Multilingual Voice Over</a></li>
               <li><a href="#services" className="hover:text-cyan-400 transition-colors">Audio Segmentation</a></li>
-              <li><a href="#services" className="hover:text-cyan-400 transition-colors">Super QC Validation</a></li>
+              <li><a href="#services" className="hover:text-cyan-400 transition-colors">Super QC Review</a></li>
             </ul>
           </div>
 
-          {/* AI Data & Languages */}
+          {/* Languages */}
           <div>
             <h4 className="text-xs font-mono uppercase tracking-wider text-white font-bold mb-4">
-              AI Data &amp; Languages
+              Languages
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
-              <li><a href="/ai-data" className="hover:text-cyan-400 transition-colors text-cyan-400 font-bold flex items-center gap-1.5"><Sparkles className="w-3 h-3 text-cyan-400" /> AI Data Portfolio</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Odia (ଓଡ଼ିଆ) Datasets</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Hindi (हिन्दी) Audio</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Indian English Speech</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Bengali &amp; Telugu Data</a></li>
-              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Tamil &amp; Regional NLP</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Hindi (हिन्दी)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">English (Indian)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Odia (ଓଡ଼ିଆ)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Bengali (Supported)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Telugu (Supported)</a></li>
+              <li><a href="#languages" className="hover:text-cyan-400 transition-colors">Tamil (Supported)</a></li>
             </ul>
           </div>
 
-          {/* Organization & Company */}
+          {/* Organization */}
           <div>
             <h4 className="text-xs font-mono uppercase tracking-wider text-white font-bold mb-4">
-              Organization &amp; Company
+              Organization
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
-              <li><a href="/opportunities" className="hover:text-cyan-400 transition-colors font-bold text-white">Opportunities Portal</a></li>
-              <li><a href="/team-directory" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
+              <li><a href="/ai-data" className="hover:text-cyan-400 transition-colors text-cyan-400 font-bold flex items-center gap-1.5"><Database className="w-3 h-3 text-cyan-400" /> AI Data Portfolio</a></li>
               <li><a href="/talent-registration" className="hover:text-cyan-400 transition-colors text-emerald-300 font-bold flex items-center gap-1.5"><Users className="w-3 h-3" /> Join AI Data Network</a></li>
               <li><a href="/review" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Community &amp; Client Reviews</a></li>
+              <li><a href="/opportunities" className="hover:text-cyan-400 transition-colors font-bold">Opportunities Portal</a></li>
+              <li><a href="/team-directory" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
               <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li className="pt-2 border-t border-white/5 space-y-1 font-mono text-[11px]">
                 <div className="text-slate-400 font-bold">Official Contact &amp; Location:</div>
