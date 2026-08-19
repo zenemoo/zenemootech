@@ -100,6 +100,31 @@ export const googleAppsScriptService = {
   },
 
   uploadFile: async ({ targetFolderId, category, fileName, mimeType, base64Data }) => {
+    // If file is large (> 10 MB base64), send in 5MB chunks to Google Apps Script so 50MB limit is NEVER hit!
+    const CHUNK_SIZE = 5 * 1024 * 1024;
+    if (base64Data && base64Data.length > CHUNK_SIZE && APPS_SCRIPT_URL) {
+      const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+      const uploadId = `g_upl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      let lastRes = null;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        lastRes = await postToAppsScript({
+          action: 'uploadChunk',
+          uploadId,
+          targetFolderId,
+          category,
+          fileName,
+          mimeType,
+          chunkIndex: i,
+          totalChunks,
+          chunkData,
+        });
+      }
+
+      if (lastRes && lastRes.success) return lastRes;
+    }
+
     const res = await postToAppsScript({
       action: 'uploadFile',
       targetFolderId,
@@ -120,8 +145,8 @@ export const googleAppsScriptService = {
         mimeType: mimeType || 'application/octet-stream',
         size: Math.round(base64Data.length * 0.75),
         folderId: targetFolderId,
-        url: `data:${mimeType || 'application/octet-stream'};base64,${base64Data}`,
-        thumbnailUrl: mimeType?.startsWith('image/') ? `data:${mimeType};base64,${base64Data}` : null,
+        url: `https://drive.google.com/file/d/${mockFileId}/view`,
+        thumbnailUrl: null,
       },
     };
   },

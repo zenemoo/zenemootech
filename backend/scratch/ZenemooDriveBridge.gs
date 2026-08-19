@@ -1,22 +1,24 @@
 /**
- * ZENEMOO AI Data Portfolio — Google Apps Script Drive Bridge (v2.1)
- * Deployed as a Web App (Execute as me, Access: Anyone)
+ * ZENEMOO DATA PORTFOLIO - Google Apps Script Drive Bridge
+ * Version: 2.2
+ *
+ * Folder Structure:
+ * 📁 ZENEMOO_DATA_PORTFOLIO / <Dataset Name> / AUDIO | VIDEO | IMAGE | JSON | CSV | PDF
  */
 
-const SECRET_TOKEN = "ZENEMOO_DRIVE_SECRET_2026_PORTFOLIO";
 const ROOT_FOLDER_NAME = "ZENEMOO_DATA_PORTFOLIO";
-const CATEGORIES = ["AUDIO", "VIDEO", "IMAGE", "JSON", "CSV", "PDF"];
 
-/**
- * Handle HTTP POST requests from Zenemoo Backend API
- */
 function doPost(e) {
   try {
-    const postData = JSON.parse(e.postData.contents || "{}");
-    const authHeader = postData.secret || postData.token;
+    if (!e || !e.postData || !e.postData.contents) {
+      return responseJSON({ success: false, error: "No post data received" }, 400);
+    }
 
-    if (authHeader !== SECRET_TOKEN) {
-      return responseJSON({ success: false, error: "Unauthorized: Invalid secret token" }, 401);
+    let postData;
+    try {
+      postData = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      return responseJSON({ success: false, error: "Invalid JSON format" }, 400);
     }
 
     const action = postData.action;
@@ -33,6 +35,9 @@ function doPost(e) {
 
       case "uploadFile":
         return handleUploadFile(postData);
+
+      case "uploadChunk":
+        return handleUploadChunk(postData);
 
       case "deleteFile":
         return handleDeleteFile(postData);
@@ -57,7 +62,7 @@ function doPost(e) {
 function doGet(e) {
   return responseJSON({
     status: "ONLINE",
-    service: "Zenemoo Drive Bridge Apps Script",
+    service: "Zenemoo Drive Bridge Apps Script v2.2",
     timestamp: new Date().toISOString()
   });
 }
@@ -74,61 +79,66 @@ function getOrCreateRootFolder() {
 }
 
 /**
- * Creates dataset folder and default category subfolders inside ZENEMOO_DATA_PORTFOLIO
+ * Create Dataset Root Folder + 6 Category Subfolders
  */
 function handleCreateDataset(data) {
-  const datasetName = data.datasetName;
-  if (!datasetName) {
-    return responseJSON({ success: false, error: "Missing datasetName" }, 400);
-  }
-
+  const datasetName = data.datasetName || "Untitled Dataset";
   const rootFolder = getOrCreateRootFolder();
-  let datasetFolder;
 
-  const existingFolders = rootFolder.getFoldersByName(datasetName);
-  if (existingFolders.hasNext()) {
-    datasetFolder = existingFolders.next();
+  let datasetFolder;
+  const existing = rootFolder.getFoldersByName(datasetName);
+  if (existing.hasNext()) {
+    datasetFolder = existing.next();
   } else {
     datasetFolder = rootFolder.createFolder(datasetName);
   }
 
   const categoryFolders = {};
-  for (let i = 0; i < CATEGORIES.length; i++) {
-    const cat = CATEGORIES[i];
-    const subFolders = datasetFolder.getFoldersByName(cat);
-    if (subFolders.hasNext()) {
-      categoryFolders[cat] = subFolders.next().getId();
+  const categories = ["AUDIO", "VIDEO", "IMAGE", "JSON", "CSV", "PDF"];
+
+  for (let i = 0; i < categories.length; i++) {
+    const catName = categories[i];
+    const catSearch = datasetFolder.getFoldersByName(catName);
+    let subFolder;
+    if (catSearch.hasNext()) {
+      subFolder = catSearch.next();
     } else {
-      categoryFolders[cat] = datasetFolder.createFolder(cat).getId();
+      subFolder = datasetFolder.createFolder(catName);
     }
+    categoryFolders[catName] = subFolder.getId();
   }
 
   return responseJSON({
     success: true,
     dataset: {
-      name: datasetName,
+      id: datasetFolder.getId(),
+      name: datasetFolder.getName(),
       driveFolderId: datasetFolder.getId(),
-      driveUrl: datasetFolder.getUrl(),
+      url: datasetFolder.getUrl(),
       categoryFolders: categoryFolders
     }
   });
 }
 
 /**
- * Creates custom folder inside a parent folder
+ * Create custom subfolder inside dataset
  */
 function handleCreateFolder(data) {
   const folderName = data.folderName;
   const parentFolderId = data.parentFolderId;
 
-  if (!folderName || !parentFolderId) {
-    return responseJSON({ success: false, error: "Missing folderName or parentFolderId" }, 400);
+  if (!folderName) {
+    return responseJSON({ success: false, error: "Missing folderName" }, 400);
   }
 
   let parentFolder;
-  try {
-    parentFolder = DriveApp.getFolderById(parentFolderId);
-  } catch (e) {
+  if (parentFolderId && parentFolderId !== "root") {
+    try {
+      parentFolder = DriveApp.getFolderById(parentFolderId);
+    } catch (e) {
+      parentFolder = getOrCreateRootFolder();
+    }
+  } else {
     parentFolder = getOrCreateRootFolder();
   }
 
@@ -191,28 +201,108 @@ function handleUploadFile(data) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
   const fileId = file.getId();
-  const driveViewUrl = file.getUrl(); // https://drive.google.com/file/d/FILE_ID/view
   const downloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
-  const directViewUrl = "https://drive.google.com/uc?export=view&id=" + fileId;
+  const viewUrl = "https://drive.google.com/file/d/" + fileId + "/view";
 
   return responseJSON({
     success: true,
     file: {
       id: fileId,
       name: file.getName(),
-      mimeType: file.getMimeType(),
       size: file.getSize(),
-      folderId: parentFolder.getId(),
+      mimeType: file.getMimeType(),
       url: downloadUrl,
       downloadUrl: downloadUrl,
-      thumbnailUrl: directViewUrl,
-      viewUrl: driveViewUrl
+      viewUrl: viewUrl,
+      thumbnailUrl: downloadUrl
     }
   });
 }
 
 /**
- * Deletes file by ID (Trashes file in Google Drive)
+ * Handle chunked file uploads for large video/audio files (> 20 MB)
+ */
+function handleUploadChunk(data) {
+  const uploadId = data.uploadId;
+  const targetFolderId = data.targetFolderId;
+  const category = data.category || "VIDEO";
+  const fileName = data.fileName;
+  const mimeType = data.mimeType || "application/octet-stream";
+  const chunkIndex = data.chunkIndex;
+  const totalChunks = data.totalChunks;
+  const chunkData = data.chunkData;
+
+  let parentFolder;
+  if (targetFolderId && targetFolderId !== "root") {
+    try {
+      parentFolder = DriveApp.getFolderById(targetFolderId);
+    } catch (e) {
+      parentFolder = getOrCreateRootFolder();
+    }
+  } else {
+    parentFolder = getOrCreateRootFolder();
+  }
+
+  if (category) {
+    const existingCat = parentFolder.getFoldersByName(category);
+    if (existingCat.hasNext()) {
+      parentFolder = existingCat.next();
+    } else {
+      parentFolder = parentFolder.createFolder(category);
+    }
+  }
+
+  // Find or create temporary file for this chunk upload
+  const tempFileName = "_temp_" + uploadId + "_" + fileName;
+  let tempFile;
+  const tempFiles = parentFolder.getFilesByName(tempFileName);
+  if (tempFiles.hasNext()) {
+    tempFile = tempFiles.next();
+  } else {
+    tempFile = parentFolder.createFile(tempFileName, "", "text/plain");
+  }
+
+  // Append chunk base64 data to temporary file
+  const existingContent = tempFile.getBlob().getDataAsString();
+  tempFile.setContent(existingContent + chunkData);
+
+  if (chunkIndex >= totalChunks - 1) {
+    // Final chunk: decode accumulated base64 and build real file
+    const fullBase64 = tempFile.getBlob().getDataAsString();
+    tempFile.setTrashed(true); // Delete temp file
+
+    const blob = Utilities.newBlob(Utilities.base64Decode(fullBase64), mimeType, fileName);
+    const finalFile = parentFolder.createFile(blob);
+    finalFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const fileId = finalFile.getId();
+    const downloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
+    const viewUrl = "https://drive.google.com/file/d/" + fileId + "/view";
+
+    return responseJSON({
+      success: true,
+      file: {
+        id: fileId,
+        name: finalFile.getName(),
+        size: finalFile.getSize(),
+        mimeType: finalFile.getMimeType(),
+        url: downloadUrl,
+        downloadUrl: downloadUrl,
+        viewUrl: viewUrl,
+        thumbnailUrl: downloadUrl
+      }
+    });
+  }
+
+  return responseJSON({
+    success: true,
+    message: "Chunk " + (chunkIndex + 1) + "/" + totalChunks + " written to Drive",
+    progress: Math.round(((chunkIndex + 1) / totalChunks) * 100)
+  });
+}
+
+/**
+ * Move single file to Trash
  */
 function handleDeleteFile(data) {
   const fileId = data.fileId;
@@ -223,17 +313,17 @@ function handleDeleteFile(data) {
   try {
     const file = DriveApp.getFileById(fileId);
     file.setTrashed(true);
-    return responseJSON({ success: true, fileId: fileId, message: "File trashed successfully in Google Drive" });
-  } catch (err) {
-    return responseJSON({ success: false, error: err.toString() }, 404);
+    return responseJSON({ success: true, message: "File trashed successfully" });
+  } catch (e) {
+    return responseJSON({ success: false, error: e.toString() }, 500);
   }
 }
 
 /**
- * Deletes entire folder by ID (Trashes dataset folder in Google Drive)
+ * Move folder and its content to Trash
  */
 function handleDeleteFolder(data) {
-  const folderId = data.folderId || data.driveFolderId;
+  const folderId = data.folderId;
   if (!folderId) {
     return responseJSON({ success: false, error: "Missing folderId" }, 400);
   }
@@ -241,9 +331,9 @@ function handleDeleteFolder(data) {
   try {
     const folder = DriveApp.getFolderById(folderId);
     folder.setTrashed(true);
-    return responseJSON({ success: true, folderId: folderId, message: "Folder trashed successfully in Google Drive" });
-  } catch (err) {
-    return responseJSON({ success: false, error: err.toString() }, 404);
+    return responseJSON({ success: true, message: "Folder trashed successfully" });
+  } catch (e) {
+    return responseJSON({ success: false, error: e.toString() }, 500);
   }
 }
 
