@@ -22,6 +22,7 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { datasetApi } from '../services/api';
 import { formatFileSize, detectFileType, DatasetCategoryType } from '../utils/fileTypeDetector';
+import { PreviewWatermark } from './PreviewWatermark';
 
 interface DatasetItem {
   id: string;
@@ -363,7 +364,8 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
             <div className="py-4">
               {/* Audio Preview */}
               {previewFile.file_type === 'AUDIO' && (
-                <div className="bg-slate-900/80 p-6 rounded-2xl border border-white/5 text-center space-y-4">
+                <div className="relative bg-slate-900/80 p-6 rounded-2xl border border-white/5 text-center space-y-4">
+                  <PreviewWatermark position="top-right" />
                   <Volume2 className="w-12 h-12 text-indigo-400 mx-auto animate-pulse" />
                   <p className="text-xs text-slate-300 font-mono">{previewFile.file_name}</p>
                   {previewFile.drive_url && (previewFile.drive_url.startsWith('data:') || previewFile.drive_url.startsWith('blob:')) ? (
@@ -383,7 +385,8 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* Video Preview */}
               {previewFile.file_type === 'VIDEO' && (
-                <div className="bg-black rounded-2xl overflow-hidden border border-white/10">
+                <div className="relative bg-black rounded-2xl overflow-hidden border border-white/10">
+                  <PreviewWatermark position="top-right" />
                   {previewFile.drive_url && (previewFile.drive_url.startsWith('data:') || previewFile.drive_url.startsWith('blob:')) ? (
                     <video src={previewFile.drive_url} controls autoPlay className="w-full max-h-96 object-contain" />
                   ) : getEmbedPreviewUrl(previewFile) ? (
@@ -401,7 +404,8 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* Image Preview */}
               {previewFile.file_type === 'IMAGE' && (
-                <div className="bg-slate-900 rounded-2xl p-2 border border-white/10 text-center relative min-h-[200px] flex items-center justify-center">
+                <div className="relative bg-slate-900 rounded-2xl p-2 border border-white/10 text-center min-h-[200px] flex items-center justify-center overflow-hidden">
+                  <PreviewWatermark position="top-right" />
                   <img
                     src={getFileMediaUrl(previewFile)}
                     alt={previewFile.file_name}
@@ -419,8 +423,9 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* JSON Code Viewer */}
               {previewFile.file_type === 'JSON' && (
-                <div className="bg-slate-950 p-4 rounded-2xl border border-white/10 font-mono text-xs text-emerald-400 max-h-80 overflow-y-auto space-y-2">
-                  <div className="flex justify-end">
+                <div className="relative bg-slate-950 p-4 rounded-2xl border border-white/10 font-mono text-xs text-emerald-400 max-h-80 overflow-y-auto space-y-2">
+                  <PreviewWatermark position="top-right" />
+                  <div className="flex justify-start pt-1">
                     <button
                       onClick={() => {
                         const jsonStr = getRealJsonContent(previewFile);
@@ -434,7 +439,7 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                       <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
                     </button>
                   </div>
-                  <pre className="whitespace-pre-wrap leading-relaxed">
+                  <pre className="whitespace-pre-wrap leading-relaxed pt-2">
                     {getRealJsonContent(previewFile)}
                   </pre>
                 </div>
@@ -442,13 +447,14 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* CSV Viewer */}
               {previewFile.file_type === 'CSV' && (
-                <div className="bg-slate-950 p-4 rounded-2xl border border-white/10 overflow-x-auto text-xs font-mono">
+                <div className="relative bg-slate-950 p-4 rounded-2xl border border-white/10 overflow-x-auto text-xs font-mono">
+                  <PreviewWatermark position="top-right" />
                   {previewFile.raw_content ? (
-                    <pre className="whitespace-pre-wrap text-amber-300 leading-relaxed max-h-72 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap text-amber-300 leading-relaxed max-h-72 overflow-y-auto pt-4">
                       {previewFile.raw_content}
                     </pre>
                   ) : (
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse mt-4">
                       <thead>
                         <tr className="border-b border-white/10 text-cyan-400">
                           <th className="p-2">Filename</th>
@@ -470,7 +476,8 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* PDF Preview */}
               {previewFile.file_type === 'PDF' && (
-                <div className="bg-slate-900 p-8 rounded-2xl border border-white/10 text-center space-y-3">
+                <div className="relative bg-slate-900 p-8 rounded-2xl border border-white/10 text-center space-y-3">
+                  <PreviewWatermark position="top-right" />
                   {getEmbedPreviewUrl(previewFile) ? (
                     <iframe
                       src={getEmbedPreviewUrl(previewFile)!}
