@@ -250,6 +250,22 @@ export function App() {
         pageTitle = '404 – Page Not Found | Zenemoo';
         canonicalUrl = `https://www.zenemoo.in${path}`;
         metaDescription = "The page you requested could not be found. Explore Zenemoo's AI language services, data annotation, transcription, and enterprise solutions.";
+      } else if (matchedRoute === 'ai-data' || path === '/ai-data' || hash.includes('#ai-data')) {
+        pageTitle = 'AI Data Portfolio & Public Datasets — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/ai-data';
+        metaDescription = 'Browse Zenemoo public AI datasets, audio speech samples, video datasets, image annotation corpora, and benchmark data collections.';
+      } else if (matchedRoute === 'reviews' || path === '/review' || hash.includes('#review')) {
+        pageTitle = 'Community & Client Reviews — Zenemoo Enterprise AI';
+        canonicalUrl = 'https://www.zenemoo.in/review';
+        metaDescription = 'Read verified community reviews, worker feedback, partner ratings, and client testimonials about Zenemoo language data annotation services.';
+      } else if (path === '/opportunities' || hash.includes('#opportunities') || matchedRoute === 'opportunities') {
+        pageTitle = 'Program Opportunities & Careers — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/opportunities';
+        metaDescription = 'Explore official partner initiatives, language AI annotation campaigns, remote work opportunities, and enterprise project listings at Zenemoo.';
+      } else if (path === '/team-directory' || path === '/team' || hash.includes('#team') || matchedRoute === 'team-directory') {
+        pageTitle = 'Data Team Roster & Executive Directory — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/team-directory';
+        metaDescription = 'Meet Zenemoo executive team, language AI researchers, project managers, annotation leads, and enterprise language coordinators.';
       } else if (matchedRoute === 'talent-registration') {
         pageTitle = 'AI Data Talent & Partner Registration — Zenemoo';
         canonicalUrl = 'https://www.zenemoo.in/talent-registration';
@@ -257,22 +273,15 @@ export function App() {
       } else if (path === '/terms' || hash.includes('#terms')) {
         pageTitle = 'Terms & Conditions — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/terms';
+        metaDescription = 'Official Zenemoo enterprise terms of service, data annotation guidelines, candidate agreements, and usage policies.';
       } else if (path === '/privacy' || hash.includes('#privacy')) {
         pageTitle = 'Privacy Policy — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/privacy';
-      } else if (path === '/team-directory' || path === '/team' || hash.includes('#team')) {
-        pageTitle = 'Data Team Roster & Executive Directory — Zenemoo';
-        canonicalUrl = 'https://www.zenemoo.in/team-directory';
-      } else if (path === '/opportunities' || hash.includes('#opportunities')) {
-        pageTitle = 'Program Opportunities & Careers — Zenemoo';
-        canonicalUrl = 'https://www.zenemoo.in/opportunities';
+        metaDescription = 'Zenemoo data privacy policy, security standards, confidentiality protocols, and candidate data protection guidelines.';
       } else if (path === '/zenemooai' || hash.includes('#zenemooai')) {
         pageTitle = 'Zenemoo AI Assistant — Multilingual AI Engine';
         canonicalUrl = 'https://www.zenemoo.in/zenemooai';
-      } else if (matchedRoute === 'reviews' || path === '/review' || hash.includes('#review')) {
-        pageTitle = 'Community & Client Reviews — Zenemoo Enterprise AI';
-        canonicalUrl = 'https://www.zenemoo.in/review';
-        metaDescription = 'Read verified community reviews, worker feedback, and client testimonials about Zenemoo language data solutions and AI data annotation.';
+        metaDescription = 'Interact with Zenemoo AI Assistant for instant information on multilingual speech datasets, enterprise data annotation, and AI services.';
       }
 
       document.title = pageTitle;
