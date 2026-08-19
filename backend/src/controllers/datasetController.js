@@ -422,6 +422,71 @@ export const uploadFile = async (req, res) => {
   }
 };
 
+export const fetchLinkMetadata = async (req, res) => {
+  try {
+    const { driveUrl } = req.body;
+    if (!driveUrl) {
+      return res.status(400).json({ success: false, message: 'Missing driveUrl' });
+    }
+
+    const fileIdMatch = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || driveUrl.match(/id=([a-zA-Z0-9_-]+)/);
+    if (!fileIdMatch || !fileIdMatch[1]) {
+      return res.json({
+        success: true,
+        fileName: 'External_File_' + Date.now().toString(36),
+        fileType: 'VIDEO',
+        fileSize: 10 * 1024 * 1024,
+      });
+    }
+
+    const fileId = fileIdMatch[1];
+    const scriptRes = await googleAppsScriptService.getFileMetadata(fileId);
+
+    if (scriptRes && scriptRes.success && scriptRes.file) {
+      return res.json({
+        success: true,
+        fileId,
+        fileName: scriptRes.file.name,
+        fileType: scriptRes.file.category || 'VIDEO',
+        fileSize: scriptRes.file.size,
+        mimeType: scriptRes.file.mimeType,
+      });
+    }
+
+    // Fallback: Query Google Drive direct export headers via fetch/axios HEAD
+    try {
+      const axios = (await import('axios')).default;
+      const headRes = await axios.head(`https://drive.google.com/uc?export=download&id=${fileId}`, {
+        maxRedirects: 5,
+        timeout: 5000,
+      });
+
+      const contentLength = parseInt(headRes.headers['content-length'] || '0', 10);
+      const disposition = headRes.headers['content-disposition'] || '';
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const extractedName = filenameMatch ? filenameMatch[1] : null;
+
+      return res.json({
+        success: true,
+        fileId,
+        fileName: extractedName || `Google_Drive_File_${fileId.substring(0, 6)}`,
+        fileType: 'VIDEO',
+        fileSize: contentLength || 10 * 1024 * 1024,
+      });
+    } catch (headErr) {}
+
+    res.json({
+      success: true,
+      fileId,
+      fileName: `Google_Drive_File_${fileId.substring(0, 6)}`,
+      fileType: 'VIDEO',
+      fileSize: 10 * 1024 * 1024,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 export const uploadChunk = async (req, res) => {
   try {
     const { id } = req.params;

@@ -151,6 +151,14 @@ export const googleAppsScriptService = {
     };
   },
 
+  getFileMetadata: async (driveFileId) => {
+    const res = await postToAppsScript({
+      action: 'getFileMetadata',
+      fileId: driveFileId,
+    });
+    return res;
+  },
+
   deleteFile: async (driveFileId) => {
     const res = await postToAppsScript({
       action: 'deleteFile',

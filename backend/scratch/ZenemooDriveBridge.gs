@@ -1,6 +1,6 @@
 /**
  * ZENEMOO DATA PORTFOLIO - Google Apps Script Drive Bridge
- * Version: 2.2
+ * Version: 2.3
  *
  * Folder Structure:
  * 📁 ZENEMOO_DATA_PORTFOLIO / <Dataset Name> / AUDIO | VIDEO | IMAGE | JSON | CSV | PDF
@@ -39,6 +39,9 @@ function doPost(e) {
       case "uploadChunk":
         return handleUploadChunk(postData);
 
+      case "getFileMetadata":
+        return handleGetFileMetadata(postData);
+
       case "deleteFile":
         return handleDeleteFile(postData);
 
@@ -62,7 +65,7 @@ function doPost(e) {
 function doGet(e) {
   return responseJSON({
     status: "ONLINE",
-    service: "Zenemoo Drive Bridge Apps Script v2.2",
+    service: "Zenemoo Drive Bridge Apps Script v2.3",
     timestamp: new Date().toISOString()
   });
 }
@@ -299,6 +302,45 @@ function handleUploadChunk(data) {
     message: "Chunk " + (chunkIndex + 1) + "/" + totalChunks + " written to Drive",
     progress: Math.round(((chunkIndex + 1) / totalChunks) * 100)
   });
+}
+
+/**
+ * Fetch File Metadata (Name, Size, Category) from Google Drive File ID
+ */
+function handleGetFileMetadata(data) {
+  const fileId = data.fileId;
+  if (!fileId) {
+    return responseJSON({ success: false, error: "Missing fileId" }, 400);
+  }
+
+  try {
+    const file = DriveApp.getFileById(fileId);
+    const mimeType = file.getMimeType();
+    const fileName = file.getName();
+    let category = "OTHER";
+
+    if (mimeType.includes("video") || fileName.match(/\.(mp4|mkv|avi|mov|webm)$/i)) category = "VIDEO";
+    else if (mimeType.includes("audio") || fileName.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) category = "AUDIO";
+    else if (mimeType.includes("image") || fileName.match(/\.(png|jpg|jpeg|gif|webp)$/i)) category = "IMAGE";
+    else if (mimeType.includes("json") || fileName.endsWith(".json")) category = "JSON";
+    else if (mimeType.includes("csv") || fileName.endsWith(".csv")) category = "CSV";
+    else if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) category = "PDF";
+
+    return responseJSON({
+      success: true,
+      file: {
+        id: file.getId(),
+        name: fileName,
+        size: file.getSize(),
+        mimeType: mimeType,
+        category: category,
+        downloadUrl: "https://drive.google.com/uc?export=download&id=" + file.getId(),
+        viewUrl: "https://drive.google.com/file/d/" + file.getId() + "/view"
+      }
+    });
+  } catch (e) {
+    return responseJSON({ success: false, error: e.toString() }, 500);
+  }
 }
 
 /**

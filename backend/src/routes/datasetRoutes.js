@@ -6,6 +6,7 @@ import {
   createFolder,
   uploadFile,
   uploadChunk,
+  fetchLinkMetadata,
   deleteFile,
   deleteDataset,
 } from '../controllers/datasetController.js';
@@ -19,6 +20,7 @@ router.get('/:identifier', getDatasetBySlugOrId);
 
 // Admin Authorized Management Routes
 router.post('/', authMiddleware, createDataset);
+router.post('/fetch-link-metadata', authMiddleware, fetchLinkMetadata);
 router.post('/:id/folders', authMiddleware, createFolder);
 router.post('/:id/upload', authMiddleware, uploadFile);
 router.post('/:id/upload-chunk', authMiddleware, uploadChunk);

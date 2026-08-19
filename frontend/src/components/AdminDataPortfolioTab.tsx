@@ -101,6 +101,7 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
   const [urlLink, setUrlLink] = useState('');
   const [urlFileSizeText, setUrlFileSizeText] = useState('50 MB');
   const [isSubmittingUrl, setIsSubmittingUrl] = useState(false);
+  const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
 
   // File Upload Queue state
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
@@ -245,6 +246,35 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
       addToast('Error', err.message || 'Failed to add file link.', 'error');
     } finally {
       setIsSubmittingUrl(false);
+    }
+  };
+
+  // Auto-fetch file metadata from Google Drive link
+  const handleLinkUrlChange = async (url: string) => {
+    setUrlLink(url);
+    if (!url || !url.includes('drive.google.com')) return;
+
+    const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (!fileIdMatch || !fileIdMatch[1]) return;
+
+    setIsFetchingMetadata(true);
+    try {
+      const res = await datasetApi.fetchLinkMetadata(url);
+      if (res.data && res.data.success) {
+        if (res.data.fileName) {
+          setUrlFileName(res.data.fileName);
+        }
+        if (res.data.fileType) {
+          setUrlCategory(res.data.fileType as DatasetCategoryType);
+        }
+        if (res.data.fileSize) {
+          setUrlFileSizeText(formatFileSize(res.data.fileSize));
+        }
+      }
+    } catch (err) {
+      console.warn('Metadata auto-fetch notice:', err);
+    } finally {
+      setIsFetchingMetadata(false);
     }
   };
 
@@ -1005,17 +1035,22 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-slate-300 mb-1">Google Drive Link / Public File URL *</label>
+                <label className="block text-xs font-mono text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Google Drive Link / Public File URL *</span>
+                  {isFetchingMetadata && (
+                    <span className="text-[10px] text-cyan-400 font-mono animate-pulse">⚡ Auto-detecting file size & details...</span>
+                  )}
+                </label>
                 <input
                   type="url"
                   required
                   placeholder="https://drive.google.com/file/d/1qIS832Ixs5Q_QoNW_0Gh0uT6jIHzleIa/view"
                   value={urlLink}
-                  onChange={(e) => setUrlLink(e.target.value)}
+                  onChange={(e) => handleLinkUrlChange(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Tip: Make sure link sharing is set to "Anyone with the link can view".
+                  Tip: Paste your Google Drive link to automatically detect file name, size, and category!
                 </p>
               </div>
 
