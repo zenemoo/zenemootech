@@ -1,18 +1,19 @@
 import { supabase } from '../config/supabase.js';
 import { googleAppsScriptService } from '../services/googleAppsScriptService.js';
 
-// Single in-memory dataset store when Supabase table is being setup
-const memoryDatasets = [];
+// In-memory store for datasets & files (starts 100% empty — NO fake data)
+const fallbackDatasets = [];
+const fallbackFiles = [];
 
 export const getDatasets = async (req, res) => {
   try {
-    const { search, status } = req.query;
+    const { search, category, status } = req.query;
 
     if (supabase) {
       try {
-        let query = supabase.from('datasets').select('id, name, slug, description, language, status, total_files, total_size_bytes, drive_folder_id, created_at, updated_at').order('updated_at', { ascending: false });
+        let query = supabase.from('datasets').select('*').order('updated_at', { ascending: false });
 
-        if (status && status !== 'all') {
+        if (status) {
           query = query.eq('status', status);
         }
         if (search) {
@@ -25,11 +26,12 @@ export const getDatasets = async (req, res) => {
           return res.json({ success: true, datasets: data });
         }
       } catch (dbErr) {
-        console.warn('Supabase query skipped, using memory store:', dbErr.message);
+        console.warn('Supabase getDatasets query skipped, using memory store:', dbErr.message);
       }
     }
 
-    let filtered = [...memoryDatasets];
+    // Filter memory store
+    let filtered = [...fallbackDatasets];
     if (search) {
       const q = String(search).toLowerCase();
       filtered = filtered.filter(
@@ -52,6 +54,8 @@ export const getDatasetBySlugOrId = async (req, res) => {
     const { identifier } = req.params;
 
     let dataset = null;
+    let files = [];
+    let folders = [];
 
     if (supabase) {
       try {
@@ -64,31 +68,39 @@ export const getDatasetBySlugOrId = async (req, res) => {
         }
 
         const { data: dsData } = await dsQuery.maybeSingle();
+
         if (dsData) {
           dataset = dsData;
+          const [filesRes, foldersRes] = await Promise.all([
+            supabase.from('dataset_files').select('*').eq('dataset_id', dataset.id).order('created_at', { ascending: false }),
+            supabase.from('dataset_folders').select('*').eq('dataset_id', dataset.id),
+          ]);
+          files = filesRes.data || [];
+          folders = foldersRes.data || [];
         }
       } catch (dbErr) {
-        console.warn('Supabase fetch dataset detail skipped:', dbErr.message);
+        console.warn('Supabase getDatasetBySlugOrId query skipped:', dbErr.message);
       }
     }
 
     if (!dataset) {
-      dataset = memoryDatasets.find((d) => d.slug === identifier || d.id === identifier);
+      dataset = fallbackDatasets.find((d) => d.slug === identifier || d.id === identifier);
+      if (dataset) {
+        files = fallbackFiles.filter((f) => f.dataset_id === dataset.id);
+        folders = [
+          { id: `folder_audio_${dataset.id}`, name: 'AUDIO', folder_type: 'AUDIO' },
+          { id: `folder_video_${dataset.id}`, name: 'VIDEO', folder_type: 'VIDEO' },
+          { id: `folder_image_${dataset.id}`, name: 'IMAGE', folder_type: 'IMAGE' },
+          { id: `folder_json_${dataset.id}`, name: 'JSON', folder_type: 'JSON' },
+          { id: `folder_csv_${dataset.id}`, name: 'CSV', folder_type: 'CSV' },
+          { id: `folder_pdf_${dataset.id}`, name: 'PDF', folder_type: 'PDF' },
+        ];
+      }
     }
 
     if (!dataset) {
       return res.status(404).json({ success: false, message: 'Dataset not found' });
     }
-
-    const files = dataset.files || [];
-    const folders = [
-      { id: `folder_audio_${dataset.id}`, name: 'AUDIO', folder_type: 'AUDIO' },
-      { id: `folder_video_${dataset.id}`, name: 'VIDEO', folder_type: 'VIDEO' },
-      { id: `folder_image_${dataset.id}`, name: 'IMAGE', folder_type: 'IMAGE' },
-      { id: `folder_json_${dataset.id}`, name: 'JSON', folder_type: 'JSON' },
-      { id: `folder_csv_${dataset.id}`, name: 'CSV', folder_type: 'CSV' },
-      { id: `folder_pdf_${dataset.id}`, name: 'PDF', folder_type: 'PDF' },
-    ];
 
     res.json({
       success: true,
@@ -126,6 +138,7 @@ export const createDataset = async (req, res) => {
     }
 
     const driveFolderId = driveResult?.dataset?.driveFolderId || `drive_folder_${Date.now()}`;
+    const categoryFoldersMap = driveResult?.dataset?.categoryFolders || {};
 
     const newDatasetObj = {
       id: `ds_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -137,11 +150,11 @@ export const createDataset = async (req, res) => {
       status: 'active',
       total_files: 0,
       total_size_bytes: 0,
-      files: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
+    // Safely attempt Supabase insertion
     if (supabase) {
       try {
         const { data: createdDs, error: dsErr } = await supabase
@@ -153,14 +166,23 @@ export const createDataset = async (req, res) => {
             language: language || 'Multilingual',
             drive_folder_id: driveFolderId,
             status: 'active',
-            total_files: 0,
-            total_size_bytes: 0,
-            files: [],
           })
           .select()
           .single();
 
         if (!dsErr && createdDs) {
+          try {
+            const catEntries = ['AUDIO', 'VIDEO', 'IMAGE', 'JSON', 'CSV', 'PDF'].map((cat) => ({
+              dataset_id: createdDs.id,
+              name: cat,
+              folder_type: cat,
+              drive_folder_id: categoryFoldersMap[cat] || null,
+            }));
+            await supabase.from('dataset_folders').insert(catEntries);
+          } catch (catErr) {
+            console.warn('Folder category insert warning:', catErr?.message);
+          }
+
           return res.status(201).json({
             success: true,
             dataset: createdDs,
@@ -174,7 +196,8 @@ export const createDataset = async (req, res) => {
       }
     }
 
-    memoryDatasets.unshift(newDatasetObj);
+    // Save to memory store
+    fallbackDatasets.unshift(newDatasetObj);
 
     return res.status(201).json({
       success: true,
@@ -210,6 +233,25 @@ export const createFolder = async (req, res) => {
       created_at: new Date().toISOString(),
     };
 
+    if (supabase) {
+      try {
+        const { data: createdFolder } = await supabase
+          .from('dataset_folders')
+          .insert({
+            dataset_id: id,
+            name: folderName.trim(),
+            folder_type: 'CUSTOM',
+            drive_folder_id: driveRes?.folder?.id || null,
+          })
+          .select()
+          .single();
+
+        if (createdFolder) {
+          return res.status(201).json({ success: true, folder: createdFolder });
+        }
+      } catch (err) {}
+    }
+
     res.status(201).json({ success: true, folder: folderObj });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -235,16 +277,16 @@ export const uploadFile = async (req, res) => {
       });
     } catch (gErr) {}
 
-    // Decode and preserve raw text for text/JSON/CSV files
+    // Extract raw text for text/JSON/CSV files if possible
     let rawContent = null;
     try {
-      const decoded = Buffer.from(base64Data, 'base64').toString('utf-8');
-      rawContent = decoded;
+      if (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv')))) {
+        rawContent = Buffer.from(base64Data, 'base64').toString('utf-8');
+      }
     } catch (e) {}
 
     const fallbackDataUrl = `data:${mimeType || 'application/octet-stream'};base64,${base64Data}`;
-    const finalFileUrl = driveRes?.file?.url || fallbackDataUrl;
-    const calculatedSize = fileSize || Math.round(base64Data.length * 0.75);
+    const realDriveUrl = driveRes?.file?.url;
 
     const fileRecord = {
       id: `f_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -252,10 +294,10 @@ export const uploadFile = async (req, res) => {
       file_name: fileName,
       file_type: fileType || 'AUDIO',
       mime_type: mimeType || 'application/octet-stream',
-      file_size: calculatedSize,
+      file_size: fileSize || Math.round(base64Data.length * 0.75),
       drive_file_id: driveRes?.file?.id || `drive_${Date.now()}`,
       drive_folder_id: driveFolderId,
-      drive_url: finalFileUrl,
+      drive_url: realDriveUrl || fallbackDataUrl,
       thumbnail_url: driveRes?.file?.thumbnailUrl || (mimeType?.startsWith('image/') ? fallbackDataUrl : null),
       raw_content: rawContent,
       status: 'ready',
@@ -265,55 +307,42 @@ export const uploadFile = async (req, res) => {
 
     if (supabase) {
       try {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        let dsQuery = supabase.from('datasets').select('*');
-        if (isUuid) {
-          dsQuery = dsQuery.eq('id', id);
-        } else {
-          dsQuery = dsQuery.eq('slug', id);
-        }
-        const { data: targetDs } = await dsQuery.maybeSingle();
+        const { data: dbFile } = await supabase
+          .from('dataset_files')
+          .insert({
+            dataset_id: id,
+            file_name: fileName,
+            file_type: fileType || 'AUDIO',
+            mime_type: mimeType,
+            file_size: fileRecord.file_size,
+            drive_file_id: fileRecord.drive_file_id,
+            drive_folder_id: driveFolderId,
+            drive_url: fileRecord.drive_url,
+            thumbnail_url: fileRecord.thumbnail_url,
+            raw_content: rawContent,
+            status: 'ready',
+          })
+          .select()
+          .single();
 
-        if (targetDs) {
-          const currentFiles = targetDs.files || [];
-          const updatedFiles = [fileRecord, ...currentFiles];
-          const newTotalFiles = (targetDs.total_files || 0) + 1;
-          const newTotalSize = (targetDs.total_size_bytes || 0) + calculatedSize;
-
-          const { data: updatedDs } = await supabase
-            .from('datasets')
-            .update({
-              files: updatedFiles,
-              total_files: newTotalFiles,
-              total_size_bytes: newTotalSize,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', targetDs.id)
-            .select()
-            .single();
-
-          if (updatedDs) {
-            return res.status(201).json({ success: true, file: fileRecord });
-          }
+        if (dbFile) {
+          return res.status(201).json({ success: true, file: dbFile });
         }
       } catch (dbErr) {
-        console.error('Error updating dataset files array in Supabase:', dbErr);
+        console.error('Error writing file record to Supabase:', dbErr);
       }
     }
 
-    // In-memory fallback
-    const targetMem = memoryDatasets.find((d) => d.id === id || d.slug === id);
-    if (targetMem) {
-      if (!targetMem.files) targetMem.files = [];
-      targetMem.files.unshift(fileRecord);
-      targetMem.total_files = (targetMem.total_files || 0) + 1;
-      targetMem.total_size_bytes = (targetMem.total_size_bytes || 0) + calculatedSize;
-      targetMem.updated_at = new Date().toISOString();
+    fallbackFiles.unshift(fileRecord);
+    const parentDataset = fallbackDatasets.find((d) => d.id === id);
+    if (parentDataset) {
+      parentDataset.total_files += 1;
+      parentDataset.total_size_bytes += fileRecord.file_size;
+      parentDataset.updated_at = new Date().toISOString();
     }
 
     res.status(201).json({ success: true, file: fileRecord });
   } catch (err) {
-    console.error('uploadFile error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -324,47 +353,24 @@ export const deleteFile = async (req, res) => {
 
     if (supabase) {
       try {
-        const { data: datasetsList } = await supabase.from('datasets').select('*');
-        if (datasetsList) {
-          for (const ds of datasetsList) {
-            const files = ds.files || [];
-            const fileObj = files.find((f) => f.id === fileId);
-            if (fileObj) {
-              if (fileObj.drive_file_id) {
-                try {
-                  await googleAppsScriptService.deleteFile(fileObj.drive_file_id);
-                } catch (gErr) {}
-              }
-              const updatedFiles = files.filter((f) => f.id !== fileId);
-              const newCount = Math.max(0, (ds.total_files || 1) - 1);
-              const newSize = Math.max(0, (ds.total_size_bytes || fileObj.file_size) - fileObj.file_size);
-
-              await supabase
-                .from('datasets')
-                .update({
-                  files: updatedFiles,
-                  total_files: newCount,
-                  total_size_bytes: newSize,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', ds.id);
-
-              return res.json({ success: true, message: 'File deleted successfully' });
-            }
-          }
+        const { data: targetFile } = await supabase.from('dataset_files').select('*').eq('id', fileId).maybeSingle();
+        if (targetFile?.drive_file_id) {
+          try {
+            await googleAppsScriptService.deleteFile(targetFile.drive_file_id);
+          } catch (gErr) {}
         }
+        await supabase.from('dataset_files').delete().eq('id', fileId);
+        return res.json({ success: true, message: 'File deleted successfully' });
       } catch (err) {}
     }
 
-    for (const ds of memoryDatasets) {
-      if (ds.files) {
-        const idx = ds.files.findIndex((f) => f.id === fileId);
-        if (idx !== -1) {
-          const removed = ds.files.splice(idx, 1)[0];
-          ds.total_files = Math.max(0, ds.total_files - 1);
-          ds.total_size_bytes = Math.max(0, ds.total_size_bytes - removed.file_size);
-          return res.json({ success: true, message: 'File deleted successfully' });
-        }
+    const idx = fallbackFiles.findIndex((f) => f.id === fileId);
+    if (idx !== -1) {
+      const removed = fallbackFiles.splice(idx, 1)[0];
+      const ds = fallbackDatasets.find((d) => d.id === removed.dataset_id);
+      if (ds) {
+        ds.total_files = Math.max(0, ds.total_files - 1);
+        ds.total_size_bytes = Math.max(0, ds.total_size_bytes - removed.file_size);
       }
     }
 
@@ -385,9 +391,9 @@ export const deleteDataset = async (req, res) => {
       } catch (err) {}
     }
 
-    const idx = memoryDatasets.findIndex((d) => d.id === id);
+    const idx = fallbackDatasets.findIndex((d) => d.id === id);
     if (idx !== -1) {
-      memoryDatasets.splice(idx, 1);
+      fallbackDatasets.splice(idx, 1);
     }
 
     res.json({ success: true, message: 'Dataset deleted' });

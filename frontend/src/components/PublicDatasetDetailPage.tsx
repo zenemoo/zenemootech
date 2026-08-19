@@ -122,37 +122,33 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     return `{\n  "file_name": "${file.file_name}",\n  "file_size": "${formatFileSize(file.file_size)}",\n  "type": "${file.file_type}"\n}`;
   };
 
-  // Safe universal download handler for exact file contents
+  // Safe universal download handler
   const handleDownloadFile = (file: DatasetFileItem) => {
-    let url = file.drive_url || file.thumbnail_url;
+    const url = file.drive_url || file.thumbnail_url;
+    if (!url) return;
 
-    if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
+    // Check if it's a real external Google Drive URL or data URI
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
       const link = document.createElement('a');
       link.href = url;
       link.download = file.file_name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      return;
-    }
-
-    if (file.raw_content) {
-      const blob = new Blob([file.raw_content], { type: file.mime_type || 'application/json' });
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = file.file_name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-      return;
-    }
-
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-      if (!url.includes('drive_file_') && !url.includes('/sample/')) {
+    } else if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (url.includes('/file/d/sample/') || url.includes('/drive_file_')) {
+        // Fallback: If URL is a placeholder string, generate text blob download
+        const blob = new Blob([file.raw_content || `File: ${file.file_name}`], { type: file.mime_type || 'text/plain' });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = file.file_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      } else {
         window.open(url, '_blank');
-        return;
       }
     }
   };
