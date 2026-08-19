@@ -89,6 +89,30 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     loadData();
   }, [slug]);
 
+  // Compute file counts per category dynamically from actual dataset files
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    files.forEach((file) => {
+      const type = (file.file_type || 'AUDIO').toUpperCase();
+      counts[type] = (counts[type] || 0) + 1;
+    });
+    return counts;
+  }, [files]);
+
+  // Compute available category tabs dynamically (ONLY categories with count > 0)
+  const availableCategories = useMemo(() => {
+    const allTypes: DatasetCategoryType[] = ['AUDIO', 'VIDEO', 'IMAGE', 'JSON', 'CSV', 'PDF'];
+    const activeTypes = allTypes.filter((t) => (categoryCounts[t] || 0) > 0);
+    return ['ALL', ...activeTypes];
+  }, [categoryCounts]);
+
+  // Auto-reset activeCategory to 'ALL' if current filter category no longer exists in dataset
+  useEffect(() => {
+    if (activeCategory !== 'ALL' && !availableCategories.includes(activeCategory)) {
+      setActiveCategory('ALL');
+    }
+  }, [availableCategories, activeCategory]);
+
   // Filtered files list
   const filteredFiles = useMemo(() => {
     return files.filter((f) => {
@@ -232,19 +256,22 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
         {/* CATEGORY SWITCHER & SEARCH */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#090a0f] p-4 rounded-2xl border border-white/10">
           <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto custom-scrollbar pb-1 sm:pb-0">
-            {['ALL', 'AUDIO', 'VIDEO', 'IMAGE', 'JSON', 'CSV', 'PDF'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat as any)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-all shrink-0 cursor-pointer ${
-                  activeCategory === cat
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {availableCategories.map((cat) => {
+              const count = cat === 'ALL' ? files.length : (categoryCounts[cat] || 0);
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-mono transition-all shrink-0 cursor-pointer ${
+                    activeCategory === cat
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {cat} {count}
+                </button>
+              );
+            })}
           </div>
 
           <div className="relative w-full sm:w-72">
