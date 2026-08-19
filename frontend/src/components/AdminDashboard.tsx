@@ -215,7 +215,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders'>((initialTab as any) || 'datasets');
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlTab = urlParams.get('tab') || window.location.hash.replace('#', '');
+        if (urlTab) return urlTab as any;
+
+        const storedTab = localStorage.getItem('zenemoo_admin_active_tab');
+        if (storedTab) return storedTab as any;
+      } catch (e) {}
+    }
+    return (initialTab as any) || 'datasets';
+  });
+
+  // Persist active tab across page refreshes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && activeTab) {
+      try {
+        localStorage.setItem('zenemoo_admin_active_tab', activeTab);
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('tab') !== activeTab) {
+          url.searchParams.set('tab', activeTab);
+          window.history.replaceState(null, '', url.toString());
+        }
+      } catch (e) {}
+    }
+  }, [activeTab]);
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
