@@ -18,7 +18,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30-second timeout to accommodate cloud database & cold start latencies
+  timeout: 30000, // 30-second default timeout
 });
 
 // Request interceptor for JWT authentication header
@@ -79,7 +79,6 @@ export const authApi = {
       if (err.response && err.response.status !== 404) {
         throw err;
       }
-      // Fallback to Supabase & local validation on connection refused or 404
       try {
         const { data } = await supabase
           .from('authorized_admin_emails')
@@ -114,20 +113,18 @@ export const authApi = {
   resetPassword: async (email: string, otp: string, newPassword: string) => {
     const cleanEmail = email.trim().toLowerCase();
     return await api.post('/auth/reset-password', { email: cleanEmail, otp, newPassword });
-  },};
+  },
+};
 
 // Team APIs
 export const teamApi = {
   getAll: () => api.get('/team'),
-  // create/update/reorder use 30s timeout: AI summary generation (Groq) + DB insert +
-  // two-phase position normalisation can easily exceed the global 6s default.
   create: (data: any) => api.post('/team', data, { timeout: 30000 }),
   reorder: (id: string, newPosition: number) => api.put('/team/reorder', { id, newPosition }, { timeout: 30000 }),
   generateSummary: (id: string) => api.post(`/team/${id}/generate-summary`, {}, { timeout: 30000 }),
   update: (id: string, data: any) => api.put(`/team/${id}`, data, { timeout: 30000 }),
   delete: (id: string) => api.delete(`/team/${id}`),
 };
-
 
 // Services APIs
 export const serviceApi = {
@@ -376,7 +373,7 @@ export const talentRegistrationApi = {
     api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
 
-// AI Data Portfolio & Dataset Management API
+// AI Data Portfolio & Dataset Management API (Timeout set to 3 minutes for large audio/video file uploads)
 export const datasetApi = {
   getDatasets: (params?: { search?: string; category?: string; status?: string }) =>
     api.get('/datasets', { params }),
@@ -387,12 +384,9 @@ export const datasetApi = {
   createFolder: (datasetId: string, data: { folderName: string }) =>
     api.post(`/datasets/${datasetId}/folders`, data),
   uploadFile: (datasetId: string, data: { fileName: string; fileType?: string; mimeType?: string; fileSize?: number; base64Data: string; driveFolderId?: string }) =>
-    api.post(`/datasets/${datasetId}/upload`, data),
+    api.post(`/datasets/${datasetId}/upload`, data, { timeout: 180000 }),
   deleteFile: (fileId: string) =>
     api.delete(`/datasets/files/${fileId}`),
   deleteDataset: (datasetId: string) =>
     api.delete(`/datasets/${datasetId}`),
 };
-
-
-

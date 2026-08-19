@@ -67,7 +67,6 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
   // Interactive Preview Modals
   const [previewFile, setPreviewFile] = useState<DatasetFileItem | null>(null);
-  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [copiedJson, setCopiedJson] = useState(false);
 
   useEffect(() => {
@@ -102,11 +101,15 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     const url = file.drive_url || file.thumbnail_url;
     if (!url) return '';
 
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      return url;
+    }
+
     const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
     if (fileIdMatch && fileIdMatch[1]) {
       const fileId = fileIdMatch[1];
       if (file.file_type === 'IMAGE') {
-        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
       }
       return `https://drive.google.com/uc?export=download&id=${fileId}`;
     }
@@ -277,7 +280,6 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                 ) : (
                   filteredFiles.map((file) => {
                     const catInfo = detectFileType(file.file_name, file.mime_type);
-                    const isAudioPlaying = playingAudioId === file.id;
 
                     return (
                       <tr key={file.id} className="hover:bg-white/[0.02] transition-colors">
@@ -398,11 +400,18 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* Image Preview */}
               {previewFile.file_type === 'IMAGE' && (
-                <div className="bg-slate-900 rounded-2xl p-2 border border-white/10 text-center">
+                <div className="bg-slate-900 rounded-2xl p-2 border border-white/10 text-center relative min-h-[200px] flex items-center justify-center">
                   <img
                     src={getFileMediaUrl(previewFile)}
                     alt={previewFile.file_name}
                     className="max-h-96 w-full object-contain rounded-xl mx-auto"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      const embedUrl = getEmbedPreviewUrl(previewFile);
+                      if (embedUrl) {
+                        target.outerHTML = `<iframe src="${embedUrl}" class="w-full h-80 rounded-xl border-0 bg-slate-950" title="${previewFile.file_name}"></iframe>`;
+                      }
+                    }}
                   />
                 </div>
               )}
@@ -461,9 +470,19 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
               {/* PDF Preview */}
               {previewFile.file_type === 'PDF' && (
                 <div className="bg-slate-900 p-8 rounded-2xl border border-white/10 text-center space-y-3">
-                  <FileText className="w-12 h-12 text-rose-400 mx-auto" />
-                  <p className="text-sm font-bold text-white">{previewFile.file_name}</p>
-                  <p className="text-xs text-slate-400">PDF Research document ready for download.</p>
+                  {getEmbedPreviewUrl(previewFile) ? (
+                    <iframe
+                      src={getEmbedPreviewUrl(previewFile)!}
+                      className="w-full h-96 rounded-xl border-0 bg-slate-950"
+                      title={previewFile.file_name}
+                    />
+                  ) : (
+                    <>
+                      <FileText className="w-12 h-12 text-rose-400 mx-auto" />
+                      <p className="text-sm font-bold text-white">{previewFile.file_name}</p>
+                      <p className="text-xs text-slate-400">PDF Research document ready for download.</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
