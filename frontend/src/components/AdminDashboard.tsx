@@ -226,7 +226,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         if (storedTab) return storedTab as any;
       } catch (e) {}
     }
-    return (initialTab as any) || 'datasets';
+    return (initialTab as any) || 'team';
   });
 
   // Persist active tab across page refreshes
