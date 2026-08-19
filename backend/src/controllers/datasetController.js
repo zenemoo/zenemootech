@@ -14,9 +14,9 @@ export const getDatasets = async (req, res) => {
 
     if (supabase) {
       try {
-        let query = supabase.from('datasets').select('*').order('updated_at', { ascending: false });
+        let query = supabase.from('datasets').select('*').order('created_at', { ascending: false });
 
-        if (status) {
+        if (status && status !== 'all') {
           query = query.eq('status', status);
         }
         if (search) {
@@ -26,7 +26,13 @@ export const getDatasets = async (req, res) => {
         const { data, error } = await query;
 
         if (!error && data) {
-          return res.json({ success: true, datasets: data });
+          const normalized = data.map((d) => ({
+            ...d,
+            status: d.status || 'active',
+            total_files: d.total_files || 0,
+            total_size_bytes: d.total_size_bytes || 0,
+          }));
+          return res.json({ success: true, datasets: normalized });
         }
       } catch (dbErr) {
         console.warn('Supabase getDatasets query skipped, using memory store:', dbErr.message);
