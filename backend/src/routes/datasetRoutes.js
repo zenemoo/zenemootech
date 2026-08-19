@@ -8,7 +8,7 @@ import {
   deleteFile,
   deleteDataset,
 } from '../controllers/datasetController.js';
-import { authenticateJwt } from '../middleware/authMiddleware.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -17,10 +17,10 @@ router.get('/', getDatasets);
 router.get('/:identifier', getDatasetBySlugOrId);
 
 // Admin Authorized Management Routes
-router.post('/', authenticateJwt, createDataset);
-router.post('/:id/folders', authenticateJwt, createFolder);
-router.post('/:id/upload', authenticateJwt, uploadFile);
-router.delete('/files/:fileId', authenticateJwt, deleteFile);
-router.delete('/:id', authenticateJwt, deleteDataset);
+router.post('/', authMiddleware, createDataset);
+router.post('/:id/folders', authMiddleware, createFolder);
+router.post('/:id/upload', authMiddleware, uploadFile);
+router.delete('/files/:fileId', authMiddleware, deleteFile);
+router.delete('/:id', authMiddleware, deleteDataset);
 
 export default router;
