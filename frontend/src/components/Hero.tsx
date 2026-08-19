@@ -27,7 +27,7 @@ export const Hero: React.FC = () => {
   };
 
   return (
-    <section className="relative pt-24 pb-20 md:pt-28 md:pb-24 overflow-hidden bg-noise">
+    <section id="home" className="relative pt-24 pb-20 md:pt-28 md:pb-24 overflow-hidden bg-noise">
       {/* Background Lights & Aurora */}
       <div className="aurora-bg">
         <div className="aurora-blob aurora-1"></div>

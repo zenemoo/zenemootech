@@ -83,7 +83,89 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
     { name: 'Contact', href: '/#contact', icon: Mail },
   ];
 
-  const isLinkActive = (href: string) => {
+  const [activeSection, setActiveSection] = useState<string>('Home');
+
+  // Intelligent Scroll-Aware Active Section Tracker using IntersectionObserver
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Check dedicated page paths first
+    const path = window.location.pathname;
+    if (path === '/opportunities') {
+      setActiveSection('Opportunities');
+      return;
+    }
+    if (path === '/review') {
+      setActiveSection('Reviews');
+      return;
+    }
+
+    const sections: { id: string; name: string }[] = [
+      { id: 'home', name: 'Home' },
+      { id: 'services', name: 'Services' },
+      { id: 'languages', name: 'Languages' },
+      { id: 'team', name: 'Team' },
+      { id: 'opportunities', name: 'Opportunities' },
+      { id: 'reviews', name: 'Reviews' },
+      { id: 'contact', name: 'Contact' },
+    ];
+
+    // Initialize from URL Hash if present
+    const hash = window.location.hash.replace('#', '').toLowerCase();
+    if (hash) {
+      const match = sections.find((s) => s.id === hash || s.name.toLowerCase() === hash);
+      if (match) {
+        setActiveSection(match.name);
+      }
+    }
+
+    const sectionElements: { el: HTMLElement; name: string }[] = [];
+    sections.forEach(({ id, name }) => {
+      const el = document.getElementById(id);
+      if (el) {
+        sectionElements.push({ el, name });
+      }
+    });
+
+    const handleTopScroll = () => {
+      if (window.scrollY < 120 && (!window.location.pathname || window.location.pathname === '/')) {
+        setActiveSection('Home');
+      }
+    };
+    window.addEventListener('scroll', handleTopScroll, { passive: true });
+
+    if (sectionElements.length === 0) return () => window.removeEventListener('scroll', handleTopScroll);
+
+    const observerOptions = {
+      root: null,
+      rootMargin: '-80px 0px -40% 0px', // Accounts for fixed header height
+      threshold: [0.1, 0.3, 0.5, 0.7],
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const match = sectionElements.find((s) => s.el === entry.target);
+          if (match) {
+            setActiveSection(match.name);
+          }
+        }
+      });
+    }, observerOptions);
+
+    sectionElements.forEach(({ el }) => observer.observe(el));
+
+    return () => {
+      window.removeEventListener('scroll', handleTopScroll);
+      sectionElements.forEach(({ el }) => observer.unobserve(el));
+      observer.disconnect();
+    };
+  }, []);
+
+  const isLinkActive = (name: string, href: string) => {
+    if (activeSection) {
+      return activeSection.toLowerCase() === name.toLowerCase();
+    }
     if (href === '/') {
       return currentPath === '/' && (!currentHash || currentHash === '#');
     }
@@ -146,11 +228,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
               <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
-                  const active = isLinkActive(link.href);
+                  const active = isLinkActive(link.name, link.href);
                   return (
                     <a
                       key={link.name}
                       href={link.href}
+                      aria-current={active ? 'page' : undefined}
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
                         active
                           ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm shadow-cyan-500/20'
@@ -271,12 +354,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
               <nav className="flex-1 flex flex-col justify-evenly gap-1 sm:gap-1.5 py-2 min-h-0 overflow-hidden">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
-                  const active = isLinkActive(link.href);
+                  const active = isLinkActive(link.name, link.href);
 
                   return (
                     <a
                       key={link.name}
                       href={showBackButton && onBack ? `/#team` : link.href}
+                      aria-current={active ? 'page' : undefined}
                       onClick={() => {
                         setMobileOpen(false);
                         if (showBackButton && onBack) {
