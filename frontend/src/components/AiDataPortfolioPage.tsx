@@ -19,6 +19,8 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { datasetApi } from '../services/api';
 import { formatFileSize, DatasetCategoryType } from '../utils/fileTypeDetector';
+import { useActiveLogo } from '../lib/useActiveLogo';
+import { SeoImage } from '../seo/components/SeoImage';
 
 interface DatasetItem {
   id: string;
@@ -47,6 +49,7 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const { logoUrl } = useActiveLogo();
 
   useEffect(() => {
     const fetchDatasets = async () => {
@@ -171,6 +174,41 @@ export const AiDataPortfolioPage: React.FC<AiDataPortfolioPageProps> = ({
                 <div>
                   <p className="text-xl font-extrabold text-white font-display">{statsMetrics.storage}</p>
                   <p className="text-[11px] text-slate-400 font-mono">Data</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT SIDE ZENEMOO EMBLEMATIC LOGO CARD */}
+          <div className="hidden lg:flex absolute right-10 top-1/2 -translate-y-1/2 items-center justify-center z-10 pointer-events-none">
+            <div className="relative group">
+              {/* Ambient Glow Aura */}
+              <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-purple-500/20 blur-xl group-hover:blur-2xl transition-all duration-500 animate-pulse" />
+
+              {/* Glassmorphism Shield Container */}
+              <div className="relative w-52 h-52 sm:w-60 sm:h-60 rounded-3xl bg-[#080911]/85 backdrop-blur-xl border border-cyan-500/30 p-6 flex flex-col items-center justify-center text-center shadow-2xl ring-1 ring-white/10 group-hover:scale-105 transition-all duration-300">
+                {/* Brand Logo Container */}
+                <div className="relative h-16 w-16 mb-3 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2.5px] shadow-lg shadow-cyan-500/30 flex items-center justify-center">
+                  <SeoImage
+                    src={logoUrl || '/assets/logo.png'}
+                    alt="Zenemoo Official Logo — AI Data Engine"
+                    width={64}
+                    height={64}
+                    className="w-full h-full object-contain rounded-full bg-white p-1"
+                    fallbackSrc="/assets/logo.png"
+                  />
+                </div>
+
+                <h3 className="text-base font-extrabold text-white font-display tracking-wider">
+                  ZENEMOO
+                </h3>
+                <p className="text-[10px] font-mono text-cyan-400 mt-0.5 tracking-widest uppercase font-bold">
+                  AI DATA ENGINE
+                </p>
+
+                <div className="mt-3 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-[10px] font-mono text-cyan-300 font-semibold flex items-center gap-1.5 shadow-inner">
+                  <Sparkles className="w-3 h-3 text-cyan-400" />
+                  <span>Enterprise Data Repo</span>
                 </div>
               </div>
             </div>
