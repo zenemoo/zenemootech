@@ -5,6 +5,9 @@ import { googleAppsScriptService } from '../services/googleAppsScriptService.js'
 const fallbackDatasets = [];
 const fallbackFiles = [];
 
+// Chunk store map for multi-part large file uploads: uploadId -> { chunks, fileName, ... }
+const chunkStore = new Map();
+
 export const getDatasets = async (req, res) => {
   try {
     const { search, category, status } = req.query;
@@ -359,6 +362,59 @@ export const uploadFile = async (req, res) => {
 
     res.status(201).json({ success: true, file: fileRecord });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const uploadChunk = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { uploadId, chunkIndex, totalChunks, fileName, fileType, mimeType, fileSize, chunkData, driveFolderId } = req.body;
+
+    if (!uploadId || chunkIndex === undefined || !chunkData) {
+      return res.status(400).json({ success: false, message: 'Missing uploadId or chunkData' });
+    }
+
+    if (!chunkStore.has(uploadId)) {
+      chunkStore.set(uploadId, {
+        chunks: new Array(totalChunks),
+        fileName,
+        fileType,
+        mimeType,
+        fileSize,
+        driveFolderId,
+        receivedCount: 0,
+      });
+    }
+
+    const session = chunkStore.get(uploadId);
+    session.chunks[chunkIndex] = chunkData;
+    session.receivedCount += 1;
+
+    // Check if all chunks received
+    if (session.receivedCount >= totalChunks) {
+      const fullBase64 = session.chunks.join('');
+      chunkStore.delete(uploadId);
+
+      req.body = {
+        fileName: session.fileName,
+        fileType: session.fileType,
+        mimeType: session.mimeType,
+        fileSize: session.fileSize,
+        base64Data: fullBase64,
+        driveFolderId: session.driveFolderId,
+      };
+
+      return await uploadFile(req, res);
+    }
+
+    res.json({
+      success: true,
+      message: `Chunk ${chunkIndex + 1}/${totalChunks} received`,
+      progress: Math.round((session.receivedCount / totalChunks) * 100),
+    });
+  } catch (err) {
+    console.error('uploadChunk error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 };

@@ -5,6 +5,7 @@ import {
   createDataset,
   createFolder,
   uploadFile,
+  uploadChunk,
   deleteFile,
   deleteDataset,
 } from '../controllers/datasetController.js';
@@ -20,6 +21,7 @@ router.get('/:identifier', getDatasetBySlugOrId);
 router.post('/', authMiddleware, createDataset);
 router.post('/:id/folders', authMiddleware, createFolder);
 router.post('/:id/upload', authMiddleware, uploadFile);
+router.post('/:id/upload-chunk', authMiddleware, uploadChunk);
 router.delete('/files/:fileId', authMiddleware, deleteFile);
 router.delete('/:id', authMiddleware, deleteDataset);
 

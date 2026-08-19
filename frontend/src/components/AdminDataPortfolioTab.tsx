@@ -240,33 +240,77 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
           reader.readAsDataURL(task.file);
         });
 
-        setUploadQueue((prev) => prev.map((t) => (t.id === task.id ? { ...t, progress: 60 } : t)));
+        const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB base64 chunks
+        if (base64Data.length > CHUNK_SIZE) {
+          const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+          const uploadId = `upl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          let lastRes: any = null;
 
-        const res = await datasetApi.uploadFile(selectedDataset.id, {
-          fileName: task.name,
-          fileType: task.type,
-          mimeType: task.mimeType,
-          fileSize: task.size,
-          base64Data,
-        });
+          for (let i = 0; i < totalChunks; i++) {
+            const chunkData = base64Data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const chunkProgress = Math.round(((i + 1) / totalChunks) * 95);
 
-        if (res.data && res.data.success) {
-          const uploadedFileRecord = res.data.file;
-          setUploadQueue((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'completed', progress: 100 } : t)));
-          setDatasetFiles((prev) => [uploadedFileRecord, ...prev]);
+            setUploadQueue((prev) =>
+              prev.map((t) => (t.id === task.id ? { ...t, progress: chunkProgress } : t))
+            );
 
-          // Update dataset total files & size locally
-          setSelectedDataset((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  total_files: prev.total_files + 1,
-                  total_size_bytes: prev.total_size_bytes + task.size,
-                }
-              : null
-          );
+            lastRes = await datasetApi.uploadChunk(selectedDataset.id, {
+              uploadId,
+              chunkIndex: i,
+              totalChunks,
+              fileName: task.name,
+              fileType: task.type,
+              mimeType: task.mimeType,
+              fileSize: task.size,
+              chunkData,
+            });
+          }
+
+          if (lastRes?.data && lastRes.data.success) {
+            const uploadedFileRecord = lastRes.data.file;
+            setUploadQueue((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'completed', progress: 100 } : t)));
+            setDatasetFiles((prev) => [uploadedFileRecord, ...prev]);
+
+            setSelectedDataset((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    total_files: prev.total_files + 1,
+                    total_size_bytes: prev.total_size_bytes + task.size,
+                  }
+                : null
+            );
+          } else {
+            throw new Error(lastRes?.data?.message || 'Chunked upload failed');
+          }
         } else {
-          throw new Error(res.data?.message || 'Upload failed');
+          setUploadQueue((prev) => prev.map((t) => (t.id === task.id ? { ...t, progress: 60 } : t)));
+
+          const res = await datasetApi.uploadFile(selectedDataset.id, {
+            fileName: task.name,
+            fileType: task.type,
+            mimeType: task.mimeType,
+            fileSize: task.size,
+            base64Data,
+          });
+
+          if (res.data && res.data.success) {
+            const uploadedFileRecord = res.data.file;
+            setUploadQueue((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'completed', progress: 100 } : t)));
+            setDatasetFiles((prev) => [uploadedFileRecord, ...prev]);
+
+            setSelectedDataset((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    total_files: prev.total_files + 1,
+                    total_size_bytes: prev.total_size_bytes + task.size,
+                  }
+                : null
+            );
+          } else {
+            throw new Error(res.data?.message || 'Upload failed');
+          }
         }
       } catch (err: any) {
         setUploadQueue((prev) =>
@@ -860,15 +904,29 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {file.drive_url && (
-                                <a
-                                  href={file.drive_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 border border-slate-800 transition-colors"
-                                  title="View on Google Drive"
+                                <button
+                                  onClick={() => {
+                                    const url = file.drive_url;
+                                    if (!url) return;
+                                    if (url.startsWith('data:') || url.startsWith('blob:')) {
+                                      const win = window.open();
+                                      if (win) {
+                                        win.document.write(`<div style="background:#050505;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;"><img src="${url}" style="max-width:100%;max-height:90vh;border-radius:12px;" /></div>`);
+                                      }
+                                    } else {
+                                      const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+                                      if (fileIdMatch && fileIdMatch[1]) {
+                                        window.open(`https://drive.google.com/file/d/${fileIdMatch[1]}/view`, '_blank');
+                                      } else {
+                                        window.open(url, '_blank');
+                                      }
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-cyan-400 border border-slate-800 transition-colors cursor-pointer"
+                                  title="View file"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
-                                </a>
+                                </button>
                               )}
                               <button
                                 onClick={() => handleDeleteFile(file.id, file.file_name)}
