@@ -40,10 +40,14 @@ CREATE TABLE IF NOT EXISTS public.dataset_files (
     drive_folder_id TEXT,
     drive_url TEXT,
     thumbnail_url TEXT,
+    raw_content TEXT,
     status TEXT DEFAULT 'ready' CHECK (status IN ('uploading', 'ready', 'error')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Optional column migration if table already exists
+ALTER TABLE public.dataset_files ADD COLUMN IF NOT EXISTS raw_content TEXT;
 
 -- Indexes for maximum query performance
 CREATE INDEX IF NOT EXISTS idx_datasets_status ON public.datasets(status);

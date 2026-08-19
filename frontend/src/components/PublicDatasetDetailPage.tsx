@@ -44,6 +44,7 @@ interface DatasetFileItem {
   file_size: number;
   drive_url?: string;
   thumbnail_url?: string;
+  raw_content?: string;
   created_at: string;
 }
 
@@ -95,6 +96,62 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
       return matchCat && matchSearch;
     });
   }, [files, activeCategory, searchQuery]);
+
+  // Extract & format real JSON content for preview
+  const getRealJsonContent = (file: DatasetFileItem): string => {
+    if (file.raw_content) {
+      try {
+        const parsed = JSON.parse(file.raw_content);
+        return JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        return file.raw_content;
+      }
+    }
+
+    if (file.drive_url && file.drive_url.startsWith('data:')) {
+      try {
+        const b64Parts = file.drive_url.split(',');
+        if (b64Parts.length > 1) {
+          const decoded = atob(b64Parts[1]);
+          const parsed = JSON.parse(decoded);
+          return JSON.stringify(parsed, null, 2);
+        }
+      } catch (e) {}
+    }
+
+    return `{\n  "file_name": "${file.file_name}",\n  "file_size": "${formatFileSize(file.file_size)}",\n  "type": "${file.file_type}"\n}`;
+  };
+
+  // Safe universal download handler
+  const handleDownloadFile = (file: DatasetFileItem) => {
+    const url = file.drive_url || file.thumbnail_url;
+    if (!url) return;
+
+    // Check if it's a real external Google Drive URL or data URI
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (url.includes('/file/d/sample/') || url.includes('/drive_file_')) {
+        // Fallback: If URL is a placeholder string, generate text blob download
+        const blob = new Blob([file.raw_content || `File: ${file.file_name}`], { type: file.mime_type || 'text/plain' });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = file.file_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -252,18 +309,13 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                               <span>Preview</span>
                             </button>
 
-                            {file.drive_url && (
-                              <a
-                                href={file.drive_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                download={file.file_name}
-                                className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono inline-flex items-center gap-1.5 transition-colors"
-                              >
-                                <Download className="w-3.5 h-3.5 text-cyan-400" />
-                                <span>Download</span>
-                              </a>
-                            )}
+                            <button
+                              onClick={() => handleDownloadFile(file)}
+                              className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Download</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -326,28 +378,19 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                   <div className="flex justify-end">
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`{\n  "dataset": "${dataset?.name}",\n  "file": "${previewFile.file_name}",\n  "status": "annotated"\n}`);
+                        const jsonStr = getRealJsonContent(previewFile);
+                        navigator.clipboard.writeText(jsonStr);
                         setCopiedJson(true);
                         setTimeout(() => setCopiedJson(false), 2000);
                       }}
-                      className="px-2.5 py-1 rounded bg-slate-900 text-slate-300 hover:text-white text-[10px] inline-flex items-center gap-1 border border-slate-800"
+                      className="px-2.5 py-1 rounded bg-slate-900 text-slate-300 hover:text-white text-[10px] inline-flex items-center gap-1 border border-slate-800 cursor-pointer"
                     >
                       {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                       <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
                     </button>
                   </div>
                   <pre className="whitespace-pre-wrap leading-relaxed">
-{`{
-  "dataset": "${dataset?.name}",
-  "file_name": "${previewFile.file_name}",
-  "format": "JSON / Speech Transcription Annotations",
-  "speaker": {
-    "gender": "Female",
-    "age_group": "25-34",
-    "dialect": "Standard"
-  },
-  "transcript": "Zenemoo multilingual AI language speech training sample."
-}`}
+                    {getRealJsonContent(previewFile)}
                   </pre>
                 </div>
               )}
@@ -355,30 +398,28 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
               {/* CSV Viewer */}
               {previewFile.file_type === 'CSV' && (
                 <div className="bg-slate-950 p-4 rounded-2xl border border-white/10 overflow-x-auto text-xs font-mono">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/10 text-cyan-400">
-                        <th className="p-2">ID</th>
-                        <th className="p-2">Language</th>
-                        <th className="p-2">Audio Duration</th>
-                        <th className="p-2">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5 text-slate-300">
-                      <tr>
-                        <td className="p-2">001</td>
-                        <td className="p-2">Odia</td>
-                        <td className="p-2">02:15</td>
-                        <td className="p-2 text-emerald-400">Verified</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2">002</td>
-                        <td className="p-2">Hindi</td>
-                        <td className="p-2">01:48</td>
-                        <td className="p-2 text-emerald-400">Verified</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  {previewFile.raw_content ? (
+                    <pre className="whitespace-pre-wrap text-amber-300 leading-relaxed max-h-72 overflow-y-auto">
+                      {previewFile.raw_content}
+                    </pre>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/10 text-cyan-400">
+                          <th className="p-2">Filename</th>
+                          <th className="p-2">Size</th>
+                          <th className="p-2">Type</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-slate-300">
+                        <tr>
+                          <td className="p-2">{previewFile.file_name}</td>
+                          <td className="p-2">{formatFileSize(previewFile.file_size)}</td>
+                          <td className="p-2 text-emerald-400">CSV Dataset</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               )}
 
@@ -387,25 +428,20 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                 <div className="bg-slate-900 p-8 rounded-2xl border border-white/10 text-center space-y-3">
                   <FileText className="w-12 h-12 text-rose-400 mx-auto" />
                   <p className="text-sm font-bold text-white">{previewFile.file_name}</p>
-                  <p className="text-xs text-slate-400">PDF Research document available for immediate download.</p>
+                  <p className="text-xs text-slate-400">PDF Research document ready for download.</p>
                 </div>
               )}
             </div>
 
             <div className="pt-2 border-t border-white/10 flex items-center justify-between">
               <span className="text-xs text-slate-400 font-mono">Size: {formatFileSize(previewFile.file_size)}</span>
-              {previewFile.drive_url && (
-                <a
-                  href={previewFile.drive_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download={previewFile.file_name}
-                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Original File</span>
-                </a>
-              )}
+              <button
+                onClick={() => handleDownloadFile(previewFile)}
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Original File</span>
+              </button>
             </div>
           </div>
         </div>

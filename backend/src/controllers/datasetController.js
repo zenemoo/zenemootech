@@ -277,6 +277,17 @@ export const uploadFile = async (req, res) => {
       });
     } catch (gErr) {}
 
+    // Extract raw text for text/JSON/CSV files if possible
+    let rawContent = null;
+    try {
+      if (fileType === 'JSON' || fileType === 'CSV' || (mimeType && (mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('csv')))) {
+        rawContent = Buffer.from(base64Data, 'base64').toString('utf-8');
+      }
+    } catch (e) {}
+
+    const fallbackDataUrl = `data:${mimeType || 'application/octet-stream'};base64,${base64Data}`;
+    const realDriveUrl = driveRes?.file?.url;
+
     const fileRecord = {
       id: `f_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       dataset_id: id,
@@ -286,8 +297,9 @@ export const uploadFile = async (req, res) => {
       file_size: fileSize || Math.round(base64Data.length * 0.75),
       drive_file_id: driveRes?.file?.id || `drive_${Date.now()}`,
       drive_folder_id: driveFolderId,
-      drive_url: driveRes?.file?.url || `https://drive.google.com/file/d/sample/view`,
-      thumbnail_url: driveRes?.file?.thumbnailUrl || null,
+      drive_url: realDriveUrl || fallbackDataUrl,
+      thumbnail_url: driveRes?.file?.thumbnailUrl || (mimeType?.startsWith('image/') ? fallbackDataUrl : null),
+      raw_content: rawContent,
       status: 'ready',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -307,6 +319,7 @@ export const uploadFile = async (req, res) => {
             drive_folder_id: driveFolderId,
             drive_url: fileRecord.drive_url,
             thumbnail_url: fileRecord.thumbnail_url,
+            raw_content: rawContent,
             status: 'ready',
           })
           .select()
