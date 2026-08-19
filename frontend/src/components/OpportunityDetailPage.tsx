@@ -38,6 +38,8 @@ import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from
 import { submitCandidateApplication, checkExistingApplication, CandidateApplication } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 import { OpportunityStatusModal } from './OpportunityStatusModal';
+import { useActiveLogo } from '../lib/useActiveLogo';
+import { SeoImage } from '../seo/components/SeoImage';
 
 interface OpportunityDetailPageProps {
   opportunityId: string;
@@ -45,6 +47,7 @@ interface OpportunityDetailPageProps {
 }
 
 export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ opportunityId, onBack }) => {
+  const { logoUrl } = useActiveLogo();
   const [opportunity, setOpportunity] = useState<OpportunityProgram | null>(null);
   const [loading, setLoading] = useState(true);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
@@ -329,28 +332,47 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
   );
 
   return (
-    <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-clip selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Ambient Lighting */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
 
-      {/* Header Bar */}
-      <header className="sticky top-0 z-50 bg-[#050505]/80 light:bg-white/80 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-4 transition-all">
+      {/* Sticky Header Bar */}
+      <header className="sticky top-0 z-50 bg-[#050505]/90 light:bg-white/90 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-3.5 sm:py-4 transition-all shadow-xl shadow-cyan-950/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-3 group cursor-pointer">
-            <img src="/assets/logo.png" alt="ZENEMOO Logo" className="w-9 h-9 rounded-full bg-white p-0.5 shadow-md" />
-            <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider">ZENEMOO</span>
+          <button onClick={onBack} className="flex items-center gap-2.5 sm:gap-3 group cursor-pointer shrink-0">
+            <div className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/30 shrink-0">
+              <SeoImage
+                src={logoUrl || '/assets/logo.png'}
+                alt="ZENEMOO Logo"
+                width={40}
+                height={40}
+                className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                fallbackSrc="/assets/logo.png"
+              />
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider leading-none">
+                ZENEMOO
+              </span>
+              <span className="text-[9px] font-mono text-cyan-400 tracking-tight hidden sm:block mt-0.5">
+                Enterprise AI Language &amp; Data
+              </span>
+            </div>
           </button>
 
           <button
             onClick={onBack}
-            className="px-3 sm:px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] light:bg-slate-100 light:hover:bg-slate-200 border border-white/10 light:border-slate-300 text-xs font-mono font-bold text-slate-300 light:text-slate-700 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-3 sm:px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] light:bg-slate-100 light:hover:bg-slate-200 border border-white/10 light:border-slate-300 text-xs font-mono font-bold text-slate-300 light:text-slate-700 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer shrink-0"
             title="Back to Opportunities Portal"
           >
-            <ArrowLeft className="w-4 h-4 text-cyan-400" />
-            <span className="hidden sm:inline">Back to Opportunities Portal</span>
+            <ArrowLeft className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>
+              <span className="hidden sm:inline">Back to Opportunities Portal</span>
+              <span className="sm:hidden">Back</span>
+            </span>
           </button>
         </div>
       </header>
