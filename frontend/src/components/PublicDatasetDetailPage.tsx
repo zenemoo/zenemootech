@@ -97,12 +97,11 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     });
   }, [files, activeCategory, searchQuery]);
 
-  // Helper to extract direct playable/renderable media URL for audio, image, and video tags
+  // Helper to extract direct playable/renderable media URL
   const getFileMediaUrl = (file: DatasetFileItem): string => {
     const url = file.drive_url || file.thumbnail_url;
     if (!url) return '';
 
-    // Handle old stored lh3.googleusercontent.com or drive.google.com URLs
     const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
     if (fileIdMatch && fileIdMatch[1]) {
       const fileId = fileIdMatch[1];
@@ -113,6 +112,18 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     }
 
     return url;
+  };
+
+  // Helper to get Google Drive embed preview iframe URL
+  const getEmbedPreviewUrl = (file: DatasetFileItem): string | null => {
+    const url = file.drive_url || file.thumbnail_url;
+    if (!url) return null;
+
+    const fileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (fileIdMatch && fileIdMatch[1]) {
+      return `https://drive.google.com/file/d/${fileIdMatch[1]}/preview`;
+    }
+    return null;
   };
 
   // Extract & format real JSON content for preview
@@ -267,18 +278,19 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                   filteredFiles.map((file) => {
                     const catInfo = detectFileType(file.file_name, file.mime_type);
                     const isAudioPlaying = playingAudioId === file.id;
-                    const mediaSrc = getFileMediaUrl(file);
 
                     return (
                       <tr key={file.id} className="hover:bg-white/[0.02] transition-colors">
                         <td className="p-4 font-semibold text-white flex items-center gap-3">
                           {file.file_type === 'AUDIO' && (
                             <button
-                              onClick={() => setPlayingAudioId(isAudioPlaying ? null : file.id)}
+                              onClick={() => {
+                                setPreviewFile(file);
+                              }}
                               className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/30 transition-all cursor-pointer"
                               title="Play Audio Sample"
                             >
-                              {isAudioPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                              <Play className="w-4 h-4 ml-0.5" />
                             </button>
                           )}
                           {file.file_type !== 'AUDIO' && (
@@ -288,17 +300,6 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                           )}
                           <div>
                             <p className="font-bold text-white">{file.file_name}</p>
-                            {isAudioPlaying && (
-                              <div className="mt-1 flex items-center gap-2">
-                                <audio
-                                  src={mediaSrc}
-                                  controls
-                                  autoPlay
-                                  className="h-6 w-48 text-xs"
-                                  onEnded={() => setPlayingAudioId(null)}
-                                />
-                              </div>
-                            )}
                           </div>
                         </td>
 
@@ -362,14 +363,36 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
                 <div className="bg-slate-900/80 p-6 rounded-2xl border border-white/5 text-center space-y-4">
                   <Volume2 className="w-12 h-12 text-indigo-400 mx-auto animate-pulse" />
                   <p className="text-xs text-slate-300 font-mono">{previewFile.file_name}</p>
-                  <audio src={getFileMediaUrl(previewFile)} controls className="w-full" />
+                  {previewFile.drive_url && (previewFile.drive_url.startsWith('data:') || previewFile.drive_url.startsWith('blob:')) ? (
+                    <audio src={previewFile.drive_url} controls autoPlay className="w-full" />
+                  ) : getEmbedPreviewUrl(previewFile) ? (
+                    <iframe
+                      src={getEmbedPreviewUrl(previewFile)!}
+                      className="w-full h-40 rounded-2xl border-0 bg-slate-950"
+                      allow="autoplay"
+                      title={previewFile.file_name}
+                    />
+                  ) : (
+                    <audio src={getFileMediaUrl(previewFile)} controls autoPlay className="w-full" />
+                  )}
                 </div>
               )}
 
               {/* Video Preview */}
               {previewFile.file_type === 'VIDEO' && (
                 <div className="bg-black rounded-2xl overflow-hidden border border-white/10">
-                  <video src={getFileMediaUrl(previewFile)} controls className="w-full max-h-96 object-contain" />
+                  {previewFile.drive_url && (previewFile.drive_url.startsWith('data:') || previewFile.drive_url.startsWith('blob:')) ? (
+                    <video src={previewFile.drive_url} controls autoPlay className="w-full max-h-96 object-contain" />
+                  ) : getEmbedPreviewUrl(previewFile) ? (
+                    <iframe
+                      src={getEmbedPreviewUrl(previewFile)!}
+                      className="w-full h-72 sm:h-96 rounded-2xl border-0 bg-black"
+                      allow="autoplay; fullscreen"
+                      title={previewFile.file_name}
+                    />
+                  ) : (
+                    <video src={getFileMediaUrl(previewFile)} controls autoPlay className="w-full max-h-96 object-contain" />
+                  )}
                 </div>
               )}
 
