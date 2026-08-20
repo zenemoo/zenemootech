@@ -1,5 +1,11 @@
 import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
+import {
+  PushNotifications,
+  Token,
+  RegistrationError,
+  PushNotificationSchema,
+  ActionPerformed,
+} from '@capacitor/push-notifications';
 import { notificationApi } from './api';
 
 const INSTALLATION_KEY = 'zenemoo_installation_id';
@@ -183,21 +189,21 @@ export const initCapacitorPushNotifications = async (
     if (permStatus.receive === 'granted') {
       await PushNotifications.register();
 
-      PushNotifications.addListener('registration', (token) => {
+      PushNotifications.addListener('registration', (token: Token) => {
         if (token && token.value) {
           registerAndroidPushSubscription(token.value, app_type, user_id, user_role);
         }
       });
 
-      PushNotifications.addListener('registrationError', (err) => {
+      PushNotifications.addListener('registrationError', (err: RegistrationError) => {
         console.warn('[Capacitor Push Error]:', err.error);
       });
 
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
         console.log('[Capacitor Push Received]:', notification);
       });
 
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
         const url = notification.notification.data?.url || notification.notification.data?.click_action;
         if (url && typeof window !== 'undefined') {
           window.location.href = url;
