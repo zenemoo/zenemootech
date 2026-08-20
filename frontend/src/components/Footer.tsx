@@ -194,8 +194,8 @@ export const Footer: React.FC = () => {
               <li><a href="/talent-registration" className="hover:text-cyan-400 transition-colors text-emerald-300 font-bold flex items-center gap-1.5"><Users className="w-3 h-3" /> Join AI Data Network</a></li>
               <li><a href="/review" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Community &amp; Client Reviews</a></li>
               <li><a href="/opportunities" className="hover:text-cyan-400 transition-colors font-bold">Opportunities Portal</a></li>
+              <li><a href="/app" className="hover:text-cyan-400 transition-colors">Zenemoo Apps</a></li>
               <li><a href="/team-directory" className="hover:text-cyan-400 transition-colors">Data Team Directory</a></li>
-              <li><a href="#partner" className="hover:text-cyan-400 transition-colors">DesiCrew Partnership</a></li>
               <li className="pt-2 border-t border-white/5 space-y-1 font-mono text-[11px]">
                 <div className="text-slate-400 font-bold">Official Contact &amp; Location:</div>
                 <div>Contact: <a href="mailto:contact@zenemoo.in" className="text-cyan-300 hover:underline">contact@zenemoo.in</a></div>

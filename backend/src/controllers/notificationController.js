@@ -161,6 +161,8 @@ export const getUserNotifications = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.query.installation_id || 'guest_user';
     const userRole = (req.user?.role || 'user').toLowerCase();
+    const days = parseInt(req.query.days, 10) || 7;
+    const sevenDaysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     let allNotifs = [];
     if (supabase) {
@@ -169,6 +171,7 @@ export const getUserNotifications = async (req, res, next) => {
           .from('zenemoo_notifications')
           .select('*')
           .eq('record_type', 'notification')
+          .gte('created_at', sevenDaysAgo)
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -176,11 +179,11 @@ export const getUserNotifications = async (req, res, next) => {
           allNotifs = data;
         }
       } catch (e) {
-        allNotifs = memoryNotifications;
+        allNotifs = memoryNotifications.filter((n) => !n.created_at || new Date(n.created_at) >= new Date(sevenDaysAgo));
       }
     }
     if (!Array.isArray(allNotifs) || allNotifs.length === 0) {
-      allNotifs = memoryNotifications;
+      allNotifs = memoryNotifications.filter((n) => !n.created_at || new Date(n.created_at) >= new Date(sevenDaysAgo));
     }
 
     const readSet = memoryReadNotifications.get(userId) || new Set();
@@ -378,6 +381,56 @@ export const deleteAdminNotification = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Notification deleted successfully from history.',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 9. GET /api/notifications/app-version
+ * Dynamic App Version & Update Metadata Endpoint
+ */
+export const getAppVersionInfo = async (req, res, next) => {
+  try {
+    const platform = req.query.platform || 'android';
+    const appType = req.query.app_type || 'zenemoo';
+
+    let manifest = null;
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const manifestPath = path.resolve(process.cwd(), '../frontend/public/app/android-release.json');
+      const directPath = path.resolve(process.cwd(), 'public/app/android-release.json');
+      
+      if (fs.existsSync(manifestPath)) {
+        manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      } else if (fs.existsSync(directPath)) {
+        manifest = JSON.parse(fs.readFileSync(directPath, 'utf8'));
+      }
+    } catch (e) {}
+
+    const latestVersion = manifest?.version || '2.0.4';
+    const latestVersionCode = manifest?.versionCode || 4;
+    const releaseNotes = Array.isArray(manifest?.releaseNotes) ? manifest.releaseNotes.join('\n') : (manifest?.releaseNotes || 'Includes new Zenemoo Notification Center with internal scrolling, live alerts, and performance enhancements.');
+    const updateUrl = manifest?.apkUrl ? (manifest.apkUrl.startsWith('http') ? manifest.apkUrl : `https://www.zenemoo.in${manifest.apkUrl}`) : 'https://www.zenemoo.in/app/android';
+
+    return res.json({
+      success: true,
+      data: {
+        latest_version: latestVersion,
+        latest_version_code: latestVersionCode,
+        min_version: manifest?.minimumAndroid || '2.0.0',
+        min_version_code: 1,
+        release_notes: releaseNotes,
+        update_url: updateUrl,
+        sha256: manifest?.sha256 || '',
+        apk_size: manifest?.apkSize || '17.2 MB',
+        release_date: manifest?.releaseDate || '2026-08-21',
+        force_update: manifest?.forceUpdate || false,
+        platform,
+        app_type: appType,
+      },
     });
   } catch (err) {
     next(err);

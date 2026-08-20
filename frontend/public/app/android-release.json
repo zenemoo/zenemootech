@@ -1,0 +1,26 @@
+{
+  "platform": "android",
+  "appName": "Zenemoo",
+  "packageName": "in.zenemoo.app",
+  "version": "2.0.4",
+  "versionCode": 4,
+  "apkUrl": "/downloads/zenemoo-latest.apk",
+  "apkFileName": "zenemoo-v2.0.4.apk",
+  "apkSize": "33.6 MB",
+  "apkSizeBytes": 35279159,
+  "releaseDate": "2026-08-21",
+  "minimumAndroid": "Android 8.0 (API 26) or later",
+  "targetAndroid": "Android 14 / 15 (API 34/35)",
+  "architecture": "Universal (ARM64, ARMv7, x86_64)",
+  "sha256": "3531d2a5c13975f79af71cb475129d5d31b8debf7a8e3a9855507bde220244e3",
+  "releaseType": "stable",
+  "isOfficial": true,
+  "forceUpdate": false,
+  "releaseNotes": [
+    "🔔 Improved Notification Center with internal scrolling and relative timestamps.",
+    "⚡ Improved notification delivery, push reliability, and deep-link handling.",
+    "📱 Improved mobile responsive UI, scroll interactions, and layout stability.",
+    "🚀 Improved automatic app update detection engine for seamless updates.",
+    "🛡️ Improved overall performance, memory management, and security standards."
+  ]
+}

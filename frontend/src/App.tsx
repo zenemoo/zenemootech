@@ -28,6 +28,8 @@ import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { SubscribeModal } from './components/SubscribeModal';
 import { ZenemooNotificationPrompt } from './components/ZenemooNotificationPrompt';
+import { NotificationToast } from './components/NotificationToast';
+import { ZenemooAppUpdatePrompt } from './components/ZenemooAppUpdatePrompt';
 import { UnsubscribePage } from './components/UnsubscribePage';
 import { NotFoundPage } from './components/NotFoundPage';
 import { ScrollProgressButton } from './components/ScrollProgressButton';
@@ -40,10 +42,12 @@ import { ReviewsPage } from './components/ReviewsPage';
 import { ZenemooTalentRegistrationPage } from './components/ZenemooTalentRegistrationPage';
 import { AiDataPortfolioPage } from './components/AiDataPortfolioPage';
 import { PublicDatasetDetailPage } from './components/PublicDatasetDetailPage';
+import { ZenemooAndroidAppPage } from './components/ZenemooAndroidAppPage';
+import { ZenemooAppsHubPage } from './components/ZenemooAppsHubPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -105,6 +109,8 @@ export function App() {
         | 'talent-registration'
         | 'ai-data'
         | 'ai-data-detail'
+        | 'app-hub'
+        | 'app-android'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -222,6 +228,28 @@ export function App() {
           : hash.replace('#ai-data/', '').replace(/^\//, '');
         setSelectedDatasetSlug(slug || '');
         matchedRoute = 'ai-data-detail';
+      } else if (
+        path === '/app/android' ||
+        path === '/app/android/' ||
+        hash === '#app/android' ||
+        hash === '#/app/android' ||
+        hash === '#android-app' ||
+        hash === '#app-android'
+      ) {
+        matchedRoute = 'app-android';
+      } else if (
+        path === '/app' ||
+        path === '/app/' ||
+        path === '/apps' ||
+        path === '/apps/' ||
+        path === '/download' ||
+        path === '/downloads' ||
+        hash === '#app' ||
+        hash === '#/app' ||
+        hash === '#apps' ||
+        hash === '#download'
+      ) {
+        matchedRoute = 'app-hub';
       } else if (path === '/' || path === '') {
         matchedRoute = 'home';
       } else {
@@ -244,9 +272,9 @@ export function App() {
       }
 
       // Update document title, canonical tag & meta description for SEO indexing
-      let pageTitle = 'Zenemoo — AI Data Solutions, Multilingual Speech Annotation & AI Training Datasets';
+      let pageTitle = 'Zenemoo — AI Data Solutions, Multilingual Speech & AI Services';
       let canonicalUrl = 'https://www.zenemoo.in/';
-      let metaDescription = 'Zenemoo provides enterprise AI data solutions, multilingual speech annotation, data collection, and custom AI dataset creation.';
+      let metaDescription = 'Zenemoo provides enterprise AI data solutions, multilingual speech annotation, data collection, AI training datasets, and language technology services.';
 
       if (matchedRoute === '404') {
         pageTitle = '404 – Page Not Found | Zenemoo';
@@ -280,6 +308,14 @@ export function App() {
         pageTitle = 'Privacy Policy — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/privacy';
         metaDescription = 'Zenemoo data privacy policy, security standards, confidentiality protocols, and candidate data protection guidelines.';
+      } else if (matchedRoute === 'app-hub' || path === '/app' || path === '/apps') {
+        pageTitle = 'Zenemoo Apps — Official Applications';
+        canonicalUrl = 'https://www.zenemoo.in/app';
+        metaDescription = 'Explore official Zenemoo applications for Android and future platforms. Download trusted Zenemoo apps and stay connected with opportunities, AI services, and platform updates.';
+      } else if (matchedRoute === 'app-android' || path.startsWith('/app/android')) {
+        pageTitle = 'Zenemoo Android App — Official Download';
+        canonicalUrl = 'https://www.zenemoo.in/app/android';
+        metaDescription = 'Download the latest official Zenemoo Android application directly from Zenemoo.';
       } else if (path === '/zenemooai' || hash.includes('#zenemooai')) {
         pageTitle = 'Zenemoo AI Assistant — Multilingual AI Engine';
         canonicalUrl = 'https://www.zenemoo.in/zenemooai';
@@ -463,6 +499,19 @@ export function App() {
           }}
           onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
         />
+      ) : currentRoute === 'app-hub' ? (
+        <ZenemooAppsHubPage
+          onBack={handleBackToHome}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
+      ) : currentRoute === 'app-android' ? (
+        <ZenemooAndroidAppPage
+          onBack={() => {
+            window.history.pushState(null, '', '/app');
+            setCurrentRoute('app-hub');
+          }}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
@@ -505,6 +554,8 @@ export function App() {
           <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
           <SubscribeModal />
           <ZenemooNotificationPrompt />
+          <NotificationToast />
+          <ZenemooAppUpdatePrompt />
           <ScrollProgressButton />
         </>
       )}

@@ -81,4 +81,20 @@
     <priority>0.7</priority>
   </url>
 
+  <!-- 9. Official Application Center -->
+  <url>
+    <loc>https://www.zenemoo.in/app</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.92</priority>
+  </url>
+
+  <!-- 10. Official Android Application Download Page -->
+  <url>
+    <loc>https://www.zenemoo.in/app/android</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.90</priority>
+  </url>
+
 </urlset>

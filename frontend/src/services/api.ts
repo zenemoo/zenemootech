@@ -310,6 +310,7 @@ export const userManagementApi = {
 // Notification System APIs
 export const notificationApi = {
   getVapidKey: () => api.get('/notifications/vapid-key'),
+  getAppVersion: (params?: { platform?: string; app_type?: string }) => api.get('/notifications/app-version', { params }),
   subscribe: (data: {
     platform: string;
     app_type?: string;

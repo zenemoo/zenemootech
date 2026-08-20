@@ -17,8 +17,15 @@ User-agent: Slurp
 User-agent: Baiduspider
 User-agent: facebookexternalhit
 Allow: /
+Allow: /app
+Allow: /app/
+Allow: /app/android
+Allow: /downloads/
 Allow: /assets/
+Allow: /favicon.ico
 Allow: /favicon.png
+Allow: /manifest.json
+Allow: /app/android-release.json
 
 # AI Crawlers & LLM Agents - Full Access for AI Search & RAG Indexing
 User-agent: GPTBot
@@ -29,32 +36,39 @@ User-agent: Google-Extended
 User-agent: Cohere-ai
 User-agent: Bytespider
 Allow: /
+Allow: /app
+Allow: /app/android
 
 # Global Crawler Rules
 User-agent: *
 Allow: /
-Allow: /#services
-Allow: /#languages
-Allow: /#opportunities
-Allow: /#team
-Allow: /#partner
-Allow: /#telemetry
-Allow: /#contact
-Allow: /#privacy
-Allow: /#terms
+Allow: /app
+Allow: /app/
+Allow: /app/android
+Allow: /downloads/
+Allow: /assets/
+Allow: /favicon.ico
+Allow: /favicon.png
+Allow: /manifest.json
+Allow: /app/android-release.json
+Allow: /opportunities
+Allow: /talent-registration
 Allow: /review
-Allow: /#review
+Allow: /team-directory
+Allow: /ai-data
+Allow: /privacy
+Allow: /terms
 
 # Disallow Private & Admin Routes
 Disallow: /admin
 Disallow: /#admin
 Disallow: /#portal
+Disallow: /portal/
 Disallow: /dashboard
 Disallow: /private
 Disallow: /api/
 Disallow: /temp/
 Disallow: /scratch/
-Disallow: /*.json$
 
 # Crawl Delay & Optimization
 Crawl-delay: 1

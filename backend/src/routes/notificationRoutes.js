@@ -3,6 +3,7 @@ import {
   getVapidPublicKey,
   registerSubscription,
   getUserNotifications,
+  getAppVersionInfo,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteUserNotification,
@@ -15,6 +16,7 @@ const router = Router();
 
 // Public Endpoints (No Login Required — for Public Web Visitors & Android App Users)
 router.get('/vapid-key', getVapidPublicKey);
+router.get('/app-version', getAppVersionInfo);
 router.post('/subscribe', registerSubscription);
 
 // Notification History & Read Status (Supports both authenticated users & guests via installation_id)

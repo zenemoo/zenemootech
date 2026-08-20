@@ -13,7 +13,8 @@
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
     "cap:admin:sync": "node -e \"require('fs').copyFileSync('capacitor.admin.config.json', 'android-admin/app/src/main/assets/capacitor.config.json')\"",
-    "cap:admin:open": "npx cap open android --config capacitor.admin.config.json"
+    "cap:admin:open": "npx cap open android --config capacitor.admin.config.json",
+    "release:android": "node scripts/release-android.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

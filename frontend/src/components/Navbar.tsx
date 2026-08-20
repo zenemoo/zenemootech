@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { useActiveLogo } from '../lib/useActiveLogo';
+import { NotificationCenter } from './NotificationCenter';
 
 interface NavbarProps {
   onBack?: () => void;
@@ -248,12 +249,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
               </nav>
             )}
 
-            {/* Right Action Bar: Zenemoo AI Button & Mobile Hamburger Toggle */}
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              {/* Desktop/Tablet Zenemoo AI Button */}
+            {/* Right Action Bar: Zenemoo AI Button, Notification Center & Mobile Hamburger Toggle */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+              {/* Desktop/Tablet Zenemoo AI Button (Hidden on Mobile < sm) */}
               <button
                 onClick={onOpenAiDrawer}
-                className="relative group flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
+                className="hidden sm:flex relative group items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all duration-300 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer"
                 title="Ask Zenemoo AI"
                 aria-label="Ask Zenemoo AI"
               >
@@ -268,9 +269,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                   />
                   <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-black" />
                 </div>
-                <span className="text-xs font-mono font-bold tracking-tight hidden sm:inline">Zenemoo AI</span>
+                <span className="text-xs font-mono font-bold tracking-tight">Zenemoo AI</span>
                 <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform shrink-0" />
               </button>
+
+              {/* Centralized Notification Center Bell (Desktop & Mobile) */}
+              <NotificationCenter />
 
               {/* Mobile / Tablet Drawer Toggle Button */}
               <button

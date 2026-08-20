@@ -31,6 +31,7 @@ import {
 import { talentRegistrationApi } from '../services/api';
 import { SeoImage } from '../seo/components/SeoImage';
 import { TurnstileWidget } from './TurnstileWidget';
+import { ZenemooSupportPortalModal } from './ZenemooFooterModals';
 
 interface ZenemooTalentRegistrationPageProps {
   onBack?: () => void;
@@ -154,10 +155,62 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [showErrorToast, setShowErrorToast] = useState<boolean>(false);
+  const [highlightedFieldId, setHighlightedFieldId] = useState<string | null>(null);
   const [duplicateEmailError, setDuplicateEmailError] = useState<string>('');
   const [turnstileToken, setTurnstileToken] = useState<string>('');
   const [submittedRegistrationCode, setSubmittedRegistrationCode] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState<boolean>(false);
+
+  // Auto-dismiss validation toast after 4.5s
+  useEffect(() => {
+    if (showErrorToast) {
+      const timer = setTimeout(() => {
+        setShowErrorToast(false);
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [showErrorToast, errorMsg]);
+
+  // Global validation error trigger & smooth scroll to invalid field
+  const triggerValidationError = (message: string, fieldId?: string) => {
+    setErrorMsg(message);
+    setShowErrorToast(true);
+
+    if (fieldId) {
+      setHighlightedFieldId(fieldId);
+      setTimeout(() => setHighlightedFieldId(null), 4000);
+
+      setTimeout(() => {
+        const el = document.getElementById(fieldId);
+        if (el) {
+          const navHeight = 84;
+          const elementPosition = el.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + window.pageYOffset - navHeight;
+
+          window.scrollTo({
+            top: Math.max(0, offsetPosition),
+            behavior: 'smooth',
+          });
+
+          if (
+            el.tagName === 'INPUT' ||
+            el.tagName === 'SELECT' ||
+            el.tagName === 'TEXTAREA' ||
+            el.tagName === 'BUTTON'
+          ) {
+            (el as HTMLElement).focus({ preventScroll: true });
+          } else {
+            const inner = el.querySelector<HTMLElement>('input, select, textarea, button');
+            if (inner) {
+              inner.focus({ preventScroll: true });
+            }
+          }
+        }
+      }, 60);
+    }
+  };
 
   // Step 1: Personal & Contact
   const [fullName, setFullName] = useState<string>('');
@@ -329,27 +382,38 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   // Validate step progression
   const handleNextStep = () => {
     setErrorMsg('');
+    setShowErrorToast(false);
 
     if (currentStep === 1) {
-      if (!fullName.trim()) return setErrorMsg('Please enter your full name.');
-      if (!email.trim() || !email.includes('@')) return setErrorMsg('Please enter a valid email address.');
-      if (!phone.trim()) return setErrorMsg('Please enter your WhatsApp / Phone number.');
-      if (!state.trim()) return setErrorMsg('Please select your state.');
-      if (!cityDistrict.trim()) return setErrorMsg('Please enter your city / district.');
+      if (!fullName.trim()) {
+        return triggerValidationError('Please enter your full name.', 'field-fullName');
+      }
+      if (!email.trim() || !email.includes('@')) {
+        return triggerValidationError('Please enter a valid email address.', 'field-email');
+      }
+      if (!phone.trim()) {
+        return triggerValidationError('Please enter your WhatsApp / Phone number.', 'field-phone');
+      }
+      if (!state.trim()) {
+        return triggerValidationError('Please select your state.', 'field-state');
+      }
+      if (!cityDistrict.trim()) {
+        return triggerValidationError('Please enter your city / district.', 'field-cityDistrict');
+      }
     }
 
     if (currentStep === 2) {
       if (selectedLanguageList.length === 0 && customOtherLanguages.length === 0) {
-        return setErrorMsg('Please select at least one language you can support.');
+        return triggerValidationError('Please select at least one language you can support.', 'field-languages');
       }
 
       if (selectedLanguageList.includes('Other') || customOtherLanguages.length > 0) {
         if (customOtherLanguages.length === 0) {
-          return setErrorMsg('Please enter the language name before continuing.');
+          return triggerValidationError('Please enter the language name before continuing.', 'field-custom-lang');
         }
         for (const customItem of customOtherLanguages) {
           if (!customItem.name.trim()) {
-            return setErrorMsg('Please enter the language name before continuing.');
+            return triggerValidationError('Please enter the language name before continuing.', 'field-custom-lang');
           }
 
           // Duplicate check against official languages list
@@ -358,8 +422,9 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
             (l) => l.toLowerCase() === cleanName && l.toLowerCase() !== 'other'
           );
           if (matchOfficial) {
-            return setErrorMsg(
-              `"${customItem.name.trim()}" is already available in the official language list. Please select "${matchOfficial}" directly from the languages list above.`
+            return triggerValidationError(
+              `"${customItem.name.trim()}" is already available in the official language list. Please select "${matchOfficial}" directly from the languages list above.`,
+              'field-languages'
             );
           }
         }
@@ -367,11 +432,15 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
     }
 
     if (currentStep === 3) {
-      if (!primaryRole) return setErrorMsg('Please select your primary role.');
+      if (!primaryRole) {
+        return triggerValidationError('Please select your primary role.', 'field-primaryRole');
+      }
     }
 
     if (currentStep === 5) {
-      if (selectedCapabilities.length === 0) return setErrorMsg('Please select at least one type of work capability.');
+      if (selectedCapabilities.length === 0) {
+        return triggerValidationError('Please select at least one type of work capability.', 'field-capabilities');
+      }
     }
 
     // Skip equipment step if no recording work selected
@@ -381,35 +450,39 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
 
     if (currentStep === 5 && !requiresEquipment) {
       setCurrentStep(7); // Jump straight to Additional Info
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     setCurrentStep((prev) => Math.min(prev + 1, 8));
-    window.scrollTo({ top: 100, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handlePrevStep = () => {
     setErrorMsg('');
+    setShowErrorToast(false);
     const requiresEquipment = selectedCapabilities.some((cap) =>
       ['Voice / Audio Recording', 'Speech Data Collection', 'Video Recording', 'Singing / Vocal Recording'].includes(cap)
     );
     if (currentStep === 7 && !requiresEquipment) {
       setCurrentStep(5);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     setCurrentStep((prev) => Math.max(prev - 1, 1));
-    window.scrollTo({ top: 100, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Execute Submit Registration
   const handleSubmitRegistration = async () => {
     setErrorMsg('');
+    setShowErrorToast(false);
     setDuplicateEmailError('');
     if (!termsAccepted || !privacyAccepted) {
-      return setErrorMsg('Please agree to the Terms & Conditions and Privacy Policy to register.');
+      return triggerValidationError('Please agree to the Terms & Conditions and Privacy Policy to register.', 'field-consents');
     }
     if (!turnstileToken) {
-      return setErrorMsg('Please complete the Cloudflare security verification check.');
+      return triggerValidationError('Please complete the Cloudflare security verification check.', 'field-turnstile');
     }
 
     setIsSubmitting(true);
@@ -491,32 +564,68 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-slate-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200 py-12 px-4 sm:px-6 lg:px-8">
-      {/* ── TOP HEADER BRAND BAR ── */}
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative h-11 w-11 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/20">
+    <div className="min-h-screen bg-[#050508] text-slate-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200 pb-20 sm:pb-28">
+      {/* ── FIXED TOP HEADER BRAND BAR ── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#050508]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/70 pt-[env(safe-area-inset-top,0px)]">
+        <div className="max-w-4xl mx-auto px-3.5 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+          <a
+            href="/"
+            onClick={(e) => {
+              if (onBack) {
+                e.preventDefault();
+                onBack();
+              }
+            }}
+            className="flex items-center gap-2.5 sm:gap-3 group cursor-pointer min-w-0"
+          >
+            <div className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform shrink-0">
               <SeoImage src="/assets/logo.png" alt="Zenemoo" className="w-full h-full object-contain rounded-full bg-white p-0.5" />
             </div>
-            <div>
-              <span className="text-xl font-extrabold font-display tracking-wider text-white">ZENEMOO</span>
-              <span className="text-xs text-cyan-400 font-mono block">AI Data Network Portal</span>
+            <div className="min-w-0">
+              <span className="text-base sm:text-xl font-extrabold font-display tracking-wider text-white group-hover:text-cyan-300 transition-colors truncate block">ZENEMOO</span>
+              <span className="text-[10px] sm:text-xs text-cyan-400 font-mono block leading-none mt-0.5 truncate">AI Data Network Portal</span>
             </div>
-          </div>
+          </a>
 
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" /> Return Home
-            </button>
-          )}
+          <button
+            onClick={onBack || (() => { window.location.href = '/'; })}
+            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/30 text-xs font-mono text-slate-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 shrink-0"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" /> <span className="hidden xs:inline sm:inline">Return</span> Home
+          </button>
         </div>
+      </header>
 
+      {/* ── GLOBAL FLOATING VALIDATION ERROR TOAST (Always in visible viewport) ── */}
+      {showErrorToast && errorMsg && (
+        <aside
+          role="alert"
+          aria-live="assertive"
+          className="fixed top-[calc(4.75rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-24px)] max-w-[420px] animate-in slide-in-from-top-3 fade-in duration-200"
+        >
+          <div className="flex items-start justify-between gap-3 p-3.5 rounded-2xl bg-[#1c0808]/95 border border-red-500/50 shadow-[0_10px_30px_rgba(239,68,68,0.3)] backdrop-blur-xl">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5 animate-pulse" />
+              <div className="text-xs sm:text-sm font-semibold text-red-100 leading-snug break-words">
+                {errorMsg}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowErrorToast(false)}
+              className="p-1 rounded-lg text-red-300 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              aria-label="Dismiss error notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {/* Main Content (Offset for Fixed Navbar + Safe Area) */}
+      <div className="max-w-4xl mx-auto pt-[calc(4.75rem+env(safe-area-inset-top,0px))] px-3.5 sm:px-6 lg:px-8 space-y-6">
         {/* Form Title & Privacy Disclaimer Header Banner */}
-        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="glass-panel p-5 sm:p-8 rounded-3xl border border-cyan-500/30 space-y-4 shadow-2xl relative overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[11px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Internal Project Network Registration
@@ -530,14 +639,17 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
             Zenemoo AI Data Talent &amp; Partner Registration
           </h1>
 
-          <div className="p-4 rounded-2xl bg-black/40 border border-white/10 text-xs font-mono text-slate-300 space-y-2 leading-relaxed">
-            <p className="flex items-start gap-2">
-              <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-              <span>
-                <strong>IMPORTANT PRIVACY GUARANTEE:</strong> This registration system is strictly for Zenemoo’s internal project matching, recruitment, coordination, and AI-data requirements. Submitted information will <strong>NEVER</strong> be displayed publicly anywhere on the website or sold to third parties.
-              </span>
-            </p>
-          </div>
+          {/* Privacy Guarantee Box (Only displayed on Step 1) */}
+          {currentStep === 1 && (
+            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 text-xs font-mono text-slate-300 space-y-2 leading-relaxed animate-in fade-in duration-200">
+              <p className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>IMPORTANT PRIVACY GUARANTEE:</strong> This registration system is strictly for Zenemoo’s internal project matching, recruitment, coordination, and AI-data requirements. Submitted information will <strong>NEVER</strong> be displayed publicly anywhere on the website or sold to third parties.
+                </span>
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ── SUCCESS VIEW SCREEN ── */}
@@ -665,11 +777,16 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   <div className="space-y-2">
                     <label className="text-slate-300 font-bold block">Full Name *</label>
                     <input
+                      id="field-fullName"
                       type="text"
                       placeholder="e.g. Rajesh Kumar"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
+                        highlightedFieldId === 'field-fullName'
+                          ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                          : 'border-white/15 focus:border-cyan-400'
+                      }`}
                     />
                   </div>
 
@@ -697,11 +814,16 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   <div className="space-y-2">
                     <label className="text-slate-300 font-bold block">Email Address *</label>
                     <input
+                      id="field-email"
                       type="email"
                       placeholder="e.g. rajesh@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
+                        highlightedFieldId === 'field-email'
+                          ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                          : 'border-white/15 focus:border-cyan-400'
+                      }`}
                     />
                   </div>
 
@@ -722,11 +844,16 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                         <option value="+94">🇱🇰 +94</option>
                       </select>
                       <input
+                        id="field-phone"
                         type="tel"
                         placeholder="9876543210"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                        className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
+                          highlightedFieldId === 'field-phone'
+                            ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                            : 'border-white/15 focus:border-cyan-400'
+                        }`}
                       />
                     </div>
                   </div>
@@ -734,9 +861,14 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   <div className="space-y-2">
                     <label className="text-slate-300 font-bold block">State *</label>
                     <select
+                      id="field-state"
                       value={state}
                       onChange={(e) => setState(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                      className={`w-full px-4 py-3 rounded-xl bg-black/80 border text-white focus:outline-none transition-all ${
+                        highlightedFieldId === 'field-state'
+                          ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                          : 'border-white/15 focus:border-cyan-400'
+                      }`}
                     >
                       <option value="">-- Select Indian State / UT --</option>
                       {INDIAN_STATES_UT.map((st) => (
@@ -750,11 +882,16 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   <div className="space-y-2">
                     <label className="text-slate-300 font-bold block">City / District *</label>
                     <input
+                      id="field-cityDistrict"
                       type="text"
                       placeholder="e.g. Cuttack / Bhubaneswar / Hyderabad"
                       value={cityDistrict}
                       onChange={(e) => setCityDistrict(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
+                        highlightedFieldId === 'field-cityDistrict'
+                          ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                          : 'border-white/15 focus:border-cyan-400'
+                      }`}
                     />
                   </div>
 
@@ -795,7 +932,9 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
 
                 <div className="space-y-4 font-mono text-xs">
                   {/* Searchable Language Input Header */}
-                  <div className="space-y-2">
+                  <div id="field-languages" className={`space-y-2 p-1 rounded-2xl transition-all ${
+                    highlightedFieldId === 'field-languages' ? 'ring-2 ring-red-500/50 bg-red-950/20' : ''
+                  }`}>
                     <label className="text-slate-300 font-bold block flex items-center justify-between">
                       <span>Which languages can you support? *</span>
                       <span className="text-[10px] text-cyan-400 font-normal">Searchable Multi-Select</span>
@@ -1024,11 +1163,16 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                             <div className="space-y-2">
                               <label className="text-slate-200 font-bold block">Other Language Name *</label>
                               <input
+                                id="field-custom-lang"
                                 type="text"
                                 placeholder="Enter custom language name (e.g. Kui, Ho, Santali Variant, Mizo)"
                                 value={c.name}
                                 onChange={(e) => handleUpdateCustomLanguage(c.id, 'name', e.target.value)}
-                                className="w-full px-4 py-3 rounded-xl bg-black/80 border border-purple-500/40 text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 font-bold"
+                                className={`w-full px-4 py-3 rounded-xl bg-black/80 border text-white placeholder-slate-500 focus:outline-none font-bold transition-all ${
+                                  highlightedFieldId === 'field-custom-lang'
+                                    ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                                    : 'border-purple-500/40 focus:border-purple-400'
+                                }`}
                               />
 
                               {duplicateMatch && (
@@ -1106,7 +1250,9 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                 </div>
 
                 <div className="space-y-6 font-mono text-xs">
-                  <div className="space-y-3">
+                  <div id="field-primaryRole" className={`space-y-3 p-2 rounded-2xl transition-all ${
+                    highlightedFieldId === 'field-primaryRole' ? 'ring-2 ring-red-500/50 bg-red-950/20' : ''
+                  }`}>
                     <label className="text-slate-300 font-bold block">What best describes you? *</label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {ROLE_OPTIONS.map((role) => (
@@ -1329,7 +1475,9 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                 </div>
 
                 <div className="space-y-6 font-mono text-xs">
-                  <div className="space-y-3">
+                  <div id="field-capabilities" className={`space-y-3 p-2 rounded-2xl transition-all ${
+                    highlightedFieldId === 'field-capabilities' ? 'ring-2 ring-red-500/50 bg-red-950/20' : ''
+                  }`}>
                     <label className="text-slate-300 font-bold block">Capabilities Supported *</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
                       {WORK_TYPES_OPTIONS.map((cap) => {
@@ -1540,7 +1688,9 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   </div>
                 )}
 
-                <div className="space-y-3 pt-2">
+                <div id="field-consents" className={`space-y-3 pt-2 p-2 rounded-2xl transition-all ${
+                  highlightedFieldId === 'field-consents' ? 'ring-2 ring-red-500/50 bg-red-950/20' : ''
+                }`}>
                   <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-400/50 transition-all">
                     <input
                       type="checkbox"
@@ -1563,7 +1713,9 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                 </div>
 
                 {/* Cloudflare Turnstile Security Captcha Widget */}
-                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                <div id="field-turnstile" className={`p-4 rounded-2xl bg-white/[0.02] border space-y-2 transition-all ${
+                  highlightedFieldId === 'field-turnstile' ? 'border-red-500 ring-2 ring-red-500/50 bg-red-950/20' : 'border-white/10'
+                }`}>
                   <label className="text-slate-300 font-bold block text-xs flex items-center gap-2">
                     <Lock className="w-4 h-4 text-cyan-400" /> Security Verification Check (Cloudflare Turnstile) *
                   </label>
@@ -1616,7 +1768,41 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
             </div>
           </div>
         )}
+
+        {/* ── COMPACT TALENT PORTAL FOOTER ── */}
+        <footer className="mt-12 pt-8 pb-4 border-t border-white/10 text-center space-y-2.5 font-mono text-xs text-slate-400">
+          <div className="flex items-center justify-center gap-2">
+            <div className="relative h-6 w-6 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px]">
+              <SeoImage src="/assets/logo.png" alt="Zenemoo" className="w-full h-full object-contain rounded-full bg-white p-0.5" />
+            </div>
+            <span className="font-extrabold font-display text-white tracking-wider text-sm">ZENEMOO</span>
+          </div>
+          <p className="text-[11px] text-cyan-400 font-mono">AI Data Network Portal</p>
+          <p className="text-[11px] text-slate-500">
+            © {new Date().getFullYear()} Zenemoo Technologies. All rights reserved.
+          </p>
+          <div className="flex items-center justify-center gap-3 text-xs pt-1 text-slate-400 font-sans">
+            <a href="/privacy" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Privacy</a>
+            <span>•</span>
+            <a href="/terms" target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Terms</a>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setIsSupportModalOpen(true)}
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Support Portal
+            </button>
+          </div>
+        </footer>
       </div>
+
+      {/* SUPPORT PORTAL MODAL */}
+      <ZenemooSupportPortalModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
     </div>
   );
 };
+
