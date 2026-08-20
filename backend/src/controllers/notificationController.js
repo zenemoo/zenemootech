@@ -83,17 +83,20 @@ export const registerSubscription = async (req, res, next) => {
 
     if (supabase) {
       try {
-        // Check for existing subscription for this installation_id & platform
-        const { data: existing } = await supabase
+        // Check for existing subscription matching (platform, app_type, installation_id)
+        const { data: existingRows } = await supabase
           .from('zenemoo_notifications')
           .select('id')
           .eq('record_type', 'subscription')
           .eq('platform', platform)
+          .eq('app_type', app_type)
           .eq('installation_id', installation_id)
-          .maybeSingle();
+          .order('created_at', { ascending: false });
 
-        if (existing) {
-          // UPDATE existing row — PREVENT DUPLICATES!
+        if (existingRows && existingRows.length > 0) {
+          const primaryId = existingRows[0].id;
+          
+          // UPDATE existing primary row — ZERO DUPLICATES!
           const { data: updated } = await supabase
             .from('zenemoo_notifications')
             .update({
@@ -106,11 +109,20 @@ export const registerSubscription = async (req, res, next) => {
               is_active: true,
               last_seen_at: subRecord.last_seen_at,
             })
-            .eq('id', existing.id)
+            .eq('id', primaryId)
             .select()
             .single();
 
           resultRecord = updated;
+
+          // Clean up any legacy redundant duplicate rows asynchronously
+          if (existingRows.length > 1) {
+            const redundantIds = existingRows.slice(1).map((r) => r.id);
+            await supabase
+              .from('zenemoo_notifications')
+              .delete()
+              .in('id', redundantIds);
+          }
         } else {
           // INSERT new row
           const { data: inserted } = await supabase

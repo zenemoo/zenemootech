@@ -40,3 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_zn_sub_lookup ON zenemoo_notifications(record_typ
 CREATE INDEX IF NOT EXISTS idx_zn_active_subs ON zenemoo_notifications(record_type, is_active, platform, app_type);
 CREATE INDEX IF NOT EXISTS idx_zn_created_at ON zenemoo_notifications(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_zn_target ON zenemoo_notifications(target_type, target_id);
+
+-- Enforce strict uniqueness per platform + app_type + installation_id for subscription records
+CREATE UNIQUE INDEX IF NOT EXISTS idx_zn_unique_sub 
+ON zenemoo_notifications(platform, app_type, installation_id) 
+WHERE record_type = 'subscription';

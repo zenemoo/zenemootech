@@ -13,6 +13,10 @@ const PROMPT_STATUS_KEY = 'zenemoo_notif_prompt_status'; // 'granted' | 'denied'
 const DENIED_AT_KEY = 'zenemoo_notif_denied_at'; // timestamp ms
 const RETRY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// Idempotency session caches
+let lastRegisteredSubKey = '';
+let isCapacitorPushInitialized = false;
+
 /**
  * Get or create a stable client installation identifier (UUID)
  */
@@ -119,6 +123,13 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
     });
 
     const installation_id = getInstallationId();
+    const subKey = `web_website_${installation_id}_${subscription.endpoint}`;
+
+    if (lastRegisteredSubKey === subKey) {
+      return true; // Already registered in current session
+    }
+
+    lastRegisteredSubKey = subKey;
 
     // Send subscription payload to backend
     await notificationApi.subscribe({
@@ -135,6 +146,7 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
     console.log('[WebPush]: Web push subscription registered successfully.');
     return true;
   } catch (err) {
+    lastRegisteredSubKey = '';
     console.error('[WebPush Registration Error]:', err);
     return false;
   }
@@ -149,8 +161,15 @@ export const registerAndroidPushSubscription = async (
   user_id?: string,
   user_role?: string
 ) => {
+  const installation_id = getInstallationId();
+  const subKey = `android_${app_type}_${installation_id}_${token}`;
+
+  if (lastRegisteredSubKey === subKey) {
+    return; // Already registered in current session
+  }
+
   try {
-    const installation_id = getInstallationId();
+    lastRegisteredSubKey = subKey;
     await notificationApi.subscribe({
       platform: 'android',
       app_type,
@@ -163,6 +182,7 @@ export const registerAndroidPushSubscription = async (
     recordPromptDecision('allow');
     console.log('[AndroidPush]: FCM Android notification token registered successfully.');
   } catch (err) {
+    lastRegisteredSubKey = '';
     console.error('[AndroidPush Registration Error]:', err);
   }
 };
@@ -179,7 +199,12 @@ export const initCapacitorPushNotifications = async (
     return;
   }
 
+  if (isCapacitorPushInitialized) {
+    return; // Prevent duplicate initialization calls
+  }
+
   try {
+    isCapacitorPushInitialized = true;
     let permStatus = await PushNotifications.checkPermissions();
 
     if (permStatus.receive === 'prompt') {
@@ -187,7 +212,7 @@ export const initCapacitorPushNotifications = async (
     }
 
     if (permStatus.receive === 'granted') {
-      await PushNotifications.register();
+      await PushNotifications.removeAllListeners();
 
       PushNotifications.addListener('registration', (token: Token) => {
         if (token && token.value) {
@@ -209,8 +234,13 @@ export const initCapacitorPushNotifications = async (
           window.location.href = url;
         }
       });
+
+      await PushNotifications.register();
+    } else {
+      isCapacitorPushInitialized = false;
     }
   } catch (err) {
+    isCapacitorPushInitialized = false;
     console.warn('[Capacitor Push Init Warn]:', err);
   }
 };
