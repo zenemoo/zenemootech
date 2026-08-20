@@ -477,7 +477,7 @@ export function App() {
           <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
 
           {/* Main Content Sections */}
-          <main className="relative z-10">
+          <main className="relative z-10 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 font-sans">
             <Hero />
             <TelemetryStats />
             <Services />
