@@ -13,21 +13,31 @@ export const ZenemooNotificationPrompt: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => {
-    // If running inside Capacitor native Android app, initialize push notifications cleanly
+    // If running inside Capacitor native Android app, initialize push notifications cleanly in background if permission granted
     if (Capacitor.isNativePlatform()) {
       initCapacitorPushNotifications('zenemoo');
     }
 
-    const timer = setTimeout(() => {
-      const eligibility = checkPromptEligibility();
-      if (eligibility === 'can_prompt') {
-        setIsVisible(true);
-      } else {
-        setIsVisible(false);
+    let isMounted = true;
+    const checkEligibility = async () => {
+      const eligibility = await checkPromptEligibility();
+      if (isMounted) {
+        if (eligibility === 'can_prompt') {
+          setIsVisible(true);
+        } else {
+          setIsVisible(false);
+        }
       }
+    };
+
+    const timer = setTimeout(() => {
+      checkEligibility();
     }, 2500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   const handleAllow = async () => {

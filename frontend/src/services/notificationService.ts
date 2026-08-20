@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import {
   PushNotifications,
   Token,
@@ -10,12 +11,30 @@ import { notificationApi } from './api';
 
 const INSTALLATION_KEY = 'zenemoo_installation_id';
 const PROMPT_STATUS_KEY = 'zenemoo_notif_prompt_status'; // 'granted' | 'denied'
+const ONBOARDING_COMPLETED_KEY = 'zenemoo_notification_onboarding_completed';
 const DENIED_AT_KEY = 'zenemoo_notif_denied_at'; // timestamp ms
 const RETRY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Idempotency session caches
 let lastRegisteredSubKey = '';
 let isCapacitorPushInitialized = false;
+
+/**
+ * Dynamically retrieves installed native application version or fallback website version
+ */
+export const getAppVersion = async (): Promise<string> => {
+  if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+    try {
+      const info = await App.getInfo();
+      if (info && info.version) {
+        return info.version;
+      }
+    } catch (e) {
+      console.warn('[App.getInfo Error]:', e);
+    }
+  }
+  return '2.0.3';
+};
 
 /**
  * Safely validates and returns trusted Zenemoo notification target URLs
@@ -65,24 +84,56 @@ export const getInstallationId = (): string => {
 };
 
 /**
- * Check if the custom notification prompt should be displayed
+ * Asynchronously checks whether the custom notification prompt should be displayed.
+ * Considers native Android PushNotifications permission, Web Notification API,
+ * and local device onboarding persistence.
  */
-export const checkPromptEligibility = (): 'can_prompt' | 'granted' | 'permanently_denied' | 'in_cooling_period' => {
+export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted' | 'permanently_denied' | 'in_cooling_period'> => {
   if (typeof window === 'undefined') return 'in_cooling_period';
 
-  // Check browser Notification API state
-  if ('Notification' in window && Notification.permission === 'granted') {
+  // 1. Check local onboarding persistence flag
+  const onboardingCompleted = localStorage.getItem(ONBOARDING_COMPLETED_KEY);
+  const promptStatus = localStorage.getItem(PROMPT_STATUS_KEY);
+
+  if (onboardingCompleted === 'true' || promptStatus === 'granted') {
     return 'granted';
   }
-  if ('Notification' in window && Notification.permission === 'denied') {
-    return 'permanently_denied';
+
+  // 2. Check native Android permission via Capacitor
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const permStatus = await PushNotifications.checkPermissions();
+      if (permStatus.receive === 'granted') {
+        // Auto-heal/sync onboarding state for existing users who already granted permission
+        localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+        localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
+        localStorage.removeItem(DENIED_AT_KEY);
+        return 'granted';
+      }
+      if (permStatus.receive === 'denied') {
+        return 'permanently_denied';
+      }
+    } catch (err) {
+      console.warn('[Capacitor checkPermissions warn]:', err);
+    }
   }
 
-  // Check local prompt status & 7-day retry rule
-  const status = localStorage.getItem(PROMPT_STATUS_KEY);
-  const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
+  // 3. Check browser Web Notification API state
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted') {
+      localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+      localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
+      localStorage.removeItem(DENIED_AT_KEY);
+      return 'granted';
+    }
+    if (Notification.permission === 'denied') {
+      return 'permanently_denied';
+    }
+  }
 
-  if (status === 'denied' && deniedAtStr) {
+  // 4. Check local 7-day cooling period for 'Not Now'
+  const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
+  if (promptStatus === 'denied' && deniedAtStr) {
     const deniedAt = parseInt(deniedAtStr, 10);
     const now = Date.now();
     if (now - deniedAt < RETRY_INTERVAL_MS) {
@@ -101,6 +152,7 @@ export const recordPromptDecision = async (decision: 'allow' | 'not_now' | 'clos
     localStorage.setItem(PROMPT_STATUS_KEY, 'denied');
     localStorage.setItem(DENIED_AT_KEY, Date.now().toString());
   } else if (decision === 'allow') {
+    localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
     localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
     localStorage.removeItem(DENIED_AT_KEY);
   }
@@ -139,7 +191,7 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
     recordPromptDecision('allow');
 
     // Get VAPID Key from backend
-    let vapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-m9GYvDwWDupBDwA61_D2A_hZ2d-209-Zq0b_629g9122_92931Z0Z';
+    let vapidKey = 'BH0dqalpC9xFj_3g1vYx15dUaxAPCVKLQlRpuTAftHt1UPOgFN7jk-6Q1k642-NIZ_Gj6b4rbnXG12SSuuGTgZo';
     try {
       const res = await notificationApi.getVapidKey();
       if (res.data?.publicKey) {
@@ -158,7 +210,8 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
     });
 
     const installation_id = getInstallationId();
-    const subKey = `web_website_${installation_id}_${subscription.endpoint}`;
+    const app_version = await getAppVersion();
+    const subKey = `web_website_${installation_id}_${subscription.endpoint}_${app_version}`;
 
     if (lastRegisteredSubKey === subKey) {
       return true; // Already registered in current session
@@ -175,10 +228,11 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
       token: subscription.endpoint,
       user_id,
       user_role,
+      app_version,
       permission_status: 'granted',
     });
 
-    console.log('[WebPush]: Web push subscription registered successfully.');
+    console.log('[WebPush]: Web push subscription registered successfully with app_version:', app_version);
     return true;
   } catch (err) {
     lastRegisteredSubKey = '';
@@ -197,7 +251,8 @@ export const registerAndroidPushSubscription = async (
   user_role?: string
 ) => {
   const installation_id = getInstallationId();
-  const subKey = `android_${app_type}_${installation_id}_${token}`;
+  const app_version = await getAppVersion();
+  const subKey = `android_${app_type}_${installation_id}_${token}_${app_version}`;
 
   if (lastRegisteredSubKey === subKey) {
     return; // Already registered in current session
@@ -212,10 +267,11 @@ export const registerAndroidPushSubscription = async (
       token,
       user_id,
       user_role,
+      app_version,
       permission_status: 'granted',
     });
     recordPromptDecision('allow');
-    console.log('[AndroidPush]: FCM Android notification token registered successfully.');
+    console.log('[AndroidPush]: FCM Android notification token registered successfully with app_version:', app_version);
   } catch (err) {
     lastRegisteredSubKey = '';
     console.error('[AndroidPush Registration Error]:', err);
@@ -247,6 +303,10 @@ export const initCapacitorPushNotifications = async (
     }
 
     if (permStatus.receive === 'granted') {
+      localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+      localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
+      localStorage.removeItem(DENIED_AT_KEY);
+
       await PushNotifications.removeAllListeners();
 
       PushNotifications.addListener('registration', (token: Token) => {

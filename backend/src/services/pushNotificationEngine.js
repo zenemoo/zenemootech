@@ -4,8 +4,8 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { supabase } from '../config/supabase.js';
 
 // VAPID Keys Setup for Web Push
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-m9GYvDwWDupBDwA61_D2A_hZ2d-209-Zq0b_629g9122_92931Z0Z';
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || '3049182390182390182309182309182390182390182';
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || 'BH0dqalpC9xFj_3g1vYx15dUaxAPCVKLQlRpuTAftHt1UPOgFN7jk-6Q1k642-NIZ_Gj6b4rbnXG12SSuuGTgZo';
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || 'o026b3oV0uwl-9RM3eg6G7XJtnQdtS8jGnk2SsC9p_Q';
 const vapidEmail = process.env.VAPID_EMAIL || 'mailto:notifications@zenemoo.in';
 
 try {
@@ -186,8 +186,21 @@ export const sendZenemooNotification = async ({
     try {
       if (sub.platform === 'web' && sub.subscription && sub.subscription.endpoint) {
         // Web Push Delivery
-        await webpush.sendNotification(sub.subscription, pushPayload);
-        webCount++;
+        try {
+          const endpointHost = new URL(sub.subscription.endpoint).hostname;
+          console.log(`[WebPush]: Attempting delivery to ${endpointHost} (${sub.installation_id})`);
+          await webpush.sendNotification(sub.subscription, pushPayload);
+          webCount++;
+          console.log(`[WebPush Success]: Delivered to ${sub.installation_id}`);
+        } catch (webErr) {
+          failedCount++;
+          const status = webErr.statusCode || 'N/A';
+          console.warn(`[WebPush Error]: HTTP ${status} - ${webErr.message}`);
+          if (webErr.statusCode === 410 || webErr.statusCode === 404) {
+            console.log(`[WebPush Expired]: Marking subscription ${sub.id} as inactive`);
+            inactiveSubIds.push(sub.id);
+          }
+        }
       } else if (sub.platform === 'android' && sub.token) {
         // Android FCM HTTP v1 Delivery via Firebase Admin SDK
         if (firebaseMessaging) {
