@@ -5,7 +5,8 @@ import {
   checkPromptEligibility,
   recordPromptDecision,
   registerWebPushSubscription,
-  initCapacitorPushNotifications,
+  initFCMIfGranted,
+  requestAndRegisterCapacitorPush,
 } from '../services/notificationService';
 
 export const ZenemooNotificationPrompt: React.FC = () => {
@@ -13,9 +14,9 @@ export const ZenemooNotificationPrompt: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => {
-    // If running inside Capacitor native Android app, initialize push notifications cleanly in background if permission granted
+    // Independent FCM Startup Check: if native permission is already granted, refresh/register FCM silently in background
     if (Capacitor.isNativePlatform()) {
-      initCapacitorPushNotifications('zenemoo');
+      initFCMIfGranted('zenemoo');
     }
 
     let isMounted = true;
@@ -44,8 +45,10 @@ export const ZenemooNotificationPrompt: React.FC = () => {
     setIsRegistering(true);
     try {
       if (Capacitor.isNativePlatform()) {
-        await initCapacitorPushNotifications('zenemoo');
-        setIsVisible(false);
+        const success = await requestAndRegisterCapacitorPush('zenemoo');
+        if (success) {
+          setIsVisible(false);
+        }
       } else {
         const success = await registerWebPushSubscription();
         if (success) {
@@ -65,7 +68,7 @@ export const ZenemooNotificationPrompt: React.FC = () => {
   };
 
   const handleClose = () => {
-    recordPromptDecision('close'); // No permanent denial, allow in future sessions
+    recordPromptDecision('close'); // Hide for current session
     setIsVisible(false);
   };
 

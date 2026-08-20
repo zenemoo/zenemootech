@@ -85,31 +85,32 @@ export const getInstallationId = (): string => {
 
 /**
  * Asynchronously checks whether the custom notification prompt should be displayed.
- * Considers native Android PushNotifications permission, Web Notification API,
- * and local device onboarding persistence.
+ * Decoupled from native FCM initialization.
  */
 export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted' | 'permanently_denied' | 'in_cooling_period'> => {
   if (typeof window === 'undefined') return 'in_cooling_period';
 
-  // 1. Check local onboarding persistence flag
+  // 1. Check local onboarding completion flag
   const onboardingCompleted = localStorage.getItem(ONBOARDING_COMPLETED_KEY);
-  const promptStatus = localStorage.getItem(PROMPT_STATUS_KEY);
-
-  if (onboardingCompleted === 'true' || promptStatus === 'granted') {
+  if (onboardingCompleted === 'true') {
     return 'granted';
   }
 
-  // 2. Check native Android permission via Capacitor
+  // 2. Check local 7-day cooling period for 'Not Now'
+  const promptStatus = localStorage.getItem(PROMPT_STATUS_KEY);
+  const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
+  if (promptStatus === 'denied' && deniedAtStr) {
+    const deniedAt = parseInt(deniedAtStr, 10);
+    const now = Date.now();
+    if (now - deniedAt < RETRY_INTERVAL_MS) {
+      return 'in_cooling_period'; // Within 7 days
+    }
+  }
+
+  // 3. Check native Android permission if native platform
   if (Capacitor.isNativePlatform()) {
     try {
       const permStatus = await PushNotifications.checkPermissions();
-      if (permStatus.receive === 'granted') {
-        // Auto-heal/sync onboarding state for existing users who already granted permission
-        localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
-        localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
-        localStorage.removeItem(DENIED_AT_KEY);
-        return 'granted';
-      }
       if (permStatus.receive === 'denied') {
         return 'permanently_denied';
       }
@@ -118,8 +119,8 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
     }
   }
 
-  // 3. Check browser Web Notification API state
-  if ('Notification' in window) {
+  // 4. Check browser Web Notification API state if web platform
+  if ('Notification' in window && !Capacitor.isNativePlatform()) {
     if (Notification.permission === 'granted') {
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
       localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
@@ -128,16 +129,6 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
     }
     if (Notification.permission === 'denied') {
       return 'permanently_denied';
-    }
-  }
-
-  // 4. Check local 7-day cooling period for 'Not Now'
-  const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
-  if (promptStatus === 'denied' && deniedAtStr) {
-    const deniedAt = parseInt(deniedAtStr, 10);
-    const now = Date.now();
-    if (now - deniedAt < RETRY_INTERVAL_MS) {
-      return 'in_cooling_period'; // Within 7 days
     }
   }
 
@@ -270,7 +261,6 @@ export const registerAndroidPushSubscription = async (
       app_version,
       permission_status: 'granted',
     });
-    recordPromptDecision('allow');
     console.log('[AndroidPush]: FCM Android notification token registered successfully with app_version:', app_version);
   } catch (err) {
     lastRegisteredSubKey = '';
@@ -279,9 +269,52 @@ export const registerAndroidPushSubscription = async (
 };
 
 /**
- * Initialize Capacitor Push Notifications for Native Android Builds
+ * Low-level register FCM push listeners and trigger PushNotifications.register()
  */
-export const initCapacitorPushNotifications = async (
+const registerCapacitorPushListenersAndToken = async (
+  app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
+  user_id?: string,
+  user_role?: string
+) => {
+  if (isCapacitorPushInitialized) return;
+  isCapacitorPushInitialized = true;
+
+  try {
+    await PushNotifications.removeAllListeners();
+
+    PushNotifications.addListener('registration', (token: Token) => {
+      if (token && token.value) {
+        registerAndroidPushSubscription(token.value, app_type, user_id, user_role);
+      }
+    });
+
+    PushNotifications.addListener('registrationError', (err: RegistrationError) => {
+      console.warn('[Capacitor Push Error]:', err.error);
+    });
+
+    PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
+      console.log('[Capacitor Push Received]:', notification);
+    });
+
+    PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
+      const data = notification.notification?.data || {};
+      const targetUrl = data.url || (data.click_action !== 'FCM_PLUGIN_NOTIFICATION_CLICK' ? data.click_action : null) || data.link || data.path;
+      console.log('[Capacitor Push Tap Action Received]:', notification.actionId, 'Target URL:', targetUrl);
+      handleNotificationClick(targetUrl);
+    });
+
+    await PushNotifications.register();
+  } catch (err) {
+    isCapacitorPushInitialized = false;
+    console.warn('[Register Capacitor Push Error]:', err);
+  }
+};
+
+/**
+ * INDEPENDENT FCM Startup Initialization:
+ * Runs on App startup. If Android OS permission is ALREADY granted, initializes FCM listeners & token silently in background.
+ */
+export const initFCMIfGranted = async (
   app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
   user_id?: string,
   user_role?: string
@@ -290,52 +323,47 @@ export const initCapacitorPushNotifications = async (
     return;
   }
 
-  if (isCapacitorPushInitialized) {
-    return; // Idempotent guard: prevent duplicate initialization calls
-  }
-
   try {
-    isCapacitorPushInitialized = true;
-    let permStatus = await PushNotifications.checkPermissions();
-
-    if (permStatus.receive === 'prompt') {
-      permStatus = await PushNotifications.requestPermissions();
-    }
-
+    const permStatus = await PushNotifications.checkPermissions();
     if (permStatus.receive === 'granted') {
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
       localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
       localStorage.removeItem(DENIED_AT_KEY);
 
-      await PushNotifications.removeAllListeners();
-
-      PushNotifications.addListener('registration', (token: Token) => {
-        if (token && token.value) {
-          registerAndroidPushSubscription(token.value, app_type, user_id, user_role);
-        }
-      });
-
-      PushNotifications.addListener('registrationError', (err: RegistrationError) => {
-        console.warn('[Capacitor Push Error]:', err.error);
-      });
-
-      PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-        console.log('[Capacitor Push Received]:', notification);
-      });
-
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
-        const data = notification.notification?.data || {};
-        const targetUrl = data.url || (data.click_action !== 'FCM_PLUGIN_NOTIFICATION_CLICK' ? data.click_action : null) || data.link || data.path;
-        console.log('[Capacitor Push Tap Action Received]:', notification.actionId, 'Target URL:', targetUrl);
-        handleNotificationClick(targetUrl);
-      });
-
-      await PushNotifications.register();
-    } else {
-      isCapacitorPushInitialized = false;
+      await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
     }
   } catch (err) {
-    isCapacitorPushInitialized = false;
-    console.warn('[Capacitor Push Init Warn]:', err);
+    console.warn('[initFCMIfGranted Warn]:', err);
   }
+};
+
+/**
+ * EXPLICIT PROMPT ACTION:
+ * Called when user taps "Allow Notifications" in custom prompt.
+ * Requests OS permission, initializes FCM registration, and marks onboarding completed.
+ */
+export const requestAndRegisterCapacitorPush = async (
+  app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
+  user_id?: string,
+  user_role?: string
+): Promise<boolean> => {
+  if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) {
+    return false;
+  }
+
+  try {
+    let permStatus = await PushNotifications.checkPermissions();
+    if (permStatus.receive !== 'granted') {
+      permStatus = await PushNotifications.requestPermissions();
+    }
+
+    if (permStatus.receive === 'granted') {
+      recordPromptDecision('allow');
+      await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+      return true;
+    }
+  } catch (err) {
+    console.warn('[requestAndRegisterCapacitorPush Warn]:', err);
+  }
+  return false;
 };
