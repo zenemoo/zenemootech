@@ -199,10 +199,13 @@ export const sendZenemooNotification = async ({
         } catch (webErr) {
           failedCount++;
           const status = webErr.statusCode || 'N/A';
-          console.warn(`[WebPush Error]: HTTP ${status} - ${webErr.message}`);
+          const endpointHost = new URL(sub.subscription.endpoint).hostname;
+          console.warn(`[WebPush Error]: Host: ${endpointHost} | HTTP Status: ${status} | Error Name: ${webErr.name || 'WebPushError'} | Message: ${webErr.message}`);
           if (webErr.statusCode === 410 || webErr.statusCode === 404) {
             console.log(`[WebPush Expired]: Marking subscription ${sub.id} as inactive`);
             inactiveSubIds.push(sub.id);
+          } else if (webErr.statusCode === 403) {
+            console.warn(`[WebPush 403 Forbidden]: VAPID Key mismatch between current server VAPID key and browser PushSubscription endpoint.`);
           }
         }
       } else if (sub.platform === 'android' && sub.token) {
