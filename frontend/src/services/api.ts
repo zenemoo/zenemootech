@@ -309,18 +309,34 @@ export const userManagementApi = {
 
 // Notification System APIs
 export const notificationApi = {
-  getAll: () => api.get('/notifications'),
-  markRead: (id: string) => api.put(`/notifications/${id}/read`),
-  markAllRead: () => api.put('/notifications/read-all'),
+  getVapidKey: () => api.get('/notifications/vapid-key'),
+  subscribe: (data: {
+    platform: string;
+    app_type?: string;
+    installation_id: string;
+    token?: string | null;
+    subscription?: any;
+    user_id?: string;
+    user_role?: string;
+    app_version?: string;
+    permission_status?: string;
+  }) => api.post('/notifications/subscribe', data),
+  getAll: (params?: { installation_id?: string }) => api.get('/notifications', { params }),
+  markRead: (id: string, installation_id?: string) => api.put(`/notifications/${id}/read`, { installation_id }),
+  markAllRead: (installation_id?: string) => api.put('/notifications/read-all', { installation_id }),
   deleteNotification: (id: string) => api.delete(`/notifications/${id}`),
   adminCreate: (data: {
     title: string;
     message: string;
+    notification_type?: string;
     type?: string;
     target_type?: string;
-    target_user_id?: string;
     target_role?: string;
-  }) => api.post('/notifications', data),
+    target_user_id?: string;
+    target_id?: string;
+    url?: string;
+    opportunity_id?: string;
+  }) => api.post('/notifications/dispatch', data),
   adminDelete: (id: string) => api.delete(`/notifications/admin/${id}`),
 };
 

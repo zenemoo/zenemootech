@@ -1,108 +1,202 @@
-import { supabaseService } from '../services/supabaseService.js';
 import { supabase } from '../config/supabase.js';
+import { sendZenemooNotification, vapidPublicKey } from '../services/pushNotificationEngine.js';
 
-// In-memory notifications store fallback
+// In-memory fallback stores
+const memorySubscriptions = new Map(); // key: installation_id, value: subscription object
 const memoryNotifications = [
   {
     id: 'notif_welcome_1',
+    record_type: 'notification',
+    notification_type: 'general',
     title: 'Welcome to Zenemoo Enterprise Platform',
-    message: 'Your portal account is active. Explore your dashboard, update your profile skills, and manage your tasks.',
-    type: 'info',
+    message: 'Your portal account is active. Explore your dashboard, update your profile skills, and check opportunities.',
     target_type: 'broadcast',
+    url: '/',
     created_at: new Date().toISOString(),
   },
   {
-    id: 'notif_meeting_2',
-    title: 'Weekly All-Hands Data Operations Meeting',
-    message: 'Join our weekly project briefing today at 4:00 PM IST via Google Meet.',
-    type: 'meeting',
+    id: 'notif_opp_sample',
+    record_type: 'notification',
+    notification_type: 'opportunity_published',
+    title: '🎯 New Opportunity Available',
+    message: 'A new opportunity "AI Speech Data Annotator" is now available. Check the opportunity details and apply now.',
     target_type: 'broadcast',
+    url: '/opportunities',
     created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
 ];
 
-const memoryUserNotifications = new Map(); // key: userId, value: set of read notification IDs
-const memoryUserDeletedNotifications = new Map(); // key: userId, value: set of deleted notification IDs
+const memoryReadNotifications = new Map(); // key: userId/installationId, value: Set of read notification IDs
 
 /**
- * 1. GET /api/notifications
- * Fetch notifications for logged-in user with unread count
+ * 1. GET /api/notifications/vapid-key
+ * Returns Web Push VAPID Public Key for browser client registration
+ */
+export const getVapidPublicKey = async (req, res) => {
+  return res.json({
+    success: true,
+    publicKey: vapidPublicKey,
+  });
+};
+
+/**
+ * 2. POST /api/notifications/subscribe
+ * Register or update push notification subscription (UPSERT logic — No duplicates!)
+ */
+export const registerSubscription = async (req, res, next) => {
+  try {
+    const {
+      platform = 'web', // 'android' or 'web'
+      app_type = 'zenemoo', // 'zenemoo', 'zenemoo_admin', 'website', 'team_portal', 'hr_portal'
+      installation_id,
+      token, // FCM Token or null
+      subscription, // Web Push subscription object { endpoint, keys: { p256dh, auth } }
+      user_id,
+      user_role,
+      app_version = '1.0.0',
+      permission_status = 'granted',
+    } = req.body;
+
+    if (!installation_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'installation_id is required for notification subscription.',
+      });
+    }
+
+    const subRecord = {
+      record_type: 'subscription',
+      platform,
+      app_type,
+      installation_id,
+      token: token || null,
+      subscription: subscription || {},
+      user_id: user_id || req.user?.id || null,
+      user_role: user_role || req.user?.role || null,
+      app_version,
+      permission_status,
+      is_active: true,
+      last_seen_at: new Date().toISOString(),
+    };
+
+    let resultRecord = null;
+
+    if (supabase) {
+      try {
+        // Check for existing subscription for this installation_id & platform
+        const { data: existing } = await supabase
+          .from('zenemoo_notifications')
+          .select('id')
+          .eq('record_type', 'subscription')
+          .eq('platform', platform)
+          .eq('installation_id', installation_id)
+          .maybeSingle();
+
+        if (existing) {
+          // UPDATE existing row — PREVENT DUPLICATES!
+          const { data: updated } = await supabase
+            .from('zenemoo_notifications')
+            .update({
+              token: subRecord.token,
+              subscription: subRecord.subscription,
+              user_id: subRecord.user_id,
+              user_role: subRecord.user_role,
+              app_version: subRecord.app_version,
+              permission_status: subRecord.permission_status,
+              is_active: true,
+              last_seen_at: subRecord.last_seen_at,
+            })
+            .eq('id', existing.id)
+            .select()
+            .single();
+
+          resultRecord = updated;
+        } else {
+          // INSERT new row
+          const { data: inserted } = await supabase
+            .from('zenemoo_notifications')
+            .insert([subRecord])
+            .select()
+            .single();
+
+          resultRecord = inserted;
+        }
+      } catch (dbErr) {
+        console.warn('[Subscription Upsert Warn]:', dbErr.message);
+      }
+    }
+
+    if (!resultRecord) {
+      memorySubscriptions.set(`${platform}_${installation_id}`, subRecord);
+      resultRecord = subRecord;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Notification subscription saved successfully.',
+      data: resultRecord,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 3. GET /api/notifications
+ * Fetch notification history for website / app / logged in user
  */
 export const getUserNotifications = async (req, res, next) => {
   try {
-    const userId = req.user?.id || 'temp_user';
-    const userRole = (req.user?.role || 'team_member').toLowerCase();
+    const userId = req.user?.id || req.query.installation_id || 'guest_user';
+    const userRole = (req.user?.role || 'user').toLowerCase();
 
-    let allNotifications = [];
-    try {
-      allNotifications = await supabaseService.selectAll('notifications', 'created_at', false);
-    } catch (e) {
-      allNotifications = memoryNotifications;
-    }
-    if (!Array.isArray(allNotifications) || allNotifications.length === 0) {
-      allNotifications = memoryNotifications;
-    }
-
-    // Check read & deleted status for this user from user_notifications table or memory store
-    let readNotifIds = new Set();
-    let deletedNotifIds = new Set();
-    let notifReadCounts = new Map();
-
-    if (supabase && userId !== 'temp_user') {
+    let allNotifs = [];
+    if (supabase) {
       try {
-        const { data } = await supabase
-          .from('user_notifications')
-          .select('notification_id, is_read, is_deleted, deleted_at')
-          .eq('user_id', userId);
-        if (Array.isArray(data)) {
-          data.forEach((item) => {
-            if (item.is_read) readNotifIds.add(item.notification_id);
-            if (item.is_deleted || item.deleted_at) deletedNotifIds.add(item.notification_id);
-          });
-        }
+        const { data, error } = await supabase
+          .from('zenemoo_notifications')
+          .select('*')
+          .eq('record_type', 'notification')
+          .order('created_at', { ascending: false })
+          .limit(50);
 
-        if (userRole === 'admin') {
-          const { data: readStats } = await supabase
-            .from('user_notifications')
-            .select('notification_id')
-            .eq('is_read', true);
-          if (Array.isArray(readStats)) {
-            readStats.forEach((item) => {
-              const c = notifReadCounts.get(item.notification_id) || 0;
-              notifReadCounts.set(item.notification_id, c + 1);
-            });
-          }
+        if (!error && Array.isArray(data)) {
+          allNotifs = data;
         }
-      } catch (e) {}
-    } else {
-      readNotifIds = memoryUserNotifications.get(userId) || new Set();
-      deletedNotifIds = memoryUserDeletedNotifications.get(userId) || new Set();
+      } catch (e) {
+        allNotifs = memoryNotifications;
+      }
+    }
+    if (!Array.isArray(allNotifs) || allNotifs.length === 0) {
+      allNotifs = memoryNotifications;
     }
 
-    // Filter relevant notifications (broadcast, role match, or individual match) AND exclude per-user deleted ones
-    const userRelevant = allNotifications.filter((n) => {
-      if (userRole === 'admin') return true; // Administrators retrieve ALL database records for total overview
-      if (deletedNotifIds.has(n.id)) return false;
-      const targetType = (n.target_type || 'broadcast').toLowerCase();
-      if (targetType === 'broadcast') return true;
-      if (targetType === 'role' && n.target_role?.toLowerCase() === userRole) return true;
-      if (targetType === 'individual' && n.target_user_id === userId) return true;
-      return false;
+    const readSet = memoryReadNotifications.get(userId) || new Set();
+
+    // Filter notifications based on target_type
+    const filtered = allNotifs.filter((n) => {
+      if (userRole === 'admin') return true;
+      const target = (n.target_type || 'broadcast').toLowerCase();
+      if (target === 'broadcast') return true;
+      if (target === 'app_users') return true;
+      if (target === 'web_users') return true;
+      if (target === 'team' && (userRole === 'team_member' || userRole === 'admin')) return true;
+      if (target === 'hr' && (userRole === 'hr' || userRole === 'admin')) return true;
+      if (target === 'individual' && n.target_id === userId) return true;
+      return true;
     });
 
-    const formatted = userRelevant.map((n) => ({
+    const formatted = filtered.map((n) => ({
       id: n.id,
       title: n.title,
       message: n.message,
-      type: n.type || 'info',
+      type: n.notification_type || 'general',
+      notification_type: n.notification_type || 'general',
       target_type: n.target_type || 'broadcast',
-      target_role: n.target_role || null,
-      target_user_id: n.target_user_id || null,
-      sender_email: n.sender_email || 'contact@zenemoo.in',
+      url: n.url || '/',
+      opportunity_id: n.opportunity_id || null,
       created_at: n.created_at || new Date().toISOString(),
-      is_read: readNotifIds.has(n.id),
-      read_count: notifReadCounts.get(n.id) || 0,
-      delivery_status: 'Dispatched',
+      is_read: n.is_read || readSet.has(n.id),
     }));
 
     const unreadCount = formatted.filter((n) => !n.is_read).length;
@@ -119,44 +213,27 @@ export const getUserNotifications = async (req, res, next) => {
 };
 
 /**
- * 2. PUT /api/notifications/:id/read
+ * 4. PUT /api/notifications/:id/read
  * Mark notification as read
  */
 export const markNotificationAsRead = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id || 'temp_user';
+    const userId = req.user?.id || req.body.installation_id || 'guest_user';
 
-    if (supabase && userId !== 'temp_user') {
+    const userReads = memoryReadNotifications.get(userId) || new Set();
+    userReads.add(id);
+    memoryReadNotifications.set(userId, userReads);
+
+    if (supabase) {
       try {
-        const { data: existing } = await supabase
-          .from('user_notifications')
-          .select('id')
-          .eq('notification_id', id)
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (existing) {
-          await supabase
-            .from('user_notifications')
-            .update({ is_read: true, read_at: new Date().toISOString() })
-            .eq('id', existing.id);
-        } else {
-          await supabase.from('user_notifications').insert([
-            {
-              notification_id: id,
-              user_id: userId,
-              is_read: true,
-              read_at: new Date().toISOString(),
-            },
-          ]);
-        }
+        await supabase
+          .from('zenemoo_notifications')
+          .update({ is_read: true })
+          .eq('id', id)
+          .eq('record_type', 'notification');
       } catch (e) {}
     }
-
-    const userReads = memoryUserNotifications.get(userId) || new Set();
-    userReads.add(id);
-    memoryUserNotifications.set(userId, userReads);
 
     res.json({
       success: true,
@@ -168,40 +245,27 @@ export const markNotificationAsRead = async (req, res, next) => {
 };
 
 /**
- * 3. PUT /api/notifications/read-all
- * Mark all notifications as read for logged in user
+ * 5. PUT /api/notifications/read-all
+ * Mark all notifications as read
  */
 export const markAllNotificationsAsRead = async (req, res, next) => {
   try {
-    const userId = req.user?.id || 'temp_user';
+    const userId = req.user?.id || req.body.installation_id || 'guest_user';
 
     let allNotifs = [];
-    try {
-      allNotifs = await supabaseService.selectAll('notifications');
-    } catch (e) {
-      allNotifs = memoryNotifications;
-    }
-    if (!Array.isArray(allNotifs)) allNotifs = memoryNotifications;
-
-    const userReads = memoryUserNotifications.get(userId) || new Set();
-
-    for (const n of allNotifs) {
-      userReads.add(n.id);
-      if (supabase && userId !== 'temp_user') {
-        try {
-          await supabase.from('user_notifications').upsert([
-            {
-              notification_id: n.id,
-              user_id: userId,
-              is_read: true,
-              read_at: new Date().toISOString(),
-            },
-          ], { onConflict: 'notification_id,user_id' });
-        } catch (e) {}
-      }
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('zenemoo_notifications')
+          .select('id')
+          .eq('record_type', 'notification');
+        if (Array.isArray(data)) allNotifs = data;
+      } catch (e) {}
     }
 
-    memoryUserNotifications.set(userId, userReads);
+    const userReads = memoryReadNotifications.get(userId) || new Set();
+    allNotifs.forEach((n) => userReads.add(n.id));
+    memoryReadNotifications.set(userId, userReads);
 
     res.json({
       success: true,
@@ -213,49 +277,21 @@ export const markAllNotificationsAsRead = async (req, res, next) => {
 };
 
 /**
- * 4. DELETE /api/notifications/:id
- * Delete / hide notification for logged-in user only
+ * 6. DELETE /api/notifications/:id
+ * Delete / hide notification for logged-in user or guest
  */
 export const deleteUserNotification = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id || 'temp_user';
+    const userId = req.user?.id || 'guest_user';
 
-    if (supabase && userId !== 'temp_user') {
-      try {
-        const { data: existing } = await supabase
-          .from('user_notifications')
-          .select('id')
-          .eq('notification_id', id)
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (existing) {
-          await supabase
-            .from('user_notifications')
-            .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-            .eq('id', existing.id);
-        } else {
-          await supabase.from('user_notifications').insert([
-            {
-              notification_id: id,
-              user_id: userId,
-              is_read: true,
-              is_deleted: true,
-              deleted_at: new Date().toISOString(),
-            },
-          ]);
-        }
-      } catch (e) {}
-    }
-
-    const userDeleted = memoryUserDeletedNotifications.get(userId) || new Set();
-    userDeleted.add(id);
-    memoryUserDeletedNotifications.set(userId, userDeleted);
+    const userReads = memoryReadNotifications.get(userId) || new Set();
+    userReads.add(id);
+    memoryReadNotifications.set(userId, userReads);
 
     res.json({
       success: true,
-      message: 'Notification deleted for your account.',
+      message: 'Notification removed.',
     });
   } catch (err) {
     next(err);
@@ -263,18 +299,19 @@ export const deleteUserNotification = async (req, res, next) => {
 };
 
 /**
- * 5. POST /api/notifications
- * Admin dispatch individual or broadcast notification
+ * 7. POST /api/notifications/dispatch (or POST /api/notifications)
+ * Central Manual Admin Dispatcher Endpoint
  */
 export const createAdminNotification = async (req, res, next) => {
   try {
     const {
       title,
       message,
-      type = 'info', // info, success, warning, error, payment, meeting, project, system
-      target_type = 'broadcast', // broadcast, individual, role
-      target_user_id,
-      target_role,
+      notification_type = 'general',
+      target_type = 'broadcast', // 'broadcast', 'app_users', 'web_users', 'team', 'hr', 'admin', 'individual'
+      target_id,
+      url = '/',
+      opportunity_id,
     } = req.body;
 
     if (!title || !message) {
@@ -284,31 +321,22 @@ export const createAdminNotification = async (req, res, next) => {
       });
     }
 
-    const payload = {
+    const dispatchResult = await sendZenemooNotification({
       title,
       message,
-      type: type.toLowerCase(),
-      target_type: target_type.toLowerCase(),
-      target_user_id: target_user_id || null,
-      target_role: target_role ? target_role.toLowerCase() : null,
-      sender_id: req.user?.id || null,
-      sender_email: req.user?.email || 'contact@zenemoo.in',
-      created_at: new Date().toISOString(),
-    };
+      notification_type,
+      target_type,
+      target_id,
+      url,
+      opportunity_id,
+      sender_email: req.user?.email || 'admin@zenemoo.in',
+    });
 
-    let createdRecord = null;
-    try {
-      createdRecord = await supabaseService.insert('notifications', payload);
-    } catch (e) {
-      payload.id = `notif_${Date.now()}`;
-      memoryNotifications.unshift(payload);
-      createdRecord = payload;
-    }
-
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: `Notification '${title}' dispatched successfully (${target_type.toUpperCase()}).`,
-      notification: createdRecord || payload,
+      message: dispatchResult.summary.formatted_summary,
+      notification: dispatchResult.notification,
+      summary: dispatchResult.summary,
     });
   } catch (err) {
     next(err);
@@ -316,23 +344,28 @@ export const createAdminNotification = async (req, res, next) => {
 };
 
 /**
- * 6. DELETE /api/notifications/admin/:id
+ * 8. DELETE /api/notifications/admin/:id
  * Admin delete global notification entry
  */
 export const deleteAdminNotification = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    try {
-      await supabaseService.delete('notifications', id);
-    } catch (e) {
-      const idx = memoryNotifications.findIndex((n) => n.id === id);
-      if (idx !== -1) memoryNotifications.splice(idx, 1);
+    if (supabase) {
+      try {
+        await supabase
+          .from('zenemoo_notifications')
+          .delete()
+          .eq('id', id);
+      } catch (e) {}
     }
+
+    const idx = memoryNotifications.findIndex((n) => n.id === id);
+    if (idx !== -1) memoryNotifications.splice(idx, 1);
 
     res.json({
       success: true,
-      message: 'Global notification deleted successfully.',
+      message: 'Notification deleted successfully from history.',
     });
   } catch (err) {
     next(err);

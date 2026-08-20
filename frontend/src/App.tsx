@@ -27,6 +27,7 @@ import { ZenemooAiPage } from './components/ZenemooAiPage';
 import { ZenemooAiDrawer } from './components/ZenemooAiDrawer';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { SubscribeModal } from './components/SubscribeModal';
+import { ZenemooNotificationPrompt } from './components/ZenemooNotificationPrompt';
 import { UnsubscribePage } from './components/UnsubscribePage';
 import { NotFoundPage } from './components/NotFoundPage';
 import { ScrollProgressButton } from './components/ScrollProgressButton';
@@ -503,6 +504,7 @@ export function App() {
           />
           <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
           <SubscribeModal />
+          <ZenemooNotificationPrompt />
           <ScrollProgressButton />
         </>
       )}

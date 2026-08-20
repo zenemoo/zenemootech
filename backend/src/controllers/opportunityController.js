@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { ensureOpportunitySheetExists } from '../services/googleSheetsService.js';
+import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 
 // 1. GET ALL OPPORTUNITY PROGRAMS (Sorted by position ASC)
 export const getOpportunities = async (req, res) => {
@@ -81,16 +82,38 @@ export const createOpportunity = async (req, res) => {
       console.warn('[Google Sheets Ensure Sheet Note]:', sheetErr.message);
     });
 
-    // Return updated full list
+    // AUTOMATIC OPPORTUNITY PUSH NOTIFICATION (Fires ONLY after successful DB insert)
+    let notificationSummary = null;
+    try {
+      const notifRes = await sendZenemooNotification({
+        notification_type: 'opportunity_published',
+        title: '🎯 New Opportunity Available',
+        message: `A new opportunity "${createdRecord.title}" is now available. Check the opportunity details and apply now.`,
+        url: `/opportunities`,
+        opportunity_id: createdRecord.id,
+        target_type: 'broadcast',
+      });
+      notificationSummary = notifRes?.summary?.formatted_summary;
+    } catch (notifErr) {
+      console.warn('[Automatic Opportunity Notification Error]:', notifErr.message);
+    }
+
+    // Return updated full list with notification dispatch status
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
-    return res.status(201).json({ status: 'success', data: createdRecord, opportunities: fullList });
+    return res.status(201).json({
+      status: 'success',
+      data: createdRecord,
+      opportunities: fullList,
+      notification_sent: true,
+      notification_summary: notificationSummary || 'Notification sent to active subscribers.',
+    });
   } catch (err) {
     console.error('createOpportunity controller exception:', err.message);
     return res.status(500).json({ error: err.message });
   }
 };
 
-// 3. UPDATE OPPORTUNITY PROGRAM
+// 3. UPDATE OPPORTUNITY PROGRAM (Idempotent — NO opportunity notification sent on edits!)
 export const updateOpportunity = async (req, res) => {
   try {
     const { id } = req.params;

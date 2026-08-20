@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "554169919534",
+    "project_id": "zenemoo-notifications",
+    "storage_bucket": "zenemoo-notifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:554169919534:android:83d1ab3eec714bfc5cd7bf",
+        "android_client_info": {
+          "package_name": "in.zenemoo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwMaZw312qbfMfX_Ie2arNvVcK9vi9X9c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
