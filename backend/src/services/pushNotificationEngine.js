@@ -156,12 +156,25 @@ export const sendZenemooNotification = async ({
   let webCount = 0;
   let failedCount = 0;
 
+  // Determine trusted destination URL
+  let targetUrl = 'https://www.zenemoo.in/';
+  if (url && typeof url === 'string' && url.trim().length > 0) {
+    const trimmed = url.trim();
+    if (trimmed.startsWith('/')) {
+      targetUrl = `https://www.zenemoo.in${trimmed}`;
+    } else {
+      targetUrl = trimmed;
+    }
+  } else if (notification_type === 'opportunity_published') {
+    targetUrl = 'https://www.zenemoo.in/opportunities';
+  }
+
   const pushPayload = JSON.stringify({
     title,
     body: message,
     message,
     notification_type,
-    url: url || '/',
+    url: targetUrl,
     opportunity_id,
     id: savedNotification.id,
     timestamp: savedNotification.created_at,
@@ -189,7 +202,8 @@ export const sendZenemooNotification = async ({
                 title: String(title),
                 message: String(message),
                 notification_type: String(notification_type),
-                url: String(url || '/'),
+                url: String(targetUrl),
+                click_action: 'FCM_PLUGIN_NOTIFICATION_CLICK',
                 opportunity_id: String(opportunity_id || ''),
                 id: String(savedNotification.id),
               },
@@ -197,7 +211,7 @@ export const sendZenemooNotification = async ({
                 priority: 'high',
                 notification: {
                   icon: 'ic_notification',
-                  clickAction: url || '/',
+                  clickAction: 'FCM_PLUGIN_NOTIFICATION_CLICK',
                   sound: 'default',
                 },
               },

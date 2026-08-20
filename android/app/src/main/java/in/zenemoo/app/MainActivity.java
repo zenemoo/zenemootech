@@ -151,7 +151,7 @@ public class MainActivity extends BridgeActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                WebView view = getBridge().getWebView();
+                WebView view = getBridge() != null ? getBridge().getWebView() : null;
                 if (view != null && view.canGoBack()) {
                     view.goBack();
                 } else {
@@ -159,5 +159,30 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         });
+
+        // Process notification intent on cold start
+        handlePushIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handlePushIntent(intent);
+    }
+
+    private void handlePushIntent(Intent intent) {
+        if (intent != null && intent.getExtras() != null) {
+            String rawUrl = intent.getExtras().getString("url");
+            if (rawUrl != null && !rawUrl.isEmpty()) {
+                String targetUrl = rawUrl.startsWith("/") ? "https://www.zenemoo.in" + rawUrl : rawUrl;
+                if (targetUrl.startsWith("https://www.zenemoo.in") || targetUrl.startsWith("https://zenemoo.in")) {
+                    WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+                    if (webView != null) {
+                        webView.postDelayed(() -> webView.loadUrl(targetUrl), 800);
+                    }
+                }
+            }
+        }
     }
 }

@@ -18,6 +18,41 @@ let lastRegisteredSubKey = '';
 let isCapacitorPushInitialized = false;
 
 /**
+ * Safely validates and returns trusted Zenemoo notification target URLs
+ */
+export const sanitizeZenemooUrl = (rawUrl?: string): string => {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return 'https://www.zenemoo.in/';
+  }
+  const trimmed = rawUrl.trim();
+  if (trimmed === '' || trimmed === '/') {
+    return 'https://www.zenemoo.in/';
+  }
+  if (trimmed.startsWith('/')) {
+    return `https://www.zenemoo.in${trimmed}`;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'www.zenemoo.in' || hostname === 'zenemoo.in') {
+      return parsed.href;
+    }
+  } catch (e) {}
+  return 'https://www.zenemoo.in/';
+};
+
+/**
+ * Handle notification tap action safely inside WebView
+ */
+export const handleNotificationClick = (rawUrl?: string) => {
+  const targetUrl = sanitizeZenemooUrl(rawUrl);
+  if (typeof window !== 'undefined') {
+    console.log('[Notification Click]: Navigating to trusted target:', targetUrl);
+    window.location.href = targetUrl;
+  }
+};
+
+/**
  * Get or create a stable client installation identifier (UUID)
  */
 export const getInstallationId = (): string => {
@@ -200,7 +235,7 @@ export const initCapacitorPushNotifications = async (
   }
 
   if (isCapacitorPushInitialized) {
-    return; // Prevent duplicate initialization calls
+    return; // Idempotent guard: prevent duplicate initialization calls
   }
 
   try {
@@ -229,10 +264,10 @@ export const initCapacitorPushNotifications = async (
       });
 
       PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
-        const url = notification.notification.data?.url || notification.notification.data?.click_action;
-        if (url && typeof window !== 'undefined') {
-          window.location.href = url;
-        }
+        const data = notification.notification?.data || {};
+        const targetUrl = data.url || (data.click_action !== 'FCM_PLUGIN_NOTIFICATION_CLICK' ? data.click_action : null) || data.link || data.path;
+        console.log('[Capacitor Push Tap Action Received]:', notification.actionId, 'Target URL:', targetUrl);
+        handleNotificationClick(targetUrl);
       });
 
       await PushNotifications.register();
