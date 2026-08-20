@@ -32,7 +32,11 @@ try {
       console.log('[FCM HTTP v1]: Initialized via FIREBASE_SERVICE_ACCOUNT_JSON');
     } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
       // Option 2: Individual environment variables
-      const privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
+      let rawKey = process.env.FIREBASE_PRIVATE_KEY.trim();
+      while ((rawKey.startsWith('"') && rawKey.endsWith('"')) || (rawKey.startsWith("'") && rawKey.endsWith("'"))) {
+        rawKey = rawKey.substring(1, rawKey.length - 1).trim();
+      }
+      const privateKey = rawKey.replace(/\\n/g, '\n').trim();
       const app = initializeApp({
         credential: cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
