@@ -63,6 +63,30 @@ try {
   console.warn('[FCM HTTP v1 Init Error]:', fcmInitErr.message);
 }
 
+export const sanitizeZenemooUrl = (rawUrl) => {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  if (trimmed === '') return null;
+
+  if (/^(javascript|data|file|intent|about|vbscript):/i.test(trimmed)) {
+    return null;
+  }
+
+  if (trimmed.startsWith('/')) {
+    return `https://www.zenemoo.in${trimmed}`;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'www.zenemoo.in' || host === 'zenemoo.in') {
+      return parsed.href;
+    }
+  } catch (e) {}
+
+  return null;
+};
+
 /**
  * Single Centralized Zenemoo Notification Dispatch Engine
  */
@@ -72,12 +96,17 @@ export const sendZenemooNotification = async ({
   notification_type = 'general',
   target_type = 'broadcast',
   target_id = null,
-  url = '/',
+  url = null,
   opportunity_id = null,
   metadata = {},
   sender_email = 'system@zenemoo.in',
 }) => {
   console.log(`[Notification Engine] Processing notification: "${title}" (${target_type})`);
+
+  let finalUrl = sanitizeZenemooUrl(url);
+  if (!finalUrl && notification_type === 'opportunity_published') {
+    finalUrl = 'https://www.zenemoo.in/opportunities';
+  }
 
   // 1. Create ONE notification history record in zenemoo_notifications
   const notificationPayload = {
@@ -87,7 +116,7 @@ export const sendZenemooNotification = async ({
     message,
     target_type,
     target_id,
-    url,
+    url: finalUrl,
     opportunity_id,
     metadata,
     is_read: false,
@@ -160,18 +189,7 @@ export const sendZenemooNotification = async ({
   let webCount = 0;
   let failedCount = 0;
 
-  // Determine trusted destination URL
-  let targetUrl = 'https://www.zenemoo.in/';
-  if (url && typeof url === 'string' && url.trim().length > 0) {
-    const trimmed = url.trim();
-    if (trimmed.startsWith('/')) {
-      targetUrl = `https://www.zenemoo.in${trimmed}`;
-    } else {
-      targetUrl = trimmed;
-    }
-  } else if (notification_type === 'opportunity_published') {
-    targetUrl = 'https://www.zenemoo.in/opportunities';
-  }
+  const targetUrl = finalUrl || null;
 
   const pushPayload = JSON.stringify({
     title,

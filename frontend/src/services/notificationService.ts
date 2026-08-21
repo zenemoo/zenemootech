@@ -39,17 +39,24 @@ export const getAppVersion = async (): Promise<string> => {
 /**
  * Safely validates and returns trusted Zenemoo notification target URLs
  */
-export const sanitizeZenemooUrl = (rawUrl?: string): string => {
+export const sanitizeZenemooUrl = (rawUrl?: string | null): string | null => {
   if (!rawUrl || typeof rawUrl !== 'string') {
-    return 'https://www.zenemoo.in/';
+    return null;
   }
   const trimmed = rawUrl.trim();
-  if (trimmed === '' || trimmed === '/') {
-    return 'https://www.zenemoo.in/';
+  if (trimmed === '') {
+    return null;
   }
+  
+  // Reject dangerous schemes
+  if (/^(javascript|data|file|intent|about|vbscript):/i.test(trimmed)) {
+    return null;
+  }
+
   if (trimmed.startsWith('/')) {
     return `https://www.zenemoo.in${trimmed}`;
   }
+
   try {
     const parsed = new URL(trimmed);
     const hostname = parsed.hostname.toLowerCase();
@@ -57,15 +64,27 @@ export const sanitizeZenemooUrl = (rawUrl?: string): string => {
       return parsed.href;
     }
   } catch (e) {}
-  return 'https://www.zenemoo.in/';
+
+  return null;
+};
+
+/**
+ * Validates user input for Zenemoo notification URLs.
+ * Returns true if empty (since link is optional) or if URL is a valid Zenemoo domain/relative path.
+ */
+export const isValidZenemooUrlInput = (rawUrl?: string | null): boolean => {
+  if (!rawUrl || typeof rawUrl !== 'string' || rawUrl.trim() === '') {
+    return true; // Optional field
+  }
+  return sanitizeZenemooUrl(rawUrl) !== null;
 };
 
 /**
  * Handle notification tap action safely inside WebView
  */
-export const handleNotificationClick = (rawUrl?: string) => {
+export const handleNotificationClick = (rawUrl?: string | null) => {
   const targetUrl = sanitizeZenemooUrl(rawUrl);
-  if (typeof window !== 'undefined') {
+  if (targetUrl && typeof window !== 'undefined') {
     console.log('[Notification Click]: Navigating to trusted target:', targetUrl);
     window.location.href = targetUrl;
   }
@@ -188,30 +207,77 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
       if (res.data?.publicKey) {
         vapidKey = res.data.publicKey;
       }
-    } catch (e) {}
+      console.log('[WebPush Diag]: VAPID public key fetched from backend.');
+    } catch (e) {
+      console.warn('[WebPush Diag]: Could not fetch VAPID key from backend, using bundled fallback.');
+    }
 
     // Register Service Worker
+    console.log('[WebPush Diag]: Registering service worker...');
     const registration = await navigator.serviceWorker.register('/sw.js');
     await navigator.serviceWorker.ready;
+    console.log('[WebPush Diag]: Service worker ready. Scope:', registration.scope);
 
-    // Subscribe to Web Push
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidKey),
-    });
+    // Check for an existing valid subscription first — avoid creating a duplicate
+    // or hitting DOMException on browsers that block repeated subscribe() calls.
+    let subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      // Validate that the existing subscription uses the current VAPID key
+      const targetKeyBytes = urlBase64ToUint8Array(vapidKey);
+      const subKeyBuffer = subscription.options?.applicationServerKey;
+      let keyMismatch = false;
+
+      if (subKeyBuffer) {
+        const subKeyBytes = new Uint8Array(subKeyBuffer);
+        if (subKeyBytes.length !== targetKeyBytes.length) {
+          keyMismatch = true;
+        } else {
+          for (let i = 0; i < subKeyBytes.length; i++) {
+            if (subKeyBytes[i] !== targetKeyBytes[i]) {
+              keyMismatch = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (keyMismatch) {
+        console.warn('[WebPush Diag]: Stale subscription detected — VAPID key mismatch. Unsubscribing old subscription and re-subscribing...');
+        try {
+          await subscription.unsubscribe();
+        } catch (unsubErr) {
+          console.warn('[WebPush Unsubscribe Warn]:', unsubErr);
+        }
+        subscription = null;
+      } else {
+        console.log('[WebPush Diag]: Existing valid subscription found. Endpoint host:', new URL(subscription.endpoint).hostname);
+      }
+    }
+
+    if (!subscription) {
+      console.log('[WebPush Diag]: Subscribing to PushManager...');
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
+      console.log('[WebPush Diag]: PushManager subscription created. Endpoint host:', new URL(subscription.endpoint).hostname);
+    }
 
     const installation_id = getInstallationId();
     const app_version = await getAppVersion();
     const subKey = `web_website_${installation_id}_${subscription.endpoint}_${app_version}`;
 
     if (lastRegisteredSubKey === subKey) {
-      return true; // Already registered in current session
+      console.log('[WebPush Diag]: Already registered in current session — skipping backend call.');
+      return true;
     }
 
     lastRegisteredSubKey = subKey;
 
     // Send subscription payload to backend
-    await notificationApi.subscribe({
+    console.log('[WebPush Diag]: Sending subscription to backend /api/notifications/subscribe...');
+    const subResponse = await notificationApi.subscribe({
       platform: 'web',
       app_type: 'website',
       installation_id,
@@ -222,6 +288,7 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
       app_version,
       permission_status: 'granted',
     });
+    console.log('[WebPush Diag]: Backend subscribe response status:', subResponse.status);
 
     console.log('[WebPush]: Web push subscription registered successfully with app_version:', app_version);
     return true;
@@ -229,6 +296,32 @@ export const registerWebPushSubscription = async (user_id?: string, user_role?: 
     lastRegisteredSubKey = '';
     console.error('[WebPush Registration Error]:', err);
     return false;
+  }
+};
+
+/**
+ * INDEPENDENT Web Push Startup Initialization:
+ * Runs on website startup. If browser Notification.permission is ALREADY granted,
+ * initializes Service Worker & registers Web Push subscription silently in background.
+ */
+export const initWebPushIfGranted = async (user_id?: string, user_role?: string) => {
+  if (typeof window === 'undefined' || Capacitor.isNativePlatform()) {
+    return;
+  }
+
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      console.log('[WebPush Diag]: Permission already granted — silently re-registering web push subscription...');
+      localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+      localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
+      localStorage.removeItem(DENIED_AT_KEY);
+
+      await registerWebPushSubscription(user_id, user_role);
+    } else {
+      console.log('[WebPush Diag]: Startup check — Notification.permission is:', 'Notification' in window ? Notification.permission : 'not supported');
+    }
+  } catch (err) {
+    console.warn('[initWebPushIfGranted Warn]:', err);
   }
 };
 

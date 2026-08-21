@@ -208,7 +208,7 @@ export const getUserNotifications = async (req, res, next) => {
       type: n.notification_type || 'general',
       notification_type: n.notification_type || 'general',
       target_type: n.target_type || 'broadcast',
-      url: n.url || '/',
+      url: n.url || null,
       opportunity_id: n.opportunity_id || null,
       created_at: n.created_at || new Date().toISOString(),
       is_read: n.is_read || readSet.has(n.id),
@@ -322,27 +322,73 @@ export const createAdminNotification = async (req, res, next) => {
     const {
       title,
       message,
-      notification_type = 'general',
-      target_type = 'broadcast', // 'broadcast', 'app_users', 'web_users', 'team', 'hr', 'admin', 'individual'
+      notification_type,
+      notificationType = 'general',
+      target_type,
+      targetType = 'broadcast',
       target_id,
-      url = '/',
+      targetId,
+      url,
+      link,
+      notification_url,
       opportunity_id,
     } = req.body;
 
-    if (!title || !message) {
+    const notifTitle = title;
+    const notifMsg = message;
+    const notifType = notification_type || notificationType || 'general';
+    const notifTargetType = target_type || targetType || 'broadcast';
+    const notifTargetId = target_id || targetId || null;
+    const rawUrl = url || link || notification_url || null;
+
+    if (!notifTitle || !notifMsg) {
       return res.status(400).json({
         success: false,
         message: 'Notification title and message body are required.',
       });
     }
 
+    let finalUrl = null;
+    if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+      const trimmed = rawUrl.trim();
+      // Check dangerous protocols
+      if (/^(javascript|data|file|intent|about|vbscript):/i.test(trimmed)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please enter a valid Zenemoo URL.',
+        });
+      }
+
+      if (trimmed.startsWith('/')) {
+        finalUrl = `https://www.zenemoo.in${trimmed}`;
+      } else {
+        try {
+          const parsed = new URL(trimmed);
+          const host = parsed.hostname.toLowerCase();
+          if (host === 'www.zenemoo.in' || host === 'zenemoo.in') {
+            finalUrl = parsed.href;
+          } else {
+            return res.status(400).json({
+              success: false,
+              message: 'Please enter a valid Zenemoo URL.',
+            });
+          }
+        } catch (e) {
+          return res.status(400).json({
+            success: false,
+            message: 'Please enter a valid Zenemoo URL.',
+          });
+        }
+      }
+    }
+
     const dispatchResult = await sendZenemooNotification({
-      title,
-      message,
-      notification_type,
-      target_type,
-      target_id,
-      url,
+      title: notifTitle,
+      message: notifMsg,
+      notification_type: notifType,
+      target_type: notifTargetType,
+      target_id: notifTargetId,
+      url: finalUrl,
       opportunity_id,
       sender_email: req.user?.email || 'admin@zenemoo.in',
     });

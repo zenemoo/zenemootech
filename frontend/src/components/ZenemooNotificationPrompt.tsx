@@ -6,6 +6,7 @@ import {
   recordPromptDecision,
   registerWebPushSubscription,
   initFCMIfGranted,
+  initWebPushIfGranted,
   requestAndRegisterCapacitorPush,
 } from '../services/notificationService';
 
@@ -17,6 +18,9 @@ export const ZenemooNotificationPrompt: React.FC = () => {
     // Independent FCM Startup Check: if native permission is already granted, refresh/register FCM silently in background
     if (Capacitor.isNativePlatform()) {
       initFCMIfGranted('zenemoo');
+    } else {
+      // Independent Web Push Startup Check: if browser permission is already granted, re-register subscription silently
+      initWebPushIfGranted();
     }
 
     let isMounted = true;

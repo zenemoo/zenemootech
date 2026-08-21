@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bell,
   CheckCheck,
@@ -41,6 +42,37 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
   const [hasError, setHasError] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const [selectedLongNotif, setSelectedLongNotif] = useState<ZenemooNotificationItem | null>(null);
+
+  // Lock body scroll and preserve exact page scroll position when long message modal is open
+  useEffect(() => {
+    if (!selectedLongNotif) return;
+
+    const prevOverflow = document.body.style.overflow;
+    const currentScrollY = window.scrollY;
+
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      if (typeof window !== 'undefined' && Math.abs(window.scrollY - currentScrollY) > 2) {
+        window.scrollTo({ top: currentScrollY, behavior: 'instant' });
+      }
+    };
+  }, [selectedLongNotif]);
+
+  // Handle Escape key to close long message modal
+  useEffect(() => {
+    if (!selectedLongNotif) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedLongNotif(null);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedLongNotif]);
 
   // Fetch notifications for the last 7 days using the centralized API
   const fetchNotifications = useCallback(async (showLoading = false) => {
@@ -216,25 +248,39 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     }
   };
 
-  // Click individual notification -> mark as read, close panel, navigate safely
-  const handleNotificationClick = async (item: ZenemooNotificationItem) => {
+  // Click individual notification -> mark as read, close panel, navigate safely or open long message modal
+  const handleNotificationCardClick = async (item: ZenemooNotificationItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     await handleMarkAsRead(item.id);
-    setIsOpen(false);
 
-    if (item.url) {
-      const target = item.url.trim();
-      if (target.startsWith('/') || target.startsWith('#')) {
-        // Internal page or hash navigation
-        if (target.startsWith('#')) {
-          const el = document.querySelector(target);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth' });
-            return;
-          }
+    const messageLength = (item.message || '').length;
+    if (messageLength > 220) {
+      // Long message -> open full message glassmorphism modal
+      setSelectedLongNotif(item);
+    } else {
+      // Short message -> navigate if URL exists
+      if (item.url) {
+        setIsOpen(false);
+        navigateNotificationUrl(item.url);
+      }
+    }
+  };
+
+  const navigateNotificationUrl = (rawUrl?: string) => {
+    if (!rawUrl) return;
+    const target = rawUrl.trim();
+    if (target.startsWith('/') || target.startsWith('#')) {
+      if (target.startsWith('#')) {
+        const el = document.querySelector(target);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+          return;
         }
-        window.location.href = target;
-      } else {
-        const safeUrl = sanitizeZenemooUrl(target);
+      }
+      window.location.href = target;
+    } else {
+      const safeUrl = sanitizeZenemooUrl(target);
+      if (safeUrl) {
         window.location.href = safeUrl;
       }
     }
@@ -319,7 +365,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
       >
         <Bell className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-cyan-400 group-hover:rotate-12 transition-transform duration-200" />
 
-        {/* UNREAD COUNT BADGE (Requirement #4: 0 -> hidden, 1-9 -> exact, >9 -> 9+) */}
+        {/* UNREAD COUNT BADGE */}
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 text-black text-[10px] font-mono font-extrabold flex items-center justify-center shadow-lg shadow-cyan-500/40 animate-pulse border border-black/40">
             {unreadCount > 9 ? '9+' : unreadCount}
@@ -327,10 +373,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
         )}
       </button>
 
-      {/* ── NOTIFICATION PANEL (Desktop Dropdown & Mobile Floating Modal ~60-65% Viewport) ── */}
+      {/* ── NOTIFICATION PANEL (Desktop Dropdown & Mobile Floating Modal) ── */}
       {isOpen && (
         <>
-          {/* Subtle Mobile Backdrop (Soft dim without obscuring website & bottom nav) */}
+          {/* Subtle Mobile Backdrop */}
           <div
             className="fixed inset-0 z-[55] bg-black/40 backdrop-blur-[2px] sm:hidden transition-opacity duration-200"
             onClick={() => setIsOpen(false)}
@@ -388,7 +434,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
               </div>
             </div>
 
-            {/* Dedicated Scrollable Notification List (Consumes majority of ~60-65vh container) */}
+            {/* Dedicated Scrollable Notification List */}
             <div
               className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-white/5 p-2 space-y-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(6,182,212,0.3)_transparent]"
               onWheel={(e) => e.stopPropagation()}
@@ -441,13 +487,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
                   </div>
                 </div>
               ) : (
-                /* Compact Notification Cards */
+                /* Notification Cards */
                 notifications.map((item) => {
                   const category = getCategoryMeta(item.type, item.notification_type);
+                  const isLong = (item.message || '').length > 220;
+                  const hasLink = Boolean(item.url);
+
                   return (
                     <div
                       key={item.id}
-                      onClick={() => handleNotificationClick(item)}
+                      onClick={(e) => handleNotificationCardClick(item, e)}
                       className={`p-2.5 rounded-xl border transition-all duration-200 cursor-pointer relative group flex items-start gap-2.5 ${
                         !item.is_read
                           ? 'bg-gradient-to-br from-cyan-950/40 to-slate-900/90 border-cyan-500/40 text-white shadow-sm hover:border-cyan-400'
@@ -481,22 +530,48 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
                           </span>
                         </div>
 
-                        <p className="text-[10.5px] sm:text-[11px] text-slate-300/90 leading-snug line-clamp-2 font-sans">
-                          {item.message}
+                        {/* Message Preview (Truncated if long) */}
+                        <p className="text-[10.5px] sm:text-[11px] text-slate-300/90 leading-snug font-sans">
+                          {isLong ? `${item.message.slice(0, 210)}...` : item.message}
                         </p>
 
-                        {/* Footer Info / Category Tag */}
+                        {/* Footer Info / Category Tag / Action Links */}
                         <div className="flex items-center justify-between pt-1 text-[9px] font-mono">
                           <span className={`px-1.5 py-0.2 rounded border text-[8.5px] font-bold uppercase tracking-wider ${category.badgeColor}`}>
                             {category.label}
                           </span>
 
-                          {item.url && (
-                            <span className="text-cyan-400 group-hover:text-cyan-300 flex items-center gap-0.5 font-bold">
-                              <span>Open</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {isLong && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(item.id);
+                                  setSelectedLongNotif(item);
+                                }}
+                                className="text-cyan-400 hover:text-cyan-300 font-bold underline transition-colors"
+                              >
+                                Read More
+                              </button>
+                            )}
+
+                            {hasLink && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(item.id);
+                                  setIsOpen(false);
+                                  navigateNotificationUrl(item.url);
+                                }}
+                                className="text-cyan-400 group-hover:text-cyan-300 flex items-center gap-0.5 font-bold cursor-pointer hover:underline"
+                              >
+                                <span>Open</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -521,6 +596,96 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
           </div>
         </>
       )}
+
+      {/* ── LONG NOTIFICATION MESSAGE GLASSMORPHISM MODAL (ROOT PORTAL z-[99999]) ── */}
+      {selectedLongNotif &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-6 w-screen h-[100dvh] overflow-hidden select-none"
+            onClick={() => setSelectedLongNotif(null)}
+          >
+            {/* Dark Blurred Backdrop */}
+            <div className="absolute inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-200" />
+
+            {/* Centered Modal Card Container */}
+            <div
+              className="relative z-10 w-[94vw] sm:w-[min(90vw,620px)] max-w-[620px] max-h-[min(78dvh,540px)] sm:max-h-[min(75vh,580px)] rounded-3xl bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/40 shadow-[0_25px_70px_rgba(0,0,0,0.95),0_0_35px_rgba(6,182,212,0.25)] p-4 sm:p-6 text-white flex flex-col gap-3 select-text animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Fixed Header */}
+              <div className="flex items-start justify-between pb-3 border-b border-white/10 gap-3 shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-lg sm:text-xl shrink-0 shadow-inner">
+                    {getCategoryMeta(selectedLongNotif.type, selectedLongNotif.notification_type).emoji}
+                  </div>
+                  <div className="min-w-0 space-y-0.5">
+                    <span className="px-2 py-0.5 rounded border text-[9px] font-mono font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border-cyan-500/40 inline-block">
+                      {getCategoryMeta(selectedLongNotif.type, selectedLongNotif.notification_type).label}
+                    </span>
+                    <p className="text-[10px] font-mono text-slate-400 block leading-none">
+                      {formatTimeAgo(selectedLongNotif.created_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedLongNotif(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                  aria-label="Close notification details"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Notification Title */}
+              <h3 className="text-sm sm:text-base font-extrabold font-display text-white tracking-tight leading-snug shrink-0">
+                {selectedLongNotif.title}
+              </h3>
+
+              {/* Full Notification Message Body with Isolated Internal Scrolling */}
+              <div
+                className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs sm:text-sm font-sans leading-relaxed text-slate-200 whitespace-pre-wrap overscroll-contain [scrollbar-width:thin] [scrollbar-color:rgba(6,182,212,0.3)_transparent]"
+                onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+              >
+                {selectedLongNotif.message}
+              </div>
+
+              {/* Modal Fixed Footer Actions */}
+              <div className="pt-2.5 border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
+                {selectedLongNotif.url ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const targetUrl = selectedLongNotif.url;
+                      setSelectedLongNotif(null);
+                      setIsOpen(false);
+                      navigateNotificationUrl(targetUrl);
+                    }}
+                    className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 text-black font-extrabold text-xs font-mono flex items-center gap-2 cursor-pointer shadow-lg hover:brightness-110 active:scale-95 transition-all"
+                  >
+                    <span>🔗 Open Page</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedLongNotif(null)}
+                  className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold border border-white/10 transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

@@ -8,6 +8,7 @@ import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportu
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk, resendCandidateAcceptanceEmail } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
 import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi } from '../services/api';
+import { sanitizeZenemooUrl, isValidZenemooUrlInput } from '../services/notificationService';
 import { supabase } from '../lib/supabaseClient';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
@@ -289,11 +290,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   // Admin Notification Dispatcher State
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
+  const [notifUrl, setNotifUrl] = useState('');
   const [notifType, setNotifType] = useState('info');
   const [notifTargetType, setNotifTargetType] = useState('broadcast');
   const [notifTargetRole, setNotifTargetRole] = useState('team_member');
   const [notifTargetUserId, setNotifTargetUserId] = useState('');
   const [isDispatchingNotif, setIsDispatchingNotif] = useState(false);
+
+  const isNotifUrlValid = isValidZenemooUrlInput(notifUrl);
+  const normalizedNotifPreviewUrl = sanitizeZenemooUrl(notifUrl);
+  const formattedNotifPreviewDomain = useMemo(() => {
+    if (!normalizedNotifPreviewUrl) return null;
+    try {
+      const parsed = new URL(normalizedNotifPreviewUrl);
+      const host = parsed.hostname.replace(/^www\./, '');
+      const pathStr = parsed.pathname === '/' ? '' : parsed.pathname;
+      return `${host}${pathStr}${parsed.search}${parsed.hash}`;
+    } catch (e) {
+      return null;
+    }
+  }, [normalizedNotifPreviewUrl]);
   const [adminNotifList, setAdminNotifList] = useState<any[]>([]);
   const [isLoadingAdminNotifs, setIsLoadingAdminNotifs] = useState(false);
   const [adminNotifFetchError, setAdminNotifFetchError] = useState<string | null>(null);
@@ -559,8 +575,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       alert('Notification title and message body are required.');
       return;
     }
+    if (notifUrl && !isValidZenemooUrlInput(notifUrl)) {
+      alert('Please enter a valid Zenemoo URL.');
+      return;
+    }
     setIsDispatchingNotif(true);
     try {
+      const cleanUrl = sanitizeZenemooUrl(notifUrl);
       const res = await notificationApi.adminCreate({
         title: notifTitle,
         message: notifMessage,
@@ -568,12 +589,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         target_type: notifTargetType,
         target_role: notifTargetRole,
         target_user_id: notifTargetUserId || undefined,
+        url: cleanUrl || undefined,
       });
 
       if (res.data && res.data.success) {
         showStatus(`Dispatched notification '${notifTitle}' successfully!`);
         setNotifTitle('');
         setNotifMessage('');
+        setNotifUrl('');
         await loadAdminNotifications();
       } else {
         alert(res.data?.message || 'Notification dispatch failed.');
@@ -3139,10 +3162,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   />
                 </div>
 
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1.5">Notification Link (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="https://www.zenemoo.in/opportunities"
+                    value={notifUrl}
+                    onChange={(e) => setNotifUrl(e.target.value)}
+                    className={`w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border text-white font-mono text-xs focus:outline-none transition-colors ${
+                      notifUrl && !isNotifUrlValid
+                        ? 'border-red-500/80 focus:border-red-400'
+                        : 'border-white/10 focus:border-cyan-400'
+                    }`}
+                  />
+                  <p className="text-[11px] font-mono text-slate-400 mt-1">
+                    Optional — tapping the notification will open this page.
+                  </p>
+
+                  {/* Inline Validation Warning */}
+                  {notifUrl && !isNotifUrlValid && (
+                    <p className="text-xs font-mono font-bold text-red-400 mt-1.5 flex items-center gap-1">
+                      ⚠️ Please enter a valid Zenemoo URL.
+                    </p>
+                  )}
+
+                  {/* Link Preview */}
+                  {notifUrl && isNotifUrlValid && formattedNotifPreviewDomain && (
+                    <div className="mt-2 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono inline-flex items-center gap-1.5">
+                      <span>🔗 Opens:</span>
+                      <span className="font-bold">{formattedNotifPreviewDomain}</span>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
-                  disabled={isDispatchingNotif}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-black font-bold flex items-center gap-2 cursor-pointer shadow-lg"
+                  disabled={isDispatchingNotif || (Boolean(notifUrl) && !isNotifUrlValid)}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-black font-bold flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isDispatchingNotif ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Dispatch Notification Now
                 </button>

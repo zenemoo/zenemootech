@@ -55,7 +55,9 @@ export const NotificationToast: React.FC = () => {
         window.location.href = target;
       } else {
         const safeUrl = sanitizeZenemooUrl(target);
-        window.location.href = safeUrl;
+        if (safeUrl) {
+          window.location.href = safeUrl;
+        }
       }
     }
   };

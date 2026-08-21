@@ -173,13 +173,20 @@ public class MainActivity extends BridgeActivity {
 
     private void handlePushIntent(Intent intent) {
         if (intent != null && intent.getExtras() != null) {
-            String rawUrl = intent.getExtras().getString("url");
+            Bundle extras = intent.getExtras();
+            String rawUrl = extras.getString("url");
+            if (rawUrl == null || rawUrl.isEmpty()) {
+                rawUrl = extras.getString("link");
+            }
+            if (rawUrl == null || rawUrl.isEmpty()) {
+                rawUrl = extras.getString("path");
+            }
             if (rawUrl != null && !rawUrl.isEmpty()) {
                 String targetUrl = rawUrl.startsWith("/") ? "https://www.zenemoo.in" + rawUrl : rawUrl;
                 if (targetUrl.startsWith("https://www.zenemoo.in") || targetUrl.startsWith("https://zenemoo.in")) {
                     WebView webView = getBridge() != null ? getBridge().getWebView() : null;
                     if (webView != null) {
-                        webView.postDelayed(() -> webView.loadUrl(targetUrl), 800);
+                        webView.postDelayed(() -> webView.loadUrl(targetUrl), 600);
                     }
                 }
             }

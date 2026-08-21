@@ -1,7 +1,10 @@
 // ZENEMOO Service Worker for Web Push Notifications
 
 self.addEventListener('push', function (event) {
-  if (!event.data) return;
+  if (!event.data) {
+    console.warn('[SW Push]: Push event received with no data. Skipping notification.');
+    return;
+  }
 
   try {
     let data = {};
@@ -11,10 +14,14 @@ self.addEventListener('push', function (event) {
       data = { message: event.data.text() };
     }
 
+    console.log('[SW Push]: Received push. Type:', data.notification_type, '| ID:', data.id);
+
     const title = data.title || 'Zenemoo Update';
-    let rawUrl = data.url || '/';
-    if (rawUrl.startsWith('/')) {
-      rawUrl = 'https://www.zenemoo.in' + rawUrl;
+
+    // Normalize URL: only attach if a real URL was sent, otherwise null
+    let notifUrl = null;
+    if (data.url && data.url !== 'null' && data.url !== '/') {
+      notifUrl = data.url.startsWith('/') ? 'https://www.zenemoo.in' + data.url : data.url;
     }
 
     const options = {
@@ -23,8 +30,9 @@ self.addEventListener('push', function (event) {
       badge: '/assets/logo.png',
       vibrate: [100, 50, 100],
       data: {
-        url: rawUrl,
+        url: notifUrl || 'https://www.zenemoo.in/',
         id: data.id,
+        notification_type: data.notification_type,
       },
       actions: [
         {
@@ -38,9 +46,10 @@ self.addEventListener('push', function (event) {
       ],
     };
 
+    console.log('[SW Push]: Showing notification. Title:', title, '| URL:', options.data.url);
     event.waitUntil(self.registration.showNotification(title, options));
   } catch (err) {
-    console.error('Service worker push error:', err);
+    console.error('[SW Push Error]:', err);
   }
 });
 
@@ -50,6 +59,8 @@ self.addEventListener('notificationclick', function (event) {
   if (event.action === 'close') return;
 
   let targetUrl = event.notification.data?.url || 'https://www.zenemoo.in/';
+
+  // Ensure it's a relative path or trusted Zenemoo domain
   if (targetUrl.startsWith('/')) {
     targetUrl = 'https://www.zenemoo.in' + targetUrl;
   }
@@ -65,17 +76,24 @@ self.addEventListener('notificationclick', function (event) {
     targetUrl = 'https://www.zenemoo.in/';
   }
 
+  console.log('[SW NotificationClick]: Opening URL:', targetUrl);
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+      // Try to find an existing Zenemoo tab and focus + navigate it
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
-        if ('focus' in client) {
-          if ('navigate' in client) {
-            client.navigate(targetUrl);
+        try {
+          const clientUrl = new URL(client.url);
+          if (clientUrl.hostname === 'www.zenemoo.in' || clientUrl.hostname === 'zenemoo.in' || clientUrl.hostname === 'localhost') {
+            if ('navigate' in client) {
+              client.navigate(targetUrl);
+            }
+            return client.focus();
           }
-          return client.focus();
-        }
+        } catch (e) {}
       }
+      // No existing tab found — open a new one
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
