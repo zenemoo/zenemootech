@@ -109,7 +109,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
   // ── Refs ──
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const langDropdownRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const ui = LANG_UI_MAP[currentLanguage];
 
@@ -261,7 +261,12 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
           : c
       )
     );
-    if (!customPrompt) setInput('');
+    if (!customPrompt) {
+      setInput('');
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+    }
     setLoading(true);
 
     try {
@@ -689,20 +694,32 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                   onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
                   className="flex gap-2 items-end"
                 >
-                  <input
+                  <textarea
                     ref={inputRef}
-                    type="text"
+                    rows={1}
                     value={input}
-                    onChange={(e) => setInput(e.target.value.slice(0, 2000))}
+                    onChange={(e) => {
+                      setInput(e.target.value.slice(0, 2000));
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (input.trim() && !loading) {
+                          handleSendMessage();
+                        }
+                      }
+                    }}
                     placeholder={ui.placeholder}
                     disabled={loading}
                     maxLength={2000}
-                    className="flex-1 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-slate-600 text-xs sm:text-sm font-mono focus:outline-none focus:border-cyan-500/60 focus:bg-white/[0.06] transition-all disabled:opacity-60 min-w-0"
+                    className="flex-1 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-slate-600 text-xs sm:text-sm font-sans focus:outline-none focus:border-cyan-500/60 focus:bg-white/[0.06] transition-all disabled:opacity-60 min-w-0 resize-none overflow-y-auto max-h-[120px] leading-relaxed"
                   />
                   <button
                     type="button"
                     onClick={() => setIsVoiceModalOpen(true)}
-                    className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer border border-white/[0.08] flex items-center justify-center shrink-0"
+                    className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer border border-white/[0.08] flex items-center justify-center shrink-0 mb-[1px]"
                     title="Voice Input"
                     aria-label="Voice input"
                   >
@@ -712,7 +729,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                   <button
                     type="submit"
                     disabled={loading || !input.trim()}
-                    className="px-4 sm:px-5 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 shrink-0"
+                    className="px-4 sm:px-5 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 shrink-0 mb-[1px]"
                   >
                     <span className="hidden sm:inline">{ui.sendBtn}</span>
                     <Send className="w-3.5 h-3.5" />
