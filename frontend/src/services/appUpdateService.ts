@@ -57,7 +57,7 @@ export const checkForAppUpdate = async (forceCheck = false): Promise<AppUpdateIn
 
   try {
     // Dynamic installed version using @capacitor/app
-    let installedVersion = '2.0.4';
+    let installedVersion = '2.0.5';
     try {
       const info = await App.getInfo();
       if (info && info.version) {

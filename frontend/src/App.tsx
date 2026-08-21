@@ -461,9 +461,9 @@ export function App() {
       ) : currentRoute === 'team-profile' ? (
         <TeamMemberProfilePage slug={selectedTeamSlug} onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'privacy' ? (
-        <PrivacyPolicyPage onBack={handleBackToHome} />
+        <PrivacyPolicyPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'terms' ? (
-        <TermsConditionsPage onBack={handleBackToHome} />
+        <TermsConditionsPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'talent-registration' ? (
         <ZenemooTalentRegistrationPage onBack={handleBackToHome} />
       ) : currentRoute === 'opportunities' ? (

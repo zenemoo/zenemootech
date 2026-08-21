@@ -456,7 +456,7 @@ export const getAppVersionInfo = async (req, res, next) => {
       }
     } catch (e) {}
 
-    const latestVersion = manifest?.version || '2.0.4';
+    const latestVersion = manifest?.version || '2.0.5';
     const latestVersionCode = manifest?.versionCode || 4;
     const releaseNotes = Array.isArray(manifest?.releaseNotes) ? manifest.releaseNotes.join('\n') : (manifest?.releaseNotes || 'Includes new Zenemoo Notification Center with internal scrolling, live alerts, and performance enhancements.');
     const updateUrl = manifest?.apkUrl ? (manifest.apkUrl.startsWith('http') ? manifest.apkUrl : `https://www.zenemoo.in${manifest.apkUrl}`) : 'https://www.zenemoo.in/app/android';

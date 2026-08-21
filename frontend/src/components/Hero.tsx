@@ -36,9 +36,9 @@ export const Hero: React.FC = () => {
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 z-10">
-        <div className="text-center max-w-4xl mx-auto">
+        <div className="text-center max-w-5xl xl:max-w-6xl mx-auto">
           {/* Top Pill Badge with Official Logo */}
-          <div className="inline-flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-6 sm:mb-8 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full">
+          <div className="inline-flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-6 sm:mb-8 md:mb-10 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full">
             <SeoImage src="/assets/logo.png" alt="Zenemoo Official Logo — Enterprise AI Solutions" priority={true} width={24} height={24} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white p-0.5 shadow object-cover shrink-0" />
             <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
             <span className="text-[10px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold">
@@ -50,19 +50,25 @@ export const Hero: React.FC = () => {
             </span>
           </div>
 
-          {/* Cinematic Headline */}
-          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-extrabold font-display tracking-tight text-white leading-[1.15] sm:leading-[1.08] mb-4 sm:mb-6">
-            Professional <br className="hidden sm:inline" />
-            <span className="text-gradient-hero">Language &amp; Data Services</span>
+          {/* Cinematic Large-Screen Responsive Headline */}
+          <h1
+            className="font-extrabold font-display tracking-tight text-white leading-[1.05] sm:leading-[1.08] mb-6 sm:mb-8 md:mb-10 max-w-[1350px] mx-auto text-balance"
+            style={{
+              fontSize: 'clamp(2.35rem, 5.8vw + 0.5rem, 6.75rem)',
+            }}
+          >
+            Professional <br />
+            <span className="text-gradient-hero">Language &amp; Data</span> <br className="hidden sm:inline" />
+            <span className="text-gradient-hero">Services</span>
           </h1>
 
           {/* Subtitle */}
-          <p className="text-sm sm:text-lg md:text-xl text-slate-300 font-normal leading-relaxed max-w-3xl mx-auto mb-8 sm:mb-10">
+          <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-[22px] text-slate-300 font-normal leading-relaxed max-w-3xl xl:max-w-4xl mx-auto mb-8 sm:mb-10 xl:mb-10">
             We are <strong className="text-white font-semibold">Zenemoo Data Solutions</strong> — a specialized team delivering high-accuracy <span className="text-cyan-300 font-semibold">audio transcription</span>, <span className="text-purple-300 font-semibold">data annotation</span>, and <span className="text-blue-300 font-semibold">multilingual voice over</span> services to enterprises and AI technology companies. Delivering 100% output to <strong className="text-emerald-400 font-semibold">DesiCrew Solutions</strong> since 2023.
           </p>
 
-          {/* Glass CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-12 sm:mb-16">
+          {/* Glass CTA Buttons (Directly below description, horizontally aligned with 16-20px gap on desktop) */}
+          <div className="relative z-20 flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 xl:gap-5 mb-8 sm:mb-10 xl:mb-10">
             <a
               href="#contact"
               className="w-full sm:w-auto relative group overflow-hidden rounded-2xl p-[1px] font-semibold text-sm shadow-xl shadow-cyan-500/25"
@@ -77,7 +83,7 @@ export const Hero: React.FC = () => {
 
             <a
               href="mailto:contact@zenemoo.in"
-              className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl bg-white/[0.04] border border-white/10 hover:border-white/20 text-slate-200 hover:text-white font-medium text-sm backdrop-blur-xl hover:bg-white/[0.08] transition-all duration-200"
+              className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl bg-[#08090e]/80 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white font-medium text-sm backdrop-blur-xl hover:bg-white/[0.08] transition-all duration-200 shadow-lg shadow-black/40"
             >
               <Mail className="w-4 h-4 text-purple-400" />
               Email Us Now
@@ -85,11 +91,11 @@ export const Hero: React.FC = () => {
           </div>
 
           {/* Official Zenemoo Applications Single-Line CTA (SEO & Crawl Signal) */}
-          <div className="flex items-center justify-center mb-12 sm:mb-16 px-2">
+          <div className="relative z-20 flex items-center justify-center mb-10 sm:mb-14 xl:mb-14 px-2">
             <a
               href="/app"
               aria-label="Explore Zenemoo Apps"
-              className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/[0.03] hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-400/40 text-xs sm:text-sm font-mono text-cyan-300 hover:text-cyan-200 transition-all duration-300 group shadow-md hover:shadow-cyan-500/20 active:scale-95 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-black"
+              className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#08090e]/80 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-400/40 text-xs sm:text-sm font-mono text-cyan-300 hover:text-cyan-200 backdrop-blur-xl transition-all duration-300 group shadow-md hover:shadow-cyan-500/20 active:scale-95 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-black"
             >
               <Smartphone className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
               <span className="font-semibold whitespace-nowrap">Explore Zenemoo Apps</span>
@@ -99,8 +105,8 @@ export const Hero: React.FC = () => {
         </div>
 
         {/* Floating KPI Cards Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-16 max-w-5xl mx-auto">
-          <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-cyan-500/30 transition-all">
+        <div className="relative z-20 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-16 max-w-5xl mx-auto">
+          <div className="glass-panel bg-[#070c18]/80 backdrop-blur-xl p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-cyan-500/30 transition-all shadow-xl shadow-black/40">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-cyan-400 mb-1">
               <CountUp end={1.5} decimals={1} suffix="+ Yrs" />
             </div>
@@ -108,7 +114,7 @@ export const Hero: React.FC = () => {
             <div className="text-[11px] text-slate-400 font-mono mt-1">Active Since 2023</div>
           </div>
 
-          <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-purple-500/30 transition-all">
+          <div className="glass-panel bg-[#070c18]/80 backdrop-blur-xl p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-purple-500/30 transition-all shadow-xl shadow-black/40">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-purple-400 mb-1">
               <CountUp end={99.9} decimals={1} suffix="%+" />
             </div>
@@ -116,7 +122,7 @@ export const Hero: React.FC = () => {
             <div className="text-[11px] text-slate-400 font-mono mt-1">Super QC Verified</div>
           </div>
 
-          <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-emerald-500/30 transition-all">
+          <div className="glass-panel bg-[#070c18]/80 backdrop-blur-xl p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-emerald-500/30 transition-all shadow-xl shadow-black/40">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400 mb-1">
               <CountUp end={500} decimals={0} suffix="+ Mins" />
             </div>
@@ -124,7 +130,7 @@ export const Hero: React.FC = () => {
             <div className="text-[11px] text-slate-400 font-mono mt-1">10,000+ Mins / Month</div>
           </div>
 
-          <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-blue-500/30 transition-all">
+          <div className="glass-panel bg-[#070c18]/80 backdrop-blur-xl p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-blue-500/30 transition-all shadow-xl shadow-black/40">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-blue-400 mb-1">
               <CountUp end={50} decimals={0} suffix="+" />
             </div>

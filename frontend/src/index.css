@@ -174,3 +174,20 @@
   color: #ef4444;
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
+
+/* ==========================================================================
+   Centralized Mobile Bottom Navigation Clearance (Screens <= 1199px Only)
+   Ensures final content, footer links, and copyright text are 100% visible
+   and scrollable above the fixed mobile bottom navigation bar.
+   ========================================================================== */
+:root {
+  --mobile-bottom-nav-height: 64px;
+}
+
+@media (max-width: 1199px) {
+  footer {
+    padding-bottom: calc(var(--mobile-bottom-nav-height, 64px) + 10px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+
