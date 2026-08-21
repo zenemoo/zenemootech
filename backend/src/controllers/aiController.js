@@ -1,12 +1,12 @@
-import { processAiChat, getAiAnalyticsMetrics } from '../services/aiService.js';
+import { processAiChat, getAiAnalyticsMetrics, runAiDiagnosticTest, getAiHealthTelemetry } from '../services/aiService.js';
 
 /**
  * POST /api/ai/chat
- * Secure AI Chat endpoint
+ * Secure AI Chat endpoint with production-grade fallback and retry protection
  */
 export const chatWithAi = async (req, res, next) => {
   try {
-    const { messages, language, lengthPreference } = req.body;
+    const { messages, language, lengthPreference, userId } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -23,7 +23,9 @@ export const chatWithAi = async (req, res, next) => {
 
     const targetLang = language === 'hi' || language === 'or' ? language : 'en';
     const validLengthPref = ['short', 'normal', 'detailed', 'auto'].includes(lengthPreference) ? lengthPreference : 'auto';
-    const result = await processAiChat(sanitizedMessages, targetLang, validLengthPref);
+    const clientUserId = userId || req.ip || 'anonymous';
+
+    const result = await processAiChat(sanitizedMessages, targetLang, validLengthPref, clientUserId);
 
     return res.json({
       success: true,
@@ -53,5 +55,26 @@ export const getAiAnalytics = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+/**
+ * GET /api/ai/diagnostics
+ * Execute automated AI health diagnostic test suite
+ */
+export const runDiagnostics = async (req, res, next) => {
+  try {
+    const count = parseInt(req.query.count, 10) || 10;
+    const testReport = await runAiDiagnosticTest(count);
+    return res.json({
+      success: true,
+      report: testReport,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      telemetry: getAiHealthTelemetry(),
+    });
   }
 };

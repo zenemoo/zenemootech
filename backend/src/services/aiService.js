@@ -3,6 +3,124 @@ import path from 'path';
 import { supabase } from '../config/supabase.js';
 
 // ─────────────────────────────────────────────────────────────
+//  Centralized Production Model Pool Configuration
+// ─────────────────────────────────────────────────────────────
+export const AI_MODELS = [
+  { id: 'openai/gpt-oss-120b', priority: 1, enabled: true, name: 'GPT-OSS 120B (Primary)' },
+  { id: 'openai/gpt-oss-20b', priority: 2, enabled: true, name: 'GPT-OSS 20B (Fallback 1)' },
+  { id: 'qwen/qwen3.6-27b', priority: 3, enabled: true, name: 'Qwen 3.6 27B (Fallback 2)' },
+];
+
+// ─────────────────────────────────────────────────────────────
+//  In-Memory Model Health Registry & Circuit Breaker
+// ─────────────────────────────────────────────────────────────
+const modelHealthRegistry = new Map();
+
+AI_MODELS.forEach((m) => {
+  modelHealthRegistry.set(m.id, {
+    id: m.id,
+    name: m.name,
+    healthy: true,
+    consecutiveFailures: 0,
+    rateLimitedUntil: 0,
+    lastSuccess: null,
+    lastFailure: null,
+    totalRequests: 0,
+    totalSuccess: 0,
+    total429: 0,
+    total404: 0,
+    total400: 0,
+    total5xx: 0,
+    latencies: [],
+  });
+});
+
+/**
+ * Check if a model is currently healthy and available to accept requests
+ */
+const isModelHealthy = (modelId) => {
+  const record = modelHealthRegistry.get(modelId);
+  if (!record) return false;
+
+  // Rate-limit cooldown check
+  if (record.rateLimitedUntil && Date.now() < record.rateLimitedUntil) {
+    return false;
+  }
+
+  // Circuit breaker: 3 consecutive failures within 60s triggers a 45s cooldown
+  if (record.consecutiveFailures >= 3 && record.lastFailure && Date.now() - record.lastFailure < 45000) {
+    return false;
+  }
+
+  return record.healthy;
+};
+
+/**
+ * Record model success metrics
+ */
+const recordModelSuccess = (modelId, latencyMs) => {
+  let record = modelHealthRegistry.get(modelId);
+  if (!record) {
+    record = {
+      id: modelId,
+      name: modelId,
+      healthy: true,
+      consecutiveFailures: 0,
+      rateLimitedUntil: 0,
+      lastSuccess: null,
+      lastFailure: null,
+      totalRequests: 0,
+      totalSuccess: 0,
+      total429: 0,
+      total404: 0,
+      total400: 0,
+      total5xx: 0,
+      latencies: [],
+    };
+    modelHealthRegistry.set(modelId, record);
+  }
+  record.healthy = true;
+  record.consecutiveFailures = 0;
+  record.rateLimitedUntil = 0;
+  record.lastSuccess = Date.now();
+  record.totalRequests += 1;
+  record.totalSuccess += 1;
+  record.latencies.push(latencyMs);
+  if (record.latencies.length > 50) record.latencies.shift();
+};
+
+/**
+ * Record model failure metrics with error classification
+ */
+const recordModelFailure = (modelId, status, retryAfterSec = 30) => {
+  let record = modelHealthRegistry.get(modelId);
+  if (!record) return;
+
+  record.lastFailure = Date.now();
+  record.totalRequests += 1;
+  record.consecutiveFailures += 1;
+
+  if (status === 429) {
+    record.total429 += 1;
+    const cooldownMs = Math.max(retryAfterSec * 1000, 15000);
+    record.rateLimitedUntil = Date.now() + cooldownMs;
+  } else if (status === 404 || status === 400) {
+    if (status === 404) record.total404 += 1;
+    if (status === 400) record.total400 += 1;
+    // Decommissioned or not found -> mark unhealthy for 5 minutes
+    record.healthy = false;
+    record.rateLimitedUntil = Date.now() + 300000;
+  } else if (status >= 500) {
+    record.total5xx += 1;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+//  Per-User Concurrency Protection (Prevent Request Storms)
+// ─────────────────────────────────────────────────────────────
+const activeUserRequests = new Set();
+
+// ─────────────────────────────────────────────────────────────
 //  Dynamic App Release Manifest Reader
 // ─────────────────────────────────────────────────────────────
 export const getLatestAppManifest = () => {
@@ -124,19 +242,6 @@ OFFICIAL MOBILE APPLICATION (ZENEMOO FOR ANDROID):
 - Architecture: Universal (ARM64, ARMv7, x86_64)
 - Direct APK Download Link: https://www.zenemoo.in/downloads/zenemoo-latest.apk
 - Official Android App Info Page: https://www.zenemoo.in/app/android (also accessible via https://www.zenemoo.in/app)
-- Key Application Features:
-  1. Real-Time Push Notifications: Instant alerts for career opportunities, project announcements, application review updates, and operational notices.
-  2. Mobile Opportunities Portal: Browse open data positions, view eligibility, submit candidate applications with resume uploads directly from your phone.
-  3. Integrated Zenemoo AI Assistant: Native mobile access to AI chat in English, Hindi, and Odia for queries, language processing, and workflows.
-  4. Audio & Language Data Workflows: Mobile-optimized interface for contributors, annotators, and transcribers.
-  5. Centralized Notification Center: In-app notification center with read/unread tracking and deep links.
-
-HOW TO DOWNLOAD AND INSTALL THE ZENEMOO ANDROID APP:
-Step 1: Visit https://www.zenemoo.in/app/android on your Android mobile device.
-Step 2: Click the "Download Zenemoo APK" button (downloads zenemoo-latest.apk).
-Step 3: When the download completes, tap the APK file in your notification bar or Downloads folder.
-Step 4: If prompted, allow "Install unknown apps" for your web browser in Android Settings.
-Step 5: Tap "Install" to complete the setup. Open the Zenemoo app and enable notifications for real-time updates.
 
 WEBSITE PAGES & PUBLIC NAVIGATION LINKS:
 - Homepage: https://www.zenemoo.in/
@@ -157,196 +262,53 @@ WEBSITE PAGES & PUBLIC NAVIGATION LINKS:
 
 CRITICAL PRIVACY & ANSWERING RULES:
 1. PUBLIC CAPACITY FACTS ONLY: Always state Zenemoo works across "23+ languages with a network of 50+ members across India."
-2. MOBILE APPLICATION QUESTIONS: When asked if Zenemoo has an app, what version is current, or how to download it, enthusiastically confirm that Zenemoo has an official Android mobile app available for direct download at https://www.zenemoo.in/app/android. Always reference the live release version and details injected in the [LIVE RELEASE TELEMETRY: ZENEMOO ANDROID APPLICATION] section below.
+2. MOBILE APPLICATION QUESTIONS: When asked if Zenemoo has an app, confirm that Zenemoo has an official Android mobile app available for direct download at https://www.zenemoo.in/app/android. Always reference the live release version injected below.
 3. NEVER EXPOSE INTERNAL OPERATIONAL DATA: Never reveal candidate personal data, internal tracking codes, database IDs, or admin passwords.
 4. LANGUAGE QUESTIONS: When asked if Zenemoo supports a specific language, confirm capability within our India-wide network.
-5. NAVIGATION GUIDANCE: When users ask where to apply, register, read reviews, download the app, or contact Zenemoo, provide the exact public website links listed above.
-6. TEAM SIZE QUESTIONS: State "Zenemoo currently has a network of 50+ members (40 Transcribers + 10 QC Specialists) across India supporting multilingual AI-data and related projects."
+5. NAVIGATION GUIDANCE: Provide exact public website links.
+6. TEAM SIZE QUESTIONS: State "Zenemoo currently has a network of 50+ members (40 Transcribers + 10 QC Specialists) across India."
 `;
 
 // ─────────────────────────────────────────────────────────────
-//  Company Process Knowledge (Step-by-Step Workflows)
+//  Dynamic RAG Context Builder
 // ─────────────────────────────────────────────────────────────
-const COMPANY_PROCESSES = `
-[ZENEMOO COMPANY PROCESSES & WORKFLOWS]
+export const buildDynamicRAGContext = async (queryText = '') => {
+  let context = VERIFIED_COMPANY_KNOWLEDGE;
 
-HOW TO DOWNLOAD & INSTALL ZENEMOO ANDROID APP:
-Step 1: Open https://www.zenemoo.in/app/android on your mobile device
-Step 2: Tap the "Download Zenemoo APK" button
-Step 3: Open the downloaded zenemoo-latest.apk file
-Step 4: Grant "Install from this source" permission if prompted by Android
-Step 5: Tap Install and launch Zenemoo to explore jobs, AI services, and real-time push notifications
-Action: {{ACTION:app}}
-
-HOW TO APPLY FOR A JOB AT ZENEMOO:
-Step 1: Visit the Zenemoo website at https://www.zenemoo.in/
-Step 2: Navigate to the Opportunities page at https://www.zenemoo.in/opportunities
-Step 3: Browse all published open positions (transcriptionists, annotators, QC specialists, etc.)
-Step 4: Click on a position to read the full job description and requirements
-Step 5: Fill in the online application form with your name, contact details, and experience
-Step 6: Upload your resume/CV and any required work samples
-Step 7: Submit your application
-Step 8: Our team reviews applications within 3–5 business days and contacts shortlisted candidates
-Action: {{ACTION:opportunities}}
-
-HOW TO CONTACT ZENEMOO:
-Available contact methods:
-- Email (Sales & Inquiries): contact@zenemoo.in
-- Email (Technical Support): support@zenemoo.in
-- Email (General): info@zenemoo.in
-- Phone: +91 9827775230 (Mon–Sat, 9 AM – 7 PM IST)
-- Contact Form: Visit the Contact section on the website
-Action: {{ACTION:contact}}
-
-HOW TO REQUEST A QUOTATION:
-Step 1: Send an email to contact@zenemoo.in with subject: "Enterprise Quote Request"
-Step 2: Include details: audio language, approximate volume (hours/month), required accuracy SLA, turn-around time
-Step 3: Our team prepares a custom quote within 24 hours
-Step 4: Review and sign the service agreement
-Step 5: Onboarding and first delivery within agreed timeline
-Action: {{ACTION:quote}}
-
-HOW TO PARTNER WITH ZENEMOO:
-Step 1: Review our DesiCrew partnership model on the website
-Step 2: Send a partnership inquiry to contact@zenemoo.in with your organization details
-Step 3: Schedule an initial discovery call with our team
-Step 4: Review partnership terms and service-level agreements
-Step 5: Sign the partnership agreement and begin onboarding
-Action: {{ACTION:partner}}
-`;
-
-// ─────────────────────────────────────────────────────────────
-//  Dynamic RAG Context Builder (Supabase Live Data)
-// ─────────────────────────────────────────────────────────────
-export const buildDynamicRAGContext = async (userQuery = '') => {
-  // 0. Live Android Release Telemetry (Always up to date with android-release.json)
+  // Add Dynamic Live App Manifest Telemetry
   const manifest = getLatestAppManifest();
-  const appVer = manifest.version ? `v${manifest.version}` : 'latest';
-  const releaseNotesStr = Array.isArray(manifest.releaseNotes) ? manifest.releaseNotes.join('; ') : '';
-
-  let liveContext = VERIFIED_COMPANY_KNOWLEDGE + '\n' + COMPANY_PROCESSES;
-
-  liveContext += `\n[LIVE RELEASE TELEMETRY: ZENEMOO ANDROID APPLICATION]
-- Current Official Version: ${appVer}
-- Package Name: ${manifest.packageName || 'in.zenemoo.app'}
-- Release Date: ${manifest.releaseDate || 'Latest'}
-- Architecture: Universal (ARM64, ARMv7, x86_64)
-- Minimum Android Requirement: Android 8.0 (API 26) and above
-- Direct APK Download Link: ${manifest.downloadUrl || 'https://www.zenemoo.in/downloads/zenemoo-latest.apk'}
-- App Info & Download Portal: https://www.zenemoo.in/app/android
-${releaseNotesStr ? `- Current Version Highlights: ${releaseNotesStr}` : ''}
+  context += `\n[LIVE RELEASE TELEMETRY: ZENEMOO ANDROID APPLICATION]
+- App Name: ${manifest.appName}
+- Live Release Version: ${manifest.version}
+- Package Name: ${manifest.packageName}
+- APK Download URL: ${manifest.downloadUrl}
+- Release Date: ${manifest.releaseDate}
+- File Size: ${manifest.fileSize}
+- Release Notes Highlights: ${(manifest.releaseNotes || []).join('; ')}
 `;
 
-  if (supabase) {
-    try {
-      // 1. Live Published Services
-      const { data: services } = await supabase
-        .from('services')
-        .select('name, description, badge')
-        .limit(12);
-      if (Array.isArray(services) && services.length > 0) {
-        liveContext += `\n[LIVE DATABASE: PUBLISHED SERVICES]\n`;
-        services.forEach((s) => {
-          liveContext += `- ${s.name}: ${s.description} (${s.badge || 'Active'})\n`;
-        });
-      }
-
-      // 2. Live Career Opportunities
-      const { data: opps } = await supabase
-        .from('opportunities')
-        .select('title, category, status, type, location, description')
-        .eq('status', 'active')
-        .limit(10);
-      if (Array.isArray(opps) && opps.length > 0) {
-        liveContext += `\n[LIVE DATABASE: OPEN CAREER & PROGRAM OPPORTUNITIES]\n`;
-        opps.forEach((o) => {
-          liveContext += `- Position: ${o.title} | Category: ${o.category || 'General'} | Type: ${o.type || 'Full-time'} | Location: ${o.location || 'Remote/Odisha'} | Status: Open\n`;
-          if (o.description) liveContext += `  Description: ${o.description.substring(0, 200)}...\n`;
-        });
-      }
-
-      // 3. Live Enterprise Partners
-      const { data: partners } = await supabase
-        .from('partners')
-        .select('name, role, badge, description')
-        .limit(5);
-      if (Array.isArray(partners) && partners.length > 0) {
-        liveContext += `\n[LIVE DATABASE: ENTERPRISE PARTNERS & ALLIANCES]\n`;
-        partners.forEach((p) => {
-          liveContext += `- ${p.name}: ${p.role} [${p.badge || 'Partner'}]${p.description ? ` — ${p.description}` : ''}\n`;
-        });
-      }
-
-      // 4. Live Team Members — CRITICAL for "Who is X?" questions
-      const { data: team } = await supabase
+  try {
+    // Dynamic database search for team members if query mentions team/people
+    if (/team|member|prem|who works|staff|contact/i.test(queryText)) {
+      const { data: teamData } = await supabase
         .from('team_members')
-        .select('name, role, department, bio, skills, experience, email, social_links, profile_image')
-        .eq('published', true)
-        .limit(30);
-      if (Array.isArray(team) && team.length > 0) {
-        liveContext += `\n[LIVE DATABASE: ZENEMOO TEAM MEMBERS]\n`;
-        liveContext += `Note: Use this section to answer ALL questions about "Who is X?", "Who handles Y?", "Who is the CEO?", etc.\n`;
-        team.forEach((t) => {
-          liveContext += `---\n`;
-          liveContext += `Name: ${t.name}\n`;
-          liveContext += `Role/Title: ${t.role}\n`;
-          if (t.department) liveContext += `Department: ${t.department}\n`;
-          if (t.bio) liveContext += `Bio: ${t.bio}\n`;
-          if (t.skills) {
-            const skills = Array.isArray(t.skills) ? t.skills.join(', ') : String(t.skills);
-            if (skills) liveContext += `Skills: ${skills}\n`;
-          }
-          if (t.experience) liveContext += `Experience: ${t.experience}\n`;
-          if (t.email) liveContext += `Email: ${t.email}\n`;
-          if (t.social_links) {
-            try {
-              const sl = typeof t.social_links === 'string' ? JSON.parse(t.social_links) : t.social_links;
-              if (sl.linkedin) liveContext += `LinkedIn: ${sl.linkedin}\n`;
-              if (sl.github) liveContext += `GitHub: ${sl.github}\n`;
-              if (sl.twitter) liveContext += `Twitter/X: ${sl.twitter}\n`;
-            } catch (_) {}
-          }
+        .select('name, designation, skills, bio')
+        .limit(10);
+
+      if (teamData && teamData.length > 0) {
+        context += '\n[LIVE DATABASE: ZENEMOO TEAM MEMBERS]\n';
+        teamData.forEach((m) => {
+          context += `- ${m.name} (${m.designation}): ${m.bio || 'Specialist'} | Skills: ${
+            Array.isArray(m.skills) ? m.skills.join(', ') : m.skills || 'AI Data'
+          }\n`;
         });
       }
-
-    } catch (err) {
-      console.warn('[RAG Context Fetch Warning]', err.message || err);
     }
+  } catch (e) {
+    console.warn('[RAG Database Lookup Skipped]:', e.message);
   }
 
-  return liveContext;
-};
-
-// ─────────────────────────────────────────────────────────────
-//  Truncation & Completeness Checker
-// ─────────────────────────────────────────────────────────────
-const isIncompleteResponse = (text = '', finishReason = '') => {
-  if (!text || text.trim().length < 25) return false;
-  if (finishReason === 'length') return true;
-
-  const trimmed = text.trim();
-
-  // Ends with unclosed markdown link or brackets
-  if (/\[[^\]]*$/.test(trimmed) || /\([^\)]*$/.test(trimmed)) return true;
-  if (/https?:\/\/[^\s\)]*$/i.test(trimmed)) return true;
-
-  // Ends with trailing colon, comma, dash, or ellipsis
-  if (/[:,\-–—…]$/.test(trimmed)) return true;
-
-  // Ends with trailing conjunctions/prepositions that imply a missing clause
-  if (/\b(and|or|including|such as|for example|with|is|are|the|a|an|ସହିତ|ଏବଂ|ଓ|तथा|एवं|और|जैसे|इत्यादि)$/i.test(trimmed)) return true;
-
-  // Terminal sentence punctuation check (. ! ? " ' ) ] } > ।)
-  const hasTerminalPunctuation = /[\.\!\?\"\'\)\}\>\।]$/.test(trimmed);
-  if (!hasTerminalPunctuation) {
-    const lines = trimmed.split('\n').filter((l) => l.trim().length > 0);
-    const lastLine = lines[lines.length - 1] || '';
-    if (!/[\.\!\?\"\'\)\}\>\।]$/.test(lastLine.trim())) {
-      return true;
-    }
-  }
-
-  return false;
+  return context;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -368,9 +330,9 @@ Technical terms (e.g. AI Data Collection, Transcription, Voice Over, Zenemoo, Su
 
   let lengthInstruction = 'Provide a clear, useful, complete answer in 2–4 short paragraphs or 3–6 bullet points.';
   if (lengthMode === 'short') {
-    lengthInstruction = 'SHORT ANSWER MODE: Provide a concise, complete answer of 1–3 sentences or 3–5 short bullet points. Do NOT provide long intro paragraphs.';
+    lengthInstruction = 'SHORT ANSWER MODE: Provide a concise, complete answer of 1–3 sentences or 3–5 short bullet points.';
   } else if (lengthMode === 'detailed') {
-    lengthInstruction = 'DETAILED ANSWER MODE: Provide a comprehensive, complete answer with clear markdown headings, short paragraphs, and structured bullet points or numbered steps. Do NOT truncate or cut off.';
+    lengthInstruction = 'DETAILED ANSWER MODE: Provide a comprehensive, complete answer with clear markdown headings, short paragraphs, and structured bullet points.';
   }
 
   // Truncate context to avoid token overflow
@@ -386,33 +348,10 @@ STRICT OPERATING RULES:
 ══════════════════════════════════════════════
 
 1. LANGUAGE: ${langInstruction}
-
 2. ANSWER LENGTH: ${lengthInstruction}
-
 3. GROUNDING: Answer ONLY using the verified knowledge base and database records below.
-   NEVER invent team members, services, pricing, or facts not present in the context.
-
-4. COMPLETENESS RULE: Never end a response mid-sentence, mid-bullet, or with an incomplete link. Complete every thought naturally.
-
-5. TONE: Professional, warm, enterprise-grade. Like a helpful company representative.
-
-6. FORMATTING:
-   - Use **bold** for key terms and important facts.
-   - Use bullet lists for multiple items (- item).
-   - Use numbered lists for step-by-step processes.
-   - Format emails as [email](mailto:email) for clickable rendering.
-   - Ensure all URLs are complete (e.g. https://www.zenemoo.in/talent-registration).
-
-7. TEAM QUESTIONS: Always check the [LIVE DATABASE: ZENEMOO TEAM MEMBERS] section first for questions about people, roles, departments.
-
-8. ACTION TOKENS: Include relevant navigation tokens when applicable:
-   - Career/jobs: {{ACTION:opportunities}}
-   - Contact: {{ACTION:contact}}
-   - Services: {{ACTION:services}}
-   - Partnership: {{ACTION:partner}}
-   - Team: {{ACTION:team}}
-   - Quote: {{ACTION:quote}}
-   Use at most 2 action tokens per response.
+4. TONE: Professional, warm, enterprise-grade.
+5. FORMATTING: Use **bold** for key terms, bullet points for lists, and clickable links.
 
 ══════════════════════════════════════════════
 VERIFIED KNOWLEDGE BASE:
@@ -421,166 +360,369 @@ VERIFIED KNOWLEDGE BASE:
 ${truncatedContext}`;
 };
 
+// Check if answer was cut off mid-sentence
+export const isIncompleteResponse = (text = '', finishReason = '') => {
+  if (finishReason === 'length') return true;
+  const trimmed = text.trim();
+  if (trimmed.length < 20) return false;
+  const lastChar = trimmed.slice(-1);
+  return !/[\.\!\?\"\'\)\}\>\।]$/.test(lastChar);
+};
 
 // ─────────────────────────────────────────────────────────────
-//  Main AI Execution Routine
+//  Production AI Request Routine with Retry & Fallback Architecture
 // ─────────────────────────────────────────────────────────────
-export const processAiChat = async (messages = [], language = 'en', lengthPreference = 'auto') => {
+export const processAiChat = async (messages = [], language = 'en', lengthPreference = 'auto', userId = 'anonymous') => {
   const startTime = Date.now();
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
 
   if (!apiKey) throw new Error('AI Provider API key is missing on the server.');
 
-  const lastUserMsg = messages.length > 0 ? messages[messages.length - 1].content || '' : '';
-  const lowerMsg = lastUserMsg.toLowerCase();
-
-  // Auto infer length mode if lengthPreference is 'auto'
-  let lengthMode = lengthPreference;
-  if (!lengthMode || lengthMode === 'auto') {
-    const isShortQuery = /\b(short|brief|one line|small|shortly|সংକ୍ଷିପ୍ତ|संक्षिप्त)\b/i.test(lowerMsg);
-    const isDetailedQuery = /\b(explain|details|full details|complete|how does it work|tell me everything|ବିସ୍ତୃତ|विस्तार|सब कुछ|ସମ୍ପୂର୍ଣ୍ଣ)\b/i.test(lowerMsg);
-
-    if (isShortQuery) lengthMode = 'short';
-    else if (isDetailedQuery) lengthMode = 'detailed';
-    else lengthMode = 'normal';
+  // Per-User Concurrency Protection
+  if (activeUserRequests.has(userId)) {
+    console.warn(`[Zenemoo AI] ${requestId} Concurrency protection active for user: ${userId}`);
+    // Wait briefly (up to 300ms) for previous request to clear
+    await new Promise((r) => setTimeout(r, 300));
   }
+  activeUserRequests.add(userId);
 
-  const ragContext = await buildDynamicRAGContext(lastUserMsg);
-  const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext, language, lengthMode) };
+  try {
+    const lastUserMsg = messages.length > 0 ? messages[messages.length - 1].content || '' : '';
+    const lowerMsg = lastUserMsg.toLowerCase();
 
-  // For Odia: send fewer history messages to reduce token usage
-  const historyLimit = language === 'or' ? 6 : 12;
-  const fullMessages = [systemMessage, ...messages.slice(-historyLimit)];
+    // Auto infer length mode
+    let lengthMode = lengthPreference;
+    if (!lengthMode || lengthMode === 'auto') {
+      const isShortQuery = /\b(short|brief|one line|small|shortly|সংକ୍ଷିପ୍ତ|संक्षिप्त)\b/i.test(lowerMsg);
+      const isDetailedQuery = /\b(explain|details|full details|complete|how does it work|tell me everything|ବିସ୍ତୃତ|विस्तार|सब कुछ|ସମ୍ପୂର୍ଣ୍ଣ)\b/i.test(lowerMsg);
 
-  // Telemetry update
-  aiTelemetry.totalMessages += 1;
-  if (lowerMsg.includes('transcription') || lowerMsg.includes('audio')) aiTelemetry.topicCounts['Audio Transcription'] += 1;
-  else if (lowerMsg.includes('odia') || lowerMsg.includes('language') || lowerMsg.includes('ଓଡ଼ିଆ')) aiTelemetry.topicCounts['Odia Speech Data'] += 1;
-  else if (lowerMsg.includes('desicrew') || lowerMsg.includes('partner')) aiTelemetry.topicCounts['DesiCrew Partnership'] += 1;
-  else if (lowerMsg.includes('price') || lowerMsg.includes('cost') || lowerMsg.includes('quote')) aiTelemetry.topicCounts['Pricing & Quotes'] += 1;
-  else if (lowerMsg.includes('job') || lowerMsg.includes('career') || lowerMsg.includes('apply') || lowerMsg.includes('ଚାକିରି') || lowerMsg.includes('नौकरी')) aiTelemetry.topicCounts['Careers & Opportunities'] += 1;
-  if (language === 'hi') aiTelemetry.languageBreakdown['Hindi'] += 1;
-  else if (language === 'or') aiTelemetry.languageBreakdown['Odia'] += 1;
-  else aiTelemetry.languageBreakdown['English'] += 1;
-
-  const candidateModels = Array.from(new Set([
-    process.env.GROQ_AI_MODEL,
-    'openai/gpt-oss-120b',
-    'llama-3.1-8b-instant',
-    'llama3-70b-8192',
-    'llama-3.3-70b-versatile',
-  ].filter(Boolean)));
-
-  const tokenLimit = lengthMode === 'short' ? 500 : lengthMode === 'detailed' ? 3000 : 2048;
-  const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-
-  let response;
-  let usedModel = candidateModels[0];
-  let errText = '';
-
-  for (const modelName of candidateModels) {
-    usedModel = modelName;
-    try {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: fullMessages,
-          temperature: 0.25,
-          max_tokens: tokenLimit,
-          stream: false,
-        }),
-      });
-
-      if (response.ok) {
-        break;
-      }
-
-      errText = await response.text();
-      console.warn(`[Zenemoo AI] Model ${modelName} returned status ${response.status}: ${errText}`);
-    } catch (e) {
-      console.warn(`[Zenemoo AI] Network error calling ${modelName}:`, e.message);
+      if (isShortQuery) lengthMode = 'short';
+      else if (isDetailedQuery) lengthMode = 'detailed';
+      else lengthMode = 'normal';
     }
-  }
 
-  if (!response || !response.ok) {
-    console.error('AI Provider Error:', response ? response.status : 'No response', errText);
-    throw new Error(`AI Service Provider returned error status ${response ? response.status : 500}`);
-  }
+    const ragContext = await buildDynamicRAGContext(lastUserMsg);
+    const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext, language, lengthMode) };
 
-  const data = await response.json();
-  let replyText = data.choices?.[0]?.message?.content || 'I am ready to assist you with Zenemoo services.';
-  const finishReason = data.choices?.[0]?.finish_reason || '';
+    // Send efficient conversation context (last 6-10 messages max)
+    const historyLimit = language === 'or' ? 6 : 10;
+    const fullMessages = [systemMessage, ...messages.slice(-historyLimit)];
 
-  // Controlled 1-Shot Continuation Check for Incomplete Answers
-  if (isIncompleteResponse(replyText, finishReason)) {
-    try {
-      const continuationMessages = [
-        ...fullMessages,
-        { role: 'assistant', content: replyText },
-        {
-          role: 'user',
-          content: 'Continue your response from the EXACT word where it was interrupted. Do NOT repeat any text already written. Finish the current sentence and complete the answer naturally.',
-        },
-      ];
+    // Build Model Pool Candidate List
+    const primaryEnvModel = process.env.GROQ_AI_MODEL;
+    let poolCandidates = AI_MODELS.map((m) => m.id);
 
-      const contResponse = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: usedModel,
-          messages: continuationMessages,
-          temperature: 0.2,
-          max_tokens: 1200,
-          stream: false,
-        }),
-      });
+    if (primaryEnvModel && !poolCandidates.includes(primaryEnvModel)) {
+      poolCandidates.unshift(primaryEnvModel);
+    }
 
-      if (contResponse.ok) {
-        const contData = await contResponse.json();
-        const contText = contData.choices?.[0]?.message?.content || '';
-        if (contText.trim()) {
-          // Stitch PART 1 + PART 2 cleanly with space, eliminating accidental repeated boundary words
-          const cleanCont = contText.trim();
-          const lastWords = replyText.trim().split(/\s+/).slice(-3).join(' ');
-          if (lastWords && cleanCont.startsWith(lastWords)) {
-            replyText = replyText.trim() + ' ' + cleanCont.substring(lastWords.length).trim();
-          } else {
-            replyText = replyText.trim() + ' ' + cleanCont;
+    // Filter to currently healthy candidates
+    let healthyCandidates = poolCandidates.filter((m) => isModelHealthy(m));
+    if (healthyCandidates.length === 0) {
+      console.warn(`[Zenemoo AI] ${requestId} All primary models cooling down, trying full candidate pool`);
+      healthyCandidates = poolCandidates; // Emergency attempt if all marked cooling down
+    }
+
+    const tokenLimit = lengthMode === 'short' ? 500 : lengthMode === 'detailed' ? 2500 : 1500;
+    const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+
+    let successResponse = null;
+    let usedModel = healthyCandidates[0];
+    let attemptsCount = 0;
+
+    // Loop through candidate models in priority order
+    for (const modelId of healthyCandidates) {
+      attemptsCount += 1;
+      const modelStartTime = Date.now();
+
+      // Retry up to 2 times for transient errors per model
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+
+        try {
+          console.log(`[Zenemoo AI] ${requestId} Attempt ${attemptsCount}.${attempt} model=${modelId}`);
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: fullMessages,
+              temperature: 0.25,
+              max_tokens: tokenLimit,
+              stream: false,
+            }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const latencyMs = Date.now() - modelStartTime;
+            recordModelSuccess(modelId, latencyMs);
+            usedModel = modelId;
+            successResponse = await response.json();
+            console.log(`[Zenemoo AI] ${requestId} SUCCESS model=${modelId} status=200 latency=${latencyMs}ms`);
+            break;
+          }
+
+          // Error handling & Header Inspection
+          const status = response.status;
+          const retryAfterHeader = response.headers.get('retry-after');
+          const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 2 : 2;
+          const errBody = await response.text();
+
+          console.warn(`[Zenemoo AI] ${requestId} Model ${modelId} status=${status} retryAfter=${retryAfterSec}s body=${errBody.substring(0, 150)}`);
+          recordModelFailure(modelId, status, retryAfterSec);
+
+          if (status === 429) {
+            // If retry-after is short (<= 2s) and it's attempt 1, wait exponential backoff with jitter and retry
+            if (retryAfterSec <= 2 && attempt === 1) {
+              const backoffMs = Math.round(retryAfterSec * 1000 + Math.random() * 300);
+              console.log(`[Zenemoo AI] ${requestId} 429 short rate limit. Backoff ${backoffMs}ms before retry...`);
+              await new Promise((r) => setTimeout(r, backoffMs));
+              continue;
+            }
+            // Otherwise, fall through to next model in pool immediately
+            break;
+          }
+
+          if (status === 404 || status === 400) {
+            // Model not found or decommissioned -> do NOT retry same model, fallback immediately
+            break;
+          }
+
+          if (status >= 500 && attempt === 1) {
+            // Transient 5xx error -> brief 600ms backoff and retry once
+            await new Promise((r) => setTimeout(r, 600));
+            continue;
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          console.warn(`[Zenemoo AI] ${requestId} Exception calling ${modelId}:`, fetchErr.message);
+          recordModelFailure(modelId, 503, 5);
+          if (attempt === 1) {
+            await new Promise((r) => setTimeout(r, 500));
           }
         }
       }
-    } catch (contErr) {
-      console.warn('AI continuation request failed silently:', contErr.message || contErr);
+
+      if (successResponse) break;
     }
-  }
 
-  // Final Terminal Safety Check: ensure reply doesn't end abruptly without punctuation
-  let finalReply = replyText.trim();
-  if (finalReply.length > 30 && !/[\.\!\?\"\'\)\}\>\।]$/.test(finalReply)) {
-    if (/[:,\-–—…]$/.test(finalReply)) {
-      finalReply = finalReply.substring(0, finalReply.length - 1).trim();
+    if (!successResponse) {
+      console.error(`[Zenemoo AI] ${requestId} All candidate models failed.`);
+      return {
+        reply: 'Zenemoo AI is temporarily busy. Please try again in a moment or contact our team directly at [contact@zenemoo.in](mailto:contact@zenemoo.in).',
+        durationMs: Date.now() - startTime,
+        model: 'fallback-busy',
+      };
     }
-    const endSymbol = language === 'or' || language === 'hi' ? '।' : '.';
-    finalReply += endSymbol;
+
+    let replyText = successResponse.choices?.[0]?.message?.content || 'I am ready to assist you with Zenemoo services.';
+    const finishReason = successResponse.choices?.[0]?.finish_reason || '';
+
+    // Controlled 1-Shot Continuation Check for Incomplete Answers
+    if (isIncompleteResponse(replyText, finishReason)) {
+      try {
+        const continuationMessages = [
+          ...fullMessages,
+          { role: 'assistant', content: replyText },
+          {
+            role: 'user',
+            content: 'Continue your response from the EXACT word where it was interrupted. Complete the answer naturally.',
+          },
+        ];
+
+        const contController = new AbortController();
+        const contTimeoutId = setTimeout(() => contController.abort(), 15000);
+
+        const contResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: usedModel,
+            messages: continuationMessages,
+            temperature: 0.2,
+            max_tokens: 1000,
+            stream: false,
+          }),
+          signal: contController.signal,
+        });
+
+        clearTimeout(contTimeoutId);
+
+        if (contResponse.ok) {
+          const contData = await contResponse.json();
+          const contText = contData.choices?.[0]?.message?.content || '';
+          if (contText.trim()) {
+            const cleanCont = contText.trim();
+            const lastWords = replyText.trim().split(/\s+/).slice(-3).join(' ');
+            if (lastWords && cleanCont.startsWith(lastWords)) {
+              replyText = replyText.trim() + ' ' + cleanCont.substring(lastWords.length).trim();
+            } else {
+              replyText = replyText.trim() + ' ' + cleanCont;
+            }
+          }
+        }
+      } catch (contErr) {
+        console.warn(`[Zenemoo AI] ${requestId} Continuation check skipped:`, contErr.message);
+      }
+    }
+
+    // Final Terminal Safety Check: ensure reply doesn't end abruptly without punctuation
+    let finalReply = replyText.trim();
+    if (finalReply.length > 30 && !/[\.\!\?\"\'\)\}\>\।]$/.test(finalReply)) {
+      if (/[:,\-–—…]$/.test(finalReply)) {
+        finalReply = finalReply.substring(0, finalReply.length - 1).trim();
+      }
+      const endSymbol = language === 'or' || language === 'hi' ? '।' : '.';
+      finalReply += endSymbol;
+    }
+
+    const totalDuration = Date.now() - startTime;
+    aiTelemetry.responseTimes.push(totalDuration);
+    if (aiTelemetry.responseTimes.length > 20) aiTelemetry.responseTimes.shift();
+
+    return { reply: finalReply, durationMs: totalDuration, model: usedModel };
+  } finally {
+    activeUserRequests.delete(userId);
   }
-
-  const duration = Date.now() - startTime;
-  aiTelemetry.responseTimes.push(duration);
-  if (aiTelemetry.responseTimes.length > 20) aiTelemetry.responseTimes.shift();
-
-  return { reply: finalReply, durationMs: duration, model: usedModel };
 };
 
 // ─────────────────────────────────────────────────────────────
-//  Admin AI Analytics
+//  Health & Reliability Telemetry Exporter
+// ─────────────────────────────────────────────────────────────
+export const getAiHealthTelemetry = () => {
+  const modelStats = {};
+  let globalTotalRequests = 0;
+  let globalTotalSuccess = 0;
+  let globalTotal429 = 0;
+  let globalTotal404 = 0;
+  let globalTotal5xx = 0;
+  const allLatencies = [];
+
+  modelHealthRegistry.forEach((val, key) => {
+    globalTotalRequests += val.totalRequests;
+    globalTotalSuccess += val.totalSuccess;
+    globalTotal429 += val.total429;
+    globalTotal404 += val.total404;
+    globalTotal5xx += val.total5xx;
+    allLatencies.push(...val.latencies);
+
+    const avgLat = val.latencies.length > 0
+      ? Math.round(val.latencies.reduce((a, b) => a + b, 0) / val.latencies.length)
+      : 0;
+
+    const successRate = val.totalRequests > 0
+      ? Math.round((val.totalSuccess / val.totalRequests) * 100)
+      : 100;
+
+    modelStats[key] = {
+      name: val.name,
+      healthy: val.healthy && (!val.rateLimitedUntil || Date.now() >= val.rateLimitedUntil),
+      successRatePercent: `${successRate}%`,
+      totalRequests: val.totalRequests,
+      totalSuccess: val.totalSuccess,
+      total429: val.total429,
+      total404: val.total404,
+      total5xx: val.total5xx,
+      averageLatencyMs: avgLat,
+      lastSuccess: val.lastSuccess ? new Date(val.lastSuccess).toISOString() : null,
+      lastFailure: val.lastFailure ? new Date(val.lastFailure).toISOString() : null,
+    };
+  });
+
+  allLatencies.sort((a, b) => a - b);
+  const p95Index = Math.floor(allLatencies.length * 0.95);
+  const p95LatencyMs = allLatencies.length > 0 ? allLatencies[p95Index] || allLatencies[allLatencies.length - 1] : 0;
+  const avgGlobalLatencyMs = allLatencies.length > 0
+    ? Math.round(allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length)
+    : 0;
+
+  const overallSuccessRatePercent = globalTotalRequests > 0
+    ? `${Math.round((globalTotalSuccess / globalTotalRequests) * 100)}%`
+    : '100%';
+
+  return {
+    overallSuccessRatePercent,
+    totalRequests: globalTotalRequests,
+    totalSuccess: globalTotalSuccess,
+    total429: globalTotal429,
+    total404: globalTotal404,
+    total5xx: globalTotal5xx,
+    avgLatencyMs: avgGlobalLatencyMs,
+    p95LatencyMs,
+    models: modelStats,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+//  Backend Automated AI Diagnostic Test Suite
+// ─────────────────────────────────────────────────────────────
+export const runAiDiagnosticTest = async (testCount = 10) => {
+  const results = [];
+  const testPrompts = [
+    'What services does Zenemoo provide?',
+    'Does Zenemoo have an official Android app?',
+    'Tell me about the Odia speech data collection capabilities.',
+    'What is the DesiCrew partnership?',
+    'How can I request a quote for audio transcription?',
+    'What is Zenemoo daily production output capacity?',
+    'What regional languages does Zenemoo support?',
+    'How do I apply for open opportunities at Zenemoo?',
+    'Who is Prem Prasad Pradhan at Zenemoo?',
+    'Where is Zenemoo headquarters located?',
+  ];
+
+  console.log(`[Zenemoo AI Diagnostic Suite] Starting ${testCount} sequential AI health tests...`);
+
+  for (let i = 0; i < Math.min(testCount, testPrompts.length); i++) {
+    const prompt = testPrompts[i];
+    const start = Date.now();
+    try {
+      const res = await processAiChat([{ role: 'user', content: prompt }], 'en', 'short', `diag_user_${i}`);
+      const duration = Date.now() - start;
+      results.push({
+        testIndex: i + 1,
+        prompt: prompt.substring(0, 35) + '...',
+        success: true,
+        model: res.model,
+        durationMs: duration,
+        replyPreview: (res.reply || '').substring(0, 50) + '...',
+      });
+    } catch (err) {
+      const duration = Date.now() - start;
+      results.push({
+        testIndex: i + 1,
+        prompt: prompt.substring(0, 35) + '...',
+        success: false,
+        error: err.message,
+        durationMs: duration,
+      });
+    }
+  }
+
+  const telemetry = getAiHealthTelemetry();
+  return {
+    timestamp: new Date().toISOString(),
+    testsRun: results.length,
+    testsPassed: results.filter((r) => r.success).length,
+    testDetails: results,
+    healthTelemetry: telemetry,
+  };
+};
+
+// ─────────────────────────────────────────────────────────────
+//  Admin AI Analytics Metrics
 // ─────────────────────────────────────────────────────────────
 export const getAiAnalyticsMetrics = async () => {
   const avgLatency = Math.round(
@@ -594,13 +736,14 @@ export const getAiAnalyticsMetrics = async () => {
     unknownQuestions: aiTelemetry.unknownQuestions,
     languageBreakdown: aiTelemetry.languageBreakdown,
     status: 'ACTIVE',
-    model: 'openai/gpt-oss-120b (Groq)',
+    modelPool: AI_MODELS.map((m) => m.id),
+    healthTelemetry: getAiHealthTelemetry(),
     lastSyncAt: new Date().toISOString(),
   };
 };
 
 // ─────────────────────────────────────────────────────────────
-//  AI Team Member Executive Summary Generator (Groq GPT-OSS 120B)
+//  AI Team Member Executive Summary Generator
 // ─────────────────────────────────────────────────────────────
 export const generateTeamMemberSummary = async (member = {}) => {
   const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
@@ -609,7 +752,6 @@ export const generateTeamMemberSummary = async (member = {}) => {
   }. ${member.bio || 'Delivering enterprise-grade precision for global AI data workflows.'}`;
 
   if (!apiKey) {
-    console.warn('Groq API key missing on server, returning bio fallback for summary');
     return fallbackSummary;
   }
 
@@ -621,9 +763,8 @@ Designation: ${member.designation || member.role || 'Specialist'}
 Department: ${member.department || member.category || 'Engineering'}
 Key Skills: ${Array.isArray(member.skills) ? member.skills.join(', ') : member.skills || 'AI Annotation, Quality Assurance'}
 Bio: ${member.bio || 'Experienced AI data & audio transcription lead'}
-Experience: ${member.experience || 'Experienced professional'}
 
-Rule: Output ONLY the concise 2-3 sentence summary paragraph. Do not include titles, quotes, or markdown formatting.`;
+Rule: Output ONLY the concise 2-3 sentence summary paragraph without titles or quotes.`;
 
     const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
     const response = await fetch(endpoint, {
@@ -633,7 +774,7 @@ Rule: Output ONLY the concise 2-3 sentence summary paragraph. Do not include tit
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.GROQ_AI_MODEL || 'openai/gpt-oss-120b',
+        model: 'openai/gpt-oss-120b',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 250,
@@ -641,7 +782,6 @@ Rule: Output ONLY the concise 2-3 sentence summary paragraph. Do not include tit
     });
 
     if (!response.ok) {
-      console.warn('Groq API response error for team summary:', response.status);
       return fallbackSummary;
     }
 
@@ -649,8 +789,6 @@ Rule: Output ONLY the concise 2-3 sentence summary paragraph. Do not include tit
     const summary = data.choices?.[0]?.message?.content?.trim();
     return summary || fallbackSummary;
   } catch (err) {
-    console.error('Error generating AI summary via Groq:', err.message);
     return fallbackSummary;
   }
 };
-
