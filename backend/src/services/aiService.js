@@ -1,128 +1,14 @@
 import fs from 'fs';
 import path from 'path';
 import { supabase } from '../config/supabase.js';
+import { routeAiRequest } from './ai/aiRouter.js';
+import { getFullHealthTelemetry } from './ai/providerHealth.js';
+import { getAvailableProviders } from './ai/providerRegistry.js';
 
-// ─────────────────────────────────────────────────────────────
-//  Centralized Production Model Pool Configuration
-// ─────────────────────────────────────────────────────────────
-export const AI_MODELS = [
-  { id: 'openai/gpt-oss-120b', priority: 1, enabled: true, name: 'GPT-OSS 120B (Primary)' },
-  { id: 'openai/gpt-oss-20b', priority: 2, enabled: true, name: 'GPT-OSS 20B (Fallback 1)' },
-  { id: 'qwen/qwen3.6-27b', priority: 3, enabled: true, name: 'Qwen 3.6 27B (Fallback 2)' },
-];
-
-// ─────────────────────────────────────────────────────────────
-//  In-Memory Model Health Registry & Circuit Breaker
-// ─────────────────────────────────────────────────────────────
-const modelHealthRegistry = new Map();
-
-AI_MODELS.forEach((m) => {
-  modelHealthRegistry.set(m.id, {
-    id: m.id,
-    name: m.name,
-    healthy: true,
-    consecutiveFailures: 0,
-    rateLimitedUntil: 0,
-    lastSuccess: null,
-    lastFailure: null,
-    totalRequests: 0,
-    totalSuccess: 0,
-    total429: 0,
-    total404: 0,
-    total400: 0,
-    total5xx: 0,
-    latencies: [],
-  });
-});
-
-/**
- * Check if a model is currently healthy and available to accept requests
- */
-const isModelHealthy = (modelId) => {
-  const record = modelHealthRegistry.get(modelId);
-  if (!record) return false;
-
-  // Rate-limit cooldown check
-  if (record.rateLimitedUntil && Date.now() < record.rateLimitedUntil) {
-    return false;
-  }
-
-  // Circuit breaker: 3 consecutive failures within 60s triggers a 45s cooldown
-  if (record.consecutiveFailures >= 3 && record.lastFailure && Date.now() - record.lastFailure < 45000) {
-    return false;
-  }
-
-  return record.healthy;
-};
-
-/**
- * Record model success metrics
- */
-const recordModelSuccess = (modelId, latencyMs) => {
-  let record = modelHealthRegistry.get(modelId);
-  if (!record) {
-    record = {
-      id: modelId,
-      name: modelId,
-      healthy: true,
-      consecutiveFailures: 0,
-      rateLimitedUntil: 0,
-      lastSuccess: null,
-      lastFailure: null,
-      totalRequests: 0,
-      totalSuccess: 0,
-      total429: 0,
-      total404: 0,
-      total400: 0,
-      total5xx: 0,
-      latencies: [],
-    };
-    modelHealthRegistry.set(modelId, record);
-  }
-  record.healthy = true;
-  record.consecutiveFailures = 0;
-  record.rateLimitedUntil = 0;
-  record.lastSuccess = Date.now();
-  record.totalRequests += 1;
-  record.totalSuccess += 1;
-  record.latencies.push(latencyMs);
-  if (record.latencies.length > 50) record.latencies.shift();
-};
-
-/**
- * Record model failure metrics with error classification
- */
-const recordModelFailure = (modelId, status, retryAfterSec = 30) => {
-  let record = modelHealthRegistry.get(modelId);
-  if (!record) return;
-
-  record.lastFailure = Date.now();
-  record.totalRequests += 1;
-  record.consecutiveFailures += 1;
-
-  if (status === 429) {
-    record.total429 += 1;
-    const cooldownMs = Math.max(retryAfterSec * 1000, 15000);
-    record.rateLimitedUntil = Date.now() + cooldownMs;
-  } else if (status === 404 || status === 400) {
-    if (status === 404) record.total404 += 1;
-    if (status === 400) record.total400 += 1;
-    // Decommissioned or not found -> mark unhealthy for 5 minutes
-    record.healthy = false;
-    record.rateLimitedUntil = Date.now() + 300000;
-  } else if (status >= 500) {
-    record.total5xx += 1;
-  }
-};
-
-// ─────────────────────────────────────────────────────────────
-//  Per-User Concurrency Protection (Prevent Request Storms)
-// ─────────────────────────────────────────────────────────────
+// Per-User Concurrency Protection
 const activeUserRequests = new Set();
 
-// ─────────────────────────────────────────────────────────────
-//  Dynamic App Release Manifest Reader
-// ─────────────────────────────────────────────────────────────
+// Dynamic App Release Manifest Reader
 export const getLatestAppManifest = () => {
   try {
     const candidatePaths = [
@@ -153,9 +39,7 @@ export const getLatestAppManifest = () => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────
-//  In-Memory Telemetry & Analytics Store for Admin Dashboard
-// ─────────────────────────────────────────────────────────────
+// In-Memory Telemetry & Analytics Store for Admin Dashboard
 const aiTelemetry = {
   totalConversations: 142,
   totalMessages: 512,
@@ -176,9 +60,7 @@ const aiTelemetry = {
   languageBreakdown: { English: 340, Hindi: 110, Odia: 62 },
 };
 
-// ─────────────────────────────────────────────────────────────
-//  Static Verified Company Knowledge Base
-// ─────────────────────────────────────────────────────────────
+// Static Verified Company Knowledge Base
 const VERIFIED_COMPANY_KNOWLEDGE = `
 [OFFICIAL ZENEMOO COMPANY KNOWLEDGE BASE — VERIFIED & CURRENT]
 
@@ -262,20 +144,17 @@ WEBSITE PAGES & PUBLIC NAVIGATION LINKS:
 
 CRITICAL PRIVACY & ANSWERING RULES:
 1. PUBLIC CAPACITY FACTS ONLY: Always state Zenemoo works across "23+ languages with a network of 50+ members across India."
-2. MOBILE APPLICATION QUESTIONS: When asked if Zenemoo has an app, confirm that Zenemoo has an official Android mobile app available for direct download at https://www.zenemoo.in/app/android. Always reference the live release version injected below.
+2. MOBILE APPLICATION QUESTIONS: Confirm that Zenemoo has an official Android mobile app available for direct download at https://www.zenemoo.in/app/android. Always reference the live release version injected below.
 3. NEVER EXPOSE INTERNAL OPERATIONAL DATA: Never reveal candidate personal data, internal tracking codes, database IDs, or admin passwords.
 4. LANGUAGE QUESTIONS: When asked if Zenemoo supports a specific language, confirm capability within our India-wide network.
 5. NAVIGATION GUIDANCE: Provide exact public website links.
 6. TEAM SIZE QUESTIONS: State "Zenemoo currently has a network of 50+ members (40 Transcribers + 10 QC Specialists) across India."
 `;
 
-// ─────────────────────────────────────────────────────────────
-//  Dynamic RAG Context Builder
-// ─────────────────────────────────────────────────────────────
+// Dynamic RAG Context Builder
 export const buildDynamicRAGContext = async (queryText = '') => {
   let context = VERIFIED_COMPANY_KNOWLEDGE;
 
-  // Add Dynamic Live App Manifest Telemetry
   const manifest = getLatestAppManifest();
   context += `\n[LIVE RELEASE TELEMETRY: ZENEMOO ANDROID APPLICATION]
 - App Name: ${manifest.appName}
@@ -288,7 +167,6 @@ export const buildDynamicRAGContext = async (queryText = '') => {
 `;
 
   try {
-    // Dynamic database search for team members if query mentions team/people
     if (/team|member|prem|who works|staff|contact/i.test(queryText)) {
       const { data: teamData } = await supabase
         .from('team_members')
@@ -311,9 +189,7 @@ export const buildDynamicRAGContext = async (queryText = '') => {
   return context;
 };
 
-// ─────────────────────────────────────────────────────────────
-//  System Prompt Builder
-// ─────────────────────────────────────────────────────────────
+// System Prompt Builder
 export const buildSystemPrompt = (ragContext, language = 'en', lengthMode = 'normal') => {
   let langInstruction = 'Respond in clear, professional English.';
   if (language === 'hi') {
@@ -335,7 +211,6 @@ Technical terms (e.g. AI Data Collection, Transcription, Voice Over, Zenemoo, Su
     lengthInstruction = 'DETAILED ANSWER MODE: Provide a comprehensive, complete answer with clear markdown headings, short paragraphs, and structured bullet points.';
   }
 
-  // Truncate context to avoid token overflow
   const maxContextLength = language === 'or' ? 6000 : 8000;
   const truncatedContext = ragContext.length > maxContextLength
     ? ragContext.substring(0, maxContextLength) + '\n[Context truncated for length]'
@@ -360,7 +235,6 @@ VERIFIED KNOWLEDGE BASE:
 ${truncatedContext}`;
 };
 
-// Check if answer was cut off mid-sentence
 export const isIncompleteResponse = (text = '', finishReason = '') => {
   if (finishReason === 'length') return true;
   const trimmed = text.trim();
@@ -370,19 +244,15 @@ export const isIncompleteResponse = (text = '', finishReason = '') => {
 };
 
 // ─────────────────────────────────────────────────────────────
-//  Production AI Request Routine with Retry & Fallback Architecture
+//  Main AI Execution Routine Delegated to Multi-Provider Router
 // ─────────────────────────────────────────────────────────────
 export const processAiChat = async (messages = [], language = 'en', lengthPreference = 'auto', userId = 'anonymous') => {
   const startTime = Date.now();
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
-
-  if (!apiKey) throw new Error('AI Provider API key is missing on the server.');
 
   // Per-User Concurrency Protection
   if (activeUserRequests.has(userId)) {
     console.warn(`[Zenemoo AI] ${requestId} Concurrency protection active for user: ${userId}`);
-    // Wait briefly (up to 300ms) for previous request to clear
     await new Promise((r) => setTimeout(r, 300));
   }
   activeUserRequests.add(userId);
@@ -391,7 +261,6 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
     const lastUserMsg = messages.length > 0 ? messages[messages.length - 1].content || '' : '';
     const lowerMsg = lastUserMsg.toLowerCase();
 
-    // Auto infer length mode
     let lengthMode = lengthPreference;
     if (!lengthMode || lengthMode === 'auto') {
       const isShortQuery = /\b(short|brief|one line|small|shortly|সংକ୍ଷିପ୍ତ|संक्षिप्त)\b/i.test(lowerMsg);
@@ -405,181 +274,31 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
     const ragContext = await buildDynamicRAGContext(lastUserMsg);
     const systemMessage = { role: 'system', content: buildSystemPrompt(ragContext, language, lengthMode) };
 
-    // Send efficient conversation context (last 6-10 messages max)
     const historyLimit = language === 'or' ? 6 : 10;
     const fullMessages = [systemMessage, ...messages.slice(-historyLimit)];
 
-    // Build Model Pool Candidate List
-    const primaryEnvModel = process.env.GROQ_AI_MODEL;
-    let poolCandidates = AI_MODELS.map((m) => m.id);
-
-    if (primaryEnvModel && !poolCandidates.includes(primaryEnvModel)) {
-      poolCandidates.unshift(primaryEnvModel);
-    }
-
-    // Filter to currently healthy candidates
-    let healthyCandidates = poolCandidates.filter((m) => isModelHealthy(m));
-    if (healthyCandidates.length === 0) {
-      console.warn(`[Zenemoo AI] ${requestId} All primary models cooling down, trying full candidate pool`);
-      healthyCandidates = poolCandidates; // Emergency attempt if all marked cooling down
-    }
+    // Telemetry update
+    aiTelemetry.totalMessages += 1;
+    if (lowerMsg.includes('transcription') || lowerMsg.includes('audio')) aiTelemetry.topicCounts['Audio Transcription'] += 1;
+    else if (lowerMsg.includes('odia') || lowerMsg.includes('language') || lowerMsg.includes('ଓଡ଼ିଆ')) aiTelemetry.topicCounts['Odia Speech Data'] += 1;
+    else if (lowerMsg.includes('desicrew') || lowerMsg.includes('partner')) aiTelemetry.topicCounts['DesiCrew Partnership'] += 1;
+    else if (lowerMsg.includes('price') || lowerMsg.includes('cost') || lowerMsg.includes('quote')) aiTelemetry.topicCounts['Pricing & Quotes'] += 1;
+    else if (lowerMsg.includes('job') || lowerMsg.includes('career') || lowerMsg.includes('apply') || lowerMsg.includes('ଚାକିରି') || lowerMsg.includes('नौकरी')) aiTelemetry.topicCounts['Careers & Opportunities'] += 1;
+    if (language === 'hi') aiTelemetry.languageBreakdown['Hindi'] += 1;
+    else if (language === 'or') aiTelemetry.languageBreakdown['Odia'] += 1;
+    else aiTelemetry.languageBreakdown['English'] += 1;
 
     const tokenLimit = lengthMode === 'short' ? 500 : lengthMode === 'detailed' ? 2500 : 1500;
-    const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
-    let successResponse = null;
-    let usedModel = healthyCandidates[0];
-    let attemptsCount = 0;
+    // Delegate to Multi-Provider Router (Groq -> Gemini -> Cerebras -> Mistral -> OpenRouter)
+    const routerResult = await routeAiRequest({
+      messages: fullMessages,
+      maxTokens: tokenLimit,
+      temperature: 0.25,
+      requestId,
+    });
 
-    // Loop through candidate models in priority order
-    for (const modelId of healthyCandidates) {
-      attemptsCount += 1;
-      const modelStartTime = Date.now();
-
-      // Retry up to 2 times for transient errors per model
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
-
-        try {
-          console.log(`[Zenemoo AI] ${requestId} Attempt ${attemptsCount}.${attempt} model=${modelId}`);
-
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: fullMessages,
-              temperature: 0.25,
-              max_tokens: tokenLimit,
-              stream: false,
-            }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            const latencyMs = Date.now() - modelStartTime;
-            recordModelSuccess(modelId, latencyMs);
-            usedModel = modelId;
-            successResponse = await response.json();
-            console.log(`[Zenemoo AI] ${requestId} SUCCESS model=${modelId} status=200 latency=${latencyMs}ms`);
-            break;
-          }
-
-          // Error handling & Header Inspection
-          const status = response.status;
-          const retryAfterHeader = response.headers.get('retry-after');
-          const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 2 : 2;
-          const errBody = await response.text();
-
-          console.warn(`[Zenemoo AI] ${requestId} Model ${modelId} status=${status} retryAfter=${retryAfterSec}s body=${errBody.substring(0, 150)}`);
-          recordModelFailure(modelId, status, retryAfterSec);
-
-          if (status === 429) {
-            // If retry-after is short (<= 2s) and it's attempt 1, wait exponential backoff with jitter and retry
-            if (retryAfterSec <= 2 && attempt === 1) {
-              const backoffMs = Math.round(retryAfterSec * 1000 + Math.random() * 300);
-              console.log(`[Zenemoo AI] ${requestId} 429 short rate limit. Backoff ${backoffMs}ms before retry...`);
-              await new Promise((r) => setTimeout(r, backoffMs));
-              continue;
-            }
-            // Otherwise, fall through to next model in pool immediately
-            break;
-          }
-
-          if (status === 404 || status === 400) {
-            // Model not found or decommissioned -> do NOT retry same model, fallback immediately
-            break;
-          }
-
-          if (status >= 500 && attempt === 1) {
-            // Transient 5xx error -> brief 600ms backoff and retry once
-            await new Promise((r) => setTimeout(r, 600));
-            continue;
-          }
-        } catch (fetchErr) {
-          clearTimeout(timeoutId);
-          console.warn(`[Zenemoo AI] ${requestId} Exception calling ${modelId}:`, fetchErr.message);
-          recordModelFailure(modelId, 503, 5);
-          if (attempt === 1) {
-            await new Promise((r) => setTimeout(r, 500));
-          }
-        }
-      }
-
-      if (successResponse) break;
-    }
-
-    if (!successResponse) {
-      console.error(`[Zenemoo AI] ${requestId} All candidate models failed.`);
-      return {
-        reply: 'Zenemoo AI is temporarily busy. Please try again in a moment or contact our team directly at [contact@zenemoo.in](mailto:contact@zenemoo.in).',
-        durationMs: Date.now() - startTime,
-        model: 'fallback-busy',
-      };
-    }
-
-    let replyText = successResponse.choices?.[0]?.message?.content || 'I am ready to assist you with Zenemoo services.';
-    const finishReason = successResponse.choices?.[0]?.finish_reason || '';
-
-    // Controlled 1-Shot Continuation Check for Incomplete Answers
-    if (isIncompleteResponse(replyText, finishReason)) {
-      try {
-        const continuationMessages = [
-          ...fullMessages,
-          { role: 'assistant', content: replyText },
-          {
-            role: 'user',
-            content: 'Continue your response from the EXACT word where it was interrupted. Complete the answer naturally.',
-          },
-        ];
-
-        const contController = new AbortController();
-        const contTimeoutId = setTimeout(() => contController.abort(), 15000);
-
-        const contResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: usedModel,
-            messages: continuationMessages,
-            temperature: 0.2,
-            max_tokens: 1000,
-            stream: false,
-          }),
-          signal: contController.signal,
-        });
-
-        clearTimeout(contTimeoutId);
-
-        if (contResponse.ok) {
-          const contData = await contResponse.json();
-          const contText = contData.choices?.[0]?.message?.content || '';
-          if (contText.trim()) {
-            const cleanCont = contText.trim();
-            const lastWords = replyText.trim().split(/\s+/).slice(-3).join(' ');
-            if (lastWords && cleanCont.startsWith(lastWords)) {
-              replyText = replyText.trim() + ' ' + cleanCont.substring(lastWords.length).trim();
-            } else {
-              replyText = replyText.trim() + ' ' + cleanCont;
-            }
-          }
-        }
-      } catch (contErr) {
-        console.warn(`[Zenemoo AI] ${requestId} Continuation check skipped:`, contErr.message);
-      }
-    }
-
-    // Final Terminal Safety Check: ensure reply doesn't end abruptly without punctuation
-    let finalReply = replyText.trim();
+    let finalReply = (routerResult.reply || '').trim();
     if (finalReply.length > 30 && !/[\.\!\?\"\'\)\}\>\।]$/.test(finalReply)) {
       if (/[:,\-–—…]$/.test(finalReply)) {
         finalReply = finalReply.substring(0, finalReply.length - 1).trim();
@@ -592,82 +311,24 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
     aiTelemetry.responseTimes.push(totalDuration);
     if (aiTelemetry.responseTimes.length > 20) aiTelemetry.responseTimes.shift();
 
-    return { reply: finalReply, durationMs: totalDuration, model: usedModel };
+    return {
+      reply: finalReply,
+      durationMs: totalDuration,
+      model: routerResult.modelUsed,
+      provider: routerResult.providerName,
+      providerId: routerResult.providerId,
+    };
   } finally {
     activeUserRequests.delete(userId);
   }
 };
 
-// ─────────────────────────────────────────────────────────────
-//  Health & Reliability Telemetry Exporter
-// ─────────────────────────────────────────────────────────────
+// Health & Reliability Telemetry Exporter
 export const getAiHealthTelemetry = () => {
-  const modelStats = {};
-  let globalTotalRequests = 0;
-  let globalTotalSuccess = 0;
-  let globalTotal429 = 0;
-  let globalTotal404 = 0;
-  let globalTotal5xx = 0;
-  const allLatencies = [];
-
-  modelHealthRegistry.forEach((val, key) => {
-    globalTotalRequests += val.totalRequests;
-    globalTotalSuccess += val.totalSuccess;
-    globalTotal429 += val.total429;
-    globalTotal404 += val.total404;
-    globalTotal5xx += val.total5xx;
-    allLatencies.push(...val.latencies);
-
-    const avgLat = val.latencies.length > 0
-      ? Math.round(val.latencies.reduce((a, b) => a + b, 0) / val.latencies.length)
-      : 0;
-
-    const successRate = val.totalRequests > 0
-      ? Math.round((val.totalSuccess / val.totalRequests) * 100)
-      : 100;
-
-    modelStats[key] = {
-      name: val.name,
-      healthy: val.healthy && (!val.rateLimitedUntil || Date.now() >= val.rateLimitedUntil),
-      successRatePercent: `${successRate}%`,
-      totalRequests: val.totalRequests,
-      totalSuccess: val.totalSuccess,
-      total429: val.total429,
-      total404: val.total404,
-      total5xx: val.total5xx,
-      averageLatencyMs: avgLat,
-      lastSuccess: val.lastSuccess ? new Date(val.lastSuccess).toISOString() : null,
-      lastFailure: val.lastFailure ? new Date(val.lastFailure).toISOString() : null,
-    };
-  });
-
-  allLatencies.sort((a, b) => a - b);
-  const p95Index = Math.floor(allLatencies.length * 0.95);
-  const p95LatencyMs = allLatencies.length > 0 ? allLatencies[p95Index] || allLatencies[allLatencies.length - 1] : 0;
-  const avgGlobalLatencyMs = allLatencies.length > 0
-    ? Math.round(allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length)
-    : 0;
-
-  const overallSuccessRatePercent = globalTotalRequests > 0
-    ? `${Math.round((globalTotalSuccess / globalTotalRequests) * 100)}%`
-    : '100%';
-
-  return {
-    overallSuccessRatePercent,
-    totalRequests: globalTotalRequests,
-    totalSuccess: globalTotalSuccess,
-    total429: globalTotal429,
-    total404: globalTotal404,
-    total5xx: globalTotal5xx,
-    avgLatencyMs: avgGlobalLatencyMs,
-    p95LatencyMs,
-    models: modelStats,
-  };
+  return getFullHealthTelemetry();
 };
 
-// ─────────────────────────────────────────────────────────────
-//  Backend Automated AI Diagnostic Test Suite
-// ─────────────────────────────────────────────────────────────
+// Backend Automated AI Diagnostic Test Suite across Multi-Provider Pool
 export const runAiDiagnosticTest = async (testCount = 10) => {
   const results = [];
   const testPrompts = [
@@ -683,7 +344,7 @@ export const runAiDiagnosticTest = async (testCount = 10) => {
     'Where is Zenemoo headquarters located?',
   ];
 
-  console.log(`[Zenemoo AI Diagnostic Suite] Starting ${testCount} sequential AI health tests...`);
+  console.log(`[Multi-Provider AI Diagnostic Suite] Running ${testCount} health tests...`);
 
   for (let i = 0; i < Math.min(testCount, testPrompts.length); i++) {
     const prompt = testPrompts[i];
@@ -695,6 +356,7 @@ export const runAiDiagnosticTest = async (testCount = 10) => {
         testIndex: i + 1,
         prompt: prompt.substring(0, 35) + '...',
         success: true,
+        provider: res.provider || res.providerId,
         model: res.model,
         durationMs: duration,
         replyPreview: (res.reply || '').substring(0, 50) + '...',
@@ -712,18 +374,24 @@ export const runAiDiagnosticTest = async (testCount = 10) => {
   }
 
   const telemetry = getAiHealthTelemetry();
+  const configuredProviders = getAvailableProviders().map((p) => ({
+    id: p.id,
+    name: p.name,
+    priority: p.priority,
+    modelsCount: p.models.length,
+  }));
+
   return {
     timestamp: new Date().toISOString(),
     testsRun: results.length,
     testsPassed: results.filter((r) => r.success).length,
+    configuredProviders,
     testDetails: results,
     healthTelemetry: telemetry,
   };
 };
 
-// ─────────────────────────────────────────────────────────────
-//  Admin AI Analytics Metrics
-// ─────────────────────────────────────────────────────────────
+// Admin AI Analytics Metrics
 export const getAiAnalyticsMetrics = async () => {
   const avgLatency = Math.round(
     aiTelemetry.responseTimes.reduce((a, b) => a + b, 0) / (aiTelemetry.responseTimes.length || 1)
@@ -736,24 +404,17 @@ export const getAiAnalyticsMetrics = async () => {
     unknownQuestions: aiTelemetry.unknownQuestions,
     languageBreakdown: aiTelemetry.languageBreakdown,
     status: 'ACTIVE',
-    modelPool: AI_MODELS.map((m) => m.id),
+    configuredProviders: getAvailableProviders().map((p) => p.name),
     healthTelemetry: getAiHealthTelemetry(),
     lastSyncAt: new Date().toISOString(),
   };
 };
 
-// ─────────────────────────────────────────────────────────────
-//  AI Team Member Executive Summary Generator
-// ─────────────────────────────────────────────────────────────
+// AI Team Member Executive Summary Generator
 export const generateTeamMemberSummary = async (member = {}) => {
-  const apiKey = (process.env.XAI_API_KEY || process.env.GROQ_API_KEY || '').trim();
   const fallbackSummary = `${member.name || 'Team Member'} is a dedicated ${member.designation || member.role || 'Data & AI Specialist'} at Zenemoo specializing in ${
     Array.isArray(member.skills) ? member.skills.join(', ') : member.skills || 'AI data quality & annotation'
   }. ${member.bio || 'Delivering enterprise-grade precision for global AI data workflows.'}`;
-
-  if (!apiKey) {
-    return fallbackSummary;
-  }
 
   try {
     const prompt = `Write a professional, impressive, 2-3 sentence executive summary highlighting key strengths for this Zenemoo AI team member.
@@ -766,27 +427,14 @@ Bio: ${member.bio || 'Experienced AI data & audio transcription lead'}
 
 Rule: Output ONLY the concise 2-3 sentence summary paragraph without titles or quotes.`;
 
-    const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 250,
-      }),
+    const res = await routeAiRequest({
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 250,
+      temperature: 0.3,
+      requestId: 'team_summary_gen',
     });
 
-    if (!response.ok) {
-      return fallbackSummary;
-    }
-
-    const data = await response.json();
-    const summary = data.choices?.[0]?.message?.content?.trim();
+    const summary = (res.reply || '').trim();
     return summary || fallbackSummary;
   } catch (err) {
     return fallbackSummary;
