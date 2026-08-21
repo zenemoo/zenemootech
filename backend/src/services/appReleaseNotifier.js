@@ -14,6 +14,7 @@ export const getPublishedAppManifest = () => {
       path.resolve(process.cwd(), '../frontend/public/app/android-release.json'),
       path.resolve(process.cwd(), 'frontend/public/app/android-release.json'),
       path.resolve(process.cwd(), 'public/app/android-release.json'),
+      path.resolve('frontend/public/app/android-release.json'),
     ];
     for (const p of candidatePaths) {
       if (fs.existsSync(p)) {
@@ -30,20 +31,16 @@ export const getPublishedAppManifest = () => {
     version: '2.0.5',
     versionCode: 5,
     packageName: 'in.zenemoo.app',
-    downloadUrl: 'https://www.zenemoo.in/downloads/zenemoo-latest.apk',
-    releaseDate: '2026-08-21',
-    fileSize: '65.8 MB',
-    releaseNotes: [
-      'High-Volume Language Data Output Telemetry & Production Targets (500+ Mins Daily)',
-      'Super QC multi-tier verification accuracy standards (99.9%+)',
-    ],
+    apkUrl: '/downloads/zenemoo-latest.apk',
+    releaseDate: new Date().toISOString().split('T')[0],
+    apkSize: '8.3 MB',
   };
 };
 
 /**
  * Retrieve the last notified version from Supabase DB or persistent JSON checkpoint
  */
-const getLastNotifiedVersion = async () => {
+export const getLastNotifiedVersion = async () => {
   // 1. Try Supabase DB
   if (supabase) {
     try {
@@ -76,9 +73,9 @@ const getLastNotifiedVersion = async () => {
 };
 
 /**
- * Save the checkpoint after successful notification dispatch
+ * Save the checkpoint ONLY after confirmed successful notification dispatch
  */
-const saveReleaseCheckpoint = async (version, releaseDate) => {
+export const saveReleaseCheckpoint = async (version, releaseDate) => {
   // 1. Save to Supabase DB
   if (supabase) {
     try {
@@ -114,7 +111,7 @@ export const checkAndNotifyAppRelease = async (forceCheck = false) => {
   const currentVersion = manifest.version || '2.0.5';
   const releaseDate = manifest.releaseDate || new Date().toISOString().split('T')[0];
 
-  console.log(`[App Release] Current published version: ${currentVersion}`);
+  console.log(`[App Release] Published version: ${currentVersion}`);
 
   const lastNotified = await getLastNotifiedVersion();
   console.log(`[App Release] Last notified version: ${lastNotified || 'None'}`);
@@ -129,29 +126,14 @@ export const checkAndNotifyAppRelease = async (forceCheck = false) => {
     };
   }
 
-  console.log(`[App Release] New release detected: ${currentVersion}`);
-  console.log('[App Release] Creating release notification');
+  console.log(`[App Release] New release detected: v${currentVersion}`);
+  console.log('[App Release] Preparing release notification');
 
-  // Format Title & Release Notes
+  // Format Title & Message exactly as specified
   const title = `🎉 Zenemoo v${currentVersion} is now available!`;
+  const message = 'A new version of the Zenemoo app is now available with the latest improvements, performance updates and fixes. Update now to get the latest experience.';
 
-  let notesBulletList = '';
-  if (Array.isArray(manifest.releaseNotes) && manifest.releaseNotes.length > 0) {
-    notesBulletList = manifest.releaseNotes.map((note) => `• ${note}`).join('\n');
-  } else if (typeof manifest.releaseNotes === 'string' && manifest.releaseNotes.trim()) {
-    notesBulletList = manifest.releaseNotes.trim();
-  } else {
-    notesBulletList = '• Improved AI performance\n• Better notification reliability\n• Faster app startup\n• Bug fixes and stability improvements';
-  }
-
-  const message = `A new version of the Zenemoo Android app has been released.
-
-What's new:
-${notesBulletList}
-
-Update now to get the latest Zenemoo experience.`;
-
-  console.log('[App Release] Dispatching through existing notification engine');
+  console.log('[App Release] Dispatching notification');
 
   try {
     const dispatchResult = await sendZenemooNotification({
@@ -163,23 +145,30 @@ Update now to get the latest Zenemoo experience.`;
       sender_email: 'system@zenemoo.in',
       metadata: {
         version: currentVersion,
+        version_code: manifest.versionCode || 5,
         release_date: releaseDate,
-        apk_size: manifest.fileSize || manifest.apkSize || '17.5 MB',
+        apk_size: manifest.apkSize || manifest.fileSize || '8.3 MB',
         release_type: 'android_app_update',
       },
     });
 
     if (dispatchResult && dispatchResult.notification) {
-      console.log('[App Release] Release notification dispatched successfully');
+      console.log('[App Release] Notification dispatch successful');
       await saveReleaseCheckpoint(currentVersion, releaseDate);
+      console.log(`[App Release] Checkpoint updated: ${currentVersion}`);
       return {
         triggered: true,
         success: true,
         version: currentVersion,
         notification: dispatchResult.notification,
+        stats: {
+          androidCount: dispatchResult.androidCount || 0,
+          webCount: dispatchResult.webCount || 0,
+          totalDestinations: dispatchResult.totalDestinations || 0,
+        },
       };
     } else {
-      console.warn('[App Release] Notification engine returned empty response');
+      console.warn('[App Release] Notification engine returned empty response — checkpoint NOT updated');
       return { triggered: true, success: false, reason: 'empty_dispatch_response' };
     }
   } catch (dispatchError) {
