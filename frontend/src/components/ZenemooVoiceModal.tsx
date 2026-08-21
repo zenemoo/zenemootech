@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Sparkles,
   ShieldAlert,
+  Bug,
 } from 'lucide-react';
 import { AiLanguage, LANGUAGE_LABEL_MAP } from '../lib/aiStore';
 
@@ -68,8 +69,10 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   const [transcript, setTranscript] = useState<string>('');
   const [interimText, setInterimText] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [errorCode, setErrorCode] = useState<string>('');
   const [countdown, setCountdown] = useState<number>(2);
   const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [diagEvents, setDiagEvents] = useState<string[]>([]);
 
   const recognitionRef = useRef<any>(null);
   const timerRef = useRef<any>(null);
@@ -78,6 +81,11 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   const finalTranscriptRef = useRef<string>('');
   const shouldContinueListeningRef = useRef<boolean>(false);
   const transcriptBoxRef = useRef<HTMLDivElement>(null);
+
+  const addDiag = (eventStr: string) => {
+    console.log(`[Zenemoo Voice] ${eventStr}`);
+    setDiagEvents((prev) => [...prev.slice(-4), eventStr]);
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -109,10 +117,16 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     }
     if (recognitionRef.current) {
       try {
+        recognitionRef.current.onstart = null;
+        recognitionRef.current.onaudiostart = null;
+        recognitionRef.current.onsoundstart = null;
+        recognitionRef.current.onspeechstart = null;
         recognitionRef.current.onresult = null;
+        recognitionRef.current.onspeechend = null;
+        recognitionRef.current.onsoundend = null;
+        recognitionRef.current.onaudioend = null;
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
-        recognitionRef.current.onspeechend = null;
         recognitionRef.current.stop();
         recognitionRef.current.abort();
       } catch (e) {
@@ -158,16 +172,22 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     setTranscript('');
     setInterimText('');
     setErrorMessage('');
+    setErrorCode('');
+    setDiagEvents([]);
     finalTranscriptRef.current = '';
     speechDetectedRef.current = false;
     shouldContinueListeningRef.current = true;
 
-    // Feature Detection
+    // 1. Diagnostics: SpeechRecognition support check
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
+    console.log('[Zenemoo Voice] 1. supported:', !!SpeechRecognition);
+    addDiag(`supported: ${!!SpeechRecognition}`);
+
     if (!SpeechRecognition) {
       setState('unsupported');
+      setErrorCode('api-unsupported');
       setErrorMessage(
         "Voice input isn't supported in this browser. You can continue using standard text input."
       );
@@ -175,29 +195,34 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     }
 
     try {
-      // 1. Check microphone permission state
+      // 2. Diagnostics: Check microphone permission
       const permState = await getMicrophonePermissionState();
-      console.log('[Zenemoo Voice] Permission state:', permState);
+      console.log('[Zenemoo Voice] 2. permission:', permState);
+      addDiag(`permission: ${permState}`);
 
       if (permState === 'denied') {
         shouldContinueListeningRef.current = false;
         setState('permission_denied');
+        setErrorCode('not-allowed');
         setErrorMessage(
           'Microphone access is blocked. Please allow microphone permission in your browser or device settings.'
         );
         return;
       }
 
-      // 2. Request mic stream if permission is prompt/unknown to guarantee hardware access
+      // 3. Request mic hardware stream if permission is prompt/unknown
       if (permState === 'prompt' || permState === 'unknown') {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
+            console.log('[Zenemoo Voice] Requesting getUserMedia stream...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('[Zenemoo Voice] getUserMedia stream acquired successfully');
             stream.getTracks().forEach((track) => track.stop());
           } catch (micErr: any) {
-            console.warn('[Zenemoo Voice] User denied microphone prompt:', micErr);
+            console.warn('[Zenemoo Voice] getUserMedia rejected:', micErr);
             shouldContinueListeningRef.current = false;
             setState('permission_denied');
+            setErrorCode(micErr.name || 'not-allowed');
             setErrorMessage(
               'Microphone permission is required for voice input. Please enable microphone access.'
             );
@@ -206,29 +231,51 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         }
       }
 
-      // 3. Initialize SpeechRecognition instance
-      setState('listening');
+      // 4. Diagnostics: Instantiate & Configure SpeechRecognition
+      const targetLang = getRecognitionLang(currentLanguage);
+      console.log('[Zenemoo Voice] 3. creating recognition instance');
+      console.log('[Zenemoo Voice] 4. language:', targetLang);
+      console.log('[Zenemoo Voice] 5. continuous: true, 6. interimResults: true');
+      addDiag(`lang: ${targetLang}`);
+
       const recognition = new SpeechRecognition();
       recognitionRef.current = recognition;
 
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = getRecognitionLang(currentLanguage);
+      recognition.lang = targetLang;
       recognition.maxAlternatives = 1;
 
+      // Attach all lifecycle event handlers before calling start()
       recognition.onstart = () => {
-        console.log('[Zenemoo Voice] SpeechRecognition started successfully');
+        console.log('[Zenemoo Voice] 8. onstart fired -> recognition started');
+        addDiag('onstart fired');
         setState('listening');
       };
 
-      // 4. Live Progressive Speech-to-Text handler
+      recognition.onaudiostart = () => {
+        console.log('[Zenemoo Voice] 9. onaudiostart fired -> audio hardware capturing');
+        addDiag('audio started');
+      };
+
+      recognition.onsoundstart = () => {
+        console.log('[Zenemoo Voice] onsoundstart fired -> sound detected');
+      };
+
+      recognition.onspeechstart = () => {
+        console.log('[Zenemoo Voice] 10. onspeechstart fired -> human speech detected');
+        addDiag('speech started');
+      };
+
+      // 11. onresult fired: Parse event.results
       recognition.onresult = (event: any) => {
+        console.log('[Zenemoo Voice] 11. onresult fired, results length:', event.results.length);
         let currentFinal = '';
         let currentInterim = '';
 
         for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
-          const textChunk = result[0].transcript;
+          const textChunk = result[0]?.transcript || '';
           if (result.isFinal) {
             currentFinal += textChunk + ' ';
           } else {
@@ -239,7 +286,15 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         const cleanFinal = currentFinal.trim();
         const cleanInterim = currentInterim.trim();
 
-        if (cleanFinal || cleanInterim) {
+        if (cleanFinal) {
+          console.log('[Zenemoo Voice] 13. final result received:', cleanFinal);
+          addDiag(`final: "${cleanFinal.slice(-15)}"`);
+          speechDetectedRef.current = true;
+        }
+
+        if (cleanInterim) {
+          console.log('[Zenemoo Voice] 12. interim result received:', cleanInterim);
+          addDiag(`interim: "${cleanInterim.slice(-15)}"`);
           speechDetectedRef.current = true;
         }
 
@@ -253,29 +308,9 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         }
       };
 
-      recognition.onerror = (event: any) => {
-        console.warn('[Zenemoo Voice] Error event:', event.error);
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          shouldContinueListeningRef.current = false;
-          setState('permission_denied');
-          setErrorMessage(
-            'Microphone access was denied. Please enable microphone permission in your device settings.'
-          );
-        } else if (event.error === 'no-speech') {
-          if (!speechDetectedRef.current && !finalTranscriptRef.current) {
-            setState('no_speech');
-          }
-        } else if (event.error === 'network') {
-          shouldContinueListeningRef.current = false;
-          setState('error');
-          setErrorMessage('Speech recognition network service error. Please try again.');
-        } else if (event.error !== 'aborted') {
-          console.warn('[Zenemoo Voice] Other recognition error:', event.error);
-        }
-      };
-
       recognition.onspeechend = () => {
-        console.log('[Zenemoo Voice] Speech ended naturally');
+        console.log('[Zenemoo Voice] onspeechend fired');
+        addDiag('speech ended');
         if (recognitionRef.current && speechDetectedRef.current) {
           setState('processing');
           setTimeout(() => {
@@ -285,20 +320,65 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
               interimText
             ).trim();
             finalizeAndClose(fullText);
-          }, 500);
+          }, 600);
+        }
+      };
+
+      recognition.onsoundend = () => {
+        console.log('[Zenemoo Voice] onsoundend fired');
+      };
+
+      recognition.onaudioend = () => {
+        console.log('[Zenemoo Voice] onaudioend fired');
+        addDiag('audio ended');
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('[Zenemoo Voice] 14. onerror fired:', event.error, event.message);
+        setErrorCode(event.error || 'unknown');
+        addDiag(`error: ${event.error}`);
+
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          shouldContinueListeningRef.current = false;
+          setState('permission_denied');
+          setErrorMessage(
+            'Microphone access was denied (not-allowed). Please enable microphone permissions in your browser or device settings.'
+          );
+        } else if (event.error === 'no-speech') {
+          if (!speechDetectedRef.current && !finalTranscriptRef.current) {
+            setState('no_speech');
+            setErrorMessage('No speech was detected. Please speak closer to your microphone.');
+          }
+        } else if (event.error === 'network') {
+          shouldContinueListeningRef.current = false;
+          setState('error');
+          setErrorMessage(
+            'Speech recognition network service error (network). The browser speech service could not be reached.'
+          );
+        } else if (event.error === 'language-not-supported') {
+          shouldContinueListeningRef.current = false;
+          setState('error');
+          setErrorMessage(
+            `Speech recognition language (${targetLang}) is not supported on this device/browser.`
+          );
+        } else if (event.error === 'audio-capture') {
+          shouldContinueListeningRef.current = false;
+          setState('error');
+          setErrorMessage(
+            'Audio capture error (audio-capture). No microphone was found or audio input is busy.'
+          );
+        } else if (event.error !== 'aborted') {
+          setState('error');
+          setErrorMessage(`Speech recognition error (${event.error || 'unknown'}).`);
         }
       };
 
       recognition.onend = () => {
-        console.log('[Zenemoo Voice] Session ended');
-        // Controlled restart if continuous recording is active
-        if (shouldContinueListeningRef.current && state === 'listening') {
-          try {
-            recognition.start();
-          } catch (e) {
-            // Ignore if active
-          }
-        } else if (state === 'listening' || state === 'processing') {
+        console.log('[Zenemoo Voice] 15. onend fired');
+        addDiag('onend fired');
+
+        // Do not auto-restart in diagnostic mode to observe exact failure point
+        if (state === 'listening' || state === 'processing') {
           const fullText = (finalTranscriptRef.current + ' ' + interimText).trim();
           if (fullText) {
             finalizeAndClose(fullText);
@@ -308,12 +388,16 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         }
       };
 
+      // 7. Start recognition
+      console.log('[Zenemoo Voice] 7. calling recognition.start()');
+      addDiag('calling start()');
       recognition.start();
     } catch (err: any) {
-      console.error('[Zenemoo Voice Startup Error]:', err);
+      console.error('[Zenemoo Voice] Startup Exception:', err);
       shouldContinueListeningRef.current = false;
+      setErrorCode(err.name || 'exception');
       setState('error');
-      setErrorMessage(err.message || 'Failed to initialize voice input.');
+      setErrorMessage(err.message || 'Failed to initialize voice recognition.');
     }
   }, [cleanupRecognition, currentLanguage, finalizeAndClose, interimText, state]);
 
@@ -321,12 +405,13 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   const handleStopManually = () => {
     shouldContinueListeningRef.current = false;
     setState('processing');
-    const fullCaptured = (finalTranscriptRef.current + ' ' + interimText).trim();
+    console.log('[Zenemoo Voice] Stop manually clicked');
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
       } catch (e) {}
     }
+    const fullCaptured = (finalTranscriptRef.current + ' ' + interimText).trim();
     if (fullCaptured) {
       finalizeAndClose(fullCaptured);
     } else {
@@ -516,13 +601,20 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             )}
             {state === 'no_speech' && (
               <p className="text-xs sm:text-sm font-sans text-slate-300">
-                No speech detected. Please speak closer to your microphone.
+                {errorMessage || 'No speech detected. Please speak closer to your microphone.'}
               </p>
             )}
             {(state === 'permission_denied' || state === 'unsupported' || state === 'error') && (
-              <p className="text-xs sm:text-sm font-sans text-rose-300 max-w-sm mx-auto">
-                {errorMessage}
-              </p>
+              <div className="space-y-1 max-w-sm mx-auto">
+                <p className="text-xs sm:text-sm font-sans text-rose-300">
+                  {errorMessage}
+                </p>
+                {errorCode && (
+                  <p className="text-[10px] font-mono text-rose-400/80 bg-rose-950/40 px-2 py-0.5 rounded border border-rose-800/40 inline-block">
+                    Code: {errorCode}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -556,6 +648,14 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Diagnostic Pipeline Bar (Visible in diagnostic mode) */}
+        {diagEvents.length > 0 && (
+          <div className="px-3 py-1.5 rounded-xl bg-black/50 border border-cyan-500/20 text-[10px] font-mono text-cyan-400/90 flex items-center gap-1.5 overflow-hidden truncate">
+            <Bug className="w-3 h-3 text-cyan-400 shrink-0" />
+            <span className="truncate">Diag: {diagEvents.join(' → ')}</span>
+          </div>
+        )}
 
         {/* Action Controls & Footer Buttons */}
         <div className="flex items-center justify-center gap-3 pt-1">
