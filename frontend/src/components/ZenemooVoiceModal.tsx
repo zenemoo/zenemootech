@@ -11,6 +11,7 @@ import {
   Sparkles,
   ShieldAlert,
   Lock,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { AiLanguage, LANGUAGE_LABEL_MAP } from '../lib/aiStore';
 
@@ -21,11 +22,12 @@ export type VoiceState =
   | 'completed'
   | 'permission_prompt'
   | 'permission_denied'
+  | 'permanently_denied'
   | 'unsupported'
   | 'no_speech'
   | 'error';
 
-export type MicPermissionState = 'granted' | 'prompt' | 'denied' | 'unsupported';
+export type MicPermissionState = 'granted' | 'prompt' | 'denied' | 'permanently_denied' | 'unsupported';
 
 /**
  * Universal Permission State Detection & Native Requester
@@ -33,32 +35,67 @@ export type MicPermissionState = 'granted' | 'prompt' | 'denied' | 'unsupported'
 export const requestAndVerifyMicrophonePermission = async (): Promise<MicPermissionState> => {
   if (typeof window === 'undefined') return 'unsupported';
 
-  // 1. Native Capacitor Android check
-  if (Capacitor.isNativePlatform()) {
+  // 1. Native Android Bridge Integration (Direct OS Runtime Permission)
+  const nativeBridge = (window as any).ZenemooNativeBridge;
+  if (nativeBridge) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      return 'granted';
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        return 'denied';
+      if (typeof nativeBridge.isMicrophoneGranted === 'function' && nativeBridge.isMicrophoneGranted()) {
+        return 'granted';
       }
-      return 'denied';
+
+      // Request runtime permission from Android OS and await native result event
+      return new Promise<MicPermissionState>((resolve) => {
+        let isResolved = false;
+
+        const cleanup = () => {
+          window.removeEventListener('zenemoo:mic-permission-granted', onGranted);
+          window.removeEventListener('zenemoo:mic-permission-denied', onDenied);
+        };
+
+        const onGranted = () => {
+          if (isResolved) return;
+          isResolved = true;
+          cleanup();
+          resolve('granted');
+        };
+
+        const onDenied = (e: any) => {
+          if (isResolved) return;
+          isResolved = true;
+          cleanup();
+          const isPerm = e?.detail?.permanent || false;
+          resolve(isPerm ? 'permanently_denied' : 'denied');
+        };
+
+        window.addEventListener('zenemoo:mic-permission-granted', onGranted, { once: true });
+        window.addEventListener('zenemoo:mic-permission-denied', onDenied, { once: true });
+
+        // Trigger native OS dialog
+        if (typeof nativeBridge.requestMicrophonePermission === 'function') {
+          nativeBridge.requestMicrophonePermission();
+        }
+
+        // Safety fallback timeout
+        setTimeout(() => {
+          if (!isResolved) {
+            isResolved = true;
+            cleanup();
+            if (nativeBridge.isMicrophoneGranted && nativeBridge.isMicrophoneGranted()) {
+              resolve('granted');
+            } else if (nativeBridge.isPermissionPermanentlyDenied && nativeBridge.isPermissionPermanentlyDenied()) {
+              resolve('permanently_denied');
+            } else {
+              resolve('denied');
+            }
+          }
+        }, 15000);
+      });
+    } catch (bridgeErr) {
+      console.warn('[ZenemooNativeBridge Error]:', bridgeErr);
     }
   }
 
-  // 2. Standard Web Browser Permissions Query (if supported)
-  if (navigator.permissions && navigator.permissions.query) {
-    try {
-      const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-      if (status.state === 'granted') return 'granted';
-      if (status.state === 'denied') return 'denied';
-    } catch (e) {
-      // Query for 'microphone' might be restricted in some browser engines
-    }
-  }
-
-  // 3. Web getUserMedia request
+  // 2. Standard Capacitor / Web Browser getUserMedia Request
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -70,6 +107,16 @@ export const requestAndVerifyMicrophonePermission = async (): Promise<MicPermiss
       }
       return 'denied';
     }
+  }
+
+  // 3. Fallback check for permissions query
+  if (navigator.permissions && navigator.permissions.query) {
+    try {
+      const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      if (status.state === 'granted') return 'granted';
+      if (status.state === 'denied') return 'permanently_denied';
+      return 'prompt';
+    } catch (e) {}
   }
 
   return 'unsupported';
@@ -293,9 +340,15 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         shouldContinueListeningRef.current = false;
         isListeningRef.current = false;
         setErrorCode('not-allowed');
-        setState('permission_denied');
+
+        const nativeBridge = (window as any).ZenemooNativeBridge;
+        if (nativeBridge && nativeBridge.isPermissionPermanentlyDenied && nativeBridge.isPermissionPermanentlyDenied()) {
+          setState('permanently_denied');
+        } else {
+          setState('permission_denied');
+        }
         setErrorMessage(
-          'Microphone access was denied. Please allow microphone permission in your browser or device settings.'
+          'Microphone access was denied. Please allow microphone permission in your device or browser settings.'
         );
       } else if (event.error === 'no-speech') {
         logDiag(sessionId, 'NO-SPEECH (non-fatal silence)');
@@ -377,10 +430,12 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     if (sessionId !== activeSessionIdRef.current) return;
 
     if (permState === 'granted') {
-      // Case 1: Permission already granted -> start recognition directly!
+      // Permission granted -> start recognition directly
       startRecognitionAfterPermission(sessionId);
-    } else if (permState === 'denied') {
-      // Case 3: Permission denied -> show friendly in-app explanation
+    } else if (permState === 'permanently_denied') {
+      shouldContinueListeningRef.current = false;
+      setState('permanently_denied');
+    } else if (permState === 'denied' || permState === 'prompt') {
       shouldContinueListeningRef.current = false;
       setState('permission_prompt');
     } else {
@@ -391,7 +446,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     }
   };
 
-  // User taps [ Allow Microphone ] button on in-app prompt
+  // User taps [ Give Permission / Allow Microphone ] button
   const handleUserAllowPermission = async () => {
     const currentSessionId = activeSessionIdRef.current;
     setIsRequestingPermission(true);
@@ -400,16 +455,28 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
       setIsRequestingPermission(false);
       if (permState === 'granted') {
         startRecognitionAfterPermission(currentSessionId);
+      } else if (permState === 'permanently_denied') {
+        setState('permanently_denied');
       } else {
         setState('permission_denied');
         setErrorMessage(
-          'Microphone access is disabled for Zenemoo. Enable microphone permission in your device or browser settings.'
+          'Microphone permission is required for voice input.'
         );
       }
     } catch (e: any) {
       setIsRequestingPermission(false);
       setState('permission_denied');
       setErrorMessage('Microphone access was not granted.');
+    }
+  };
+
+  // Open App Settings in Android OS
+  const handleOpenAppSettings = () => {
+    const nativeBridge = (window as any).ZenemooNativeBridge;
+    if (nativeBridge && typeof nativeBridge.openAppSettings === 'function') {
+      nativeBridge.openAppSettings();
+    } else {
+      alert('Please open device Settings -> Apps -> Zenemoo -> Permissions -> Microphone and enable permission.');
     }
   };
 
@@ -539,7 +606,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
           </button>
         </div>
 
-        {/* ── PERMISSION PROMPT VIEW ── */}
+        {/* ── 1. FIRST TIME PERMISSION PROMPT VIEW ── */}
         {state === 'permission_prompt' ? (
           <div className="py-3 text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/10">
@@ -547,9 +614,9 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <h4 className="text-base font-bold text-white font-display">🎙️ Microphone Access</h4>
+              <h4 className="text-base font-bold text-white font-display">🎙️ Microphone Permission</h4>
               <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
-                Zenemoo needs microphone access to convert your spoken words into text. Your voice is only used for this feature.
+                Zenemoo converts your voice into text in real time. Tap Give Permission to allow microphone access.
               </p>
             </div>
 
@@ -566,7 +633,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
                     <span>Requesting...</span>
                   </>
                 ) : (
-                  <span>Allow Microphone</span>
+                  <span>Give Permission</span>
                 )}
               </button>
               <button
@@ -582,26 +649,62 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             </div>
           </div>
         ) : state === 'permission_denied' ? (
-          /* ── PERMISSION DENIED / SETTINGS GUIDE VIEW ── */
+          /* ── 2. TEMPORARY PERMISSION DENIED VIEW (CAN RETRY) ── */
           <div className="py-3 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-500/10">
+            <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10">
               <Lock className="w-7 h-7" />
             </div>
 
             <div className="space-y-1.5">
               <h4 className="text-base font-bold text-white font-display">🎙️ Microphone Permission Required</h4>
               <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
-                Microphone access is currently disabled for Zenemoo. Please enable microphone permission in your device or browser settings.
+                Microphone permission is required for voice input. Tap Give Permission below to allow access.
               </p>
             </div>
 
             <div className="flex items-center justify-center gap-2.5 pt-2">
               <button
                 type="button"
+                disabled={isRequestingPermission}
                 onClick={handleUserAllowPermission}
-                className="flex-1 py-3 px-4 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold text-xs sm:text-sm transition-all cursor-pointer min-h-[44px]"
+                className="flex-1 py-3 px-4 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-black font-extrabold text-xs sm:text-sm transition-all cursor-pointer min-h-[44px] shadow-lg shadow-cyan-500/20"
               >
-                Try Again
+                {isRequestingPermission ? 'Requesting...' : 'Give Permission'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  cleanupEngine();
+                  onClose();
+                }}
+                className="py-3 px-4 rounded-2xl bg-white/[0.04] hover:bg-white/10 text-slate-300 font-medium text-xs sm:text-sm transition-all cursor-pointer min-h-[44px]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : state === 'permanently_denied' ? (
+          /* ── 3. PERMANENTLY DENIED VIEW (OPEN ANDROID SETTINGS) ── */
+          <div className="py-3 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-500/10">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-white font-display">🎙️ Microphone Permission Blocked</h4>
+              <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
+                Microphone permission is blocked. Please enable it in Android Settings to use voice input.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={handleOpenAppSettings}
+                className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm transition-all cursor-pointer min-h-[44px] shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2"
+              >
+                <SettingsIcon className="w-4 h-4" />
+                <span>Open Settings</span>
               </button>
               <button
                 type="button"
@@ -616,7 +719,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             </div>
           </div>
         ) : (
-          /* ── ACTIVE VOICE RECORDING & TRANSCRIPTION VIEW ── */
+          /* ── 4. ACTIVE VOICE RECORDING & TRANSCRIPTION VIEW ── */
           <>
             <div className="flex flex-col items-center justify-center py-2 space-y-4">
               <div className="relative flex items-center justify-center">

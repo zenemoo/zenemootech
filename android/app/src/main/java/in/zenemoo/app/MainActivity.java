@@ -1,13 +1,17 @@
 package in.zenemoo.app;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -17,10 +21,15 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+
+    private static final int RECORD_AUDIO_REQUEST_CODE = 1002;
+    private PermissionRequest pendingPermissionRequest = null;
 
     private static final String OFFLINE_HTML = "<!DOCTYPE html>" +
             "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" +
@@ -40,6 +49,46 @@ public class MainActivity extends BridgeActivity {
             "<p>Please check your network settings and try again to access Zenemoo Enterprise AI services.</p>" +
             "<button class=\"btn\" onclick=\"window.location.href='https://www.zenemoo.in'\">Retry Connection</button>" +
             "</div></body></html>";
+
+    /**
+     * Native Bridge exposed to JavaScript WebView for rock-solid runtime permission management
+     */
+    public class ZenemooNativeBridge {
+        @JavascriptInterface
+        public boolean isMicrophoneGranted() {
+            return ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface
+        public boolean isPermissionPermanentlyDenied() {
+            boolean notGranted = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED;
+            if (!notGranted) return false;
+            return !ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, Manifest.permission.RECORD_AUDIO);
+        }
+
+        @JavascriptInterface
+        public void requestMicrophonePermission() {
+            runOnUiThread(() -> {
+                ActivityCompat.requestPermissions(
+                    MainActivity.this,
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    RECORD_AUDIO_REQUEST_CODE
+                );
+            });
+        }
+
+        @JavascriptInterface
+        public void openAppSettings() {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Uri uri = Uri.fromParts("package", getPackageName(), null);
+                intent.setData(uri);
+                startActivity(intent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,13 +134,33 @@ public class MainActivity extends BridgeActivity {
             cookieManager.setAcceptCookie(true);
             cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-            // Enable WebRTC Camera & Microphone permission handling for future audio/video calling
+            // Expose Native Bridge for Direct OS Permission Control
+            webView.addJavascriptInterface(new ZenemooNativeBridge(), "ZenemooNativeBridge");
+
+            // WebRTC Camera & Microphone permission handling with OS Runtime Fallback
             webView.setWebChromeClient(new WebChromeClient() {
                 @Override
                 public void onPermissionRequest(final PermissionRequest request) {
                     runOnUiThread(() -> {
                         if (request != null && request.getResources() != null) {
-                            request.grant(request.getResources());
+                            boolean needsAudio = false;
+                            for (String r : request.getResources()) {
+                                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                                    needsAudio = true;
+                                    break;
+                                }
+                            }
+
+                            if (needsAudio && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                pendingPermissionRequest = request;
+                                ActivityCompat.requestPermissions(
+                                    MainActivity.this,
+                                    new String[]{Manifest.permission.RECORD_AUDIO},
+                                    RECORD_AUDIO_REQUEST_CODE
+                                );
+                            } else {
+                                request.grant(request.getResources());
+                            }
                         }
                     });
                 }
@@ -162,6 +231,34 @@ public class MainActivity extends BridgeActivity {
 
         // Process notification intent on cold start
         handlePushIntent(getIntent());
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == RECORD_AUDIO_REQUEST_CODE) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                if (pendingPermissionRequest != null) {
+                    pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
+                    pendingPermissionRequest = null;
+                }
+                WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+                if (webView != null) {
+                    webView.post(() -> webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zenemoo:mic-permission-granted'));", null));
+                }
+            } else {
+                if (pendingPermissionRequest != null) {
+                    pendingPermissionRequest.deny();
+                    pendingPermissionRequest = null;
+                }
+                boolean isPermanent = !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO);
+                WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+                if (webView != null) {
+                    webView.post(() -> webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zenemoo:mic-permission-denied', { detail: { permanent: " + isPermanent + " } }));", null));
+                }
+            }
+        }
     }
 
     @Override
