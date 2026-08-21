@@ -19,7 +19,9 @@ import {
   AlertTriangle,
   ArrowRight,
   ExternalLink,
+  Mic,
 } from 'lucide-react';
+import { ZenemooVoiceModal } from './ZenemooVoiceModal';
 import {
   AiLanguage,
   AiChatMessage,
@@ -102,6 +104,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [lengthPref, setLengthPref] = useState<'auto' | 'short' | 'normal' | 'detailed'>('auto');
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   // ── Refs ──
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -109,6 +112,18 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
   const inputRef = useRef<HTMLInputElement>(null);
 
   const ui = LANG_UI_MAP[currentLanguage];
+
+  const handleVoiceTranscript = (transcriptText: string) => {
+    const trimmed = transcriptText.trim();
+    if (!trimmed) return;
+    setInput((prev) => {
+      const prevTrimmed = prev.trim();
+      return prevTrimmed ? `${prevTrimmed} ${trimmed}` : trimmed;
+    });
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
 
   // ── Load from storage ──
   useEffect(() => {
@@ -685,6 +700,16 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                     className="flex-1 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-slate-600 text-xs sm:text-sm font-mono focus:outline-none focus:border-cyan-500/60 focus:bg-white/[0.06] transition-all disabled:opacity-60 min-w-0"
                   />
                   <button
+                    type="button"
+                    onClick={() => setIsVoiceModalOpen(true)}
+                    className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer border border-white/[0.08] flex items-center justify-center shrink-0"
+                    title="Voice Input"
+                    aria-label="Voice input"
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
+
+                  <button
                     type="submit"
                     disabled={loading || !input.trim()}
                     className="px-4 sm:px-5 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 shrink-0"
@@ -757,6 +782,14 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── ZENEMOO VOICE-TO-TEXT MODAL ── */}
+      <ZenemooVoiceModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        onTranscriptComplete={handleVoiceTranscript}
+        currentLanguage={currentLanguage}
+      />
     </AnimatePresence>
   );
 };

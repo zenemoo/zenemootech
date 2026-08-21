@@ -62,6 +62,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onOpenAiDrawer
     action();
   };
 
+  if (typeof window !== 'undefined' && window.location.pathname.includes('zenemooai')) {
+    return null;
+  }
+
   return (
     <>
       {/* Mobile Bottom Navigation Bar (≤768px Only) */}

@@ -67,9 +67,9 @@ export const LANG_UI_MAP: Record<AiLanguage, {
     welcomeSubtitle: 'Ask me anything about Zenemoo — I am grounded in verified company data.',
     suggestions: [
       'Tell me about Zenemoo',
+      'Download Zenemoo Android App',
       'What audio transcription services do you offer?',
       'How do I apply for a job at Zenemoo?',
-      'How can I partner with Zenemoo?',
       'What is the DesiCrew alliance?',
     ],
     searchPlaceholder: 'Search conversations...',
@@ -84,7 +84,7 @@ export const LANG_UI_MAP: Record<AiLanguage, {
     langChanged: (n) => `✅ Language changed to ${n}.`,
   },
   hi: {
-    placeholder: 'जेनेमू AI से कुछ भी पूछें (ऑडियो ट्रांसक्रिप्शन, करियर, पार्टनरशिप)...',
+    placeholder: 'जेनेमू AI से कुछ भी पूछें (एंड्रॉइड ऐप, ऑडियो ट्रांसक्रिप्शन, करियर)...',
     sendBtn: 'भेजें',
     clearBtn: 'स्क्रीन साफ़ करें',
     exportTxt: 'TXT निर्यात',
@@ -93,9 +93,9 @@ export const LANG_UI_MAP: Record<AiLanguage, {
     welcomeSubtitle: 'जेनेमू के बारे में कुछ भी पूछें — मैं सत्यापित कंपनी डेटा पर आधारित हूं।',
     suggestions: [
       'जेनेमू के बारे में बताएं',
+      'जेनेमू एंड्रॉइड ऐप कैसे डाउनलोड करें?',
       'ऑडियो ट्रांसक्रिप्शन सेवाएं क्या हैं?',
       'जेनेमू में नौकरी के लिए आवेदन कैसे करें?',
-      'जेनेमू से साझेदारी कैसे करें?',
       'DesiCrew गठबंधन क्या है?',
     ],
     searchPlaceholder: 'बातचीत खोजें...',
@@ -110,7 +110,7 @@ export const LANG_UI_MAP: Record<AiLanguage, {
     langChanged: (n) => `✅ भाषा ${n} में बदल दी गई है।`,
   },
   or: {
-    placeholder: 'ଜେନେମୁ AI କୁ ପଚାରନ୍ତୁ (ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପସନ, କ୍ୟାରିୟର, ଅଂଶୀଦାରିତ୍ୱ)...',
+    placeholder: 'ଜେନେମୁ AI କୁ ପଚାରନ୍ତୁ (ଆଣ୍ଡ୍ରଏଡ୍ ଆପ୍, ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପସନ, କ୍ୟାରିୟର)...',
     sendBtn: 'ପଠାନ୍ତୁ',
     clearBtn: 'ସ୍କ୍ରିନ ସଫ଼ା କରନ୍ତୁ',
     exportTxt: 'TXT ରପ୍ତାନି',
@@ -119,9 +119,9 @@ export const LANG_UI_MAP: Record<AiLanguage, {
     welcomeSubtitle: 'ଜେନେମୁ ବିଷୟରେ ଯେ କୌଣସି ପ୍ରଶ୍ନ ପଚାରନ୍ତୁ — ମୁଁ ଯାଞ୍ଚ ହୋଇଥିବା କମ୍ପାନି ତଥ୍ୟ ଉପରେ ଆଧାରିତ।',
     suggestions: [
       'ଜେନେମୁ ବିଷୟରେ କୁହ',
+      'ଜେନେମୁ ଆଣ୍ଡ୍ରଏଡ୍ ଆପ୍ କିପରି ଡାଉନଲୋଡ୍ କରିବି?',
       'ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପସନ ସେବା କ\'ଣ?',
       'ଜେନେମୁରେ ଚାକିରି ପାଇଁ କିପରି ଆବେଦନ କରିବି?',
-      'ଜେନେମୁ ସହ ଅଂଶୀଦାରିତ୍ୱ କିପରି?',
       'DesiCrew ମୈତ୍ରୀ କ\'ଣ?',
     ],
     searchPlaceholder: 'ବାର୍ତ୍ତାଳାପ ଖୋଜନ୍ତୁ...',
@@ -190,6 +190,7 @@ export const generateAutoTitle = (firstPrompt: string): string => {
   const clean = firstPrompt.trim().replace(/^[^\w\s\u0B00-\u0B7F\u0900-\u097F]+/, '');
   if (!clean) return 'New Conversation';
   const lower = clean.toLowerCase();
+  if (lower.includes('app') || lower.includes('apk') || lower.includes('android') || lower.includes('download') || lower.includes('ଆପ୍') || lower.includes('ऐप') || lower.includes('डाउनलोड')) return 'Zenemoo Android App';
   if (lower.includes('transcription') || lower.includes('audio') || lower.includes('ଅଡିଓ') || lower.includes('ऑडियो')) return 'Audio Transcription Inquiry';
   if (lower.includes('odia') || lower.includes('ଓଡ଼ିଆ') || lower.includes('odia')) return 'Odia Language Data';
   if (lower.includes('desicrew') || lower.includes('partner') || lower.includes('ଅଂଶୀଦ') || lower.includes('साझेदारी')) return 'DesiCrew Partnership';
@@ -207,6 +208,8 @@ export const generateAutoTitle = (firstPrompt: string): string => {
 export const parseActionButtons = (content: string): { cleanContent: string; buttons: AiActionButton[] } => {
   const buttons: AiActionButton[] = [];
   const actionMap: Record<string, AiActionButton> = {
+    app: { label: 'Download Android App', icon: '📱', action: 'navigate:/app/android' },
+    download: { label: 'Download APK', icon: '⬇️', action: 'navigate:/app/android' },
     opportunities: { label: 'Open Opportunities', icon: '📋', action: 'navigate:/opportunities' },
     contact: { label: 'Open Contact Page', icon: '📞', action: 'scroll:#contact' },
     services: { label: 'View Services', icon: '⚡', action: 'scroll:#services' },

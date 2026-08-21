@@ -1,4 +1,39 @@
+import fs from 'fs';
+import path from 'path';
 import { supabase } from '../config/supabase.js';
+
+// ─────────────────────────────────────────────────────────────
+//  Dynamic App Release Manifest Reader
+// ─────────────────────────────────────────────────────────────
+export const getLatestAppManifest = () => {
+  try {
+    const candidatePaths = [
+      path.resolve(process.cwd(), '../frontend/public/app/android-release.json'),
+      path.resolve(process.cwd(), 'frontend/public/app/android-release.json'),
+      path.resolve(process.cwd(), 'public/app/android-release.json'),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf8');
+        return JSON.parse(raw);
+      }
+    }
+  } catch (e) {
+    console.warn('[AI Service App Manifest Reader Warn]:', e.message);
+  }
+  return {
+    appName: 'Zenemoo',
+    version: '2.0.4',
+    packageName: 'in.zenemoo.app',
+    downloadUrl: 'https://www.zenemoo.in/downloads/zenemoo-latest.apk',
+    releaseDate: '2026-08-21',
+    fileSize: '65.8 MB',
+    releaseNotes: [
+      'High-Volume Language Data Output Telemetry & Production Targets (500+ Mins Daily)',
+      'Super QC multi-tier verification accuracy standards (99.9%+)',
+    ],
+  };
+};
 
 // ─────────────────────────────────────────────────────────────
 //  In-Memory Telemetry & Analytics Store for Admin Dashboard
@@ -82,13 +117,37 @@ PRICING MODEL:
 - Factors: audio duration, language complexity, turnaround SLA, accuracy requirements
 - To request a quote: Email contact@zenemoo.in or visit https://www.zenemoo.in/#contact
 
+OFFICIAL MOBILE APPLICATION (ZENEMOO FOR ANDROID):
+- Application Name: Zenemoo Official Android Application
+- Package Identifier: in.zenemoo.app
+- Compatibility: Android 8.0 (Oreo) and above (API 26 to Android 14/15)
+- Architecture: Universal (ARM64, ARMv7, x86_64)
+- Direct APK Download Link: https://www.zenemoo.in/downloads/zenemoo-latest.apk
+- Official Android App Info Page: https://www.zenemoo.in/app/android (also accessible via https://www.zenemoo.in/app)
+- Key Application Features:
+  1. Real-Time Push Notifications: Instant alerts for career opportunities, project announcements, application review updates, and operational notices.
+  2. Mobile Opportunities Portal: Browse open data positions, view eligibility, submit candidate applications with resume uploads directly from your phone.
+  3. Integrated Zenemoo AI Assistant: Native mobile access to AI chat in English, Hindi, and Odia for queries, language processing, and workflows.
+  4. Audio & Language Data Workflows: Mobile-optimized interface for contributors, annotators, and transcribers.
+  5. Centralized Notification Center: In-app notification center with read/unread tracking and deep links.
+
+HOW TO DOWNLOAD AND INSTALL THE ZENEMOO ANDROID APP:
+Step 1: Visit https://www.zenemoo.in/app/android on your Android mobile device.
+Step 2: Click the "Download Zenemoo APK" button (downloads zenemoo-latest.apk).
+Step 3: When the download completes, tap the APK file in your notification bar or Downloads folder.
+Step 4: If prompted, allow "Install unknown apps" for your web browser in Android Settings.
+Step 5: Tap "Install" to complete the setup. Open the Zenemoo app and enable notifications for real-time updates.
+
 WEBSITE PAGES & PUBLIC NAVIGATION LINKS:
 - Homepage: https://www.zenemoo.in/
+- Official Android App Download Page: https://www.zenemoo.in/app/android
+- Direct APK Download: https://www.zenemoo.in/downloads/zenemoo-latest.apk
 - Join AI Data Network (Talent Registration): https://www.zenemoo.in/talent-registration
 - Open Opportunities & Careers: https://www.zenemoo.in/opportunities
 - Community & Client Reviews: https://www.zenemoo.in/review
 - Published Team Directory: https://www.zenemoo.in/team-directory
 - Zenemoo AI Assistant (Full Page): https://www.zenemoo.in/zenemooai
+- AI Data Training & Datasets: https://www.zenemoo.in/ai-data
 - Languages We Work In Section: https://www.zenemoo.in/#languages
 - Core AI Services Section: https://www.zenemoo.in/#services
 - DesiCrew Partnership Section: https://www.zenemoo.in/#partner
@@ -98,10 +157,11 @@ WEBSITE PAGES & PUBLIC NAVIGATION LINKS:
 
 CRITICAL PRIVACY & ANSWERING RULES:
 1. PUBLIC CAPACITY FACTS ONLY: Always state Zenemoo works across "23+ languages with a network of 50+ members across India."
-2. NEVER EXPOSE INTERNAL OPERATIONAL DATA: Never reveal candidate names, emails, phone numbers, tracking codes (ZEN-XXXX), internal resource counts per language, coordinator counts, speaker capacity, candidate availability, database IDs, internal admin notes, or admin dashboard links.
-3. LANGUAGE QUESTIONS: When asked if Zenemoo supports a specific language (e.g. Odia, Gujarati, Bengali, Tamil, Telugu), confirm capability within our India-wide network. If asked for exact speaker counts, state: "Our available resources depend on specific project requirements, volume, timeline and speaker criteria. Please contact Zenemoo at contact@zenemoo.in for current availability."
-4. NAVIGATION GUIDANCE: When users ask where to apply, register, read reviews, or contact Zenemoo, provide the exact public website links listed above.
-5. TEAM SIZE QUESTIONS: State "Zenemoo currently has a network of 50+ members across India supporting multilingual AI-data and related projects."
+2. MOBILE APPLICATION QUESTIONS: When asked if Zenemoo has an app, what version is current, or how to download it, enthusiastically confirm that Zenemoo has an official Android mobile app available for direct download at https://www.zenemoo.in/app/android. Always reference the live release version and details injected in the [LIVE RELEASE TELEMETRY: ZENEMOO ANDROID APPLICATION] section below.
+3. NEVER EXPOSE INTERNAL OPERATIONAL DATA: Never reveal candidate personal data, internal tracking codes, database IDs, or admin passwords.
+4. LANGUAGE QUESTIONS: When asked if Zenemoo supports a specific language, confirm capability within our India-wide network.
+5. NAVIGATION GUIDANCE: When users ask where to apply, register, read reviews, download the app, or contact Zenemoo, provide the exact public website links listed above.
+6. TEAM SIZE QUESTIONS: State "Zenemoo currently has a network of 50+ members (40 Transcribers + 10 QC Specialists) across India supporting multilingual AI-data and related projects."
 `;
 
 // ─────────────────────────────────────────────────────────────
@@ -109,6 +169,14 @@ CRITICAL PRIVACY & ANSWERING RULES:
 // ─────────────────────────────────────────────────────────────
 const COMPANY_PROCESSES = `
 [ZENEMOO COMPANY PROCESSES & WORKFLOWS]
+
+HOW TO DOWNLOAD & INSTALL ZENEMOO ANDROID APP:
+Step 1: Open https://www.zenemoo.in/app/android on your mobile device
+Step 2: Tap the "Download Zenemoo APK" button
+Step 3: Open the downloaded zenemoo-latest.apk file
+Step 4: Grant "Install from this source" permission if prompted by Android
+Step 5: Tap Install and launch Zenemoo to explore jobs, AI services, and real-time push notifications
+Action: {{ACTION:app}}
 
 HOW TO APPLY FOR A JOB AT ZENEMOO:
 Step 1: Visit the Zenemoo website at https://www.zenemoo.in/
@@ -151,7 +219,23 @@ Action: {{ACTION:partner}}
 //  Dynamic RAG Context Builder (Supabase Live Data)
 // ─────────────────────────────────────────────────────────────
 export const buildDynamicRAGContext = async (userQuery = '') => {
+  // 0. Live Android Release Telemetry (Always up to date with android-release.json)
+  const manifest = getLatestAppManifest();
+  const appVer = manifest.version ? `v${manifest.version}` : 'latest';
+  const releaseNotesStr = Array.isArray(manifest.releaseNotes) ? manifest.releaseNotes.join('; ') : '';
+
   let liveContext = VERIFIED_COMPANY_KNOWLEDGE + '\n' + COMPANY_PROCESSES;
+
+  liveContext += `\n[LIVE RELEASE TELEMETRY: ZENEMOO ANDROID APPLICATION]
+- Current Official Version: ${appVer}
+- Package Name: ${manifest.packageName || 'in.zenemoo.app'}
+- Release Date: ${manifest.releaseDate || 'Latest'}
+- Architecture: Universal (ARM64, ARMv7, x86_64)
+- Minimum Android Requirement: Android 8.0 (API 26) and above
+- Direct APK Download Link: ${manifest.downloadUrl || 'https://www.zenemoo.in/downloads/zenemoo-latest.apk'}
+- App Info & Download Portal: https://www.zenemoo.in/app/android
+${releaseNotesStr ? `- Current Version Highlights: ${releaseNotesStr}` : ''}
+`;
 
   if (supabase) {
     try {
@@ -382,10 +466,9 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
   const candidateModels = Array.from(new Set([
     process.env.GROQ_AI_MODEL,
     'openai/gpt-oss-120b',
-    'llama-3.3-70b-versatile',
-    'llama-3.1-70b-versatile',
-    'llama3-70b-8192',
     'llama-3.1-8b-instant',
+    'llama3-70b-8192',
+    'llama-3.3-70b-versatile',
   ].filter(Boolean)));
 
   const tokenLimit = lengthMode === 'short' ? 500 : lengthMode === 'detailed' ? 3000 : 2048;
@@ -397,29 +480,30 @@ export const processAiChat = async (messages = [], language = 'en', lengthPrefer
 
   for (const modelName of candidateModels) {
     usedModel = modelName;
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: fullMessages,
-        temperature: 0.25,
-        max_tokens: tokenLimit,
-        stream: false,
-      }),
-    });
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: fullMessages,
+          temperature: 0.25,
+          max_tokens: tokenLimit,
+          stream: false,
+        }),
+      });
 
-    if (response.ok) {
-      break;
-    }
+      if (response.ok) {
+        break;
+      }
 
-    errText = await response.text();
-    console.warn(`[Zenemoo AI] Model ${modelName} returned status ${response.status}: ${errText}`);
-    if (response.status !== 404 && !errText.includes('model_not_found')) {
-      break;
+      errText = await response.text();
+      console.warn(`[Zenemoo AI] Model ${modelName} returned status ${response.status}: ${errText}`);
+    } catch (e) {
+      console.warn(`[Zenemoo AI] Network error calling ${modelName}:`, e.message);
     }
   }
 

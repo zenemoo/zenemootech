@@ -552,11 +552,15 @@ export function App() {
       {/* Global Right-Side AI Drawer Panel (Active on all non-admin pages) */}
       {currentRoute !== 'admin' && (
         <>
-          <ZenemooAiDrawer
-            isOpen={isAiDrawerOpen}
-            onClose={() => setIsAiDrawerOpen(false)}
-          />
-          <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+          {currentRoute !== 'zenemooai' && (
+            <>
+              <ZenemooAiDrawer
+                isOpen={isAiDrawerOpen}
+                onClose={() => setIsAiDrawerOpen(false)}
+              />
+              <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+            </>
+          )}
           <SubscribeModal />
           <ZenemooNotificationPrompt />
           <NotificationToast />
