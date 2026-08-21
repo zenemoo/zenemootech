@@ -41,6 +41,12 @@ export const CountUp: React.FC<CountUpProps> = ({
   useEffect(() => {
     if (!hasAnimated) return;
 
+    // Check prefers-reduced-motion
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setCount(end);
+      return;
+    }
+
     let startTime: number | null = null;
     let animationFrameId: number;
 
