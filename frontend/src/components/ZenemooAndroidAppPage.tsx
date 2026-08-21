@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   Download,
   ShieldCheck,
@@ -58,24 +59,24 @@ const DEFAULT_MANIFEST: ReleaseManifest = {
   platform: 'android',
   appName: 'Zenemoo',
   packageName: 'in.zenemoo.app',
-  version: '2.0.4',
-  versionCode: 4,
-  apkUrl: '/downloads/zenemoo-latest.apk',
-  apkFileName: 'zenemoo-v2.0.4.apk',
-  apkSize: '33.6 MB',
-  releaseDate: '2026-08-21',
+  version: '2.0.5',
+  versionCode: 5,
+  apkUrl: 'https://www.zenemoo.in/downloads/zenemoo-latest.apk',
+  apkFileName: 'zenemoo-v2.0.5.apk',
+  apkSize: '8.3 MB',
+  releaseDate: '2026-08-22',
   minimumAndroid: 'Android 8.0 (API 26) or later',
   targetAndroid: 'Android 14 / 15 (API 34/35)',
-  architecture: 'ARM64 / Universal',
-  sha256: '3531d2a5c13975f79af71cb475129d5d31b8debf7a8e3a9855507bde220244e3',
+  architecture: 'Universal (ARM64, ARMv7, x86_64)',
+  sha256: '8f2b5c8d30002040042468e35cb8df63280261756b0c43e5c86024e32a4be303',
   releaseType: 'stable',
   isOfficial: true,
   releaseNotes: [
-    '🔔 Improved Notification Center with internal scrolling and relative timestamps.',
-    '⚡ Improved notification delivery, push reliability, and deep-link handling.',
-    '📱 Improved mobile responsive UI, scroll interactions, and layout stability.',
-    '🚀 Improved automatic app update detection engine for seamless updates.',
-    '🛡️ Improved overall performance, memory management, and security standards.',
+    '🔔 Official Android runtime POST_NOTIFICATIONS permission prompt flow.',
+    '🎙️ On-demand microphone permission verification with seamless speech recognition.',
+    '⚡ Enhanced R8/ProGuard byte-code optimization producing compact 8.3 MB APK footprint.',
+    '📱 Improved mobile layout clearance and smooth scroll interactions.',
+    '🛡️ Hardened security standards, updated telemetry safeguards, and high-DPI graphics.',
   ],
 };
 
@@ -92,6 +93,7 @@ export const ZenemooAndroidAppPage: React.FC<ZenemooAndroidAppPageProps> = ({
   const [copiedSha, setCopiedSha] = useState<boolean>(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<string>('');
 
   // Fetch dynamic release manifest on mount
   useEffect(() => {
@@ -125,17 +127,38 @@ export const ZenemooAndroidAppPage: React.FC<ZenemooAndroidAppPageProps> = ({
   };
 
   const handleDownload = () => {
-    setIsDownloading(true);
-    const link = document.createElement('a');
-    link.href = manifest.apkUrl || '/downloads/zenemoo-latest.apk';
-    link.download = manifest.apkFileName || `zenemoo-v${manifest.version}.apk`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      setIsDownloading(true);
+      setDownloadError('');
 
-    setTimeout(() => {
+      const rawUrl = manifest.apkUrl || '/downloads/zenemoo-latest.apk';
+      const fullUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+        ? rawUrl
+        : `https://www.zenemoo.in${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+
+      // In Capacitor native Android environment, open via native system browser / Download Manager
+      if (Capacitor.isNativePlatform()) {
+        window.open(fullUrl, '_system');
+      } else {
+        // In standard desktop / mobile browsers, trigger direct download anchor with fallback
+        const link = document.createElement('a');
+        link.href = fullUrl;
+        link.download = manifest.apkFileName || `zenemoo-v${manifest.version}.apk`;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      setTimeout(() => {
+        setIsDownloading(false);
+      }, 2500);
+    } catch (err: any) {
+      console.error('[Download Error]:', err);
       setIsDownloading(false);
-    }, 2000);
+      setDownloadError('Unable to start the download. Please try again.');
+    }
   };
 
   const faqs = [
@@ -234,6 +257,14 @@ export const ZenemooAndroidAppPage: React.FC<ZenemooAndroidAppPageProps> = ({
               <Download className="w-5 h-5 animate-bounce" />
               <span>{isDownloading ? 'Starting Download...' : `Download Zenemoo v${manifest.version}`}</span>
             </button>
+
+            {downloadError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono flex items-center justify-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{downloadError}</span>
+              </div>
+            )}
+
             <p className="text-center text-[11px] font-mono text-slate-400">
               Official APK • {manifest.apkSize} • Direct HTTPS Download
             </p>

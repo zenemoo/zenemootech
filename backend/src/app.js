@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -52,6 +54,25 @@ app.get('/health', (req, res) => {
     service: 'ZENEMOO Data Solutions API Server',
     timestamp: new Date().toISOString(),
   });
+});
+
+// Explicit Android APK Download Handlers
+app.get(['/downloads/zenemoo-latest.apk', '/downloads/:filename', '/api/downloads/zenemoo-latest.apk'], (req, res, next) => {
+  const candidatePaths = [
+    path.resolve(process.cwd(), '../frontend/public/downloads/zenemoo-latest.apk'),
+    path.resolve(process.cwd(), 'frontend/public/downloads/zenemoo-latest.apk'),
+    path.resolve(process.cwd(), '../frontend/dist/downloads/zenemoo-latest.apk'),
+    path.resolve(process.cwd(), 'frontend/dist/downloads/zenemoo-latest.apk'),
+    path.resolve(process.cwd(), 'public/downloads/zenemoo-latest.apk'),
+  ];
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="zenemoo-latest.apk"');
+      return res.sendFile(p);
+    }
+  }
+  next();
 });
 
 // Mounting API Routes under /api
