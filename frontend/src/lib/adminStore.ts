@@ -84,10 +84,10 @@ export const DEFAULT_CONFIG: SiteConfig = {
 };
 
 export const DEFAULT_TELEMETRY: TelemetryConfig = {
-  dailyOutput: 180,
-  monthlyOutput: 3600,
-  accuracyRate: 99,
-  activeSpecialists: 20,
+  dailyOutput: 500,
+  monthlyOutput: 10000,
+  accuracyRate: 99.9,
+  activeSpecialists: 50,
 };
 
 export const DEFAULT_AUTHORIZED_EMAILS: AuthorizedEmailAccount[] = [

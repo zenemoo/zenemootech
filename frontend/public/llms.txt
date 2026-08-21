@@ -13,8 +13,9 @@ Zenemoo (https://zenemoo.in) is an AI-powered language and data services company
 - Verified Enterprise Vendor Collaboration with DesiCrew Solutions since 2023
 
 ## Production SLA & Telemetry
-- 180+ Minutes Daily Audio Output Target per Contributor
-- 99%+ Accuracy Rating SLA
+- 500+ Minutes Daily Audio Output Capacity (10,000+ Mins Monthly Production Target)
+- 99.9%+ Accuracy Rating SLA with Super QC Verification
+- 50+ Active Team Members (40 Transcribers + 10 QC Leads)
 - 24/7 Enterprise SLAs with < 2 Hours Response Time Guarantee
 
 ## Official Contact Emails

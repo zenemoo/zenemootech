@@ -94,7 +94,7 @@ export const Services: React.FC = () => {
       desc: 'Support for ongoing and large-volume data projects with dedicated teams, structured workflows, and regular delivery schedules.',
       features: [
         'Dedicated project teams (50+ members across India)',
-        'Regular delivery schedules (180+ mins/day)',
+        'Regular delivery schedules (500+ mins/day)',
         'Workflow and project coordination',
         'Scalable team capacity on demand',
       ],

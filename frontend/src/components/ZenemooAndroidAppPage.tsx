@@ -346,12 +346,20 @@ export const ZenemooAndroidAppPage: React.FC<ZenemooAndroidAppPageProps> = ({
             </div>
 
             <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-1.5 hover:border-cyan-500/30 transition-colors">
-              <div className="flex items-center gap-2 text-purple-400 font-bold text-sm">
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <h3 className="text-white font-display">AI & Language Services</h3>
+              <div className="flex items-center justify-between gap-2 text-purple-400 font-bold text-sm">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 shrink-0 text-purple-400" />
+                  <h3 className="text-white font-display">AI &amp; Data Services</h3>
+                </div>
+                <a
+                  href="/zenemooai"
+                  className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 transition-colors shrink-0 font-bold"
+                >
+                  Explore Zenemoo AI →
+                </a>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                Access AI-powered tools and multilingual language services.
+                Access AI data workflows, speech transcription, multilingual dataset tools, and interactive AI assistance.
               </p>
             </div>
 

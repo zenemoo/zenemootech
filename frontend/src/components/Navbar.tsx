@@ -21,10 +21,11 @@ import { NotificationCenter } from './NotificationCenter';
 interface NavbarProps {
   onBack?: () => void;
   showBackButton?: boolean;
+  backButtonLabel?: string;
   onOpenAiDrawer?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAiDrawer }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButtonLabel, onOpenAiDrawer }) => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { logoUrl, isLoading } = useActiveLogo();
@@ -92,11 +93,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
 
     // Check dedicated page paths first
     const path = window.location.pathname;
-    if (path === '/opportunities') {
+    const hash = window.location.hash;
+    if (
+      path === '/opportunities' ||
+      path === '/projects' ||
+      path === '/programs' ||
+      hash === '#opportunities' ||
+      hash === '#projects' ||
+      hash === '#programs' ||
+      hash === '#desicrew-contributors' ||
+      hash === '#desicrew'
+    ) {
       setActiveSection('Opportunities');
       return;
     }
-    if (path === '/review') {
+    if (path === '/review' || path === '/reviews' || hash === '#review' || hash === '#reviews') {
       setActiveSection('Reviews');
       return;
     }
@@ -112,9 +123,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
     ];
 
     // Initialize from URL Hash if present
-    const hash = window.location.hash.replace('#', '').toLowerCase();
-    if (hash) {
-      const match = sections.find((s) => s.id === hash || s.name.toLowerCase() === hash);
+    const cleanHash = hash.replace('#', '').toLowerCase();
+    if (cleanHash) {
+      const match = sections.find((s) => s.id === cleanHash || s.name.toLowerCase() === cleanHash);
       if (match) {
         setActiveSection(match.name);
       }
@@ -223,7 +234,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                 className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono transition-all cursor-pointer group shadow-lg shadow-cyan-500/10"
               >
                 <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-                <span>Return to Zenemoo Home</span>
+                <span>{backButtonLabel || 'Return to Zenemoo Home'}</span>
               </button>
             ) : (
               <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md">
@@ -350,7 +361,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, onOpenAi
                   className="w-full flex items-center gap-2.5 px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/40 transition-all hover:bg-cyan-500/30 cursor-pointer shadow-lg shadow-cyan-500/10 shrink-0 my-1"
                 >
                   <ArrowLeft className="w-4 h-4 text-cyan-400" />
-                  <span>Return to Zenemoo Home</span>
+                  <span>{backButtonLabel || 'Return to Zenemoo Home'}</span>
                 </button>
               )}
 

@@ -40,13 +40,15 @@ import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 import { OpportunityStatusModal } from './OpportunityStatusModal';
 import { useActiveLogo } from '../lib/useActiveLogo';
 import { SeoImage } from '../seo/components/SeoImage';
+import { Navbar } from './Navbar';
 
 interface OpportunityDetailPageProps {
   opportunityId: string;
   onBack: () => void;
+  onOpenAiDrawer?: () => void;
 }
 
-export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ opportunityId, onBack }) => {
+export const OpportunityDetailPage: React.FC<OpportunityDetailPageProps> = ({ opportunityId, onBack, onOpenAiDrawer }) => {
   const { logoUrl } = useActiveLogo();
   const [opportunity, setOpportunity] = useState<OpportunityProgram | null>(null);
   const [loading, setLoading] = useState(true);
@@ -339,46 +341,16 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
 
-      {/* Sticky Header Bar */}
-      <header className="sticky top-0 z-50 bg-[#050505]/90 light:bg-white/90 backdrop-blur-xl border-b border-white/10 light:border-slate-200 py-3.5 sm:py-4 transition-all shadow-xl shadow-cyan-950/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2.5 sm:gap-3 group cursor-pointer shrink-0">
-            <div className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] shadow-lg shadow-cyan-500/30 shrink-0">
-              <SeoImage
-                src={logoUrl || '/assets/logo.png'}
-                alt="ZENEMOO Logo"
-                width={40}
-                height={40}
-                className="w-full h-full object-contain rounded-full bg-white p-0.5"
-                fallbackSrc="/assets/logo.png"
-              />
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="font-display font-extrabold text-base sm:text-lg text-white light:text-slate-900 tracking-wider leading-none">
-                ZENEMOO
-              </span>
-              <span className="text-[9px] font-mono text-cyan-400 tracking-tight hidden sm:block mt-0.5">
-                Enterprise AI Language &amp; Data
-              </span>
-            </div>
-          </button>
+      {/* Top Navbar (Completely Static / Sticky & Shared Across Zenemoo) */}
+      <Navbar
+        onBack={onBack}
+        showBackButton={true}
+        backButtonLabel="Back to Opportunities Portal"
+        onOpenAiDrawer={onOpenAiDrawer}
+      />
 
-          <button
-            onClick={onBack}
-            className="px-3 sm:px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] light:bg-slate-100 light:hover:bg-slate-200 border border-white/10 light:border-slate-300 text-xs font-mono font-bold text-slate-300 light:text-slate-700 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer shrink-0"
-            title="Back to Opportunities Portal"
-          >
-            <ArrowLeft className="w-4 h-4 text-cyan-400 shrink-0" />
-            <span>
-              <span className="hidden sm:inline">Back to Opportunities Portal</span>
-              <span className="sm:hidden">Back</span>
-            </span>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Split Screen Container */}
-      <main className="flex-1 py-12 sm:py-16 relative z-10">
+      {/* Main Split Screen Container (Offset for Fixed Navbar) */}
+      <main className="flex-1 pt-28 sm:pt-32 pb-16 sm:pb-20 relative z-10 font-sans">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           {/* Breadcrumb & Status */}
           <div className="flex flex-wrap items-center justify-between gap-4 font-mono text-xs">

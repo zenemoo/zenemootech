@@ -62,11 +62,11 @@ SUPPORTED LANGUAGES & CAPABILITIES:
 - Major and regional languages supported include: Hindi, English, Odia (primary specialty), Gujarati, Bengali, Tamil, Marathi, Telugu, Urdu, Assamese, Maithili, Punjabi, Kashmiri, Sanskrit, Nepali, Bodo, Santali, Sindhi, Kannada, Manipuri, Malayalam, Konkani, and several other Indian regional languages.
 
 PERFORMANCE METRICS (Verified Public Facts):
-- Accuracy: 99%+ (Passes Super QC multi-stage review)
-- Daily Production Output: 180+ audio minutes processed/day (3,600+ min/month)
-- Team & Network Size: 50+ members across India
+- Accuracy: 99.9%+ (Passes Super QC multi-stage review)
+- Daily Production Output: 500+ audio minutes processed/day (10,000+ min/month)
+- Team & Network Size: 50+ members (40 Transcribers + 10 QC Leads) across India
 - Experience: 1.5+ Years (DesiCrew Partnership active since 2023)
-- Quality Standard: Multi-stage QC before every client delivery
+- Quality Standard: Multi-stage Super QC before every client delivery
 
 CONTACT INFORMATION:
 - Sales & Inquiries: contact@zenemoo.in

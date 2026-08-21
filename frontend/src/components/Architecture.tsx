@@ -24,7 +24,7 @@ export const Architecture: React.FC = () => {
       title: 'Annotation / Transcription',
       icon: FileCheck,
       desc: 'Specialists perform clean verbatim transcription, entity labeling, intent tagging, or voice over recordings following strict project guidelines.',
-      details: ['Timestamp alignment & speaker labeling', 'NLP entity & sentiment tagging', 'Daily production output tracking (180+ mins/day)'],
+      details: ['Timestamp alignment & speaker labeling', 'NLP entity & sentiment tagging', 'Daily production output tracking (500+ mins/day)'],
     },
     {
       num: '04',

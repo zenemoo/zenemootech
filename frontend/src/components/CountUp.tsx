@@ -62,11 +62,17 @@ export const CountUp: React.FC<CountUpProps> = ({
     return () => cancelAnimationFrame(animationFrameId);
   }, [hasAnimated, end, duration]);
 
+  const formattedValue =
+    decimals > 0
+      ? count.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+      : Math.round(count).toLocaleString('en-US');
+
   return (
     <span ref={ref} className={className}>
       {prefix}
-      {count.toFixed(decimals)}
+      {formattedValue}
       {suffix}
     </span>
   );
 };
+

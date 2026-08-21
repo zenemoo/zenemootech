@@ -467,7 +467,11 @@ export function App() {
       ) : currentRoute === 'talent-registration' ? (
         <ZenemooTalentRegistrationPage onBack={handleBackToHome} />
       ) : currentRoute === 'opportunities' ? (
-        <OpportunitiesPage onBack={handleBackToHome} onSelectProgram={handleSelectProgram} />
+        <OpportunitiesPage
+          onBack={handleBackToHome}
+          onSelectProgram={handleSelectProgram}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
       ) : currentRoute === 'opportunity-detail' ? (
         <OpportunityDetailPage
           opportunityId={selectedOpportunityId}
@@ -475,6 +479,7 @@ export function App() {
             window.location.hash = 'opportunities';
             setCurrentRoute('opportunities');
           }}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
         />
       ) : currentRoute === 'unsubscribe' ? (
         <UnsubscribePage />

@@ -33,7 +33,7 @@ export const getAppVersion = async (): Promise<string> => {
       console.warn('[App.getInfo Error]:', e);
     }
   }
-  return '2.0.3';
+  return '2.0.4';
 };
 
 /**

@@ -110,26 +110,26 @@ export const Hero: React.FC = () => {
 
           <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-purple-500/30 transition-all">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-purple-400 mb-1">
-              <CountUp end={99} decimals={0} suffix="%+" />
+              <CountUp end={99.9} decimals={1} suffix="%+" />
             </div>
             <div className="text-xs font-semibold text-slate-200">Quality &amp; Accuracy Rate</div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1">Passes Super QC</div>
+            <div className="text-[11px] text-slate-400 font-mono mt-1">Super QC Verified</div>
           </div>
 
           <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-emerald-500/30 transition-all">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400 mb-1">
-              <CountUp end={180} decimals={0} suffix="+ Mins" />
+              <CountUp end={500} decimals={0} suffix="+ Mins" />
             </div>
             <div className="text-xs font-semibold text-slate-200">Daily Production Output</div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1">3,600+ Mins / Month</div>
+            <div className="text-[11px] text-slate-400 font-mono mt-1">10,000+ Mins / Month</div>
           </div>
 
           <div className="glass-panel p-6 rounded-2xl border border-white/10 text-center relative overflow-hidden group hover:border-blue-500/30 transition-all">
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-blue-400 mb-1">
               <CountUp end={50} decimals={0} suffix="+" />
             </div>
-            <div className="text-xs font-semibold text-slate-200">Members</div>
-            <div className="text-[11px] text-slate-400 font-mono mt-1">Across India • 23+ Languages</div>
+            <div className="text-xs font-semibold text-slate-200">Total Active Team</div>
+            <div className="text-[11px] text-slate-400 font-mono mt-1">40 Transcribers + 10 QC</div>
           </div>
         </div>
 
