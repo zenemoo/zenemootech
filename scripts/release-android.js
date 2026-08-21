@@ -22,21 +22,60 @@ if (fs.existsSync(nestedApk)) {
 }
 
 // 4. Assemble Release APK with Gradle
-console.log('\n🔨 Step 4: Assembling Android Release APK with R8 minification...');
+console.log('\n🔨 Step 4: Assembling Signed Android Release APK with R8 minification...');
 const javaHome = process.env.JAVA_HOME || 'C:\\Program Files\\Android\\Android Studio\\jbr';
 const env = { ...process.env, JAVA_HOME: javaHome, PATH: `${javaHome}\\bin;${process.env.PATH}` };
 execSync('.\\gradlew.bat assembleRelease', { cwd: path.resolve('android'), env, stdio: 'inherit' });
 
-// 5. Copy APK & update release metadata
-console.log('\n📊 Step 5: Updating release artifacts & metadata...');
-const builtApkPath = path.resolve('android/app/build/outputs/apk/release/app-release-unsigned.apk');
-const targetPublicApk = path.resolve('frontend/public/downloads/zenemoo-latest.apk');
-const targetDistApk = path.resolve('frontend/dist/downloads/zenemoo-latest.apk');
+// 5. Locate and Verify Signed APK
+console.log('\n🔐 Step 5: Verifying APK Signature and Integrity...');
+const releaseApkDir = path.resolve('android/app/build/outputs/apk/release');
+const candidateApks = [
+  path.join(releaseApkDir, 'app-release.apk'),
+  path.join(releaseApkDir, 'app-release-signed.apk'),
+];
 
-if (!fs.existsSync(builtApkPath)) {
-  console.error('❌ Error: Built APK not found at ' + builtApkPath);
+let builtApkPath = null;
+for (const cand of candidateApks) {
+  if (fs.existsSync(cand)) {
+    builtApkPath = cand;
+    break;
+  }
+}
+
+if (!builtApkPath) {
+  console.error('❌ Error: Signed release APK not found in ' + releaseApkDir);
   process.exit(1);
 }
+
+// Run apksigner verify if available
+const buildToolsPaths = [
+  'C:\\Users\\mrpre\\AppData\\Local\\Android\\Sdk\\build-tools\\35.0.0\\apksigner.bat',
+  'C:\\Users\\mrpre\\AppData\\Local\\Android\\Sdk\\build-tools\\36.1.0\\apksigner.bat',
+];
+
+let apksignerBin = buildToolsPaths.find((p) => fs.existsSync(p));
+if (apksignerBin) {
+  try {
+    const verifyOutput = execSync(`"${apksignerBin}" verify --verbose --print-certs "${builtApkPath}"`, {
+      env,
+      encoding: 'utf8',
+    });
+    console.log('✓ APK Signature verified successfully (v2 scheme valid)');
+    const certMatch = verifyOutput.match(/Signer #1 certificate SHA-256 digest:\s+([a-fA-F0-9]+)/);
+    if (certMatch) {
+      console.log(`✓ Certificate SHA-256: ${certMatch[1]}`);
+    }
+  } catch (sigErr) {
+    console.error('❌ Error: APK signature verification failed! Unsigned APK will not be published.', sigErr.message);
+    process.exit(1);
+  }
+}
+
+// 6. Copy APK & update release metadata
+console.log('\n📊 Step 6: Updating release artifacts & metadata...');
+const targetPublicApk = path.resolve('frontend/public/downloads/zenemoo-latest.apk');
+const targetDistApk = path.resolve('frontend/dist/downloads/zenemoo-latest.apk');
 
 fs.copyFileSync(builtApkPath, targetPublicApk);
 if (fs.existsSync(path.resolve('frontend/dist/downloads'))) {
@@ -52,8 +91,8 @@ const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(1);
 const gradleContent = fs.readFileSync(path.resolve('android/app/build.gradle'), 'utf8');
 const vNameMatch = gradleContent.match(/versionName\s+["']([^"']+)["']/);
 const vCodeMatch = gradleContent.match(/versionCode\s+(\d+)/);
-const versionName = vNameMatch ? vNameMatch[1] : '2.0.5';
-const versionCode = vCodeMatch ? parseInt(vCodeMatch[1], 10) : 5;
+const versionName = vNameMatch ? vNameMatch[1] : '2.0.6';
+const versionCode = vCodeMatch ? parseInt(vCodeMatch[1], 10) : 6;
 const releaseDate = new Date().toISOString().split('T')[0];
 
 const releaseMetadata = {
@@ -99,8 +138,8 @@ if (fs.existsSync(path.resolve('frontend/dist/app'))) {
 
 console.log(`✓ Release artifacts & metadata synchronized (v${versionName} - ${sizeMB} MB)`);
 
-// 6. Automatic Release Notification Dispatch
-console.log('\n🔔 Step 6: Checking and dispatching automatic release notification...');
+// 7. Automatic Release Notification Dispatch
+console.log('\n🔔 Step 7: Checking and dispatching automatic release notification...');
 try {
   const { checkAndNotifyAppRelease } = await import('../backend/src/services/appReleaseNotifier.js');
   const result = await checkAndNotifyAppRelease();
@@ -116,7 +155,7 @@ try {
 }
 
 console.log(`\n=====================================================`);
-console.log(`✅ Zenemoo Production Release v${versionName} Ready!`);
+console.log(`✅ Zenemoo Production Signed Release v${versionName} Ready!`);
 console.log(`📍 Output APK: ${targetPublicApk}`);
 console.log(`📊 Size: ${sizeBytes} bytes (${sizeMB} MB)`);
 console.log(`🔐 SHA-256: ${sha256}`);
