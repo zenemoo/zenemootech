@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Sparkles,
   ShieldAlert,
-  Bug,
 } from 'lucide-react';
 import { AiLanguage, LANGUAGE_LABEL_MAP } from '../lib/aiStore';
 
@@ -71,7 +70,6 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   const [errorCode, setErrorCode] = useState<string>('');
   const [countdown, setCountdown] = useState<number>(2);
   const [isMounted, setIsMounted] = useState<boolean>(false);
-  const [diagEvents, setDiagEvents] = useState<string[]>([]);
 
   // ── Engine Lifecycle Refs (Stable across all React re-renders) ──
   const recognitionRef = useRef<any>(null);
@@ -85,11 +83,11 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   const countdownTimerRef = useRef<any>(null);
   const transcriptBoxRef = useRef<HTMLDivElement>(null);
 
-  // Diagnostics Helper
+  // Silent Dev Log Helper
   const logDiag = (sessionId: number, message: string) => {
-    const logStr = `[Zenemoo Voice][Session ${sessionId}] ${message}`;
-    console.log(logStr);
-    setDiagEvents((prev) => [...prev.slice(-3), message]);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Zenemoo Voice][Session ${sessionId}] ${message}`);
+    }
   };
 
   useEffect(() => {
@@ -196,7 +194,6 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     setInterimText('');
     setErrorMessage('');
     setErrorCode('');
-    setDiagEvents([]);
     shouldContinueListeningRef.current = true;
 
     logDiag(sessionId, 'SESSION CREATED');
@@ -657,14 +654,6 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             </div>
           )}
         </div>
-
-        {/* Diagnostic Pipeline Bar (Visible in diagnostic mode) */}
-        {diagEvents.length > 0 && (
-          <div className="px-3 py-1.5 rounded-xl bg-black/50 border border-cyan-500/20 text-[10px] font-mono text-cyan-400/90 flex items-center gap-1.5 overflow-hidden truncate">
-            <Bug className="w-3 h-3 text-cyan-400 shrink-0" />
-            <span className="truncate">Diag: {diagEvents.join(' → ')}</span>
-          </div>
-        )}
 
         {/* Action Controls & Footer Buttons */}
         <div className="flex items-center justify-center gap-3 pt-1">
