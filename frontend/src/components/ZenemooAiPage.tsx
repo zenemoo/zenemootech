@@ -1258,7 +1258,7 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
                 }}
                 placeholder={LANG_UI_MAP[currentLanguage].placeholder}
                 disabled={loading}
-                className="w-full pl-3 sm:pl-4 pr-12 py-2 bg-transparent text-white placeholder-slate-500 text-xs sm:text-sm font-sans focus:outline-none leading-relaxed resize-none overflow-y-auto"
+                className="w-full pl-3 sm:pl-4 pr-12 py-2 bg-transparent text-white placeholder-slate-500 text-xs sm:text-sm font-sans focus:outline-none leading-relaxed resize-none overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden [scrollbar-width:none] [ms-overflow-style:none]"
                 style={{ maxHeight: '180px' }}
               />
 

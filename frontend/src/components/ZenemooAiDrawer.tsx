@@ -714,7 +714,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                     placeholder={ui.placeholder}
                     disabled={loading}
                     maxLength={2000}
-                    className="flex-1 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-slate-600 text-xs sm:text-sm font-sans focus:outline-none focus:border-cyan-500/60 focus:bg-white/[0.06] transition-all disabled:opacity-60 min-w-0 resize-none overflow-y-auto max-h-[120px] leading-relaxed"
+                    className="flex-1 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-slate-600 text-xs sm:text-sm font-sans focus:outline-none focus:border-cyan-500/60 focus:bg-white/[0.06] transition-all disabled:opacity-60 min-w-0 resize-none overflow-y-auto max-h-[120px] leading-relaxed scrollbar-none [&::-webkit-scrollbar]:hidden [scrollbar-width:none] [ms-overflow-style:none]"
                   />
                   <button
                     type="button"
