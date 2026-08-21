@@ -28,8 +28,8 @@ export const getPublishedAppManifest = () => {
 
   return {
     appName: 'Zenemoo',
-    version: '2.0.5',
-    versionCode: 5,
+    version: '2.0.6',
+    versionCode: 6,
     packageName: 'in.zenemoo.app',
     apkUrl: '/downloads/zenemoo-latest.apk',
     releaseDate: new Date().toISOString().split('T')[0],
@@ -108,7 +108,7 @@ export const saveReleaseCheckpoint = async (version, releaseDate) => {
  */
 export const checkAndNotifyAppRelease = async (forceCheck = false) => {
   const manifest = getPublishedAppManifest();
-  const currentVersion = manifest.version || '2.0.5';
+  const currentVersion = manifest.version || '2.0.6';
   const releaseDate = manifest.releaseDate || new Date().toISOString().split('T')[0];
 
   console.log(`[App Release] Published version: ${currentVersion}`);

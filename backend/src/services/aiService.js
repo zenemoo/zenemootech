@@ -27,7 +27,7 @@ export const getLatestAppManifest = () => {
   }
   return {
     appName: 'Zenemoo',
-    version: '2.0.5',
+    version: '2.0.6',
     packageName: 'in.zenemoo.app',
     downloadUrl: 'https://www.zenemoo.in/downloads/zenemoo-latest.apk',
     releaseDate: '2026-08-21',

@@ -75,10 +75,10 @@ const releaseMetadata = {
   isOfficial: true,
   forceUpdate: false,
   releaseNotes: [
+    '🎙️ Native Android microphone runtime permission prompt & app settings integration.',
     '🔔 Official Android runtime POST_NOTIFICATIONS permission prompt flow.',
-    '🎙️ On-demand microphone permission verification with seamless speech recognition.',
     '⚡ Enhanced R8/ProGuard byte-code optimization producing compact 8.3 MB APK footprint.',
-    '📱 Improved mobile layout clearance and smooth scroll interactions.',
+    '📱 Improved mobile layout clearance, universal APK download, and smooth scroll interactions.',
     '🛡️ Hardened security standards, updated telemetry safeguards, and high-DPI graphics.',
   ],
 };
