@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import {
@@ -15,11 +15,9 @@ import { AiLanguage, LANGUAGE_LABEL_MAP } from '../lib/aiStore';
 
 export type VoiceState =
   | 'idle'
-  | 'checking_permission'
   | 'listening'
   | 'processing'
   | 'completed'
-  | 'closing'
   | 'permission_denied'
   | 'unsupported'
   | 'no_speech'
@@ -65,6 +63,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   onTranscriptComplete,
   currentLanguage = 'en',
 }) => {
+  // ── UI States (Isolated from Recognition Engine Lifecycle) ──
   const [state, setState] = useState<VoiceState>('idle');
   const [transcript, setTranscript] = useState<string>('');
   const [interimText, setInterimText] = useState<string>('');
@@ -74,17 +73,23 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [diagEvents, setDiagEvents] = useState<string[]>([]);
 
+  // ── Engine Lifecycle Refs (Stable across all React re-renders) ──
   const recognitionRef = useRef<any>(null);
-  const timerRef = useRef<any>(null);
-  const speechDetectedRef = useRef<boolean>(false);
-  const closingTimeoutRef = useRef<any>(null);
-  const finalTranscriptRef = useRef<string>('');
+  const activeSessionIdRef = useRef<number>(0);
+  const isStartingRef = useRef<boolean>(false);
+  const isListeningRef = useRef<boolean>(false);
   const shouldContinueListeningRef = useRef<boolean>(false);
+  const accumulatedFinalRef = useRef<string>('');
+  const restartTimerRef = useRef<any>(null);
+  const closingTimeoutRef = useRef<any>(null);
+  const countdownTimerRef = useRef<any>(null);
   const transcriptBoxRef = useRef<HTMLDivElement>(null);
 
-  const addDiag = (eventStr: string) => {
-    console.log(`[Zenemoo Voice] ${eventStr}`);
-    setDiagEvents((prev) => [...prev.slice(-4), eventStr]);
+  // Diagnostics Helper
+  const logDiag = (sessionId: number, message: string) => {
+    const logStr = `[Zenemoo Voice][Session ${sessionId}] ${message}`;
+    console.log(logStr);
+    setDiagEvents((prev) => [...prev.slice(-3), message]);
   };
 
   useEffect(() => {
@@ -105,16 +110,25 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     }
   };
 
-  const cleanupRecognition = useCallback(() => {
+  // ── Hard Engine Cleanup ──
+  const cleanupEngine = () => {
     shouldContinueListeningRef.current = false;
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+    isStartingRef.current = false;
+    isListeningRef.current = false;
+
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
     if (closingTimeoutRef.current) {
       clearTimeout(closingTimeoutRef.current);
       closingTimeoutRef.current = null;
     }
+
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onstart = null;
@@ -134,71 +148,78 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
       }
       recognitionRef.current = null;
     }
-  }, []);
+  };
 
-  const finalizeAndClose = useCallback(
-    (textToInsert: string) => {
-      shouldContinueListeningRef.current = false;
-      const trimmed = textToInsert.trim();
-      if (!trimmed) {
-        setState('no_speech');
-        return;
+  // ── Finalize Transcript and Auto-Close ──
+  const finalizeAndClose = (sessionId: number, textToInsert: string) => {
+    if (sessionId !== activeSessionIdRef.current) return;
+    shouldContinueListeningRef.current = false;
+
+    const trimmed = textToInsert.trim();
+    if (!trimmed) {
+      logDiag(sessionId, 'NO SPEECH CAPTURED');
+      setState('no_speech');
+      return;
+    }
+
+    logDiag(sessionId, `FINALIZING: "${trimmed}"`);
+    setState('completed');
+    setCountdown(2);
+
+    let remaining = 2;
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setCountdown(remaining);
+      if (remaining <= 0) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
       }
+    }, 1000);
 
-      setState('completed');
-      setCountdown(2);
+    closingTimeoutRef.current = setTimeout(() => {
+      if (sessionId !== activeSessionIdRef.current) return;
+      cleanupEngine();
+      onTranscriptComplete(trimmed);
+      onClose();
+    }, 2000);
+  };
 
-      let remaining = 2;
-      timerRef.current = setInterval(() => {
-        remaining -= 1;
-        setCountdown(remaining);
-        if (remaining <= 0) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-      }, 1000);
+  // ── Core Speech Recognition Session Starter ──
+  const initAndStartSession = async (sessionId: number) => {
+    cleanupEngine();
 
-      closingTimeoutRef.current = setTimeout(() => {
-        cleanupRecognition();
-        onTranscriptComplete(trimmed);
-        onClose();
-      }, 2000);
-    },
-    [cleanupRecognition, onTranscriptComplete, onClose]
-  );
+    // Verify session is still active
+    if (sessionId !== activeSessionIdRef.current) return;
 
-  const startListening = useCallback(async () => {
-    cleanupRecognition();
+    accumulatedFinalRef.current = '';
     setTranscript('');
     setInterimText('');
     setErrorMessage('');
     setErrorCode('');
     setDiagEvents([]);
-    finalTranscriptRef.current = '';
-    speechDetectedRef.current = false;
     shouldContinueListeningRef.current = true;
 
-    // 1. Diagnostics: SpeechRecognition support check
+    logDiag(sessionId, 'SESSION CREATED');
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    console.log('[Zenemoo Voice] 1. supported:', !!SpeechRecognition);
-    addDiag(`supported: ${!!SpeechRecognition}`);
-
     if (!SpeechRecognition) {
+      logDiag(sessionId, 'UNSUPPORTED: SpeechRecognition API missing');
       setState('unsupported');
       setErrorCode('api-unsupported');
       setErrorMessage(
-        "Voice input isn't supported in this browser. You can continue using standard text input."
+        "Voice input isn't supported in this browser. You can continue using text input."
       );
       return;
     }
 
     try {
-      // 2. Diagnostics: Check microphone permission
+      // 1. Permission check
       const permState = await getMicrophonePermissionState();
-      console.log('[Zenemoo Voice] 2. permission:', permState);
-      addDiag(`permission: ${permState}`);
+      logDiag(sessionId, `Permission: ${permState}`);
+
+      if (sessionId !== activeSessionIdRef.current) return;
 
       if (permState === 'denied') {
         shouldContinueListeningRef.current = false;
@@ -210,16 +231,16 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         return;
       }
 
-      // 3. Request mic hardware stream if permission is prompt/unknown
+      // 2. Hardware stream check if prompt/unknown
       if (permState === 'prompt' || permState === 'unknown') {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
-            console.log('[Zenemoo Voice] Requesting getUserMedia stream...');
+            logDiag(sessionId, 'Requesting getUserMedia hardware stream');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            console.log('[Zenemoo Voice] getUserMedia stream acquired successfully');
             stream.getTracks().forEach((track) => track.stop());
+            logDiag(sessionId, 'getUserMedia hardware stream unlocked');
           } catch (micErr: any) {
-            console.warn('[Zenemoo Voice] getUserMedia rejected:', micErr);
+            logDiag(sessionId, `getUserMedia denied: ${micErr.name}`);
             shouldContinueListeningRef.current = false;
             setState('permission_denied');
             setErrorCode(micErr.name || 'not-allowed');
@@ -231,12 +252,11 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         }
       }
 
-      // 4. Diagnostics: Instantiate & Configure SpeechRecognition
+      if (sessionId !== activeSessionIdRef.current) return;
+
+      // 3. Create exactly ONE recognition instance for this session
       const targetLang = getRecognitionLang(currentLanguage);
-      console.log('[Zenemoo Voice] 3. creating recognition instance');
-      console.log('[Zenemoo Voice] 4. language:', targetLang);
-      console.log('[Zenemoo Voice] 5. continuous: true, 6. interimResults: true');
-      addDiag(`lang: ${targetLang}`);
+      logDiag(sessionId, `Creating SpeechRecognition (lang: ${targetLang}, continuous: true, interimResults: true)`);
 
       const recognition = new SpeechRecognition();
       recognitionRef.current = recognition;
@@ -246,180 +266,181 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
       recognition.lang = targetLang;
       recognition.maxAlternatives = 1;
 
-      // Attach all lifecycle event handlers before calling start()
+      // ── Event Handlers ──
       recognition.onstart = () => {
-        console.log('[Zenemoo Voice] 8. onstart fired -> recognition started');
-        addDiag('onstart fired');
+        if (sessionId !== activeSessionIdRef.current) return;
+        isStartingRef.current = false;
+        isListeningRef.current = true;
+        logDiag(sessionId, 'ONSTART: Listening');
         setState('listening');
       };
 
       recognition.onaudiostart = () => {
-        console.log('[Zenemoo Voice] 9. onaudiostart fired -> audio hardware capturing');
-        addDiag('audio started');
-      };
-
-      recognition.onsoundstart = () => {
-        console.log('[Zenemoo Voice] onsoundstart fired -> sound detected');
+        if (sessionId !== activeSessionIdRef.current) return;
+        logDiag(sessionId, 'AUDIO START');
       };
 
       recognition.onspeechstart = () => {
-        console.log('[Zenemoo Voice] 10. onspeechstart fired -> human speech detected');
-        addDiag('speech started');
+        if (sessionId !== activeSessionIdRef.current) return;
+        logDiag(sessionId, 'SPEECH DETECTED');
       };
 
-      // 11. onresult fired: Parse event.results
       recognition.onresult = (event: any) => {
-        console.log('[Zenemoo Voice] 11. onresult fired, results length:', event.results.length);
-        let currentFinal = '';
-        let currentInterim = '';
+        if (sessionId !== activeSessionIdRef.current) return;
 
-        for (let i = 0; i < event.results.length; i++) {
-          const result = event.results[i];
-          const textChunk = result[0]?.transcript || '';
-          if (result.isFinal) {
-            currentFinal += textChunk + ' ';
+        let sessionInterim = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i];
+          const text = res[0]?.transcript || '';
+          if (res.isFinal) {
+            accumulatedFinalRef.current = (
+              accumulatedFinalRef.current ? accumulatedFinalRef.current + ' ' : ''
+            ) + text.trim();
+            logDiag(sessionId, `FINAL CHUNK: "${text.trim()}"`);
           } else {
-            currentInterim += textChunk;
+            sessionInterim += text;
           }
         }
 
-        const cleanFinal = currentFinal.trim();
-        const cleanInterim = currentInterim.trim();
-
-        if (cleanFinal) {
-          console.log('[Zenemoo Voice] 13. final result received:', cleanFinal);
-          addDiag(`final: "${cleanFinal.slice(-15)}"`);
-          speechDetectedRef.current = true;
-        }
+        const cleanFinal = accumulatedFinalRef.current.trim();
+        const cleanInterim = sessionInterim.trim();
 
         if (cleanInterim) {
-          console.log('[Zenemoo Voice] 12. interim result received:', cleanInterim);
-          addDiag(`interim: "${cleanInterim.slice(-15)}"`);
-          speechDetectedRef.current = true;
+          logDiag(sessionId, `INTERIM: "${cleanInterim}"`);
         }
 
-        finalTranscriptRef.current = cleanFinal;
         setTranscript(cleanFinal);
         setInterimText(cleanInterim);
 
-        // Auto-scroll to latest words
+        // Auto-scroll transcript container
         if (transcriptBoxRef.current) {
           transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
         }
       };
 
-      recognition.onspeechend = () => {
-        console.log('[Zenemoo Voice] onspeechend fired');
-        addDiag('speech ended');
-        if (recognitionRef.current && speechDetectedRef.current) {
-          setState('processing');
-          setTimeout(() => {
-            const fullText = (
-              finalTranscriptRef.current +
-              ' ' +
-              interimText
-            ).trim();
-            finalizeAndClose(fullText);
-          }, 600);
-        }
-      };
-
-      recognition.onsoundend = () => {
-        console.log('[Zenemoo Voice] onsoundend fired');
-      };
-
-      recognition.onaudioend = () => {
-        console.log('[Zenemoo Voice] onaudioend fired');
-        addDiag('audio ended');
-      };
-
       recognition.onerror = (event: any) => {
-        console.warn('[Zenemoo Voice] 14. onerror fired:', event.error, event.message);
-        setErrorCode(event.error || 'unknown');
-        addDiag(`error: ${event.error}`);
+        if (sessionId !== activeSessionIdRef.current) return;
+        logDiag(sessionId, `ONERROR: ${event.error}`);
 
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           shouldContinueListeningRef.current = false;
+          isListeningRef.current = false;
+          setErrorCode('not-allowed');
           setState('permission_denied');
           setErrorMessage(
             'Microphone access was denied (not-allowed). Please enable microphone permissions in your browser or device settings.'
           );
         } else if (event.error === 'no-speech') {
-          if (!speechDetectedRef.current && !finalTranscriptRef.current) {
-            setState('no_speech');
-            setErrorMessage('No speech was detected. Please speak closer to your microphone.');
-          }
+          logDiag(sessionId, 'NO-SPEECH (non-fatal silence)');
+          // Non-fatal: user simply hasn't spoken yet; keep session alive
         } else if (event.error === 'network') {
           shouldContinueListeningRef.current = false;
+          isListeningRef.current = false;
+          setErrorCode('network');
           setState('error');
           setErrorMessage(
-            'Speech recognition network service error (network). The browser speech service could not be reached.'
+            'Speech recognition network service error (network). Check your connection and try again.'
           );
         } else if (event.error === 'language-not-supported') {
           shouldContinueListeningRef.current = false;
+          isListeningRef.current = false;
+          setErrorCode('language-not-supported');
           setState('error');
           setErrorMessage(
-            `Speech recognition language (${targetLang}) is not supported on this device/browser.`
-          );
-        } else if (event.error === 'audio-capture') {
-          shouldContinueListeningRef.current = false;
-          setState('error');
-          setErrorMessage(
-            'Audio capture error (audio-capture). No microphone was found or audio input is busy.'
+            `Speech recognition language (${targetLang}) is not supported on this device.`
           );
         } else if (event.error !== 'aborted') {
-          setState('error');
-          setErrorMessage(`Speech recognition error (${event.error || 'unknown'}).`);
+          setErrorCode(event.error || 'unknown');
         }
       };
 
       recognition.onend = () => {
-        console.log('[Zenemoo Voice] 15. onend fired');
-        addDiag('onend fired');
+        if (sessionId !== activeSessionIdRef.current) return;
+        isListeningRef.current = false;
+        isStartingRef.current = false;
+        logDiag(sessionId, 'ONEND');
 
-        // Do not auto-restart in diagnostic mode to observe exact failure point
-        if (state === 'listening' || state === 'processing') {
-          const fullText = (finalTranscriptRef.current + ' ' + interimText).trim();
-          if (fullText) {
-            finalizeAndClose(fullText);
-          } else if (!speechDetectedRef.current) {
-            setState('no_speech');
-          }
+        // Controlled restart if user is still actively recording
+        if (shouldContinueListeningRef.current) {
+          logDiag(sessionId, 'CONTROLLED RESTART after silence/timeout (250ms)');
+          restartTimerRef.current = setTimeout(() => {
+            if (
+              sessionId === activeSessionIdRef.current &&
+              shouldContinueListeningRef.current &&
+              recognitionRef.current &&
+              !isListeningRef.current &&
+              !isStartingRef.current
+            ) {
+              try {
+                isStartingRef.current = true;
+                recognitionRef.current.start();
+                logDiag(sessionId, 'RESTART SUCCESSFUL');
+              } catch (startErr: any) {
+                isStartingRef.current = false;
+                logDiag(sessionId, `RESTART FAILED: ${startErr.message}`);
+              }
+            }
+          }, 250);
         }
       };
 
-      // 7. Start recognition
-      console.log('[Zenemoo Voice] 7. calling recognition.start()');
-      addDiag('calling start()');
-      recognition.start();
+      // 4. Start Recognition
+      if (!isStartingRef.current && !isListeningRef.current) {
+        isStartingRef.current = true;
+        logDiag(sessionId, 'START REQUEST: calling recognition.start()');
+        recognition.start();
+      }
     } catch (err: any) {
-      console.error('[Zenemoo Voice] Startup Exception:', err);
+      logDiag(sessionId, `EXCEPTION: ${err.message}`);
       shouldContinueListeningRef.current = false;
+      isStartingRef.current = false;
+      isListeningRef.current = false;
       setErrorCode(err.name || 'exception');
       setState('error');
-      setErrorMessage(err.message || 'Failed to initialize voice recognition.');
+      setErrorMessage(err.message || 'Failed to start voice recognition.');
     }
-  }, [cleanupRecognition, currentLanguage, finalizeAndClose, interimText, state]);
+  };
 
-  // Handle Stop Button Click
+  // ── Manual Stop Handler ──
   const handleStopManually = () => {
+    const currentSessionId = activeSessionIdRef.current;
+    logDiag(currentSessionId, 'STOP REQUEST (User clicked Stop)');
     shouldContinueListeningRef.current = false;
     setState('processing');
-    console.log('[Zenemoo Voice] Stop manually clicked');
+
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
       } catch (e) {}
     }
-    const fullCaptured = (finalTranscriptRef.current + ' ' + interimText).trim();
+
+    const fullCaptured = (accumulatedFinalRef.current + ' ' + interimText).trim();
     if (fullCaptured) {
-      finalizeAndClose(fullCaptured);
+      finalizeAndClose(currentSessionId, fullCaptured);
     } else {
       setState('no_speech');
     }
   };
 
-  // Keyboard Accessibility (ESC key to dismiss) & Body Scroll Locking
+  // ── Modal Lifecycle Effect (Runs ONLY on isOpen changes) ──
+  useEffect(() => {
+    if (isOpen) {
+      const newSessionId = Date.now();
+      activeSessionIdRef.current = newSessionId;
+      initAndStartSession(newSessionId);
+    } else {
+      cleanupEngine();
+      setState('idle');
+    }
+
+    return () => {
+      cleanupEngine();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentLanguage]);
+
+  // ── Keyboard Accessibility & Body Scroll Lock ──
   useEffect(() => {
     if (!isOpen) return;
 
@@ -429,7 +450,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        cleanupRecognition();
+        cleanupEngine();
         onClose();
       }
     };
@@ -440,19 +461,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [isOpen, cleanupRecognition, onClose]);
-
-  // Start on Modal Open & Cleanup on Unmount
-  useEffect(() => {
-    if (isOpen) {
-      startListening();
-    } else {
-      cleanupRecognition();
-    }
-    return () => {
-      cleanupRecognition();
-    };
-  }, [isOpen, startListening, cleanupRecognition]);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !isMounted) return null;
 
@@ -473,7 +482,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
       className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget && state !== 'listening') {
-          cleanupRecognition();
+          cleanupEngine();
           onClose();
         }
       }}
@@ -508,7 +517,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              cleanupRecognition();
+              cleanupEngine();
               onClose();
             }}
             className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -675,8 +684,9 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                cleanupRecognition();
-                onTranscriptComplete((transcript || interimText).trim());
+                const full = (accumulatedFinalRef.current + ' ' + interimText).trim();
+                cleanupEngine();
+                onTranscriptComplete(full);
                 onClose();
               }}
               className="w-full py-3 px-5 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black font-sans text-xs sm:text-sm font-extrabold shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer min-h-[44px]"
@@ -689,7 +699,11 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             <div className="w-full flex items-center gap-2.5">
               <button
                 type="button"
-                onClick={startListening}
+                onClick={() => {
+                  const newSessionId = Date.now();
+                  activeSessionIdRef.current = newSessionId;
+                  initAndStartSession(newSessionId);
+                }}
                 className="flex-1 py-3 px-4 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-sans text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer min-h-[44px]"
               >
                 <Mic className="w-4 h-4" />
@@ -698,7 +712,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  cleanupRecognition();
+                  cleanupEngine();
                   onClose();
                 }}
                 className="py-3 px-4 rounded-2xl bg-white/[0.04] hover:bg-white/10 border border-white/10 text-slate-300 font-sans text-xs sm:text-sm font-medium transition-all cursor-pointer min-h-[44px]"
@@ -712,7 +726,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                cleanupRecognition();
+                cleanupEngine();
                 onClose();
               }}
               className="w-full py-3 px-4 rounded-2xl bg-white/[0.06] hover:bg-white/12 border border-white/10 text-slate-200 font-sans text-xs sm:text-sm font-semibold transition-all cursor-pointer min-h-[44px]"
