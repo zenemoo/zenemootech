@@ -14,6 +14,7 @@ export interface ExportButtonProps {
 
 export const ExportButton: React.FC<ExportButtonProps> = ({
   sectionId,
+  sectionName,
   dataset = [],
   filteredDataset,
   showToast,
@@ -48,6 +49,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         sectionId={sectionId}
+        sectionName={sectionName}
         dataset={dataset}
         filteredDataset={filteredDataset}
         showToast={showToast}

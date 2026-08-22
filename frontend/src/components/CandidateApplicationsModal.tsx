@@ -759,6 +759,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
           {/* Export Applications */}
           <ExportButton
             sectionId="candidate-applications"
+            sectionName={selectedOpp ? `Candidate Applications — ${selectedOpp.title}` : 'Candidate Applications'}
             dataset={programApps.map((app) => {
               const flat: Record<string, any> = {
                 applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,

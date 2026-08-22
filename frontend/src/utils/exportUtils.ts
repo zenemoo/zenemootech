@@ -23,6 +23,50 @@ export interface ExportPDFOptions {
 // ── Section Metadata Registry ─────────────────────────────────────────────────
 
 export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
+  // Candidate Applications (Dynamic Custom Form Answers Support)
+  'candidate-applications': {
+    sectionId: 'candidate-applications',
+    sectionName: 'Candidate Applications',
+    defaultColumns: [
+      { key: 'applicant_id', label: 'Application ID' },
+      { key: 'applicant_name', label: 'Applicant Name' },
+      { key: 'applicant_email', label: 'Email' },
+      { key: 'applicant_phone', label: 'Phone' },
+      { key: 'opportunity_title', label: 'Opportunity / Program' },
+      { key: 'status', label: 'Status' },
+      { key: 'sync_status', label: 'Sheet Sync' },
+      { key: 'admin_notes', label: 'Admin Notes' },
+      { key: 'created_at', label: 'Application Date' },
+    ],
+  },
+  applications: {
+    sectionId: 'applications',
+    sectionName: 'Candidate Applications',
+    defaultColumns: [
+      { key: 'applicant_id', label: 'Application ID' },
+      { key: 'applicant_name', label: 'Applicant Name' },
+      { key: 'applicant_email', label: 'Email' },
+      { key: 'applicant_phone', label: 'Phone' },
+      { key: 'opportunity_title', label: 'Opportunity / Program' },
+      { key: 'status', label: 'Status' },
+      { key: 'sync_status', label: 'Sheet Sync' },
+      { key: 'created_at', label: 'Applied At' },
+    ],
+  },
+  opportunities: {
+    sectionId: 'opportunities',
+    sectionName: 'Opportunities',
+    defaultColumns: [
+      { key: 'id', label: 'Opportunity ID' },
+      { key: 'title', label: 'Title' },
+      { key: 'type', label: 'Type' },
+      { key: 'status', label: 'Status' },
+      { key: 'location', label: 'Location' },
+      { key: 'deadline', label: 'Deadline' },
+      { key: 'created_at', label: 'Created At' },
+    ],
+  },
+
   // Talent Network / AI Data Network & Resource Manager
   'talent-network': {
     sectionId: 'talent-network',
@@ -85,53 +129,6 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'capacity', label: 'Capacity' },
       { key: 'status', label: 'Status' },
       { key: 'created_at', label: 'Registered Date' },
-    ],
-  },
-
-  // Applications & Job Postings
-  'candidate-applications': {
-    sectionId: 'candidate-applications',
-    sectionName: 'Candidate Applications',
-    defaultColumns: [
-      { key: 'id', label: 'Application ID' },
-      { key: 'name', label: 'Applicant Name' },
-      { key: 'email', label: 'Email' },
-      { key: 'phone', label: 'Phone' },
-      { key: 'role', label: 'Applied Role' },
-      { key: 'location', label: 'Location' },
-      { key: 'experience', label: 'Experience' },
-      { key: 'languages', label: 'Languages' },
-      { key: 'status', label: 'Status' },
-      { key: 'created_at', label: 'Applied Date' },
-    ],
-  },
-  applications: {
-    sectionId: 'applications',
-    sectionName: 'Applications',
-    defaultColumns: [
-      { key: 'id', label: 'Application ID' },
-      { key: 'name', label: 'Name' },
-      { key: 'email', label: 'Email' },
-      { key: 'phone', label: 'Phone' },
-      { key: 'role', label: 'Role' },
-      { key: 'location', label: 'Location' },
-      { key: 'experience', label: 'Experience' },
-      { key: 'languages', label: 'Languages' },
-      { key: 'status', label: 'Status' },
-      { key: 'created_at', label: 'Applied At' },
-    ],
-  },
-  opportunities: {
-    sectionId: 'opportunities',
-    sectionName: 'Opportunities',
-    defaultColumns: [
-      { key: 'id', label: 'Opportunity ID' },
-      { key: 'title', label: 'Title' },
-      { key: 'type', label: 'Type' },
-      { key: 'status', label: 'Status' },
-      { key: 'location', label: 'Location' },
-      { key: 'deadline', label: 'Deadline' },
-      { key: 'created_at', label: 'Created At' },
     ],
   },
 
@@ -250,34 +247,71 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
 
 /**
  * Extracts and formats a field value from a dataset row for clean export.
- * Handles nested objects, language arrays, contact numbers, and past experience structures.
+ * Seamlessly resolves top-level fields, custom questions inside `answers` /
+ * `custom_form_answers`, contact numbers, and nested data structures.
  */
 export function formatFieldValue(row: Record<string, any>, colKey: string): string {
   if (!row || typeof row !== 'object') return '';
 
-  // Direct value lookup with common aliases
+  // 1. Direct property lookup
   let val = row[colKey];
 
+  // 2. Custom Form Answers lookup (if not found on root)
   if (val === undefined || val === null) {
-    if (colKey === 'full_name' && row.name) val = row.name;
-    else if (colKey === 'name' && row.full_name) val = row.full_name;
-    else if (colKey === 'primary_role' && row.role) val = row.role;
-    else if (colKey === 'role' && row.primary_role) val = row.primary_role;
-    else if (colKey === 'registration_code' && (row.registrationCode || row.reg_code || row.id)) {
+    const answersObj =
+      row.answers || row.custom_form_answers || row.customFormAnswers || row.form_answers;
+    if (answersObj && typeof answersObj === 'object') {
+      if (Array.isArray(answersObj)) {
+        const match = answersObj.find(
+          (item: any) =>
+            item &&
+            (item.question === colKey || item.label === colKey || item.key === colKey)
+        );
+        if (match) val = match.answer ?? match.value ?? match.val;
+      } else {
+        val = answersObj[colKey];
+      }
+    }
+  }
+
+  // 3. Common Schema Aliases Resolution
+  if (val === undefined || val === null) {
+    if (colKey === 'applicant_name' || colKey === 'name') {
+      val = row.applicant_name || row.name || row.full_name || row.fullName;
+    } else if (colKey === 'full_name') {
+      val = row.full_name || row.name || row.applicant_name;
+    } else if (colKey === 'applicant_email' || colKey === 'email') {
+      val = row.applicant_email || row.email;
+    } else if (colKey === 'applicant_phone' || colKey === 'phone' || colKey === 'phoneNumber') {
+      val = row.applicant_phone || row.phone || row.phoneNumber;
+    } else if (colKey === 'applicant_id' || colKey === 'id') {
+      val =
+        row.applicant_id ||
+        (row.id ? (row.id.startsWith('APP-') ? row.id : `APP-2026-${row.id.substring(0, 4)}`) : '');
+    } else if (colKey === 'opportunity_title' || colKey === 'role' || colKey === 'primary_role') {
+      val =
+        row.opportunity_title ||
+        row.opportunityTitle ||
+        row.primary_role ||
+        row.role ||
+        row.title;
+    } else if (colKey === 'registration_code') {
       val = row.registration_code || row.registrationCode || row.reg_code || row.id;
-    } else if (colKey === 'work_capabilities' && row.workCapabilities) {
-      val = row.workCapabilities;
-    } else if (colKey === 'city_district' && (row.city || row.district)) {
+    } else if (colKey === 'sync_status' || colKey === 'sheet_sync') {
+      val = row.sync_status || row.sheet_sync || 'synced';
+    } else if (colKey === 'work_capabilities') {
+      val = row.work_capabilities || row.workCapabilities;
+    } else if (colKey === 'city_district') {
       val = [row.city, row.district].filter(Boolean).join(', ');
-    } else if (colKey === 'location' && (row.state || row.city_district)) {
-      val = [row.city_district, row.state].filter(Boolean).join(', ');
+    } else if (colKey === 'location') {
+      val = [row.city_district || row.city, row.state].filter(Boolean).join(', ');
     }
   }
 
   if (val === undefined || val === null) return '';
 
   // Special Formatting: Phone Number with Country Code
-  if (colKey === 'phone' || colKey === 'phoneNumber') {
+  if (colKey === 'phone' || colKey === 'phoneNumber' || colKey === 'applicant_phone') {
     const countryCode = row.country_code || row.countryCode || '';
     const phoneStr = String(val).trim();
     if (!phoneStr) return '';
@@ -285,6 +319,11 @@ export function formatFieldValue(row: Record<string, any>, colKey: string): stri
       return `${countryCode} ${phoneStr}`;
     }
     return phoneStr;
+  }
+
+  // Special Formatting: Status string capitalization
+  if (colKey === 'status' && typeof val === 'string') {
+    return val.toUpperCase();
   }
 
   // Special Formatting: Languages List
@@ -308,7 +347,7 @@ export function formatFieldValue(row: Record<string, any>, colKey: string): stri
     }
   }
 
-  // Special Formatting: Work Capabilities / Work Types
+  // Special Formatting: Work Capabilities
   if (colKey === 'work_capabilities' || colKey === 'workCapabilities' || colKey === 'work_types') {
     if (Array.isArray(val)) {
       return val.map((v) => (typeof v === 'string' ? v.trim() : String(v))).filter(Boolean).join(', ');
@@ -335,24 +374,19 @@ export function formatFieldValue(row: Record<string, any>, colKey: string): stri
     }
   }
 
-  // Special Formatting: Equipment / Resources / Additional Info
-  if (colKey === 'equipment_resources' || colKey === 'role_details' || colKey === 'additional_info') {
-    if (typeof val === 'object' && val !== null) {
-      if (Array.isArray(val)) return val.join(', ');
-      return Object.entries(val)
-        .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
-        .join('; ');
-    }
-  }
-
-  // Arrays in general
+  // Special Formatting: Arrays in general (e.g. multi-select answers)
   if (Array.isArray(val)) {
-    return val.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+    return val
+      .map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v).trim()))
+      .filter(Boolean)
+      .join(', ');
   }
 
-  // Objects
-  if (typeof val === 'object') {
-    return JSON.stringify(val);
+  // Special Formatting: Objects
+  if (typeof val === 'object' && val !== null) {
+    return Object.entries(val)
+      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+      .join('; ');
   }
 
   // Booleans
@@ -363,7 +397,11 @@ export function formatFieldValue(row: Record<string, any>, colKey: string): stri
   // Date strings formatting
   if (
     typeof val === 'string' &&
-    (colKey.includes('date') || colKey.includes('_at') || colKey === 'created_at' || colKey === 'updated_at')
+    (colKey.includes('date') ||
+      colKey.includes('_at') ||
+      colKey === 'created_at' ||
+      colKey === 'updated_at' ||
+      colKey === 'subscribed_at')
   ) {
     const parsed = Date.parse(val);
     if (!isNaN(parsed) && val.length >= 10 && (val.includes('-') || val.includes('T'))) {
@@ -391,9 +429,10 @@ export function isColumnNonEmpty(data: Record<string, any>[], colKey: string): b
 }
 
 /**
- * Filters a column list to only those columns that have at least one non-empty
- * value in the given dataset. If no default columns match or columns list is empty,
- * it introspects available record keys dynamically.
+ * Dynamically discovers and filters columns for any dataset.
+ * Inspects root fields and flattens custom question-and-answer containers (`answers`,
+ * `custom_form_answers`, etc.) into dedicated individual columns.
+ * Only columns with at least 1 non-empty value in the active dataset are returned.
  */
 export function getAvailableNonEmptyColumns(
   data: Record<string, any>[],
@@ -403,38 +442,163 @@ export function getAvailableNonEmptyColumns(
     return candidateColumns;
   }
 
-  // 1. If candidate columns are provided, filter them to non-empty ones
-  if (candidateColumns && candidateColumns.length > 0) {
-    const validCols = candidateColumns.filter((col) => isColumnNonEmpty(data, col.key));
-    if (validCols.length > 0) {
-      return validCols;
-    }
-  }
+  // 1. Build map of predefined standard columns
+  const standardKeyMap = new Map<string, string>();
+  candidateColumns.forEach((c) => {
+    standardKeyMap.set(c.key, c.label);
+  });
 
-  // 2. Fallback / Dynamic Introspection: Scan dataset keys
-  const keySet = new Set<string>();
+  // 2. Discover all dynamic keys (root keys + nested answers keys)
+  const discoveredDynamicKeys: string[] = [];
+  const seenKeys = new Set<string>();
+
   data.forEach((row) => {
-    if (row && typeof row === 'object') {
-      Object.keys(row).forEach((k) => {
-        // Skip internal/binary fields
-        if (!k.startsWith('_') && k !== 'password' && k !== 'token' && k !== 'hash') {
-          keySet.add(k);
+    if (!row || typeof row !== 'object') return;
+
+    // A. Root properties
+    Object.keys(row).forEach((k) => {
+      if (
+        !k.startsWith('_') &&
+        k !== 'password' &&
+        k !== 'token' &&
+        k !== 'hash' &&
+        k !== 'answers' &&
+        k !== 'custom_form_answers' &&
+        k !== 'customFormAnswers' &&
+        k !== 'form_answers'
+      ) {
+        if (!seenKeys.has(k)) {
+          seenKeys.add(k);
+          discoveredDynamicKeys.push(k);
         }
-      });
+      }
+    });
+
+    // B. Nested Custom Form Answers
+    const answersObj =
+      row.answers || row.custom_form_answers || row.customFormAnswers || row.form_answers;
+    if (answersObj && typeof answersObj === 'object') {
+      if (Array.isArray(answersObj)) {
+        answersObj.forEach((item: any) => {
+          if (item && typeof item === 'object') {
+            const qKey = item.question || item.label || item.key;
+            if (qKey && !seenKeys.has(qKey)) {
+              seenKeys.add(qKey);
+              discoveredDynamicKeys.push(qKey);
+            }
+          }
+        });
+      } else {
+        Object.keys(answersObj).forEach((qKey) => {
+          if (qKey && !seenKeys.has(qKey)) {
+            seenKeys.add(qKey);
+            discoveredDynamicKeys.push(qKey);
+          }
+        });
+      }
     }
   });
 
-  const discoveredCols: ColumnOption[] = Array.from(keySet)
-    .filter((k) => isColumnNonEmpty(data, k))
-    .map((k) => ({
-      key: k,
-      label: k
-        .replace(/_/g, ' ')
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .replace(/\b\w/g, (char) => char.toUpperCase()),
-    }));
+  // 3. Logical Column Ordering:
+  // - Priority 1: Primary identification & applicant fields
+  // - Priority 2: Standard predefined columns
+  // - Priority 3: Discovered custom form questions
+  // - Priority 4: Metadata & trailing status/date fields
+  const primaryKeys = [
+    'applicant_id',
+    'id',
+    'registration_code',
+    'applicant_name',
+    'full_name',
+    'name',
+    'applicant_email',
+    'email',
+    'applicant_phone',
+    'phone',
+    'opportunity_title',
+    'primary_role',
+    'role',
+    'languages',
+    'state',
+    'city_district',
+  ];
 
-  return discoveredCols;
+  const trailingKeys = [
+    'status',
+    'sync_status',
+    'sheet_sync',
+    'internal_scoring',
+    'internal_notes',
+    'admin_notes',
+    'terms_accepted',
+    'created_at',
+    'applied_at',
+    'subscribed_at',
+    'updated_at',
+  ];
+
+  const orderedColumns: ColumnOption[] = [];
+  const addedKeys = new Set<string>();
+
+  // A. Add primary columns that exist or are declared
+  primaryKeys.forEach((pk) => {
+    if (seenKeys.has(pk) || candidateColumns.some((c) => c.key === pk)) {
+      if (!addedKeys.has(pk)) {
+        addedKeys.add(pk);
+        const label =
+          standardKeyMap.get(pk) ||
+          pk
+            .replace(/_/g, ' ')
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+        orderedColumns.push({ key: pk, label });
+      }
+    }
+  });
+
+  // B. Add other predefined standard columns (excluding trailing)
+  candidateColumns.forEach((c) => {
+    if (!addedKeys.has(c.key) && !trailingKeys.includes(c.key)) {
+      addedKeys.add(c.key);
+      orderedColumns.push(c);
+    }
+  });
+
+  // C. Add discovered dynamic custom form question keys
+  discoveredDynamicKeys.forEach((k) => {
+    if (!addedKeys.has(k) && !trailingKeys.includes(k)) {
+      addedKeys.add(k);
+      const label =
+        standardKeyMap.get(k) ||
+        (k.includes(' ') || k.includes('?')
+          ? k
+          : k
+              .replace(/_/g, ' ')
+              .replace(/([a-z])([A-Z])/g, '$1 $2')
+              .replace(/\b\w/g, (char) => char.toUpperCase()));
+      orderedColumns.push({ key: k, label });
+    }
+  });
+
+  // D. Add trailing metadata columns
+  trailingKeys.forEach((tk) => {
+    if (seenKeys.has(tk) || candidateColumns.some((c) => c.key === tk)) {
+      if (!addedKeys.has(tk)) {
+        addedKeys.add(tk);
+        const label =
+          standardKeyMap.get(tk) ||
+          tk
+            .replace(/_/g, ' ')
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+        orderedColumns.push({ key: tk, label });
+      }
+    }
+  });
+
+  // 4. Exclude columns that are completely empty across the active dataset
+  const finalColumns = orderedColumns.filter((col) => isColumnNonEmpty(data, col.key));
+  return finalColumns;
 }
 
 /**
@@ -473,7 +637,7 @@ export function generateClientCSV(
   _sectionName: string = 'Export'
 ): string {
   const BOM = '\uFEFF'; // UTF-8 BOM for Microsoft Excel & Google Sheets compatibility
-  
+
   // RFC-4180 Escaping: quotes enclosed, internal quotes doubled
   const escapeCsvCell = (val: string): string => {
     if (val === null || val === undefined) return '""';
@@ -505,7 +669,7 @@ export function generateClientCSV(
 export async function generateClientExcel(
   data: Record<string, any>[],
   columns: ColumnOption[],
-  sectionName: string = 'Talent Network'
+  sectionName: string = 'Data Export'
 ): Promise<ArrayBuffer> {
   const ExcelJS = await import('exceljs');
 
@@ -529,7 +693,7 @@ export async function generateClientExcel(
     sample.forEach((row) => {
       const val = formatFieldValue(row, col.key);
       if (val && val.length > maxLength) {
-        maxLength = Math.min(val.length, 50); // Cap at 50 chars width
+        maxLength = Math.min(val.length, 60); // Cap at 60 chars width
       }
     });
 
@@ -548,8 +712,8 @@ export async function generateClientExcel(
     pattern: 'solid',
     fgColor: { argb: 'FF0E7490' }, // Cyan-700 enterprise accent
   };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  headerRow.height = 24;
+  headerRow.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+  headerRow.height = 28;
 
   // Add Data Rows with Alternating Colors
   data.forEach((row, idx) => {
@@ -566,8 +730,8 @@ export async function generateClientExcel(
       fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' }, // Clean slate-50 / white stripe
     };
     excelRow.font = { color: { argb: 'FF1E293B' }, name: 'Segoe UI', size: 9.5 };
-    excelRow.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-    excelRow.height = 20;
+    excelRow.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    excelRow.height = 22;
 
     // Subtle cell borders
     excelRow.eachCell({ includeEmpty: true }, (cell) => {
@@ -595,7 +759,7 @@ export async function generateClientExcel(
 export async function generateClientPDF(
   data: Record<string, any>[],
   columns: ColumnOption[],
-  sectionName: string = 'Talent Network',
+  sectionName: string = 'Data Export',
   options: ExportPDFOptions = {}
 ): Promise<ArrayBuffer> {
   const { default: jsPDF } = await import('jspdf');
@@ -623,33 +787,36 @@ export async function generateClientPDF(
   doc.rect(0, 0, pageWidth, 2, 'F');
 
   // Title & Brand
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.text('ZENEMOO DATA SOLUTIONS', 14, 11);
+  doc.text('ZENEMOO DATA SOLUTIONS', 12, 11);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(6, 182, 212);
   doc.setFont('helvetica', 'bold');
-  doc.text(`AI DATA NETWORK & RESOURCE MANAGER — ${sectionName.toUpperCase()} EXPORT`, 14, 18);
+  doc.text(`${sectionName.toUpperCase()} — DATA EXPORT`, 12, 18);
 
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setTextColor(148, 163, 184); // Slate-400
   doc.setFont('helvetica', 'normal');
   const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${columns.length}`;
-  // Truncate if too wide
-  const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 30 ? metaLine.slice(0, 140) + '...' : metaLine;
-  doc.text(truncatedMeta, 14, 24);
+  const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 24 ? metaLine.slice(0, 140) + '...' : metaLine;
+  doc.text(truncatedMeta, 12, 24);
 
   // Right Date Stamp
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(203, 213, 225);
-  doc.text(`Generated: ${todayStr}`, pageWidth - 14, 11, { align: 'right' });
-  doc.setFontSize(7);
+  doc.text(`Generated: ${todayStr}`, pageWidth - 12, 11, { align: 'right' });
+  doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('CONFIDENTIAL ADMINISTRATIVE DOCUMENT', pageWidth - 14, 17, { align: 'right' });
+  doc.text('CONFIDENTIAL ADMINISTRATIVE DOCUMENT', pageWidth - 12, 17, { align: 'right' });
 
-  // ── 2. Data Table ──
+  // ── 2. Dynamic Table Sizing for Wide Column Sets ──
+  const colCount = Math.max(1, columns.length);
+  const dynamicFontSize = colCount > 20 ? 5 : colCount > 12 ? 6 : 7;
+  const dynamicCellPadding = colCount > 20 ? 1 : colCount > 12 ? 1.5 : 2;
+
   const head = [columns.map((c) => c.label)];
   const body = data.map((row) =>
     columns.map((col) => formatFieldValue(row, col.key))
@@ -659,11 +826,11 @@ export async function generateClientPDF(
     head,
     body,
     startY: 32,
-    margin: { left: 10, right: 10, top: 20, bottom: 18 },
+    margin: { left: 8, right: 8, top: 18, bottom: 16 },
     showHead: 'everyPage',
     styles: {
-      fontSize: 7,
-      cellPadding: 2,
+      fontSize: dynamicFontSize,
+      cellPadding: dynamicCellPadding,
       overflow: 'linebreak',
       font: 'helvetica',
       textColor: [30, 41, 59],
@@ -675,7 +842,7 @@ export async function generateClientPDF(
       fillColor: [14, 116, 144], // Cyan-700
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 7.5,
+      fontSize: dynamicFontSize + 0.5,
       halign: 'left',
     },
     alternateRowStyles: {
@@ -687,37 +854,37 @@ export async function generateClientPDF(
       // ── Repeat Page Header on Subsequent Pages ──
       if (dataHook.pageNumber > 1) {
         doc.setFillColor(9, 13, 22);
-        doc.rect(0, 0, pageWidth, 14, 'F');
+        doc.rect(0, 0, pageWidth, 13, 'F');
         doc.setFillColor(6, 182, 212);
         doc.rect(0, 0, pageWidth, 1.5, 'F');
 
-        doc.setFontSize(8.5);
+        doc.setFontSize(8);
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
-        doc.text(`ZENEMOO — ${sectionName.toUpperCase()} (Continued)`, 14, 9);
+        doc.text(`ZENEMOO — ${sectionName.toUpperCase()} (Continued)`, 12, 8.5);
 
-        doc.setFontSize(7.5);
+        doc.setFontSize(7);
         doc.setTextColor(148, 163, 184);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Generated: ${todayStr}`, pageWidth - 14, 9, { align: 'right' });
+        doc.text(`Generated: ${todayStr}`, pageWidth - 12, 8.5, { align: 'right' });
       }
 
       // ── Footer on Every Page ──
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.3);
-      doc.line(10, pageHeight - 12, pageWidth - 10, pageHeight - 12);
+      doc.line(8, pageHeight - 11, pageWidth - 8, pageHeight - 11);
 
-      doc.setFontSize(6.5);
+      doc.setFontSize(6);
       doc.setTextColor(100, 116, 139);
       doc.setFont('helvetica', 'normal');
       doc.text(
         'ZENEMOO DATA SOLUTIONS • AI Language & Data Solutions • Confidential • Internal Administrative Export',
-        14,
-        pageHeight - 7
+        12,
+        pageHeight - 6
       );
 
       const pageNumberStr = `Page ${dataHook.pageNumber}`;
-      doc.text(pageNumberStr, pageWidth - 14, pageHeight - 7, { align: 'right' });
+      doc.text(pageNumberStr, pageWidth - 12, pageHeight - 6, { align: 'right' });
     },
   });
 
@@ -725,14 +892,14 @@ export async function generateClientPDF(
   const totalPages = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    doc.setFontSize(6.5);
+    doc.setFontSize(6);
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'normal');
-    // Clear previous page label area and replace with exact "Page i of totalPages"
     doc.setFillColor(255, 255, 255);
-    doc.rect(pageWidth - 40, pageHeight - 10, 30, 6, 'F');
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - 14, pageHeight - 7, { align: 'right' });
+    doc.rect(pageWidth - 36, pageHeight - 9, 28, 5, 'F');
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - 12, pageHeight - 6, { align: 'right' });
   }
 
   return doc.output('arraybuffer') as ArrayBuffer;
 }
+
