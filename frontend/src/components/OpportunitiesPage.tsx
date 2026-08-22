@@ -109,15 +109,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setSubmittedRef(null);
     setCopiedId(false);
 
-    // Check if applicant previously submitted in this session
-    const savedEmail = localStorage.getItem(`zenemoo_applicant_email_${op.id}`) || '';
-    if (savedEmail) {
-      setApplicantEmail(savedEmail);
-      const existing = await checkExistingApplication(op.id, savedEmail);
-      if (existing) {
-        setExistingApp(existing);
-      }
-    }
+    // Open fresh form allowing applications for any candidate
+    setApplicantEmail('');
   };
 
   const handleStep1Next = async () => {

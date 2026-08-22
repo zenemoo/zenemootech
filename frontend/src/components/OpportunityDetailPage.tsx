@@ -174,15 +174,8 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     setSubmittedAppId(null);
     setCopiedId(false);
 
-    // Check if applicant previously saved email or submitted in this session
-    const savedEmail = localStorage.getItem(`zenemoo_applicant_email_${opportunity.id}`) || '';
-    if (savedEmail) {
-      setApplicantEmail(savedEmail);
-      const existing = await checkExistingApplication(opportunity.id, savedEmail);
-      if (existing) {
-        setExistingApp(existing);
-      }
-    }
+    // Open fresh form allowing applications for any candidate
+    setApplicantEmail('');
   };
 
   const handleStep1Next = async () => {
