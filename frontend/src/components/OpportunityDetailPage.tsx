@@ -457,7 +457,12 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
               )}
 
               {/* Eligibility & Hardware Checklist */}
-              {Boolean(opportunity.equipment_requirements || opportunity.internet_requirements || (opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0)) && (
+              {Boolean(
+                opportunity.equipment_requirements ||
+                opportunity.internet_requirements ||
+                (opportunity.requirements && opportunity.requirements.length > 0) ||
+                (opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0)
+              ) && (
                 <div className="glass-panel p-8 rounded-3xl border border-emerald-500/30 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-emerald-400 flex items-center gap-2">
                     <Cpu className="w-4 h-4 text-emerald-400" /> Eligibility, Hardware &amp; Equipment Checklist
@@ -481,9 +486,12 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                     </div>
                   )}
 
-                  {opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0 && (
+                  {((opportunity.requirements && opportunity.requirements.length > 0) || (opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0)) && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 font-mono text-xs text-slate-200">
-                      {opportunity.eligibility_criteria.map((elig, idx) => (
+                      {(opportunity.requirements && opportunity.requirements.length > 0
+                        ? opportunity.requirements
+                        : (opportunity.eligibility_criteria || [])
+                      ).map((elig, idx) => (
                         <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-3">
                           <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
                             <Check className="w-3 h-3" />

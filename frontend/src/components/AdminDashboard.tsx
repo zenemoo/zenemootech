@@ -1048,10 +1048,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   const handleEditOpportunityClick = (op: OpportunityProgram) => {
     setEditingOpportunity(op);
-    setFeaturesInput(op.features?.join('\n') || '');
-    setRequirementsInput(op.requirements?.join('\n') || '');
+    const initialReqs = (op.requirements && op.requirements.length > 0)
+      ? op.requirements
+      : (op.eligibility_criteria || []);
+    setRequirementsInput(initialReqs.join('\n'));
     setLanguageSkillsInput(op.language_skills?.join('\n') || '');
-    setEligibilityInput(op.eligibility_criteria?.join('\n') || '');
+    setEligibilityInput(initialReqs.join('\n'));
     setLinkedinPostUrl(op.linkedin_post_url || '');
     setPdfLink(op.pdf_link || '');
     setContactPerson(op.contact_details?.contact_person || '');
@@ -1074,7 +1076,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         features: parsedFeatures.length > 0 ? parsedFeatures : editingOpportunity.features,
         requirements: parsedReqs.length > 0 ? parsedReqs : editingOpportunity.requirements,
         language_skills: parsedSkills,
-        eligibility_criteria: parsedElig,
+        eligibility_criteria: parsedReqs.length > 0 ? parsedReqs : (parsedElig.length > 0 ? parsedElig : editingOpportunity.eligibility_criteria),
         linkedin_post_url: linkedinPostUrl,
         pdf_link: pdfLink,
         contact_details: {

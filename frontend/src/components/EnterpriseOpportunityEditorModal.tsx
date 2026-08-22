@@ -165,10 +165,12 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
       setAboutProject(opportunity.about_project || '');
       setWhatYouWillDoInput(opportunity.what_you_will_do?.join('\n') || '');
-      setFeaturesInput(opportunity.features?.join('\n') || '');
-      setRequirementsInput(opportunity.requirements?.join('\n') || '');
+      const initialReqs = (opportunity.requirements && opportunity.requirements.length > 0)
+        ? opportunity.requirements
+        : (opportunity.eligibility_criteria || []);
+      setRequirementsInput(initialReqs.join('\n'));
       setLanguageSkillsInput(opportunity.language_skills?.join('\n') || '');
-      setEligibilityInput(opportunity.eligibility_criteria?.join('\n') || '');
+      setEligibilityInput(initialReqs.join('\n'));
 
       setExperienceRequirements(opportunity.experience_requirements || '');
       setEquipmentRequirements(opportunity.equipment_requirements || '');
@@ -429,7 +431,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
         features: parsedFeatures,
         requirements: parsedReqs,
         language_skills: parsedSkills,
-        eligibility_criteria: parsedElig,
+        eligibility_criteria: parsedReqs.length > 0 ? parsedReqs : parsedElig,
 
         whatsapp_group_url: whatsappGroupUrl,
         whatsapp_channel_url: whatsappChannelUrl,
