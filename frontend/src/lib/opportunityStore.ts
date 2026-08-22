@@ -353,14 +353,32 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
       resError = error;
     }
 
+    // If primary failed due to schema column differences (e.g. x_post_url column not yet in DB)
     if (resError) {
-      console.warn('Primary Supabase save failed, attempting core payload update/insert:', resError.message);
+      console.warn('Primary Supabase save notice:', resError.message);
+      // Try saving without x_post_url property (using facebook_post_url as DB storage)
+      const schemaSafePayload: Record<string, any> = { ...fullPayload };
+      delete schemaSafePayload.x_post_url;
+
       if (isExistingRecord) {
-        await supabase.from('opportunities').update(corePayload).eq('id', opportunity.id);
+        const { error: safeError } = await supabase
+          .from('opportunities')
+          .update(schemaSafePayload)
+          .eq('id', opportunity.id);
+        if (safeError) {
+          await supabase.from('opportunities').update(corePayload).eq('id', opportunity.id);
+        }
       } else {
-        const coreInsertPayload: Record<string, any> = { ...corePayload, created_at: new Date().toISOString() };
-        delete coreInsertPayload.id;
-        await supabase.from('opportunities').insert([coreInsertPayload]);
+        const safeInsert: Record<string, any> = { ...schemaSafePayload, created_at: new Date().toISOString() };
+        delete safeInsert.id;
+        const { error: safeError } = await supabase
+          .from('opportunities')
+          .insert([safeInsert]);
+        if (safeError) {
+          const coreInsertPayload: Record<string, any> = { ...corePayload, created_at: new Date().toISOString() };
+          delete coreInsertPayload.id;
+          await supabase.from('opportunities').insert([coreInsertPayload]);
+        }
       }
     }
 
