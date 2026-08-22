@@ -195,10 +195,9 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
 
     if (opportunity) {
       const cleanEmail = applicantEmail.trim().toLowerCase();
-      localStorage.setItem(`zenemoo_applicant_email_${opportunity.id}`, cleanEmail);
       const existing = await checkExistingApplication(opportunity.id, cleanEmail);
       if (existing) {
-        setExistingApp(existing);
+        setStep1Error(`An application using this email address (${cleanEmail}) has already been submitted for this opportunity program.`);
         return;
       }
     }

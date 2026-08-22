@@ -131,10 +131,9 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     // Check persistent database for existing submission with this email
     if (applyingOpportunity) {
       const cleanEmail = applicantEmail.trim().toLowerCase();
-      localStorage.setItem(`zenemoo_applicant_email_${applyingOpportunity.id}`, cleanEmail);
       const existing = await checkExistingApplication(applyingOpportunity.id, cleanEmail);
       if (existing) {
-        setExistingApp(existing);
+        setStep1Error(`An application using this email address (${cleanEmail}) has already been submitted for this opportunity program.`);
         return;
       }
     }
