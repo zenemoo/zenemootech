@@ -45,6 +45,7 @@ import { talentRegistrationApi } from '../services/api';
 import { AdminNetworkAnalytics } from './AdminNetworkAnalytics';
 import { AdminLanguageManagement } from './AdminLanguageManagement';
 import { AdminCandidateEditModal } from './AdminCandidateEditModal';
+import { ExportModal } from './ExportModal';
 import { formatLanguageDisplayName, normalizeLanguageKey } from '../utils/languageUtils';
 
 const INDIAN_STATES_UT = [
@@ -173,6 +174,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
 
   // Modals & Drawers
   const [isMobileFilterDrawerOpen, setIsMobileFilterDrawerOpen] = useState<boolean>(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [activeMenuCandidateId, setActiveMenuCandidateId] = useState<string | null>(null);
   const [deleteConfirmCandidate, setDeleteConfirmCandidate] = useState<{ id: string; name: string } | null>(null);
 
@@ -310,6 +312,10 @@ export const AdminTalentNetworkTab: React.FC = () => {
     setShowAnalytics(false);
     setTimeout(() => setActionSuccessMsg(''), 4000);
   };
+
+  useEffect(() => {
+    fetchAllRegistrations();
+  }, []);
 
   useEffect(() => {
     fetchRegistrations();
@@ -553,6 +559,30 @@ export const AdminTalentNetworkTab: React.FC = () => {
     showArchived,
   ]);
 
+  const activeFilterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (searchQuery.trim()) parts.push(`Search: "${searchQuery.trim()}"`);
+    if (selectedLanguage !== 'All Languages') parts.push(`Language: ${selectedLanguage}`);
+    if (selectedState !== 'All States') parts.push(`State: ${selectedState}`);
+    if (selectedRole !== 'All Roles') parts.push(`Role: ${selectedRole}`);
+    if (selectedWorkType !== 'All Work Types') parts.push(`Work: ${selectedWorkType}`);
+    if (selectedAvailability !== 'all') parts.push(`Availability: ${selectedAvailability}`);
+    if (selectedMinCapacity !== 'all') parts.push(`Min Capacity: ${selectedMinCapacity}`);
+    if (selectedStatus !== 'all') parts.push(`Status: ${selectedStatus.toUpperCase()}`);
+    if (showArchived) parts.push('Archived Only');
+    return parts.join(' | ');
+  }, [
+    searchQuery,
+    selectedLanguage,
+    selectedState,
+    selectedRole,
+    selectedWorkType,
+    selectedAvailability,
+    selectedMinCapacity,
+    selectedStatus,
+    showArchived,
+  ]);
+
   const handleResetFilters = () => {
     setSearchQuery('');
     setSelectedLanguage('All Languages');
@@ -744,10 +774,11 @@ export const AdminTalentNetworkTab: React.FC = () => {
           </button>
 
           <button
-            onClick={handleExportCsv}
+            onClick={() => setIsExportModalOpen(true)}
             className="px-4 py-2.5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all"
+            aria-label="Download Talent Network Data"
           >
-            <Download className="w-4 h-4 text-black" /> CSV Export
+            <Download className="w-4 h-4 text-black" /> Download
           </button>
         </div>
       </div>
@@ -760,7 +791,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             setShowAnalytics(false);
             setActiveAdminTab('roster');
           }}
-          onExportCsv={handleExportCsv}
+          onExportCsv={() => setIsExportModalOpen(true)}
         />
       ) : activeAdminTab === 'languages' ? (
         <AdminLanguageManagement
@@ -1989,6 +2020,21 @@ export const AdminTalentNetworkTab: React.FC = () => {
           }}
         />
       )}
+
+      {/* ── 9. PROFESSIONAL TALENT NETWORK EXPORT MODAL ── */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        sectionId="talent-network"
+        sectionName="AI Data Network & Resource Manager"
+        dataset={allRegistrations.length > 0 ? allRegistrations : registrations}
+        filteredDataset={filteredAndSortedCandidates}
+        filterSummary={activeFilterSummary}
+        showToast={(msg) => {
+          setActionSuccessMsg(msg);
+          setTimeout(() => setActionSuccessMsg(''), 4000);
+        }}
+      />
     </div>
   );
 };

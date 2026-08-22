@@ -30,8 +30,11 @@ export interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   sectionId: string;
+  sectionName?: string;
   dataset: any[];
   filteredDataset?: any[];
+  defaultColumns?: ColumnOption[];
+  filterSummary?: string;
   showToast?: (msg: string, type?: any) => void;
 }
 
@@ -39,14 +42,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   sectionId,
+  sectionName,
   dataset = [],
   filteredDataset = [],
+  defaultColumns,
+  filterSummary,
   showToast,
 }) => {
-  const meta = EXPORT_SECTION_METADATA[sectionId] || {
+  const registeredMeta = EXPORT_SECTION_METADATA[sectionId];
+  const meta = {
     sectionId,
-    sectionName: sectionId.replace(/-/g, ' ').toUpperCase(),
-    defaultColumns: [],
+    sectionName:
+      sectionName ||
+      registeredMeta?.sectionName ||
+      sectionId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    defaultColumns: defaultColumns || registeredMeta?.defaultColumns || [],
   };
 
   const titleId = useId();
@@ -59,40 +69,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  const hasFiltered = Array.isArray(filteredDataset) && filteredDataset.length > 0;
   const activeDataset =
-    exportScope === 'filtered' && Array.isArray(filteredDataset) && filteredDataset.length > 0
+    exportScope === 'filtered' && hasFiltered
       ? filteredDataset
-      : dataset;
+      : Array.isArray(dataset) && dataset.length > 0
+      ? dataset
+      : filteredDataset;
 
-  // Initialize columns and scope options when modal opens
+  // Initialize columns and scope options when modal opens or dataset changes
   useEffect(() => {
     if (!isOpen) return;
 
     setExportError(null);
-    const targetSet =
-      exportScope === 'filtered' && Array.isArray(filteredDataset) && filteredDataset.length > 0
-        ? filteredDataset
-        : dataset;
+    const initialScope = hasFiltered ? 'filtered' : 'all';
+    setExportScope(initialScope);
 
+    const targetSet = initialScope === 'filtered' && hasFiltered ? filteredDataset : dataset;
     const nonEmpties = getAvailableNonEmptyColumns(targetSet, meta.defaultColumns);
     setAvailableColumns(nonEmpties);
     setSelectedColumnKeys(nonEmpties.map((c) => c.key));
-
-    if (Array.isArray(filteredDataset) && filteredDataset.length > 0 && filteredDataset.length < dataset.length) {
-      setExportScope('filtered');
-    } else {
-      setExportScope('all');
-    }
-  }, [isOpen, sectionId]);
+  }, [isOpen, sectionId, dataset, filteredDataset]);
 
   // Handle Scope toggle changes
   const handleScopeChange = (newScope: 'all' | 'filtered') => {
     setExportScope(newScope);
-    const targetSet =
-      newScope === 'filtered' && Array.isArray(filteredDataset) && filteredDataset.length > 0
-        ? filteredDataset
-        : dataset;
-
+    const targetSet = newScope === 'filtered' && hasFiltered ? filteredDataset : dataset;
     const nonEmpties = getAvailableNonEmptyColumns(targetSet, meta.defaultColumns);
     setAvailableColumns(nonEmpties);
 
@@ -129,6 +131,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   const handleDownload = async () => {
+    if (activeDataset.length === 0) {
+      setExportError('No records available for export in the selected scope.');
+      return;
+    }
+
     if (selectedColumnKeys.length === 0) {
       setExportError('Please select at least one column to export.');
       return;
@@ -139,10 +146,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
     const activeCols = availableColumns.filter((c) => selectedColumnKeys.includes(c.key));
     const todayStr = new Date().toISOString().split('T')[0];
-    const cleanName = meta.sectionName.replace(/[^a-zA-Z0-9\s&_-]/g, '').trim();
+    const cleanSlug = sectionId
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/-+/g, '-');
+    const baseFilename = `zenemoo-${cleanSlug}-${todayStr}`;
 
     try {
-      // 1. Primary: Server-Side Export Endpoint (Authenticates RBAC & Audits)
+      // 1. Primary Attempt: Server-Side Export Endpoint (Authenticates RBAC & Audits)
       try {
         const response = await exportApi.exportData({
           section: sectionId,
@@ -152,7 +163,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           scope: exportScope,
         });
 
-        if (response.data) {
+        if (response.data && response.status === 200) {
           const extension = exportFormat === 'xlsx' ? 'xlsx' : exportFormat === 'pdf' ? 'pdf' : 'csv';
           const mimeType =
             exportFormat === 'xlsx'
@@ -160,7 +171,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               : exportFormat === 'pdf'
               ? 'application/pdf'
               : 'text/csv;charset=utf-8;';
-          const filename = `Zenemoo - ${cleanName} - ${todayStr}.${extension}`;
+          const filename = `${baseFilename}.${extension}`;
 
           triggerFileDownload(response.data, filename, mimeType);
 
@@ -171,30 +182,35 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           return;
         }
       } catch (backendErr: any) {
-        console.warn('[Export Note] Server export notice, generating via client engine:', backendErr.message);
         if (backendErr.response && backendErr.response.status === 403) {
           setExportError('Access Denied: You do not have RBAC authorization to export this data section.');
           setIsExporting(false);
           return;
         }
+        // Graceful fallback to client generation engine
       }
 
-      // 2. Fallback: Multilingual Client Export Engine
+      // 2. Client-Side Multilingual Export Engine
       if (exportFormat === 'csv') {
         const csvStr = generateClientCSV(activeDataset, activeCols, meta.sectionName);
-        const filename = `Zenemoo - ${cleanName} - ${todayStr}.csv`;
+        const filename = `${baseFilename}.csv`;
         triggerFileDownload(csvStr, filename, 'text/csv;charset=utf-8;');
       } else if (exportFormat === 'xlsx') {
         const buffer = await generateClientExcel(activeDataset, activeCols, meta.sectionName);
-        const filename = `Zenemoo - ${cleanName} - ${todayStr}.xlsx`;
+        const filename = `${baseFilename}.xlsx`;
         triggerFileDownload(
           buffer,
           filename,
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         );
       } else if (exportFormat === 'pdf') {
-        const pdfBuffer = await generateClientPDF(activeDataset, activeCols, meta.sectionName);
-        const filename = `Zenemoo - ${cleanName} - ${todayStr}.pdf`;
+        const scopeLabel =
+          exportScope === 'filtered' ? 'Current Filtered View' : 'All Database Records';
+        const pdfBuffer = await generateClientPDF(activeDataset, activeCols, meta.sectionName, {
+          scopeLabel,
+          filterSummary: exportScope === 'filtered' ? filterSummary : undefined,
+        });
+        const filename = `${baseFilename}.pdf`;
         triggerFileDownload(pdfBuffer, filename, 'application/pdf');
       }
 
@@ -207,7 +223,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Data Export Error:', err);
-      setExportError('Unable to generate the export. Please try again.');
+      setExportError('Unable to generate the export document. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -215,7 +231,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Glassmorphic Modal Content rendered directly to document.body via Portal
   const modalContent = (
-    <div className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 overflow-y-auto font-mono text-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[999999] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 overflow-y-auto font-mono text-xs animate-in fade-in duration-200">
       <div
         className="w-full max-w-2xl bg-[#090d16]/95 border border-cyan-500/30 rounded-3xl p-5 sm:p-8 space-y-6 shadow-2xl shadow-cyan-500/10 backdrop-blur-2xl relative my-auto max-h-[92vh] flex flex-col"
         role="dialog"
@@ -229,11 +245,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
               <h2 id={titleId} className="text-base sm:text-lg font-bold text-white font-display">
-                Export Data — {meta.sectionName}
+                Download Center — {meta.sectionName}
               </h2>
             </div>
             <p id={descId} className="text-xs text-slate-400">
-              Select export format, record scope, and non-empty columns. Completely empty columns are automatically omitted.
+              Select your preferred download format, record scope, and non-empty columns.
             </p>
           </div>
           <button
@@ -259,7 +275,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* Step 1: Select Format */}
           <div className="space-y-3">
             <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block flex items-center gap-1.5">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" /> 1. Select Export Format
+              <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" /> 1. Select Download Format
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* CSV */}
@@ -278,7 +294,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
                 <div>
                   <div className="font-bold text-sm text-white">CSV</div>
-                  <div className="text-[10px] opacity-75 mt-0.5">UTF-8 BOM • Universal</div>
+                  <div className="text-[10px] opacity-75 mt-0.5">Universal • UTF-8</div>
                 </div>
               </button>
 
@@ -298,7 +314,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
                 <div>
                   <div className="font-bold text-sm text-white">Excel (XLSX)</div>
-                  <div className="text-[10px] opacity-75 mt-0.5">Formatted • Filters Enabled</div>
+                  <div className="text-[10px] opacity-75 mt-0.5">Formatted spreadsheet • Filters preserved</div>
                 </div>
               </button>
 
@@ -317,8 +333,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   {exportFormat === 'pdf' && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-white">PDF Document</div>
-                  <div className="text-[10px] opacity-75 mt-0.5">Multilingual • Print Ready</div>
+                  <div className="font-bold text-sm text-white">PDF</div>
+                  <div className="text-[10px] opacity-75 mt-0.5">Professional document • Print ready</div>
                 </div>
               </button>
             </div>
@@ -344,7 +360,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     <Filter className="w-3.5 h-3.5 text-cyan-400" /> Current Filtered View
                   </div>
                   <div className="text-[10px] opacity-70 mt-0.5">
-                    {Array.isArray(filteredDataset) && filteredDataset.length > 0 ? filteredDataset.length : dataset.length} active records
+                    {hasFiltered ? filteredDataset.length : dataset.length} active matching records
                   </div>
                 </div>
                 {exportScope === 'filtered' && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
@@ -396,7 +412,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             {availableColumns.length === 0 ? (
               <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 text-center text-slate-400 text-xs">
-                No non-empty data columns available in the selected record set.
+                {activeDataset.length === 0
+                  ? 'No records available for export.'
+                  : 'No exportable data is available for the selected records.'}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1 pr-2 custom-scrollbar">
@@ -429,12 +447,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         {/* Footer Actions */}
         <div className="pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-3 text-slate-300 text-[11px]">
-            <span className="px-3 py-1 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-bold">
+          <div className="flex flex-wrap items-center gap-2.5 text-slate-300 text-[11px]">
+            <span className="px-3 py-1 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-bold flex items-center gap-1">
               📊 {activeDataset.length} Records
             </span>
-            <span className="px-3 py-1 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold">
-              📑 {selectedColumnKeys.length} Columns
+            <span className="px-3 py-1 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 font-bold flex items-center gap-1">
+              📄 {selectedColumnKeys.length} Columns
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-[10px]">
+              {exportScope === 'filtered' ? 'Current Filtered View' : 'All Records'}
             </span>
           </div>
 
@@ -451,7 +472,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <button
               type="button"
               onClick={handleDownload}
-              disabled={isExporting || selectedColumnKeys.length === 0}
+              disabled={isExporting || selectedColumnKeys.length === 0 || activeDataset.length === 0}
               className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isExporting ? (
@@ -474,3 +495,4 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   return createPortal(modalContent, document.body);
 };
+
