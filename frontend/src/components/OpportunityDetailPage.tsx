@@ -33,6 +33,7 @@ import {
   UserCheck,
   Copy
 } from 'lucide-react';
+import { FaXTwitter } from 'react-icons/fa6';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
 import { submitCandidateApplication, checkExistingApplication, CandidateApplication } from '../lib/opportunityApplicationStore';
@@ -325,6 +326,7 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     opportunity.whatsapp_channel_url?.trim() ||
     opportunity.telegram_url?.trim() ||
     opportunity.linkedin_post_url?.trim() ||
+    opportunity.x_post_url?.trim() ||
     opportunity.facebook_post_url?.trim() ||
     opportunity.instagram_url?.trim() ||
     opportunity.youtube_url?.trim() ||
@@ -700,18 +702,18 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                       </a>
                     )}
 
-                    {/* FACEBOOK POST */}
-                    {opportunity.facebook_post_url && opportunity.facebook_post_url.trim().length > 0 && (
+                    {/* X (TWITTER) POST */}
+                    {(opportunity.x_post_url || opportunity.facebook_post_url) && (opportunity.x_post_url || opportunity.facebook_post_url)!.trim().length > 0 && (
                       <a
-                        href={opportunity.facebook_post_url.trim()}
+                        href={(opportunity.x_post_url || opportunity.facebook_post_url)!.trim()}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-full py-3 px-4 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
+                        className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 font-mono text-xs font-bold flex items-center justify-between transition-all shadow-md group cursor-pointer"
                       >
                         <span className="flex items-center gap-2">
-                          <Globe className="w-4 h-4 text-blue-400" /> Facebook Post
+                          <FaXTwitter className="w-4 h-4 text-white" /> X (Twitter) Announcement
                         </span>
-                        <ExternalLink className="w-3.5 h-3.5 text-blue-400 group-hover:translate-x-0.5 transition-transform" />
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-transform" />
                       </a>
                     )}
 

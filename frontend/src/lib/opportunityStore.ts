@@ -43,6 +43,7 @@ export interface OpportunityProgram {
   contact_support_url?: string;
 
   // Social & Promotion links
+  x_post_url?: string;
   facebook_post_url?: string;
   instagram_url?: string;
   youtube_url?: string;
@@ -151,7 +152,8 @@ export const normalizeOpportunity = (op: any): OpportunityProgram => {
     contact_support_url: op.contact_support_url ? String(op.contact_support_url).trim() : undefined,
 
     linkedin_post_url: op.linkedin_post_url ? String(op.linkedin_post_url).trim() : undefined,
-    facebook_post_url: op.facebook_post_url ? String(op.facebook_post_url).trim() : undefined,
+    x_post_url: op.x_post_url || op.facebook_post_url ? String(op.x_post_url || op.facebook_post_url).trim() : undefined,
+    facebook_post_url: op.facebook_post_url || op.x_post_url ? String(op.facebook_post_url || op.x_post_url).trim() : undefined,
     instagram_url: op.instagram_url ? String(op.instagram_url).trim() : undefined,
     youtube_url: op.youtube_url ? String(op.youtube_url).trim() : undefined,
     other_social_url: op.other_social_url ? String(op.other_social_url).trim() : undefined,
@@ -296,7 +298,8 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     whatsapp_channel_url: (opportunity.whatsapp_channel_url || '').trim(),
     telegram_url: (opportunity.telegram_url || '').trim(),
     contact_support_url: (opportunity.contact_support_url || '').trim(),
-    facebook_post_url: (opportunity.facebook_post_url || '').trim(),
+    x_post_url: (opportunity.x_post_url || opportunity.facebook_post_url || '').trim(),
+    facebook_post_url: (opportunity.facebook_post_url || opportunity.x_post_url || '').trim(),
     instagram_url: (opportunity.instagram_url || '').trim(),
     youtube_url: (opportunity.youtube_url || '').trim(),
     other_social_url: (opportunity.other_social_url || '').trim(),

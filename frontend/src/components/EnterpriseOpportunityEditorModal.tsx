@@ -34,6 +34,7 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
+import { FaXTwitter } from 'react-icons/fa6';
 import { OpportunityProgram, CustomQuestion, isTempId } from '../lib/opportunityStore';
 
 export interface EnterpriseOpportunityEditorModalProps {
@@ -80,7 +81,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
   // Social & Promo Links
   const [linkedinPostUrl, setLinkedinPostUrl] = useState('');
-  const [facebookPostUrl, setFacebookPostUrl] = useState('');
+  const [xPostUrl, setXPostUrl] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [otherSocialUrl, setOtherSocialUrl] = useState('');
@@ -152,7 +153,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
       setContactSupportUrl(opportunity.contact_support_url || '');
 
       setLinkedinPostUrl(opportunity.linkedin_post_url || '');
-      setFacebookPostUrl(opportunity.facebook_post_url || '');
+      setXPostUrl(opportunity.x_post_url || opportunity.facebook_post_url || '');
       setInstagramUrl(opportunity.instagram_url || '');
       setYoutubeUrl(opportunity.youtube_url || '');
       setOtherSocialUrl(opportunity.other_social_url || '');
@@ -204,7 +205,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
       setTelegramUrl('');
       setContactSupportUrl('');
       setLinkedinPostUrl('');
-      setFacebookPostUrl('');
+      setXPostUrl('');
       setInstagramUrl('');
       setYoutubeUrl('');
       setOtherSocialUrl('');
@@ -439,7 +440,8 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
         contact_support_url: contactSupportUrl,
 
         linkedin_post_url: linkedinPostUrl,
-        facebook_post_url: facebookPostUrl,
+        x_post_url: xPostUrl,
+        facebook_post_url: xPostUrl,
         instagram_url: instagramUrl,
         youtube_url: youtubeUrl,
         other_social_url: otherSocialUrl,
@@ -902,17 +904,17 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
                   />
                 </div>
 
-                {/* Facebook Post Link */}
+                {/* X (Twitter) Post Link */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-mono font-bold text-blue-400 flex items-center gap-1.5">
-                    <Share2 className="w-4 h-4" /> Facebook Link
+                  <label className="text-xs font-mono font-bold text-slate-200 flex items-center gap-1.5">
+                    <FaXTwitter className="w-3.5 h-3.5 text-white" /> X (Twitter) Link
                   </label>
                   <input
                     type="url"
-                    value={facebookPostUrl}
-                    onChange={(e) => setFacebookPostUrl(e.target.value)}
-                    placeholder="https://facebook.com/..."
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-white font-mono text-xs focus:outline-none"
+                    value={xPostUrl}
+                    onChange={(e) => setXPostUrl(e.target.value)}
+                    placeholder="https://x.com/... or https://twitter.com/..."
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
                   />
                 </div>
 
