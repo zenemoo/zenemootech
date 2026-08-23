@@ -742,49 +742,6 @@ export const getProfile = async (req, res) => {
   });
 };
 
-export const getMeProfile = async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-
-  const userId = req.user.id;
-  const email = req.user.email || '';
-  const role = req.user.role || 'team_member';
-
-  let userProfile = {
-    id: userId,
-    email: email,
-    role: role,
-    team_member_id: req.user.team_member_id,
-    email_access: req.user.email_access !== false,
-  };
-
-  if (supabase && userId && !String(userId).startsWith('admin_')) {
-    try {
-      const { data: userAcc, error } = await supabase
-        .from('user_accounts')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (!error && userAcc) {
-        userProfile = {
-          ...userProfile,
-          ...userAcc,
-          email_access: userAcc.email_access !== false,
-        };
-      }
-    } catch (e) {
-      console.warn('Error fetching user profile in getMeProfile:', e.message);
-    }
-  }
-
-  res.json({
-    success: true,
-    user: userProfile,
-  });
-};
-
 export const getAuditLogs = async (req, res) => {
   const cleanEmail = req.user?.email || '';
   if (!cleanEmail) {
