@@ -107,6 +107,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButt
       setActiveSection('Opportunities');
       return;
     }
+    if (path === '/team' || path === '/directory' || hash === '#team') {
+      setActiveSection('Team');
+      return;
+    }
     if (path === '/review' || path === '/reviews' || hash === '#review' || hash === '#reviews') {
       setActiveSection('Reviews');
       return;

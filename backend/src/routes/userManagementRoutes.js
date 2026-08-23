@@ -11,14 +11,19 @@ import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = Router();
 
-// All routes require Admin authorization
-router.use(verifyToken, requireRole(['admin']));
+// Roster search for Email Composer recipient autocomplete (accessible to Admin, HR, Team Members)
+router.get(
+  '/search-roster',
+  verifyToken,
+  requireRole(['admin', 'super_admin', 'administrator', 'hr', 'team_member', 'manager', 'lead', 'core']),
+  searchRosterForAccess
+);
 
-router.get('/search-roster', searchRosterForAccess);
-router.post('/grant-access', grantUserAccess);
-router.get('/', getUsers);
-router.put('/:id', updateUser);
-router.post('/:id/reset-password', resetUserPassword);
-router.delete('/:id', deleteUserAccess);
+// All admin management routes require Admin authorization
+router.get('/', verifyToken, requireRole(['admin']), getUsers);
+router.post('/grant-access', verifyToken, requireRole(['admin']), grantUserAccess);
+router.put('/:id', verifyToken, requireRole(['admin']), updateUser);
+router.post('/:id/reset-password', verifyToken, requireRole(['admin']), resetUserPassword);
+router.delete('/:id', verifyToken, requireRole(['admin']), deleteUserAccess);
 
 export default router;

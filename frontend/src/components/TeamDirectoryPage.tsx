@@ -65,8 +65,8 @@ export const TeamDirectoryPage: React.FC<TeamDirectoryPageProps> = ({ onBack, on
       {/* 3D WebGL Neural Background Canvas */}
       <ThreeNeuralBackground />
 
-      {/* Top Navbar with Back Button for this page only */}
-      <Navbar showBackButton={true} onBack={onBack} onOpenAiDrawer={onOpenAiDrawer} />
+      {/* Top Navbar */}
+      <Navbar onBack={onBack} onOpenAiDrawer={onOpenAiDrawer} />
 
       <main className="relative z-10 pt-32 pb-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
