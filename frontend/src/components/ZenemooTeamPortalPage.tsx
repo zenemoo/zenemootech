@@ -5,7 +5,7 @@ import {
   Users,
   ArrowLeft,
   Lock,
-  Mail,
+  IdCard,
   Eye,
   EyeOff,
   Sparkles,
@@ -42,7 +42,7 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
 }) => {
   // ── State Management ──
   const [view, setView] = useState<TeamPortalView>('role_selection');
-  const [email, setEmail] = useState('');
+  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,8 +116,8 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
   // ── Primary Authentication Handler ──
   const handleLoginSubmit = async (e: React.FormEvent, targetRole: 'core' | 'team') => {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      setErrorMessage('Please enter both User ID / Email and Password.');
+    if (!userId.trim() || !password) {
+      setErrorMessage('Please enter both User ID and Password.');
       return;
     }
 
@@ -126,8 +126,8 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
     setRoleMismatchError(null);
 
     try {
-      const rolePayload = targetRole === 'core' ? 'hr' : 'team';
-      const response = await portalAuthApi.portalLogin(email.trim(), password, rolePayload);
+      const rolePayload = targetRole === 'core' ? 'hr' : 'team_member';
+      const response = await portalAuthApi.portalLogin(userId.trim(), password, rolePayload);
 
       if (response.data && response.data.success && response.data.token && response.data.user) {
         const userData = response.data.user;
@@ -194,7 +194,7 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
     localStorage.removeItem('zenemoo_jwt_expiry');
     localStorage.removeItem('zenemoo_portal_user');
     setPortalUser(null);
-    setEmail('');
+    setUserId('');
     setPassword('');
     setErrorMessage('');
     setView('role_selection');
@@ -425,16 +425,16 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
                 <form onSubmit={(e) => handleLoginSubmit(e, 'core')} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-mono font-medium text-slate-300 flex items-center justify-between">
-                      <span>User ID / Email</span>
+                      <span>User ID</span>
                     </label>
                     <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <IdCard className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                       <input
-                        type="email"
+                        type="text"
                         required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="hr@zenemoo.in"
+                        value={userId}
+                        onChange={(e) => setUserId(e.target.value)}
+                        placeholder="Enter your Zenemoo User ID"
                         className="w-full bg-black/40 border border-slate-700/60 focus:border-cyan-400 rounded-xl pl-10 pr-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-all"
                       />
                     </div>
@@ -451,7 +451,7 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••••••"
+                        placeholder="Enter your password"
                         className="w-full bg-black/40 border border-slate-700/60 focus:border-cyan-400 rounded-xl pl-10 pr-11 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-all"
                       />
                       <button
@@ -486,8 +486,7 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
                       </>
                     ) : (
                       <>
-                        <span>Sign In as Core Team</span>
-                        <ChevronRight className="w-4 h-4" />
+                        <span>Sign In →</span>
                       </>
                     )}
                   </button>
@@ -540,16 +539,16 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
                 <form onSubmit={(e) => handleLoginSubmit(e, 'team')} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-mono font-medium text-slate-300 flex items-center justify-between">
-                      <span>User ID / Email</span>
+                      <span>User ID</span>
                     </label>
                     <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <IdCard className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                       <input
-                        type="email"
+                        type="text"
                         required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="member@zenemoo.in"
+                        value={userId}
+                        onChange={(e) => setUserId(e.target.value)}
+                        placeholder="Enter your Zenemoo User ID"
                         className="w-full bg-black/40 border border-slate-700/60 focus:border-purple-400 rounded-xl pl-10 pr-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-all"
                       />
                     </div>
@@ -566,7 +565,7 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••••••"
+                        placeholder="Enter your password"
                         className="w-full bg-black/40 border border-slate-700/60 focus:border-purple-400 rounded-xl pl-10 pr-11 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 transition-all"
                       />
                       <button
@@ -601,8 +600,7 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
                       </>
                     ) : (
                       <>
-                        <span>Sign In as Team Member</span>
-                        <ChevronRight className="w-4 h-4" />
+                        <span>Sign In →</span>
                       </>
                     )}
                   </button>
