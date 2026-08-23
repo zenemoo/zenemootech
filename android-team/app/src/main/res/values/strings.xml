@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Zenemoo Team</string>
+    <string name="title_activity_main">Zenemoo Team</string>
+    <string name="package_name">in.zenemoo.team</string>
+    <string name="custom_url_scheme">in.zenemoo.team</string>
+</resources>

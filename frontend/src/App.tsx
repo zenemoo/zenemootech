@@ -44,10 +44,11 @@ import { AiDataPortfolioPage } from './components/AiDataPortfolioPage';
 import { PublicDatasetDetailPage } from './components/PublicDatasetDetailPage';
 import { ZenemooAndroidAppPage } from './components/ZenemooAndroidAppPage';
 import { ZenemooAppsHubPage } from './components/ZenemooAppsHubPage';
+import { ZenemooTeamPortalPage } from './components/ZenemooTeamPortalPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'team-portal' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -111,10 +112,20 @@ export function App() {
         | 'ai-data-detail'
         | 'app-hub'
         | 'app-android'
+        | 'team-portal'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
         matchedRoute = 'admin';
+      } else if (
+        path === '/team-portal' ||
+        path === '/team-portal/' ||
+        path === '/team-app' ||
+        hash === '#team-portal' ||
+        hash === '#/team-portal' ||
+        hash === '#team-app'
+      ) {
+        matchedRoute = 'team-portal';
       } else if (path === '/email' || hash === '#email' || hash === '#/email') {
         matchedRoute = 'email';
       } else if (
@@ -516,6 +527,14 @@ export function App() {
             setCurrentRoute('app-hub');
           }}
           onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
+      ) : currentRoute === 'team-portal' ? (
+        <ZenemooTeamPortalPage
+          onNavigateHome={handleBackToHome}
+          onNavigateForgotPassword={() => {
+            window.location.hash = '/forgot-password';
+            setCurrentRoute('forgot-password');
+          }}
         />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
