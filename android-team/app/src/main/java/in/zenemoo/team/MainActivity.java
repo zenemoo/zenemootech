@@ -107,6 +107,9 @@ public class MainActivity extends BridgeActivity {
         insetsController.setAppearanceLightStatusBars(false);
         insetsController.setAppearanceLightNavigationBars(false);
 
+        // Create high-priority Notification Channel for Zenemoo Team & HR
+        createTeamNotificationChannel();
+
         // Set decor view background color to #050505
         window.getDecorView().setBackgroundColor(darkColor);
 
@@ -554,5 +557,29 @@ public class MainActivity extends BridgeActivity {
                 .build();
 
         biometricPrompt.authenticate(promptInfo);
+    }
+
+    private static final String TEAM_CHANNEL_ID = "zenemoo_team_hr_notifications";
+    private static final String TEAM_CHANNEL_NAME = "Zenemoo Team & HR";
+    private static final String TEAM_CHANNEL_DESC = "Notifications and task alerts for Zenemoo Team & HR";
+
+    private void createTeamNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                TEAM_CHANNEL_ID,
+                TEAM_CHANNEL_NAME,
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription(TEAM_CHANNEL_DESC);
+            channel.enableLights(true);
+            channel.setLightColor(Color.parseColor("#06B6D4"));
+            channel.enableVibration(true);
+            channel.setShowBadge(true);
+
+            android.app.NotificationManager notificationManager = getSystemService(android.app.NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
     }
 }

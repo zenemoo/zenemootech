@@ -230,6 +230,11 @@ export const sendZenemooNotification = async ({
         // Android FCM HTTP v1 Delivery via Firebase Admin SDK
         if (firebaseMessaging) {
           try {
+            const isTeamHrApp = sub.app_type === 'team_hr' || sub.app_type === 'team_portal' || sub.app_type === 'hr_portal' || sub.user_role === 'team_member' || sub.user_role === 'hr';
+            const channelId = isTeamHrApp ? 'zenemoo_team_hr_notifications' : 'zenemoo_user_notifications';
+            const icon = isTeamHrApp ? 'ic_notification_team' : 'ic_notification';
+            const color = isTeamHrApp ? '#06B6D4' : '#6366F1';
+
             await firebaseMessaging.send({
               token: sub.token,
               notification: {
@@ -244,11 +249,14 @@ export const sendZenemooNotification = async ({
                 click_action: 'FCM_PLUGIN_NOTIFICATION_CLICK',
                 opportunity_id: String(opportunity_id || ''),
                 id: String(savedNotification.id),
+                app_type: isTeamHrApp ? 'team_hr' : 'main',
               },
               android: {
                 priority: 'high',
                 notification: {
-                  icon: 'ic_notification',
+                  channelId,
+                  icon,
+                  color,
                   clickAction: 'FCM_PLUGIN_NOTIFICATION_CLICK',
                   sound: 'default',
                 },
