@@ -130,15 +130,16 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
   if (Capacitor.isNativePlatform()) {
     try {
       const permStatus = await PushNotifications.checkPermissions();
+      console.log('[Capacitor checkPermissions status]:', permStatus.receive);
       if (permStatus.receive === 'granted') {
         localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
         localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
         localStorage.removeItem(DENIED_AT_KEY);
         return 'granted';
       }
-      if (permStatus.receive === 'denied') {
-        return 'permanently_denied';
-      }
+      // On Android 13+ (API 33+), checkPermissions() returns 'denied' or 'prompt' before requestPermissions() is invoked.
+      // Return 'can_prompt' so the custom UI shows the "Allow Notifications" action button, which triggers native OS dialog.
+      return 'can_prompt';
     } catch (err) {
       console.warn('[Capacitor checkPermissions warn]:', err);
     }

@@ -8,6 +8,7 @@ import {
   initFCMIfGranted,
   initWebPushIfGranted,
   requestAndRegisterCapacitorPush,
+  setupAppLifecycleNotificationListener,
   openAndroidNotificationSettings,
 } from '../services/notificationService';
 
@@ -27,6 +28,7 @@ export const ZenemooNotificationPrompt: React.FC = () => {
 
     if (Capacitor.isNativePlatform()) {
       initFCMIfGranted(appType);
+      setupAppLifecycleNotificationListener(appType);
     } else {
       initWebPushIfGranted();
     }
@@ -58,13 +60,14 @@ export const ZenemooNotificationPrompt: React.FC = () => {
 
   const handleAllow = async () => {
     setIsRegistering(true);
+    const appType = isTeamPortal ? 'team_hr' : 'zenemoo';
     try {
       if (Capacitor.isNativePlatform()) {
-        const result = await requestAndRegisterCapacitorPush('team_hr');
+        const result = await requestAndRegisterCapacitorPush(appType);
         if (result.registered || result.status === 'granted') {
           setIsVisible(false);
         } else {
-          // Native permission was denied or blocked by Android 13+ OS
+          // Native permission was denied by user -> show settings button as fallback
           setShowSettingsOption(true);
         }
       } else {
