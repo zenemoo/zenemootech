@@ -332,11 +332,32 @@ export const initWebPushIfGranted = async (user_id?: string, user_role?: string)
 };
 
 /**
+ * Helper to open Android native App Info / Notification settings when permission is denied or requires system settings.
+ */
+export const openAndroidNotificationSettings = async () => {
+  if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) {
+    return;
+  }
+  try {
+    const win = window as any;
+    if (win.AndroidBridge && typeof win.AndroidBridge.openAppSettings === 'function') {
+      win.AndroidBridge.openAppSettings();
+    } else if (win.Capacitor && win.Capacitor.Plugins && win.Capacitor.Plugins.App && typeof win.Capacitor.Plugins.App.openAppSettings === 'function') {
+      await win.Capacitor.Plugins.App.openAppSettings();
+    } else {
+      window.location.href = 'intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:in.zenemoo.team;end;';
+    }
+  } catch (e) {
+    console.warn('[openAndroidNotificationSettings warn]:', e);
+  }
+};
+
+/**
  * Register Android FCM Push Subscription (For Capacitor native apps)
  */
 export const registerAndroidPushSubscription = async (
   token: string,
-  app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
+  app_type: string = 'zenemoo',
   user_id?: string,
   user_role?: string
 ) => {
@@ -360,7 +381,7 @@ export const registerAndroidPushSubscription = async (
       app_version,
       permission_status: 'granted',
     });
-    console.log('[AndroidPush]: FCM Android notification token registered successfully with app_version:', app_version);
+    console.log('[AndroidPush]: FCM Android notification token registered successfully for', app_type, 'with app_version:', app_version);
   } catch (err) {
     lastRegisteredSubKey = '';
     console.error('[AndroidPush Registration Error]:', err);
@@ -371,7 +392,7 @@ export const registerAndroidPushSubscription = async (
  * Low-level register FCM push listeners and trigger PushNotifications.register()
  */
 const registerCapacitorPushListenersAndToken = async (
-  app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
+  app_type: string = 'zenemoo',
   user_id?: string,
   user_role?: string
 ) => {
@@ -414,7 +435,7 @@ const registerCapacitorPushListenersAndToken = async (
  * Runs on App startup. If Android OS permission is ALREADY granted, initializes FCM listeners & token silently in background.
  */
 export const initFCMIfGranted = async (
-  app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
+  app_type: string = 'zenemoo',
   user_id?: string,
   user_role?: string
 ) => {
@@ -439,15 +460,15 @@ export const initFCMIfGranted = async (
 /**
  * EXPLICIT PROMPT ACTION:
  * Called when user taps "Allow Notifications" in custom prompt.
- * Requests OS permission, initializes FCM registration, and marks onboarding completed.
+ * Triggers REAL native Android 13+ PushNotifications.requestPermissions(), initializes FCM registration, and returns result status.
  */
 export const requestAndRegisterCapacitorPush = async (
   app_type: string = 'zenemoo',
   user_id?: string,
   user_role?: string
-): Promise<boolean> => {
+): Promise<{ status: 'granted' | 'denied' | 'permanently_denied'; registered: boolean }> => {
   if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) {
-    return false;
+    return { status: 'denied', registered: false };
   }
 
   try {
@@ -458,15 +479,15 @@ export const requestAndRegisterCapacitorPush = async (
 
     if (permStatus.receive === 'granted') {
       recordPromptDecision('allow');
-      await registerCapacitorPushListenersAndToken(app_type as 'zenemoo' | 'zenemoo_admin', user_id, user_role);
-      return true;
-    } else {
+      await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+      return { status: 'granted', registered: true };
+    } else if (permStatus.receive === 'denied') {
       recordPromptDecision('not_now');
-      return false;
+      return { status: 'denied', registered: false };
     }
   } catch (err) {
     console.warn('[requestAndRegisterCapacitorPush Warn]:', err);
     recordPromptDecision('not_now');
   }
-  return false;
+  return { status: 'denied', registered: false };
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, X, ArrowRight } from 'lucide-react';
+import { Bell, X, ArrowRight, Settings } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import {
   checkPromptEligibility,
@@ -8,18 +8,26 @@ import {
   initFCMIfGranted,
   initWebPushIfGranted,
   requestAndRegisterCapacitorPush,
+  openAndroidNotificationSettings,
 } from '../services/notificationService';
 
 export const ZenemooNotificationPrompt: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showSettingsOption, setShowSettingsOption] = useState(false);
+
+  const isTeamPortal = typeof window !== 'undefined' && (
+    window.location.pathname.includes('/team') ||
+    window.location.pathname.includes('/hr') ||
+    Capacitor.isNativePlatform()
+  );
 
   useEffect(() => {
-    // Independent FCM Startup Check: if native permission is already granted, refresh/register FCM silently in background
+    const appType = isTeamPortal ? 'team_hr' : 'zenemoo';
+
     if (Capacitor.isNativePlatform()) {
-      initFCMIfGranted('zenemoo');
+      initFCMIfGranted(appType);
     } else {
-      // Independent Web Push Startup Check: if browser permission is already granted, re-register subscription silently
       initWebPushIfGranted();
     }
 
@@ -29,6 +37,9 @@ export const ZenemooNotificationPrompt: React.FC = () => {
       if (isMounted) {
         if (eligibility === 'can_prompt') {
           setIsVisible(true);
+        } else if (eligibility === 'permanently_denied' && Capacitor.isNativePlatform()) {
+          setIsVisible(true);
+          setShowSettingsOption(true);
         } else {
           setIsVisible(false);
         }
@@ -49,11 +60,18 @@ export const ZenemooNotificationPrompt: React.FC = () => {
     setIsRegistering(true);
     try {
       if (Capacitor.isNativePlatform()) {
-        await requestAndRegisterCapacitorPush('team_hr');
-        setIsVisible(false);
+        const result = await requestAndRegisterCapacitorPush('team_hr');
+        if (result.registered || result.status === 'granted') {
+          setIsVisible(false);
+        } else {
+          // Native permission was denied or blocked by Android 13+ OS
+          setShowSettingsOption(true);
+        }
       } else {
-        await registerWebPushSubscription();
-        setIsVisible(false);
+        const ok = await registerWebPushSubscription();
+        if (ok) {
+          setIsVisible(false);
+        }
       }
     } catch (e) {
       console.warn('Notification prompt error:', e);
@@ -61,6 +79,11 @@ export const ZenemooNotificationPrompt: React.FC = () => {
     } finally {
       setIsRegistering(false);
     }
+  };
+
+  const handleOpenSettings = async () => {
+    await openAndroidNotificationSettings();
+    setIsVisible(false);
   };
 
   const handleNotNow = () => {
@@ -98,10 +121,12 @@ export const ZenemooNotificationPrompt: React.FC = () => {
 
           <div className="space-y-1 min-w-0 flex-1">
             <h4 className="font-display font-bold text-xs sm:text-sm text-white flex items-center gap-1.5 leading-snug">
-              Stay Updated with Zenemoo
+              {isTeamPortal ? 'Stay Connected with Zenemoo Team & HR' : 'Stay Updated with Zenemoo'}
             </h4>
             <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed font-sans line-clamp-3 sm:line-clamp-none">
-              Allow Zenemoo to send you important updates, new opportunities, announcements, and program notifications.
+              {isTeamPortal
+                ? 'Enable notifications to receive important team updates, HR announcements, opportunities, and internal alerts.'
+                : 'Allow Zenemoo to send you important updates, new opportunities, announcements, and program notifications.'}
             </p>
           </div>
         </div>
@@ -115,20 +140,30 @@ export const ZenemooNotificationPrompt: React.FC = () => {
             Not Now
           </button>
 
-          <button
-            onClick={handleAllow}
-            disabled={isRegistering}
-            className="flex-1 sm:flex-initial px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-mono font-bold text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
-          >
-            {isRegistering ? (
-              <span>Enabling...</span>
-            ) : (
-              <>
-                <span>Allow Notifications</span>
-                <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              </>
-            )}
-          </button>
+          {showSettingsOption ? (
+            <button
+              onClick={handleOpenSettings}
+              className="flex-1 sm:flex-initial px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-mono font-bold text-cyan-300 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Settings className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Open Settings</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleAllow}
+              disabled={isRegistering}
+              className="flex-1 sm:flex-initial px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-mono font-bold text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            >
+              {isRegistering ? (
+                <span>Enabling...</span>
+              ) : (
+                <>
+                  <span>Allow Notifications</span>
+                  <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
