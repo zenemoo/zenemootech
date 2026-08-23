@@ -1323,6 +1323,36 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
               </div>
             )
           )}
+          {/* Dashboard Responsive Footer (scrolls naturally with main content) */}
+          <footer className="py-6 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 mt-12 mb-4">
+            <div className="text-center sm:text-left">
+              &copy; {new Date().getFullYear()} Zenemoo AI Solutions. Powered by Zenemoo Enterprise AI Platform
+            </div>
+            <div className="flex items-center gap-4 text-[11px] font-mono">
+              <button
+                type="button"
+                onClick={() => setIsDocModalOpen(true)}
+                className="hover:text-cyan-400 transition-colors cursor-pointer"
+              >
+                Documentation
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSupportModalOpen(true)}
+                className="hover:text-cyan-400 transition-colors cursor-pointer"
+              >
+                Support Portal
+              </button>
+              <a
+                href="/privacy"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-cyan-400 transition-colors"
+              >
+                Privacy &amp; Terms
+              </a>
+            </div>
+          </footer>
         </main>
 
         {/* CHANGE PHOTO & MEDIA LINK MODAL */}
@@ -1464,37 +1494,6 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
             </div>
           </div>
         )}
-
-        {/* Dashboard Responsive Footer */}
-        <footer className="py-4 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="text-center sm:text-left">
-            &copy; {new Date().getFullYear()} Zenemoo AI Solutions. Powered by Zenemoo Enterprise AI Platform
-          </div>
-          <div className="flex items-center gap-4 text-[11px] font-mono">
-            <button
-              type="button"
-              onClick={() => setIsDocModalOpen(true)}
-              className="hover:text-cyan-400 transition-colors cursor-pointer"
-            >
-              Documentation
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsSupportModalOpen(true)}
-              className="hover:text-cyan-400 transition-colors cursor-pointer"
-            >
-              Support Portal
-            </button>
-            <a
-              href="/privacy"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-cyan-400 transition-colors"
-            >
-              Privacy &amp; Terms
-            </a>
-          </div>
-        </footer>
       </div>
 
       <ZenemooDocumentationModal
