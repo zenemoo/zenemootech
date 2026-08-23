@@ -367,23 +367,20 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
       if (sessionId !== activeSessionIdRef.current) return;
       isStartingRef.current = false;
       isListeningRef.current = false;
-      logDiag(sessionId, `[Native Start Error]: ${err?.message || err}`);
+      logDiag(sessionId, `[Native Start Error]: ${err?.message || err}. Falling back to Web Speech API...`);
 
       const errMsg = (err?.message || '').toLowerCase();
       if (errMsg.includes('permission') || errMsg.includes('denied')) {
         setState('permission_denied');
         setErrorMessage('Microphone access was denied. Please allow permission.');
-      } else if (errMsg.includes('no match') || errMsg.includes('speech')) {
-        setState('no_speech');
       } else {
-        setState('error');
-        setErrorCode('native-error');
-        setErrorMessage(err?.message || 'Native speech recognition error on Android device.');
+        // Fall back to Web Speech API (webkitSpeechRecognition) seamlessly
+        startWebSpeechRecognition(sessionId);
       }
     }
   };
 
-  // ── Web Speech API Implementation for Browser/Desktop ──
+  // ── Web Speech API Implementation for Browser/Desktop/Android WebView Fallback ──
   const startWebSpeechRecognition = (sessionId: number) => {
     if (sessionId !== activeSessionIdRef.current) return;
 
@@ -467,7 +464,7 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         isListeningRef.current = false;
         setErrorCode('not-allowed');
 
-        const nativeBridge = (window as any).ZenemooNativeBridge;
+        const nativeBridge = (window as any).ZenemooNativeBridge || (window as any).AndroidBridge;
         if (nativeBridge && nativeBridge.isPermissionPermanentlyDenied && nativeBridge.isPermissionPermanentlyDenied()) {
           setState('permanently_denied');
         } else {
@@ -477,15 +474,22 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
           'Microphone access was denied. Please allow microphone permission in your device or browser settings.'
         );
       } else if (event.error === 'no-speech') {
-        logDiag(sessionId, 'NO-SPEECH (non-fatal silence)');
-      } else if (event.error === 'network') {
-        shouldContinueListeningRef.current = false;
-        isListeningRef.current = false;
-        setErrorCode('network');
-        setState('error');
-        setErrorMessage(
-          'Speech recognition network service error (network). Check your connection and try again.'
-        );
+        logDiag(sessionId, 'NO-SPEECH (non-fatal silence) — auto recovering...');
+      } else if (event.error === 'network' || event.error === 'aborted') {
+        logDiag(sessionId, `RECOVERABLE RECOGNITION ERROR (${event.error}) — Auto restarting speech session...`);
+        if (shouldContinueListeningRef.current) {
+          restartTimerRef.current = setTimeout(() => {
+            if (sessionId === activeSessionIdRef.current && shouldContinueListeningRef.current) {
+              try {
+                if (recognitionRef.current && !isListeningRef.current) {
+                  recognitionRef.current.start();
+                }
+              } catch (reErr) {
+                logDiag(sessionId, `Auto restart catch: ${reErr}`);
+              }
+            }
+          }, 350);
+        }
       } else if (event.error === 'language-not-supported') {
         shouldContinueListeningRef.current = false;
         isListeningRef.current = false;
@@ -494,8 +498,8 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
         setErrorMessage(
           `Speech recognition language (${targetLang}) is not supported on this device.`
         );
-      } else if (event.error !== 'aborted') {
-        setErrorCode(event.error || 'unknown');
+      } else {
+        logDiag(sessionId, `NON-FATAL ERROR (${event.error}) — continuing listening...`);
       }
     };
 
@@ -535,12 +539,19 @@ export const ZenemooVoiceModal: React.FC<ZenemooVoiceModalProps> = ({
     }
   };
 
-  const startRecognitionAfterPermission = (sessionId: number) => {
+  const startRecognitionAfterPermission = async (sessionId: number) => {
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-      startNativeAndroidRecognition(sessionId);
-    } else {
-      startWebSpeechRecognition(sessionId);
+      try {
+        const isAvail = await NativeSpeechRecognition.available();
+        if (isAvail && isAvail.available) {
+          await startNativeAndroidRecognition(sessionId);
+          return;
+        }
+      } catch (e) {
+        logDiag(sessionId, `Native speech recognition availability check failed, falling back to Web Speech: ${e}`);
+      }
     }
+    startWebSpeechRecognition(sessionId);
   };
 
   // ── Session Starter with Permission Gate ──
