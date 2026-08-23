@@ -77,29 +77,134 @@ const INDIAN_STATES_UT = [
 ];
 
 const AVAILABLE_LANGUAGES = [
+  'Adi',
+  'Aka (Hrusso)',
+  'Anal',
+  'Angami',
+  'Angika',
+  'Ao',
+  'Apatani',
+  'Arabic',
   'Assamese',
+  'Awadhi',
+  'Badaga',
+  'Baghelkhandi / Bagheli',
+  'Bagri',
+  'Balti',
+  'Banjari / Lambadi',
+  'Beary',
   'Bengali',
+  'Bhili / Bhilodi',
+  'Bhojpuri',
+  'Bhumij',
+  'Bhutia',
+  'Bishnupriya Manipuri',
   'Bodo',
+  'Bundelkhandi / Bundeli',
+  'Chakhesang / Chokri',
+  'Chakma',
+  'Chang',
+  'Chhattisgarhi',
+  'Coorgi / Kodava',
+  'Dangi',
+  'Deori',
+  'Dhundhari',
+  'Dimasa',
   'Dogri',
   'English',
+  'Gadaba',
+  'Gangte',
+  'Garhwali',
+  'Garo',
+  'Gondi',
   'Gujarati',
+  'Hajong',
+  'Halbi',
+  'Harauti',
+  'Haryanvi',
   'Hindi',
+  'Hmar',
+  'Ho',
+  'Jaintia / Pnar',
+  'Jaunsari',
+  'Juang',
+  'Kabui / Rongmei',
+  'Kangri',
   'Kannada',
+  'Karbi',
   'Kashmiri',
+  'Khandeshi',
+  'Kharia',
+  'Khasi',
+  'Khortha',
+  'Kinnauri',
+  'Kokborok (Tripuri)',
+  'Kolami',
+  'Kom',
   'Konkani',
+  'Konyak',
+  'Korku',
+  'Koya',
+  'Kui',
+  'Kumaoni',
+  'Kurukh / Oraon',
+  'Kuvi',
+  'Ladakhi',
+  'Lepcha',
+  'Limbu',
+  'Lotha',
+  'Magahi / Magadhi',
   'Maithili',
   'Malayalam',
-  'Manipuri',
+  'Malto / Paharia',
+  'Malvi',
+  'Mandeali',
+  'Manipuri (Meitei)',
+  'Mao',
   'Marathi',
+  'Marwari',
+  'Mewari',
+  'Mewati',
+  'Mishmi',
+  'Mizo (Lushai)',
+  'Monpa',
+  'Munda',
+  'Mundari',
+  'Nagpuri / Sadri',
   'Nepali',
+  'Nicobarese',
+  'Nimadi',
+  'Nishi / Nyishi',
+  'Nocte',
   'Odia',
+  'Paite',
+  'Phom',
   'Punjabi',
+  'Rabha',
+  'Rajasthani',
+  'Rajbanshi / Kamtapuri',
+  'Rengma',
+  'Sangtam',
   'Sanskrit',
   'Santali',
+  'Sherpa',
   'Sindhi',
+  'Sora',
+  'Sumi / Sema',
+  'Tagin',
+  'Tamang',
   'Tamil',
+  'Tangkhul',
+  'Tangsa',
   'Telugu',
-  'Urdu',
+  'Thado / Kuki',
+  'Tiwa / Lalung',
+  'Tulu',
+  'Vaiphei',
+  'Wagdi',
+  'Wancho',
+  'Yimkhiung',
+  'Zeliang',
   'Other',
 ];
 
@@ -246,7 +351,12 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
             .filter((item: any) => item.status !== 'inactive')
             .map((item: any) => item.language);
           if (names.length > 0) {
-            setOfficialLanguagesList(Array.from(new Set([...names, 'Other'])));
+            const combined = Array.from(new Set([...AVAILABLE_LANGUAGES, ...names]));
+            const otherIdx = combined.indexOf('Other');
+            if (otherIdx > -1) combined.splice(otherIdx, 1);
+            combined.sort((a, b) => a.localeCompare(b));
+            combined.push('Other');
+            setOfficialLanguagesList(combined);
           }
         }
       } catch (err) {}
@@ -932,22 +1042,27 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
 
                 <div className="space-y-4 font-mono text-xs">
                   {/* Searchable Language Input Header */}
-                  <div id="field-languages" className={`space-y-2 p-1 rounded-2xl transition-all ${
+                  <div id="field-languages" className={`space-y-3 p-1 rounded-2xl transition-all ${
                     highlightedFieldId === 'field-languages' ? 'ring-2 ring-red-500/50 bg-red-950/20' : ''
                   }`}>
-                    <label className="text-slate-300 font-bold block flex items-center justify-between">
-                      <span>Which languages can you support? *</span>
-                      <span className="text-[10px] text-cyan-400 font-normal">Searchable Multi-Select</span>
-                    </label>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <label className="text-slate-300 font-bold block">
+                        Which languages can you support? *
+                      </label>
+                      <span className="text-[10px] text-cyan-400 font-normal">
+                        {officialLanguagesList.length - 1}+ Languages (A-Z Sorted)
+                      </span>
+                    </div>
 
+                    {/* Search bar */}
                     <div className="relative w-full">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                       <input
                         type="text"
-                        placeholder="🔍 Search languages (e.g. Odia, Telugu, Assamese, English)..."
+                        placeholder="🔍 Search 120+ languages (e.g. Assamese, Bodo, Dogri, Maithili, Odia, Santhali)..."
                         value={languageSearchQuery}
                         onChange={(e) => setLanguageSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-8 py-2.5 rounded-2xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                        className="w-full pl-10 pr-8 py-2.5 rounded-2xl bg-black/60 border border-white/15 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs sm:text-sm"
                       />
                       {languageSearchQuery && (
                         <button
@@ -1009,27 +1124,69 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   )}
 
                   {/* Filtered Official Languages Selection Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
-                    {officialLanguagesList
-                      .filter((lang) => lang.toLowerCase().includes(languageSearchQuery.toLowerCase().trim()))
-                      .map((lang) => {
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-64 sm:max-h-72 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
+                    {(() => {
+                      const query = languageSearchQuery.toLowerCase().trim();
+                      const standardLanguages = officialLanguagesList.filter((l) => l !== 'Other');
+
+                      const filteredStandard = standardLanguages.filter((lang) => {
+                        return query === '' || lang.toLowerCase().includes(query);
+                      });
+
+                      const matchesOther = query === '' || 'other'.includes(query) || 'custom'.includes(query);
+                      const displayList = matchesOther ? [...filteredStandard, 'Other'] : filteredStandard;
+
+                      return displayList.map((lang) => {
                         const isSelected = selectedLanguageList.includes(lang);
+                        const displayName = lang === 'Other' ? 'Other / Custom' : lang;
+
                         return (
                           <button
                             key={lang}
                             type="button"
                             onClick={() => handleToggleLanguage(lang)}
-                            className={`p-2.5 rounded-xl border text-left font-bold transition-all flex items-center justify-between cursor-pointer ${
+                            className={`p-2.5 min-h-[42px] rounded-xl border text-left font-bold transition-all flex items-center justify-between cursor-pointer touch-manipulation active:scale-[0.98] ${
                               isSelected
-                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-md shadow-cyan-500/10'
-                                : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white hover:border-white/20'
+                                ? lang === 'Other'
+                                  ? 'bg-purple-500/20 border-purple-400 text-purple-300 shadow-md shadow-purple-500/10'
+                                  : 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-md shadow-cyan-500/10'
+                                : lang === 'Other'
+                                ? 'bg-purple-950/30 border-purple-500/40 text-purple-300 hover:border-purple-400 font-extrabold'
+                                : 'bg-white/[0.02] border-white/10 text-slate-300 hover:text-white hover:border-white/20'
                             }`}
                           >
-                            <span>{lang}</span>
-                            {isSelected && <CheckCircle className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
+                            <span className="truncate pr-1 text-xs">{displayName}</span>
+                            {isSelected && (
+                              <CheckCircle className={`w-3.5 h-3.5 shrink-0 ml-1 ${lang === 'Other' ? 'text-purple-400' : 'text-cyan-400'}`} />
+                            )}
                           </button>
                         );
-                      })}
+                      });
+                    })()}
+                  </div>
+
+                  {/* Prominent Quick "Specify Other / Custom Language" Banner Below Language Box */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-purple-950/30 border border-purple-500/40 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-purple-400 shrink-0" />
+                      <div>
+                        <span className="text-xs font-bold text-purple-300 block">Can't find your language in the list?</span>
+                        <span className="text-[10px] text-slate-400 block">Click to enter your custom language or dialect name</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedLanguageList.includes('Other')) {
+                          handleToggleLanguage('Other');
+                        } else {
+                          handleAddCustomLanguage();
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-purple-500 hover:bg-purple-600 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all cursor-pointer shadow-md shadow-purple-500/20"
+                    >
+                      <Plus className="w-4 h-4" /> Specify Other Language
+                    </button>
                   </div>
 
                   {/* DYNAMIC PROFICIENCY & CAPACITY MATRIX PER STANDARD SELECTED LANGUAGE */}
