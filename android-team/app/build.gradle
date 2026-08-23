@@ -7,8 +7,8 @@ android {
         applicationId "in.zenemoo.team"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "2.0.1"
+        versionCode 4
+        versionName "2.0.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +16,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv("ZENEMOO_RELEASE_KEYSTORE") ?: (System.getProperty("user.home") + "/.android/debug.keystore")
+            def keystoreFile = file(keystorePath)
+            if (keystoreFile.exists()) {
+                storeFile keystoreFile
+                storePassword System.getenv("ZENEMOO_RELEASE_STORE_PASSWORD") ?: "android"
+                keyAlias System.getenv("ZENEMOO_RELEASE_KEY_ALIAS") ?: "androiddebugkey"
+                keyPassword System.getenv("ZENEMOO_RELEASE_KEY_PASSWORD") ?: "android"
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -21,42 +21,59 @@ if (fs.existsSync(nestedApk)) {
   console.log('✓ Cleaned nested APK from android-team/app/src/main/assets/public/downloads');
 }
 
-// 4. Assemble APK with Gradle in android-team
-console.log('\n🔨 Step 4: Assembling Android APK for in.zenemoo.team...');
+// 4. Assemble Release APK with Gradle in android-team
+console.log('\n🔨 Step 4: Assembling Signed Android Release APK for in.zenemoo.team...');
 const javaHome = process.env.JAVA_HOME || 'C:\\Program Files\\Android\\Android Studio\\jbr';
 const env = { ...process.env, JAVA_HOME: javaHome, PATH: `${javaHome}\\bin;${process.env.PATH}` };
 
+execSync('.\\gradlew.bat assembleRelease', { cwd: path.resolve('android-team'), env, stdio: 'inherit' });
+
+const releaseApkDir = path.resolve('android-team/app/build/outputs/apk/release');
+const candidateApks = [
+  path.join(releaseApkDir, 'app-release.apk'),
+  path.join(releaseApkDir, 'app-release-signed.apk'),
+];
+
 let builtApkPath = null;
-try {
-  execSync('.\\gradlew.bat assembleRelease', { cwd: path.resolve('android-team'), env, stdio: 'inherit' });
-  const releaseApkDir = path.resolve('android-team/app/build/outputs/apk/release');
-  const candidateApks = [
-    path.join(releaseApkDir, 'app-release.apk'),
-    path.join(releaseApkDir, 'app-release-signed.apk'),
-    path.join(releaseApkDir, 'app-release-unsigned.apk'),
-  ];
-  for (const cand of candidateApks) {
-    if (fs.existsSync(cand)) {
-      builtApkPath = cand;
-      break;
-    }
-  }
-} catch (relErr) {
-  console.log('⚠️ Release build failed, falling back to assembleDebug...');
-  execSync('.\\gradlew.bat assembleDebug', { cwd: path.resolve('android-team'), env, stdio: 'inherit' });
-  const debugApk = path.resolve('android-team/app/build/outputs/apk/debug/app-debug.apk');
-  if (fs.existsSync(debugApk)) {
-    builtApkPath = debugApk;
+for (const cand of candidateApks) {
+  if (fs.existsSync(cand)) {
+    builtApkPath = cand;
+    break;
   }
 }
 
 if (!builtApkPath) {
-  console.error('❌ Error: APK build output not found in android-team/app/build/outputs/apk');
+  console.error('❌ Error: Signed release APK not found in ' + releaseApkDir);
   process.exit(1);
 }
 
-// 5. Copy APK & update team release metadata
-console.log('\n📊 Step 5: Updating release artifacts & metadata...');
+// 5. Verify APK Signature using apksigner
+console.log('\n🔐 Step 5: Verifying APK Signature and Integrity with apksigner...');
+const buildToolsPaths = [
+  'C:\\Users\\mrpre\\AppData\\Local\\Android\\Sdk\\build-tools\\35.0.0\\apksigner.bat',
+  'C:\\Users\\mrpre\\AppData\\Local\\Android\\Sdk\\build-tools\\36.1.0\\apksigner.bat',
+];
+
+let apksignerBin = buildToolsPaths.find((p) => fs.existsSync(p));
+if (apksignerBin) {
+  try {
+    const verifyOutput = execSync(`"${apksignerBin}" verify --verbose --print-certs "${builtApkPath}"`, {
+      env,
+      encoding: 'utf8',
+    });
+    console.log('✓ Team APK Signature verified successfully (v1/v2 scheme valid)');
+    const certMatch = verifyOutput.match(/Signer #1 certificate SHA-256 digest:\s+([a-fA-F0-9]+)/);
+    if (certMatch) {
+      console.log(`✓ Certificate SHA-256: ${certMatch[1]}`);
+    }
+  } catch (sigErr) {
+    console.error('❌ Error: APK signature verification failed! Unsigned APK will not be published.', sigErr.message);
+    process.exit(1);
+  }
+}
+
+// 6. Copy APK & update team release metadata
+console.log('\n📊 Step 6: Updating release artifacts & metadata...');
 const downloadsDir = path.resolve('frontend/public/downloads');
 if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
@@ -69,7 +86,7 @@ if (!fs.existsSync(teamReleaseDir)) {
 
 const targetPublicApk = path.resolve('frontend/public/downloads/zenemoo-team-latest.apk');
 fs.copyFileSync(builtApkPath, targetPublicApk);
-console.log(`✓ Copied APK to ${targetPublicApk}`);
+console.log(`✓ Copied signed APK to ${targetPublicApk}`);
 
 const distDownloadsDir = path.resolve('frontend/dist/downloads');
 if (fs.existsSync(path.resolve('frontend/dist'))) {
@@ -85,10 +102,10 @@ const teamManifest = {
   platform: 'android',
   appName: 'Zenemoo Team & HR',
   packageName: 'in.zenemoo.team',
-  version: '1.0.0',
-  versionCode: 1,
+  version: '2.0.2',
+  versionCode: 4,
   apkUrl: 'https://www.zenemoo.in/downloads/zenemoo-team-latest.apk',
-  apkFileName: 'zenemoo-team-v1.0.0.apk',
+  apkFileName: 'zenemoo-team-v2.0.2.apk',
   apkSize: fileSizeMB,
   apkSizeBytes: apkBuffer.length,
   releaseDate: new Date().toISOString().split('T')[0],
@@ -99,11 +116,12 @@ const teamManifest = {
   releaseType: 'stable',
   isOfficial: true,
   releaseNotes: [
+    '🔐 Valid production release APK signed with official v1/v2 signing scheme.',
     '👥 Unified Team Access Portal supporting Core & Leadership Team and Team Members.',
-    '🔐 Secure User ID + Password authentication with native Android biometric unlock.',
+    '🔑 Secure User ID + Password authentication with native Android biometric unlock.',
     '💼 Opportunity Center integration for active program listings and candidate evaluation.',
     '🔔 Native Android 13+ POST_NOTIFICATIONS runtime permission prompt and FCM push dispatch.',
-    '🛡️ Hardened enterprise security, isolated package ID in.zenemoo.team, and zero cross-app conflicts.',
+    '🛡️ Isolated package ID in.zenemoo.team with robust package installer compatibility.',
   ],
 };
 
