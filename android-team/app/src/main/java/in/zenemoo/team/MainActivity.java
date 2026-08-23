@@ -117,6 +117,7 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         if (webView != null) {
             webView.setBackgroundColor(darkColor);
+            webView.addJavascriptInterface(new AndroidNativeBridge(this), "AndroidBridge");
 
             WebSettings settings = webView.getSettings();
             settings.setJavaScriptEnabled(true);
@@ -580,6 +581,46 @@ public class MainActivity extends BridgeActivity {
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
             }
+        }
+    }
+
+    public class AndroidNativeBridge {
+        private final Context mContext;
+
+        public AndroidNativeBridge(Context context) {
+            this.mContext = context;
+        }
+
+        @android.webkit.JavascriptInterface
+        public boolean openNotificationSettings() {
+            try {
+                Intent intent = new Intent();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    intent.putExtra(Settings.EXTRA_APP_PACKAGE, mContext.getPackageName());
+                } else {
+                    intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.fromParts("package", mContext.getPackageName(), null));
+                }
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                mContext.startActivity(intent);
+                return true;
+            } catch (Exception e) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    intent.setData(Uri.parse("package:" + mContext.getPackageName()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    mContext.startActivity(intent);
+                    return true;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public boolean openAppSettings() {
+            return openNotificationSettings();
         }
     }
 }

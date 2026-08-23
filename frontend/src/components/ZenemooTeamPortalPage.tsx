@@ -21,10 +21,14 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
 import { HRDashboard } from './HRDashboard';
 import { TeamDashboard } from './TeamDashboard';
 import { portalAuthApi, notificationApi } from '../services/api';
+import {
+  initFCMIfGranted,
+  setupAppLifecycleNotificationListener,
+  requestAndRegisterCapacitorPush,
+} from '../services/notificationService';
 
 export type TeamPortalView =
   | 'role_selection'
@@ -88,44 +92,22 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
     }
   }, [portalUser]);
 
-  // ── Native Android 13+ Notification Permission & FCM Token Dispatch ──
+  // ── Native Android 13+ Notification Permission & FCM Token Dispatch for team_hr ──
   useEffect(() => {
-    if (view === 'authenticated' && portalUser && Capacitor.isNativePlatform()) {
-      const initPush = async () => {
-        try {
-          let permStatus = await PushNotifications.checkPermissions();
-          if (permStatus.receive === 'prompt') {
-            permStatus = await PushNotifications.requestPermissions();
-          }
-          if (permStatus.receive === 'granted') {
-            await PushNotifications.register();
-          }
-        } catch (err) {
-          console.warn('Native push notifications setup error:', err);
-        }
-      };
+    if (Capacitor.isNativePlatform()) {
+      const targetUserId = portalUser?.id || portalUser?.user_id || portalUser?.employee_id;
+      const targetRole = portalUser?.role || 'team_member';
 
-      initPush();
+      // 1. Independent FCM Check if already granted
+      initFCMIfGranted('team_hr', targetUserId, targetRole);
 
-      const regListener = PushNotifications.addListener('registration', async (token) => {
-        if (token && token.value) {
-          try {
-            await notificationApi.subscribe({
-              token: token.value,
-              platform: Capacitor.getPlatform(),
-              app_type: 'team_hr',
-              installation_id: token.value,
-              user_id: portalUser.id || portalUser.user_id || portalUser.employee_id,
-              user_role: portalUser.role,
-              permission_status: 'granted',
-            });
-          } catch (e) {}
-        }
-      });
+      // 2. Attach App Resume (State Change) Listener — Auto-detects permission change when returning from Android Settings
+      setupAppLifecycleNotificationListener('team_hr', targetUserId, targetRole);
 
-      return () => {
-        regListener.then((l) => l.remove());
-      };
+      // 3. Request native permission if authenticated
+      if (view === 'authenticated' && portalUser) {
+        requestAndRegisterCapacitorPush('team_hr', targetUserId, targetRole);
+      }
     }
   }, [view, portalUser]);
 

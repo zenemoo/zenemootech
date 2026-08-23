@@ -64,10 +64,22 @@ export const registerSubscription = async (req, res, next) => {
       });
     }
 
+    let finalAppType = app_type || 'zenemoo';
+    const detectedRole = user_role || req.user?.role || '';
+    if (
+      finalAppType === 'team_portal' ||
+      finalAppType === 'hr_portal' ||
+      finalAppType === 'team_hr' ||
+      detectedRole === 'team_member' ||
+      detectedRole === 'hr'
+    ) {
+      finalAppType = 'team_hr';
+    }
+
     const subRecord = {
       record_type: 'subscription',
       platform,
-      app_type,
+      app_type: finalAppType,
       installation_id,
       token: token || null,
       subscription: subscription || {},

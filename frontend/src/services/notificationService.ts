@@ -457,6 +457,48 @@ export const initFCMIfGranted = async (
   }
 };
 
+let isLifecycleListenerAttached = false;
+
+/**
+ * Setup App Resume (App State Change) Listener:
+ * When user returns to app from Android Settings, re-checks native permissions and automatically registers FCM token.
+ */
+export const setupAppLifecycleNotificationListener = (
+  app_type: string = 'team_hr',
+  user_id?: string,
+  user_role?: string
+) => {
+  if (typeof window === 'undefined' || !Capacitor.isNativePlatform() || isLifecycleListenerAttached) {
+    return;
+  }
+  isLifecycleListenerAttached = true;
+
+  try {
+    App.addListener('appStateChange', async (state) => {
+      if (state.isActive) {
+        console.log('[TEAM-HR-NOTIFICATION]: App resumed from background/settings. Checking native notification permission...');
+        try {
+          const permStatus = await PushNotifications.checkPermissions();
+          console.log('[TEAM-HR-NOTIFICATION]: Resumed native permission status:', permStatus.receive);
+          if (permStatus.receive === 'granted') {
+            localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+            localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
+            localStorage.removeItem(DENIED_AT_KEY);
+
+            console.log('[TEAM-HR-NOTIFICATION]: Permission granted! Triggering FCM registration for app_type:', app_type);
+            await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+          }
+        } catch (e) {
+          console.warn('[AppLifecycle Notification Check Warn]:', e);
+        }
+      }
+    });
+    console.log('[TEAM-HR-NOTIFICATION]: App lifecycle notification resume listener attached successfully.');
+  } catch (err) {
+    console.warn('[setupAppLifecycleNotificationListener Error]:', err);
+  }
+};
+
 /**
  * EXPLICIT PROMPT ACTION:
  * Called when user taps "Allow Notifications" in custom prompt.

@@ -43,6 +43,7 @@ import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { OpportunityCenterView } from './OpportunityCenterView';
 import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
 import { portalAuthApi, emailApi, notificationApi } from '../services/api';
+import { initFCMIfGranted, setupAppLifecycleNotificationListener } from '../services/notificationService';
 
 interface HRDashboardProps {
   initialUserData: any;
@@ -155,6 +156,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
     fetchProfile();
     fetchNotifications();
     loadEmailData();
+
+    // Team & HR FCM Token Registration and App Resume (State Change) listener
+    const userId = profile?.id || initialUserData?.id;
+    const userRole = profile?.role || initialUserData?.role || 'hr';
+    initFCMIfGranted('team_hr', userId, userRole);
+    setupAppLifecycleNotificationListener('team_hr', userId, userRole);
+
     const interval = setInterval(fetchNotifications, 15000);
     return () => clearInterval(interval);
   }, []);
