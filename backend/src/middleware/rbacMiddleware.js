@@ -20,14 +20,16 @@ export const verifyToken = (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
 
-    // Issue renewed sliding token with 30-min expiration
+    // Issue renewed sliding token preserving all user claims
     const newToken = jwt.sign(
       {
         id: decoded.id,
         team_member_id: decoded.team_member_id,
-        role: decoded.role,
+        role: decoded.role || 'team_member',
         email: decoded.email,
-        email_access: decoded.email_access,
+        email_access: decoded.email_access !== undefined ? decoded.email_access : true,
+        temporary_password: decoded.temporary_password,
+        password_changed: decoded.password_changed,
       },
       JWT_SECRET,
       { expiresIn: '30m' }
@@ -60,7 +62,8 @@ export const requireRole = (allowedRoles = []) => {
     }
 
     const userRole = (req.user.role || '').toLowerCase();
-    const isAllowed = allowedRoles.some((r) => r.toLowerCase() === userRole || userRole === 'admin');
+    const isAdmin = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
+    const isAllowed = allowedRoles.some((r) => r.toLowerCase() === userRole) || isAdmin;
 
     if (!isAllowed) {
       return res.status(403).json({
@@ -87,12 +90,19 @@ export const requireEmailAccess = (req, res, next) => {
 
   const role = (req.user.role || '').toLowerCase();
 
-  // Admin always has email access
-  if (role === 'admin') {
+  // Admin roles always have email access
+  if (['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(role)) {
     return next();
   }
 
-  if (!req.user.email_access) {
+  // HR, Team Members, Managers, Leads, Core staff all have email access unless explicitly revoked (email_access === false)
+  if (['hr', 'team_member', 'team', 'manager', 'lead', 'core', 'user'].includes(role)) {
+    if (req.user.email_access !== false) {
+      return next();
+    }
+  }
+
+  if (req.user.email_access === false) {
     return res.status(403).json({
       success: false,
       code: 'FORBIDDEN_NO_EMAIL_ACCESS',

@@ -13,9 +13,17 @@ export const authMiddleware = (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
 
-    // Sliding session token renewal: Sign a new token with fresh 30-minute expiry
+    // Sliding session token renewal: Sign a new token preserving all decoded user claims
     const newToken = jwt.sign(
-      { role: decoded.role, email: decoded.email },
+      {
+        id: decoded.id,
+        team_member_id: decoded.team_member_id,
+        role: decoded.role || 'admin',
+        email: decoded.email,
+        email_access: decoded.email_access !== undefined ? decoded.email_access : true,
+        temporary_password: decoded.temporary_password,
+        password_changed: decoded.password_changed,
+      },
       JWT_SECRET,
       { expiresIn: '30m' }
     );

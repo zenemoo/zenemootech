@@ -152,7 +152,7 @@ export const login = async (req, res, next) => {
     }
 
     const token = jwt.sign(
-      { role: 'admin', email: cleanEmail },
+      { role: 'admin', email: cleanEmail, email_access: true },
       JWT_SECRET,
       { expiresIn: '30m' }
     );
@@ -905,7 +905,7 @@ export const portalLogin = async (req, res, next) => {
         team_member_id: userAccount.team_member_id,
         role: userAccount.role || 'team_member',
         email: userAccount.email || teamMember?.email || cleanEmail,
-        email_access: Boolean(userAccount.email_access),
+        email_access: userAccount.email_access !== false,
         temporary_password: isTempPassword,
         password_changed: isPassChanged,
       },
