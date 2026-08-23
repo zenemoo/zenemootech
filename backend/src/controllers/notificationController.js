@@ -95,13 +95,13 @@ export const registerSubscription = async (req, res, next) => {
 
     if (supabase) {
       try {
-        // Check for existing subscription matching (platform, app_type, installation_id)
+        // Check for existing subscription matching (platform, finalAppType, installation_id)
         const { data: existingRows } = await supabase
           .from('zenemoo_notifications')
           .select('id')
           .eq('record_type', 'subscription')
           .eq('platform', platform)
-          .eq('app_type', app_type)
+          .eq('app_type', finalAppType)
           .eq('installation_id', installation_id)
           .order('created_at', { ascending: false });
 

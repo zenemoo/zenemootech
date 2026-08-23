@@ -118,6 +118,7 @@ public class MainActivity extends BridgeActivity {
         if (webView != null) {
             webView.setBackgroundColor(darkColor);
             webView.addJavascriptInterface(new AndroidNativeBridge(this), "AndroidBridge");
+            webView.addJavascriptInterface(new AndroidNativeBridge(this), "ZenemooNativeBridge");
 
             WebSettings settings = webView.getSettings();
             settings.setJavaScriptEnabled(true);

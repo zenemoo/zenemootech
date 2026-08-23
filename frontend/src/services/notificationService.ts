@@ -360,9 +360,12 @@ export const getTargetAppType = (requestedAppType?: string): string => {
   if (requestedAppType === 'team_hr' || requestedAppType === 'team_portal' || requestedAppType === 'hr_portal') {
     return 'team_hr';
   }
+  if (requestedAppType === 'zenemoo' || requestedAppType === 'zenemoo_admin' || requestedAppType === 'website') {
+    return requestedAppType;
+  }
   if (typeof window !== 'undefined') {
     const path = window.location.pathname.toLowerCase();
-    if (path.includes('/team') || path.includes('/hr') || Capacitor.isNativePlatform()) {
+    if (path.includes('/team') || path.includes('/hr')) {
       return 'team_hr';
     }
   }
