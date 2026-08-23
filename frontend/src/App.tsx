@@ -45,10 +45,11 @@ import { PublicDatasetDetailPage } from './components/PublicDatasetDetailPage';
 import { ZenemooAndroidAppPage } from './components/ZenemooAndroidAppPage';
 import { ZenemooAppsHubPage } from './components/ZenemooAppsHubPage';
 import { ZenemooTeamPortalPage } from './components/ZenemooTeamPortalPage';
+import { ZenemooTeamAndroidAppPage } from './components/ZenemooTeamAndroidAppPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'team-portal' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -112,6 +113,7 @@ export function App() {
         | 'ai-data-detail'
         | 'app-hub'
         | 'app-android'
+        | 'app-team-android'
         | 'team-portal'
         | '404' = 'home';
 
@@ -239,6 +241,15 @@ export function App() {
           : hash.replace('#ai-data/', '').replace(/^\//, '');
         setSelectedDatasetSlug(slug || '');
         matchedRoute = 'ai-data-detail';
+      } else if (
+        path === '/app/android/team' ||
+        path === '/app/android/team/' ||
+        hash === '#app/android/team' ||
+        hash === '#/app/android/team' ||
+        hash === '#team-android-app' ||
+        hash === '#app-team-android'
+      ) {
+        matchedRoute = 'app-team-android';
       } else if (
         path === '/app/android' ||
         path === '/app/android/' ||
@@ -522,6 +533,14 @@ export function App() {
         />
       ) : currentRoute === 'app-android' ? (
         <ZenemooAndroidAppPage
+          onBack={() => {
+            window.history.pushState(null, '', '/app');
+            setCurrentRoute('app-hub');
+          }}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
+      ) : currentRoute === 'app-team-android' ? (
+        <ZenemooTeamAndroidAppPage
           onBack={() => {
             window.history.pushState(null, '', '/app');
             setCurrentRoute('app-hub');

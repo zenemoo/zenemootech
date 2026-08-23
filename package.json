@@ -16,7 +16,8 @@
     "cap:admin:open": "npx cap open android --config capacitor.admin.config.json",
     "cap:team:sync": "node -e \"require('fs').copyFileSync('capacitor.team.config.json', 'android-team/app/src/main/assets/capacitor.config.json')\"",
     "cap:team:open": "npx cap open android --config capacitor.team.config.json",
-    "release:android": "node scripts/release-android.js"
+    "release:android": "node scripts/release-android.js",
+    "release:team:android": "node scripts/release-team-android.js"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",

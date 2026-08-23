@@ -1,0 +1,25 @@
+{
+  "platform": "android",
+  "appName": "Zenemoo Team & HR",
+  "packageName": "in.zenemoo.team",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "apkUrl": "https://www.zenemoo.in/downloads/zenemoo-team-latest.apk",
+  "apkFileName": "zenemoo-team-v1.0.0.apk",
+  "apkSize": "16.7 MB",
+  "apkSizeBytes": 17478512,
+  "releaseDate": "2026-08-23",
+  "minimumAndroid": "Android 8.0 (API 26) or later",
+  "targetAndroid": "Android 14 / 15 (API 34/35)",
+  "architecture": "Universal (ARM64, ARMv7, x86_64)",
+  "sha256": "a5f2a9ca9bf66a32090e7684467543981aafb1c3cc8367198880a5cd8ebe4393",
+  "releaseType": "stable",
+  "isOfficial": true,
+  "releaseNotes": [
+    "👥 Unified Team Access Portal supporting Core & Leadership Team and Team Members.",
+    "🔐 Secure User ID + Password authentication with native Android biometric unlock.",
+    "💼 Opportunity Center integration for active program listings and candidate evaluation.",
+    "🔔 Native Android 13+ POST_NOTIFICATIONS runtime permission prompt and FCM push dispatch.",
+    "🛡️ Hardened enterprise security, isolated package ID in.zenemoo.team, and zero cross-app conflicts."
+  ]
+}

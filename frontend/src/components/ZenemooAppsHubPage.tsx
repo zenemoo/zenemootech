@@ -44,6 +44,19 @@ const APPS_CATALOG: AppCatalogItem[] = [
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
   },
   {
+    id: 'team-hr',
+    title: 'Zenemoo Team & HR',
+    subtitle: 'Team and HR Application',
+    platform: 'Team & HR',
+    iconType: 'team_hr',
+    status: 'available',
+    statusLabel: 'Available',
+    description: 'Internal tools, recruitment dashboards, opportunities, and operational services for Zenemoo team members and HR operations.',
+    route: '/app/android/team',
+    buttonLabel: 'Download Team & HR →',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+  },
+  {
     id: 'ios',
     title: 'Zenemoo',
     subtitle: 'iOS Application',
@@ -55,19 +68,6 @@ const APPS_CATALOG: AppCatalogItem[] = [
     route: null,
     buttonLabel: 'Coming Soon',
     badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  },
-  {
-    id: 'team-hr',
-    title: 'Zenemoo Team & HR',
-    subtitle: 'Team and HR Application',
-    platform: 'Team & HR',
-    iconType: 'team_hr',
-    status: 'coming_soon',
-    statusLabel: 'Coming Soon',
-    description: 'Internal tools, recruitment dashboards, and operational services for Zenemoo team members and HR operations.',
-    route: null,
-    buttonLabel: 'Coming Soon',
-    badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
   },
 ];
 
@@ -109,10 +109,17 @@ export const ZenemooAppsHubPage: React.FC<ZenemooAppsHubPageProps> = ({
         );
       case 'team_hr':
         return (
-          <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-500/20 to-cyan-500/10 border border-blue-500/30 flex items-center justify-center text-slate-300 shadow-inner">
-            <Users2 className="w-7 h-7 text-blue-300" />
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-blue-500/40 text-white flex items-center justify-center border border-blue-400/30 text-[9px] font-bold">
-              HR
+          <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500/30 to-purple-500/20 border border-cyan-400/40 flex items-center justify-center p-1 shadow-lg shadow-cyan-500/20">
+            <SeoImage
+              src="/assets/team-logo.png"
+              alt="Zenemoo Team & HR Application Logo"
+              priority={true}
+              width={40}
+              height={40}
+              className="w-10 h-10 object-contain rounded-xl bg-white p-0.5"
+            />
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-cyan-500 text-black flex items-center justify-center shadow-md">
+              <Users2 className="w-3 h-3" />
             </div>
           </div>
         );

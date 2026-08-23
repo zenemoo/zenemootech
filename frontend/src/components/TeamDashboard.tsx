@@ -42,6 +42,7 @@ import { NotificationBell } from './NotificationBell';
 import { SecurePrivateProfileEditor } from './SecurePrivateProfileEditor';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
+import { OpportunityCenterView } from './OpportunityCenterView';
 import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
 import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 
@@ -51,7 +52,7 @@ interface TeamDashboardProps {
 }
 
 export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password' | 'notifications' | 'directory' | 'email'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'password' | 'notifications' | 'directory' | 'email' | 'opportunities'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isProfilePopoverOpen, setIsProfilePopoverOpen] = useState(false);
@@ -613,7 +614,7 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
               )}
             </div>
 
-            {/* ITEM 4.5: Company Email Dispatcher */}
+            {/* ITEM 4: Email Dispatcher */}
             <div className="relative group">
               <button
                 onClick={() => {
@@ -645,6 +646,33 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
                   Email Dispatcher ({profile?.email_access ? 'Allowed' : 'No Access'})
+                </div>
+              )}
+            </div>
+
+            {/* ITEM 4.5: Opportunity Center */}
+            <div className="relative group">
+              <button
+                onClick={() => {
+                  setActiveTab('opportunities');
+                  setIsMobileSidebarOpen(false);
+                }}
+                className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center transition-all cursor-pointer ${
+                  isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                } ${
+                  activeTab === 'opportunities'
+                    ? 'bg-cyan-500/10 text-cyan-300 font-bold border-l-2 border-cyan-400 shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Briefcase className="w-4 h-4 text-cyan-400 shrink-0" />
+                  {!isSidebarCollapsed && <span className="truncate">Opportunity Center</span>}
+                </div>
+              </button>
+              {isSidebarCollapsed && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#09090b] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
+                  Opportunity Center
                 </div>
               )}
             </div>
@@ -1322,6 +1350,11 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
                 </div>
               </div>
             )
+          )}
+
+          {/* TAB 7: OPPORTUNITY CENTER */}
+          {activeTab === 'opportunities' && (
+            <OpportunityCenterView userRole="team_member" showToast={showToast} />
           )}
           {/* Dashboard Responsive Footer (scrolls naturally with main content) */}
           <footer className="py-6 px-4 sm:px-8 border-t border-white/10 font-mono text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 mt-12 mb-4">

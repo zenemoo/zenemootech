@@ -20,9 +20,11 @@ import {
   KeyRound,
   ShieldAlert,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { HRDashboard } from './HRDashboard';
 import { TeamDashboard } from './TeamDashboard';
-import { portalAuthApi } from '../services/api';
+import { portalAuthApi, notificationApi } from '../services/api';
 
 export type TeamPortalView =
   | 'role_selection'
@@ -85,6 +87,65 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
       }
     }
   }, [portalUser]);
+
+  // ── Native Android 13+ Notification Permission & FCM Token Dispatch ──
+  useEffect(() => {
+    if (view === 'authenticated' && portalUser && Capacitor.isNativePlatform()) {
+      const initPush = async () => {
+        try {
+          let permStatus = await PushNotifications.checkPermissions();
+          if (permStatus.receive === 'prompt') {
+            permStatus = await PushNotifications.requestPermissions();
+          }
+          if (permStatus.receive === 'granted') {
+            await PushNotifications.register();
+          }
+        } catch (err) {
+          console.warn('Native push notifications setup error:', err);
+        }
+      };
+
+      initPush();
+
+      const regListener = PushNotifications.addListener('registration', async (token) => {
+        if (token && token.value) {
+          try {
+            await notificationApi.subscribe({
+              token: token.value,
+              platform: Capacitor.getPlatform(),
+              app_type: 'team_hr',
+              installation_id: token.value,
+              user_id: portalUser.id || portalUser.user_id || portalUser.employee_id,
+              user_role: portalUser.role,
+              permission_status: 'granted',
+            });
+          } catch (e) {}
+        }
+      });
+
+      return () => {
+        regListener.then((l) => l.remove());
+      };
+    }
+  }, [view, portalUser]);
+
+  // ── In-App Update Detection for Zenemoo Team & HR App ──
+  const [updateAvailable, setUpdateAvailable] = useState<any>(null);
+  useEffect(() => {
+    const checkTeamAppUpdate = async () => {
+      try {
+        const res = await fetch('/app/android/team-release.json', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          // Built version code is 1
+          if (data && data.versionCode > 1) {
+            setUpdateAvailable(data);
+          }
+        }
+      } catch (err) {}
+    };
+    checkTeamAppUpdate();
+  }, []);
 
   // ── Native / Browser Biometric Authentication Trigger ──
   const handleBiometricAuthenticate = async () => {
@@ -226,6 +287,38 @@ export const ZenemooTeamPortalPage: React.FC<ZenemooTeamPortalPageProps> = ({
           </div>
         )}
         <TeamDashboard initialUserData={portalUser} onLogout={handleLogout} />
+
+        {/* Update Available Modal Overlay */}
+        {updateAvailable && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="w-full max-w-sm bg-[#080d19] border border-cyan-500/40 rounded-3xl p-6 space-y-4 text-center shadow-2xl">
+              <div className="w-12 h-12 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto">
+                <Sparkles className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-display font-extrabold text-base text-white">Zenemoo Team &amp; HR Update Available</h4>
+                <p className="text-xs text-slate-300">
+                  Version {updateAvailable.version} is now available with performance improvements and updates.
+                </p>
+              </div>
+              <div className="pt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUpdateAvailable(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-mono font-bold"
+                >
+                  Later
+                </button>
+                <a
+                  href={updateAvailable.apkUrl || '/downloads/zenemoo-team-latest.apk'}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 text-black font-extrabold font-mono text-xs shadow-lg shadow-cyan-500/20 text-center"
+                >
+                  Update Now
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
