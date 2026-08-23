@@ -353,27 +353,48 @@ export const openAndroidNotificationSettings = async () => {
 };
 
 /**
+ * Helper to determine default app_type scope cleanly
+ */
+export const getTargetAppType = (requestedAppType?: string): string => {
+  if (requestedAppType === 'team_hr' || requestedAppType === 'team_portal' || requestedAppType === 'hr_portal') {
+    return 'team_hr';
+  }
+  if (typeof window !== 'undefined') {
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes('/team') || path.includes('/hr') || Capacitor.isNativePlatform()) {
+      return 'team_hr';
+    }
+  }
+  return requestedAppType || 'team_hr';
+};
+
+/**
  * Register Android FCM Push Subscription (For Capacitor native apps)
  */
 export const registerAndroidPushSubscription = async (
   token: string,
-  app_type: string = 'zenemoo',
+  app_type: string = 'team_hr',
   user_id?: string,
   user_role?: string
 ) => {
+  const targetAppType = getTargetAppType(app_type);
   const installation_id = getInstallationId();
   const app_version = await getAppVersion();
-  const subKey = `android_${app_type}_${installation_id}_${token}_${app_version}`;
+  const maskedToken = token ? `${token.substring(0, 6)}...${token.substring(token.length - 4)}` : 'NULL';
+  const subKey = `android_${targetAppType}_${installation_id}_${token}_${app_version}`;
+
+  console.log(`[TEAM-HR-NOTIFICATION] registerAndroidPushSubscription invoked: app_type=${targetAppType}, token=${maskedToken}, inst_id=${installation_id}`);
 
   if (lastRegisteredSubKey === subKey) {
+    console.log('[TEAM-HR-NOTIFICATION] Token already registered in current session, skipping duplicate API call.');
     return; // Already registered in current session
   }
 
   try {
     lastRegisteredSubKey = subKey;
-    await notificationApi.subscribe({
+    const response = await notificationApi.subscribe({
       platform: 'android',
-      app_type,
+      app_type: targetAppType,
       installation_id,
       token,
       user_id,
@@ -381,10 +402,10 @@ export const registerAndroidPushSubscription = async (
       app_version,
       permission_status: 'granted',
     });
-    console.log('[AndroidPush]: FCM Android notification token registered successfully for', app_type, 'with app_version:', app_version);
-  } catch (err) {
+    console.log(`[TEAM-HR-NOTIFICATION] ✅ FCM Android token successfully saved to Supabase: status=${response.status}, app_type=${targetAppType}`);
+  } catch (err: any) {
     lastRegisteredSubKey = '';
-    console.error('[AndroidPush Registration Error]:', err);
+    console.error('[TEAM-HR-NOTIFICATION] ❌ FCM Android registration API error:', err?.message || err);
   }
 };
 
@@ -392,41 +413,43 @@ export const registerAndroidPushSubscription = async (
  * Low-level register FCM push listeners and trigger PushNotifications.register()
  */
 const registerCapacitorPushListenersAndToken = async (
-  app_type: string = 'zenemoo',
+  app_type: string = 'team_hr',
   user_id?: string,
   user_role?: string
 ) => {
-  if (isCapacitorPushInitialized) return;
-  isCapacitorPushInitialized = true;
+  const targetAppType = getTargetAppType(app_type);
+  console.log(`[TEAM-HR-NOTIFICATION] Initializing Capacitor FCM push listeners for app_type=${targetAppType}...`);
 
   try {
     await PushNotifications.removeAllListeners();
 
     PushNotifications.addListener('registration', (token: Token) => {
       if (token && token.value) {
-        registerAndroidPushSubscription(token.value, app_type, user_id, user_role);
+        const masked = `${token.value.substring(0, 6)}...${token.value.substring(token.value.length - 4)}`;
+        console.log(`[TEAM-HR-NOTIFICATION] 🔑 FCM Token Event Fired! Token: ${masked}`);
+        registerAndroidPushSubscription(token.value, targetAppType, user_id, user_role);
       }
     });
 
     PushNotifications.addListener('registrationError', (err: RegistrationError) => {
-      console.warn('[Capacitor Push Error]:', err.error);
+      console.warn('[TEAM-HR-NOTIFICATION] ⚠️ PushNotifications registration error event:', err.error);
     });
 
     PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-      console.log('[Capacitor Push Received]:', notification);
+      console.log('[TEAM-HR-NOTIFICATION] 📩 Push Notification Received in Foreground:', notification);
     });
 
     PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
       const data = notification.notification?.data || {};
       const targetUrl = data.url || (data.click_action !== 'FCM_PLUGIN_NOTIFICATION_CLICK' ? data.click_action : null) || data.link || data.path;
-      console.log('[Capacitor Push Tap Action Received]:', notification.actionId, 'Target URL:', targetUrl);
+      console.log('[TEAM-HR-NOTIFICATION] 👆 Push Notification Tap Action:', notification.actionId, 'Target URL:', targetUrl);
       handleNotificationClick(targetUrl);
     });
 
+    console.log('[TEAM-HR-NOTIFICATION] Calling PushNotifications.register()...');
     await PushNotifications.register();
   } catch (err) {
-    isCapacitorPushInitialized = false;
-    console.warn('[Register Capacitor Push Error]:', err);
+    console.warn('[TEAM-HR-NOTIFICATION] ❌ Capacitor Push Registration Error:', err);
   }
 };
 
@@ -435,7 +458,7 @@ const registerCapacitorPushListenersAndToken = async (
  * Runs on App startup. If Android OS permission is ALREADY granted, initializes FCM listeners & token silently in background.
  */
 export const initFCMIfGranted = async (
-  app_type: string = 'zenemoo',
+  app_type: string = 'team_hr',
   user_id?: string,
   user_role?: string
 ) => {
@@ -443,17 +466,19 @@ export const initFCMIfGranted = async (
     return;
   }
 
+  const targetAppType = getTargetAppType(app_type);
   try {
     const permStatus = await PushNotifications.checkPermissions();
+    console.log(`[TEAM-HR-NOTIFICATION] initFCMIfGranted checkPermissions status: ${permStatus.receive}`);
     if (permStatus.receive === 'granted') {
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
       localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
       localStorage.removeItem(DENIED_AT_KEY);
 
-      await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+      await registerCapacitorPushListenersAndToken(targetAppType, user_id, user_role);
     }
   } catch (err) {
-    console.warn('[initFCMIfGranted Warn]:', err);
+    console.warn('[TEAM-HR-NOTIFICATION] initFCMIfGranted warn:', err);
   }
 };
 
@@ -473,27 +498,29 @@ export const setupAppLifecycleNotificationListener = (
   }
   isLifecycleListenerAttached = true;
 
+  const targetAppType = getTargetAppType(app_type);
+
   try {
     App.addListener('appStateChange', async (state) => {
       if (state.isActive) {
-        console.log('[TEAM-HR-NOTIFICATION]: App resumed from background/settings. Checking native notification permission...');
+        console.log(`[TEAM-HR-NOTIFICATION] 🔄 App resumed (appStateChange isActive=true). Re-checking native permissions for app_type=${targetAppType}...`);
         try {
           const permStatus = await PushNotifications.checkPermissions();
-          console.log('[TEAM-HR-NOTIFICATION]: Resumed native permission status:', permStatus.receive);
+          console.log('[TEAM-HR-NOTIFICATION] Resumed native permission status:', permStatus.receive);
           if (permStatus.receive === 'granted') {
             localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
             localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
             localStorage.removeItem(DENIED_AT_KEY);
 
-            console.log('[TEAM-HR-NOTIFICATION]: Permission granted! Triggering FCM registration for app_type:', app_type);
-            await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+            console.log(`[TEAM-HR-NOTIFICATION] Permission GRANTED on resume! Registering FCM token for app_type=${targetAppType}...`);
+            await registerCapacitorPushListenersAndToken(targetAppType, user_id, user_role);
           }
         } catch (e) {
-          console.warn('[AppLifecycle Notification Check Warn]:', e);
+          console.warn('[TEAM-HR-NOTIFICATION] AppLifecycle Notification Check warn:', e);
         }
       }
     });
-    console.log('[TEAM-HR-NOTIFICATION]: App lifecycle notification resume listener attached successfully.');
+    console.log('[TEAM-HR-NOTIFICATION] App lifecycle notification resume listener attached successfully.');
   } catch (err) {
     console.warn('[setupAppLifecycleNotificationListener Error]:', err);
   }
@@ -505,7 +532,7 @@ export const setupAppLifecycleNotificationListener = (
  * Triggers REAL native Android 13+ PushNotifications.requestPermissions(), initializes FCM registration, and returns result status.
  */
 export const requestAndRegisterCapacitorPush = async (
-  app_type: string = 'zenemoo',
+  app_type: string = 'team_hr',
   user_id?: string,
   user_role?: string
 ): Promise<{ status: 'granted' | 'denied' | 'permanently_denied'; registered: boolean }> => {
@@ -513,22 +540,28 @@ export const requestAndRegisterCapacitorPush = async (
     return { status: 'denied', registered: false };
   }
 
+  const targetAppType = getTargetAppType(app_type);
+  console.log(`[TEAM-HR-NOTIFICATION] requestAndRegisterCapacitorPush requested for app_type=${targetAppType}...`);
+
   try {
     let permStatus = await PushNotifications.checkPermissions();
     if (permStatus.receive !== 'granted') {
+      console.log('[TEAM-HR-NOTIFICATION] Requesting native Android POST_NOTIFICATIONS permission via PushNotifications.requestPermissions()...');
       permStatus = await PushNotifications.requestPermissions();
     }
 
+    console.log('[TEAM-HR-NOTIFICATION] Native PushNotifications.requestPermissions result:', permStatus.receive);
+
     if (permStatus.receive === 'granted') {
       recordPromptDecision('allow');
-      await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+      await registerCapacitorPushListenersAndToken(targetAppType, user_id, user_role);
       return { status: 'granted', registered: true };
     } else if (permStatus.receive === 'denied') {
       recordPromptDecision('not_now');
       return { status: 'denied', registered: false };
     }
   } catch (err) {
-    console.warn('[requestAndRegisterCapacitorPush Warn]:', err);
+    console.warn('[TEAM-HR-NOTIFICATION] requestAndRegisterCapacitorPush warn:', err);
     recordPromptDecision('not_now');
   }
   return { status: 'denied', registered: false };
