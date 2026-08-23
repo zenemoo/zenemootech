@@ -130,6 +130,12 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
   if (Capacitor.isNativePlatform()) {
     try {
       const permStatus = await PushNotifications.checkPermissions();
+      if (permStatus.receive === 'granted') {
+        localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+        localStorage.setItem(PROMPT_STATUS_KEY, 'granted');
+        localStorage.removeItem(DENIED_AT_KEY);
+        return 'granted';
+      }
       if (permStatus.receive === 'denied') {
         return 'permanently_denied';
       }
@@ -436,7 +442,7 @@ export const initFCMIfGranted = async (
  * Requests OS permission, initializes FCM registration, and marks onboarding completed.
  */
 export const requestAndRegisterCapacitorPush = async (
-  app_type: 'zenemoo' | 'zenemoo_admin' = 'zenemoo',
+  app_type: string = 'zenemoo',
   user_id?: string,
   user_role?: string
 ): Promise<boolean> => {
@@ -452,11 +458,15 @@ export const requestAndRegisterCapacitorPush = async (
 
     if (permStatus.receive === 'granted') {
       recordPromptDecision('allow');
-      await registerCapacitorPushListenersAndToken(app_type, user_id, user_role);
+      await registerCapacitorPushListenersAndToken(app_type as 'zenemoo' | 'zenemoo_admin', user_id, user_role);
       return true;
+    } else {
+      recordPromptDecision('not_now');
+      return false;
     }
   } catch (err) {
     console.warn('[requestAndRegisterCapacitorPush Warn]:', err);
+    recordPromptDecision('not_now');
   }
   return false;
 };

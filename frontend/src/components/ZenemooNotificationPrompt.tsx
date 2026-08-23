@@ -49,18 +49,15 @@ export const ZenemooNotificationPrompt: React.FC = () => {
     setIsRegistering(true);
     try {
       if (Capacitor.isNativePlatform()) {
-        const success = await requestAndRegisterCapacitorPush('zenemoo');
-        if (success) {
-          setIsVisible(false);
-        }
+        await requestAndRegisterCapacitorPush('team_hr');
+        setIsVisible(false);
       } else {
-        const success = await registerWebPushSubscription();
-        if (success) {
-          setIsVisible(false);
-        }
+        await registerWebPushSubscription();
+        setIsVisible(false);
       }
     } catch (e) {
       console.warn('Notification prompt error:', e);
+      setIsVisible(false);
     } finally {
       setIsRegistering(false);
     }
