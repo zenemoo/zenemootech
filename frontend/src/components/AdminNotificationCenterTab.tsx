@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Bell,
   Search,
@@ -23,6 +23,8 @@ import {
   Info,
   Check,
   RotateCcw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { notificationApi } from '../services/api';
 
@@ -69,6 +71,10 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
   const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Pagination State (Default: 20 per page)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(20);
 
   // Active Action Menu Popup (id)
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -141,9 +147,48 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
     return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [notifications, readNotificationIds, readFilter, typeFilter, searchQuery]);
 
+  // Reset to page 1 whenever search, filter, or page size changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, readFilter, typeFilter, pageSize]);
+
+  // Calculate Total Pages
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / pageSize));
+
+  // Automatically clamp page if items were deleted or list shrunk
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  // Slice Current Page Notifications
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredNotifications.length);
+  const paginatedNotifications = useMemo(() => {
+    return filteredNotifications.slice(startIndex, endIndex);
+  }, [filteredNotifications, startIndex, endIndex]);
+
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !readNotificationIds.includes(n.id)).length;
   }, [notifications, readNotificationIds]);
+
+  // Helper to generate collapsed page numbers with ellipsis
+  const getPageNumbers = (current: number, total: number): (number | string)[] => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, '...', total];
+    }
+
+    if (current >= total - 3) {
+      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    }
+
+    return [1, '...', current - 1, current, current + 1, '...', total];
+  };
 
   // Relative Time Formatter
   const getRelativeTime = (isoStr: string) => {
@@ -292,7 +337,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
         </div>
       </div>
 
-      {/* 3. NOTIFICATIONS LIST VIEW */}
+      {/* 3. NOTIFICATIONS LIST VIEW (Render only paginated slice) */}
       <div className="space-y-3">
         {filteredNotifications.length === 0 ? (
           /* EMPTY STATE */
@@ -322,7 +367,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             )}
           </div>
         ) : (
-          filteredNotifications.map((notif) => {
+          paginatedNotifications.map((notif) => {
             const isRead = readNotificationIds.includes(notif.id);
             const isMenuOpen = activeMenuId === notif.id;
 
@@ -458,7 +503,91 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
         )}
       </div>
 
-      {/* 4. POLISHED NOTIFICATION DETAILS DRAWER / MODAL */}
+      {/* 4. PROFESSIONAL PAGINATION FOOTER */}
+      {filteredNotifications.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-[#0b0f19] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-xs shadow-xl">
+          {/* Left: Showing X–Y of Z */}
+          <div className="text-slate-400 text-center md:text-left">
+            Showing <span className="text-white font-bold">{filteredNotifications.length === 0 ? 0 : startIndex + 1}</span>–
+            <span className="text-white font-bold">{endIndex}</span> of{' '}
+            <span className="text-cyan-300 font-bold">{filteredNotifications.length}</span> notifications
+          </div>
+
+          {/* Center: Pagination Controls */}
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center">
+            {/* Previous Button */}
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer font-bold"
+              aria-label="Previous Page"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Previous</span>
+            </button>
+
+            {/* Collapsed Page Number Buttons */}
+            <div className="hidden sm:flex items-center gap-1">
+              {getPageNumbers(currentPage, totalPages).map((page, idx) => {
+                if (page === '...') {
+                  return (
+                    <span key={`ellipsis-${idx}`} className="px-2 py-1 text-slate-500 font-mono">
+                      ...
+                    </span>
+                  );
+                }
+                const pageNum = page as number;
+                const isActive = currentPage === pageNum;
+                return (
+                  <button
+                    key={`page-${pageNum}`}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 rounded-xl font-bold font-mono text-xs transition-all flex items-center justify-center cursor-pointer ${
+                      isActive
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/20'
+                        : 'border border-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Mobile Current Page Indicator */}
+            <span className="sm:hidden px-3 py-1 text-slate-300 font-mono font-bold">
+              Page {currentPage} of {totalPages}
+            </span>
+
+            {/* Next Button */}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer font-bold"
+              aria-label="Next Page"
+            >
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Right: Page Size Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 font-bold">Show:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+            >
+              <option value={20} className="bg-[#0b0f19]">20 per page</option>
+              <option value={50} className="bg-[#0b0f19]">50 per page</option>
+              <option value={100} className="bg-[#0b0f19]">100 per page</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* 5. POLISHED NOTIFICATION DETAILS DRAWER / MODAL */}
       {detailNotif && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in font-sans">
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 max-w-xl w-full my-6 space-y-6 max-h-[85vh] overflow-y-auto relative shadow-2xl bg-[#0b0f19] text-slate-200">
