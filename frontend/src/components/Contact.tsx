@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe, ExternalLink, ShieldCheck, Zap, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, Copy, Check, X, Ticket, Globe, ExternalLink, ShieldCheck, Zap, MessageSquare, Sparkles, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import confetti from 'canvas-confetti';
 import { saveContactInquiry } from '../lib/adminStore';
-import { contactApi } from '../services/api';
 import { TurnstileWidget } from './TurnstileWidget';
 
 const COUNTRY_CODES = [
@@ -18,16 +17,21 @@ const COUNTRY_CODES = [
   { code: '+974', country: 'Qatar 🇶🇦', flag: '🇶🇦', len: 8 },
 ];
 
+type ModalStage = 'idle' | 'verifying' | 'submitting' | 'success' | 'error_turnstile' | 'error_backend';
+
 export const Contact: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [modalStage, setModalStage] = useState<ModalStage>('idle');
+  const [statusText, setStatusText] = useState('Preparing your inquiry...');
+  const [backendError, setBackendError] = useState('');
+
   const [submittedId, setSubmittedId] = useState('');
   const [copied, setCopied] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
-  const [turnstileError, setTurnstileError] = useState('');
 
   const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -56,53 +60,39 @@ export const Contact: React.FC = () => {
     return `ZEN-${year}-${randomHex}`;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setEmailError('');
-    setPhoneError('');
-
-    // 1. Email Format Validation
-    const trimmedEmail = form.email.trim().toLowerCase();
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setEmailError('Please enter a valid corporate or personal email address.');
-      return;
+  // Animated status sequence when verification modal opens
+  useEffect(() => {
+    let t1: NodeJS.Timeout, t2: NodeJS.Timeout;
+    if (showModal && modalStage === 'verifying') {
+      setStatusText('Preparing your inquiry...');
+      t1 = setTimeout(() => setStatusText('Verifying security...'), 900);
+      t2 = setTimeout(() => setStatusText('Checking submission...'), 1800);
     }
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [showModal, modalStage]);
 
-    // 2. Phone Number Format Validation (Numbers only)
-    const cleanPhone = phoneNumber.replace(/\D/g, ''); // strip non-digits
-    if (phoneNumber.trim() !== '') {
-      if (cleanPhone.length === 0 || /\D/.test(phoneNumber.trim().replace(/[\s-]/g, ''))) {
-        setPhoneError('Phone number must contain digits only (no letters).');
-        return;
-      }
-      if (countryCode === '+91' && cleanPhone.length !== 10) {
-        setPhoneError('Indian mobile number must be exactly 10 digits.');
-        return;
-      }
-      if (cleanPhone.length < 6 || cleanPhone.length > 13) {
-        setPhoneError('Please enter a valid phone number (6-13 digits).');
-        return;
-      }
-    }
-
-    // 3. Anti-Bot Turnstile Verification Check
-    if (!turnstileToken) {
-      setTurnstileError('Please complete the anti-bot verification check before submitting.');
-      return;
-    }
-
+  // Execute backend submission once Turnstile produces a valid token
+  const executeBackendSubmission = async (token: string) => {
+    setModalStage('submitting');
+    setStatusText('Verification complete. Submitting inquiry...');
     setLoading(true);
+
     const inquiryId = generateInquiryId();
     setSubmittedId(inquiryId);
 
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
     const fullPhone = phoneNumber.trim() ? `${countryCode} ${cleanPhone}` : '';
+    const trimmedEmail = form.email.trim().toLowerCase();
 
     const payload = {
       ...form,
       email: trimmedEmail,
       phone: fullPhone,
       inquiry_id: inquiryId,
-      turnstileToken,
+      turnstileToken: token,
     };
 
     try {
@@ -124,7 +114,7 @@ export const Contact: React.FC = () => {
         colors: ['#06b6d4', '#3b82f6', '#a855f7'],
       });
 
-      setShowModal(true);
+      setModalStage('success');
       setForm({
         name: '',
         email: '',
@@ -135,14 +125,60 @@ export const Contact: React.FC = () => {
       });
       setPhoneNumber('');
       setTurnstileToken('');
-      setTurnstileError('');
     } catch (err: any) {
       console.error('Contact submit error:', err);
-      setTurnstileError(err.message || 'Verification failed. Please try again.');
-      setTurnstileToken('');
+      setBackendError(err.message || 'We could not submit your inquiry. Please try again.');
+      setModalStage('error_backend');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailError('');
+    setPhoneError('');
+
+    // 1. Email Format Validation
+    const trimmedEmail = form.email.trim().toLowerCase();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Please enter a valid corporate or personal email address.');
+      return;
+    }
+
+    // 2. Phone Number Format Validation (Numbers only)
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (phoneNumber.trim() !== '') {
+      if (cleanPhone.length === 0 || /\D/.test(phoneNumber.trim().replace(/[\s-]/g, ''))) {
+        setPhoneError('Phone number must contain digits only (no letters).');
+        return;
+      }
+      if (countryCode === '+91' && cleanPhone.length !== 10) {
+        setPhoneError('Indian mobile number must be exactly 10 digits.');
+        return;
+      }
+      if (cleanPhone.length < 6 || cleanPhone.length > 13) {
+        setPhoneError('Please enter a valid phone number (6-13 digits).');
+        return;
+      }
+    }
+
+    // 3. Validation passed -> Open Glossy Security Verification Modal
+    setTurnstileToken('');
+    setBackendError('');
+    setModalStage('verifying');
+    setShowModal(true);
+  };
+
+  const handleTurnstileVerify = (token: string) => {
+    setTurnstileToken(token);
+    executeBackendSubmission(token);
+  };
+
+  const handleRetryTurnstile = () => {
+    setTurnstileToken('');
+    setBackendError('');
+    setModalStage('verifying');
   };
 
   const copyTicketId = () => {
@@ -159,15 +195,9 @@ export const Contact: React.FC = () => {
 
   const closeModal = () => {
     setShowModal(false);
-    setPhoneNumber('');
-    setForm({
-      name: '',
-      email: '',
-      company: '',
-      service: 'Audio Transcription',
-      language: 'Hindi',
-      message: '',
-    });
+    setModalStage('idle');
+    setTurnstileToken('');
+    setBackendError('');
   };
 
   return (
@@ -199,8 +229,27 @@ export const Contact: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs font-mono text-slate-400 mb-6">
-                Fill in your requirements and our QA team will respond within 2 hours with capacity, timeline, and rate details.
+                This form is exclusively for companies, organizations, and businesses looking for our data, language, annotation, transcription, or AI support services.
               </p>
+
+              {/* Talent Registration Callout Card */}
+              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-purple-950/40 via-slate-900/60 to-cyan-950/40 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-purple-500/5">
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5 font-display tracking-wide">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    Looking for a job or want to join our team?
+                  </div>
+                  <div className="text-xs text-slate-300 font-sans">
+                    Please use our Talent Registration portal.
+                  </div>
+                </div>
+                <a
+                  href="/talent-registration"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-white border border-purple-500/40 text-xs font-bold font-mono transition-all shrink-0 w-full sm:w-auto text-center shadow-sm cursor-pointer"
+                >
+                  Add Your Talent &rarr;
+                </a>
+              </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -321,45 +370,13 @@ export const Contact: React.FC = () => {
                   ></textarea>
                 </div>
 
-                {/* Cloudflare Turnstile Anti-Bot Security Widget */}
-                <div className="py-2 flex flex-col items-center justify-center">
-                  <TurnstileWidget
-                    onVerify={(token) => {
-                      setTurnstileToken(token);
-                      setTurnstileError('');
-                    }}
-                    onExpire={() => {
-                      setTurnstileToken('');
-                      setTurnstileError('Verification expired. Please check the box again.');
-                    }}
-                    onError={() => {
-                      setTurnstileToken('');
-                      setTurnstileError('Security verification error. Please retry.');
-                    }}
-                  />
-                  {turnstileError && (
-                    <div className="text-xs font-mono text-rose-400 text-center mt-1 animate-pulse">
-                      ⚠️ {turnstileError}
-                    </div>
-                  )}
-                </div>
-
                 <button
                   type="submit"
-                  disabled={loading || !turnstileToken}
+                  disabled={loading}
                   className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-base transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {loading ? (
-                    <>
-                      <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
-                      Submitting Project Inquiry...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5" />
-                      Submit Project Inquiry
-                    </>
-                  )}
+                  <Send className="w-5 h-5" />
+                  Submit Project Inquiry
                 </button>
               </form>
             </div>
@@ -530,65 +547,178 @@ export const Contact: React.FC = () => {
         </div>
       </div>
 
-      {/* Confirmation Modal Popup */}
+      {/* Glossy Enterprise Verification & Success Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-cyan-500/20">
-            <button
-              onClick={closeModal}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-md w-full relative space-y-5 text-center shadow-2xl shadow-cyan-500/20 overflow-hidden">
+            {/* Ambient Background Glow */}
+            <div className="absolute -top-20 -left-20 w-40 h-40 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
 
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-black border border-cyan-400 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/30">
-              <CheckCircle2 className="w-7 h-7 text-black" />
-            </div>
+            {/* Stage A & B: Security Verification & Submitting */}
+            {(modalStage === 'verifying' || modalStage === 'submitting') && (
+              <div className="space-y-4 relative z-10 py-1 flex flex-col items-center">
+                <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 border-r-purple-500 animate-spin"></div>
+                  <div className="w-14 h-14 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
+                    <Lock className="w-6 h-6 animate-pulse" />
+                  </div>
+                </div>
 
-            <div>
-              <h3 className="text-xl font-bold font-display text-white">Inquiry Submitted!</h3>
-              <p className="text-xs font-mono text-slate-400 mt-1">
-                Your project specs have been sent to Prem Prasad Pradhan &amp; saved in database.
-              </p>
-            </div>
+                <div>
+                  <h3 className="text-xl font-bold font-display text-white">Securing Your Inquiry</h3>
+                  <p className="text-xs font-mono text-slate-400 mt-1">
+                    Please wait while we verify your submission.
+                  </p>
+                </div>
 
-            {/* Reference Ticket ID Badge */}
-            <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-1.5 text-center">
-              <div className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1.5">
-                <Ticket className="w-3.5 h-3.5 text-cyan-400" /> Reference Ticket ID
+                {/* Cloudflare Turnstile Challenge Container */}
+                <div className="w-full flex justify-center items-center py-0.5 min-h-[68px]">
+                  <TurnstileWidget
+                    onVerify={handleTurnstileVerify}
+                    onExpire={() => setModalStage('error_turnstile')}
+                    onError={() => setModalStage('error_turnstile')}
+                  />
+                </div>
+
+                {/* Status Sequence Display */}
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-semibold animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                  {statusText}
+                </div>
               </div>
-              <div className="text-xl font-black font-mono text-cyan-300 tracking-wider">
-                {submittedId}
+            )}
+
+            {/* Stage C: Success State */}
+            {modalStage === 'success' && (
+              <div className="space-y-5 relative z-10">
+                <button
+                  onClick={closeModal}
+                  className="absolute top-0 right-0 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 text-black border border-cyan-400 flex items-center justify-center mx-auto shadow-xl shadow-cyan-500/30">
+                  <CheckCircle2 className="w-8 h-8 text-black" />
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-bold font-display text-white">✓ Inquiry Submitted</h3>
+                  <p className="text-xs font-mono text-slate-400 mt-1">
+                    Your project inquiry has been securely received.
+                  </p>
+                </div>
+
+                {/* Reference Ticket ID Badge */}
+                <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 space-y-1.5 text-center">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1.5">
+                    <Ticket className="w-3.5 h-3.5 text-cyan-400" /> Reference Ticket ID
+                  </div>
+                  <div className="text-xl font-black font-mono text-cyan-300 tracking-wider">
+                    {submittedId}
+                  </div>
+                  <button
+                    onClick={copyTicketId}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-mono transition-colors cursor-pointer"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" /> Copy Reference Ticket ID
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="text-xs font-mono text-slate-300 space-y-1 text-left bg-white/[0.03] p-3.5 rounded-xl border border-white/5">
+                  <div><span className="text-slate-500">Name:</span> <strong className="text-white">{submittedDetails.name}</strong></div>
+                  <div><span className="text-slate-500">Corporate Email:</span> <strong className="text-cyan-300">{submittedDetails.email}</strong></div>
+                  {submittedDetails.phone && <div><span className="text-slate-500">Phone:</span> <strong className="text-white">{submittedDetails.phone}</strong></div>}
+                  <div><span className="text-slate-500">Service:</span> <strong className="text-white">{submittedDetails.service}</strong></div>
+                </div>
+
+                <button
+                  onClick={closeModal}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 cursor-pointer"
+                >
+                  Done &amp; Close
+                </button>
               </div>
-              <button
-                onClick={copyTicketId}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-mono transition-colors cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" /> Copy Reference Ticket ID
-                  </>
-                )}
-              </button>
-            </div>
+            )}
 
-            <div className="text-xs font-mono text-slate-300 space-y-1 text-left bg-white/[0.03] p-3.5 rounded-xl border border-white/5">
-              <div><span className="text-slate-500">Name:</span> <strong className="text-white">{submittedDetails.name}</strong></div>
-              <div><span className="text-slate-500">Email:</span> <strong className="text-cyan-300">{submittedDetails.email}</strong></div>
-              {submittedDetails.phone && <div><span className="text-slate-500">Phone:</span> <strong className="text-white">{submittedDetails.phone}</strong></div>}
-              <div><span className="text-slate-500">Service:</span> <strong className="text-white">{submittedDetails.service}</strong></div>
-            </div>
+            {/* Stage D: Cloudflare Turnstile Verification Failed */}
+            {modalStage === 'error_turnstile' && (
+              <div className="space-y-5 relative z-10 py-2">
+                <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto shadow-lg">
+                  <AlertTriangle className="w-8 h-8 text-rose-400" />
+                </div>
 
-            <button
-              onClick={closeModal}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 cursor-pointer"
-            >
-              Done &amp; Close
-            </button>
+                <div>
+                  <h3 className="text-xl font-bold font-display text-white">Verification Failed</h3>
+                  <p className="text-xs font-mono text-slate-400 mt-1">
+                    Please complete the security verification and try again.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs font-mono text-rose-300 text-center">
+                  ⚠️ Anti-bot verification was incomplete or expired. Your form data has been preserved.
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={closeModal}
+                    className="w-1/2 py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 text-xs font-bold font-mono transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRetryTurnstile}
+                    className="w-1/2 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-xs transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Try Again
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Stage E: Backend Submission Failed */}
+            {modalStage === 'error_backend' && (
+              <div className="space-y-5 relative z-10 py-2">
+                <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto shadow-lg">
+                  <AlertTriangle className="w-8 h-8 text-amber-400" />
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-bold font-display text-white">Submission Failed</h3>
+                  <p className="text-xs font-mono text-slate-400 mt-1">
+                    {backendError || 'Your verification was successful, but we could not submit the inquiry. Please try again.'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs font-mono text-amber-300 text-center">
+                  💡 Security verification was completed. Click "Try Again" to retry sending your inquiry.
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={closeModal}
+                    className="w-1/2 py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 text-xs font-bold font-mono transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRetryTurnstile}
+                    className="w-1/2 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold font-display text-xs transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Try Again
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

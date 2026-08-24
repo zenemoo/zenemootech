@@ -100,8 +100,8 @@ export const TurnstileWidget: React.FC<TurnstileWidgetProps> = ({
   }, [scriptLoaded, activeSiteKey]);
 
   return (
-    <div className={`flex flex-col items-center justify-center my-3 text-center ${className}`}>
-      <div ref={containerRef} className="cf-turnstile min-h-[65px] flex justify-center" />
+    <div className={`flex flex-col items-center justify-center my-1 text-center ${className}`}>
+      <div ref={containerRef} className="cf-turnstile min-h-[65px] flex justify-center items-center" />
     </div>
   );
 };
