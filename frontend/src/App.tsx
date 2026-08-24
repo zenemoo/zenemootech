@@ -46,10 +46,11 @@ import { ZenemooAndroidAppPage } from './components/ZenemooAndroidAppPage';
 import { ZenemooAppsHubPage } from './components/ZenemooAppsHubPage';
 import { ZenemooTeamPortalPage } from './components/ZenemooTeamPortalPage';
 import { ZenemooTeamAndroidAppPage } from './components/ZenemooTeamAndroidAppPage';
+import { ZenemooBookingPage } from './components/ZenemooBookingPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -115,6 +116,7 @@ export function App() {
         | 'app-android'
         | 'app-team-android'
         | 'team-portal'
+        | 'book-a-call'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -272,6 +274,16 @@ export function App() {
         hash === '#download'
       ) {
         matchedRoute = 'app-hub';
+      } else if (
+        path === '/30min' ||
+        path === '/30min/' ||
+        path.startsWith('/30min') ||
+        hash === '#30min' ||
+        hash === '#/30min' ||
+        hash.startsWith('#30min') ||
+        hash.startsWith('#/30min')
+      ) {
+        matchedRoute = 'book-a-call';
       } else if (path === '/' || path === '') {
         matchedRoute = 'home';
       } else {
@@ -555,6 +567,8 @@ export function App() {
             setCurrentRoute('forgot-password');
           }}
         />
+      ) : currentRoute === 'book-a-call' ? (
+        <ZenemooBookingPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

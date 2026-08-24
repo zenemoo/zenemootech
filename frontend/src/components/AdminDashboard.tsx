@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -22,10 +22,11 @@ import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
 import { Folder } from 'lucide-react';
 import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
 import { AdminHrAiPage } from './AdminHrAiPage';
+import { AdminBookingsTab } from './AdminBookingsTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings';
   isStandaloneEmailView?: boolean;
 }
 
@@ -216,7 +217,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -1882,6 +1883,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'ENTERPRISE OPERATIONS',
       items: [
+        { id: 'call-bookings', name: 'Call Bookings', icon: Calendar },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
@@ -3059,6 +3061,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: ENTERPRISE TEAM DIRECTORY */}
         {activeTab === 'directory' && (
           <EnterpriseTeamDirectory userRole="admin" showToast={(msg, type) => addToast(msg, type)} />
+        )}
+
+        {/* TAB: CALL BOOKINGS */}
+        {activeTab === 'call-bookings' && (
+          <AdminBookingsTab addToast={addToast} showConfirm={showConfirm} />
         )}
 
         {/* TAB: NOTIFICATION DISPATCHER */}

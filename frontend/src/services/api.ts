@@ -411,3 +411,29 @@ export const datasetApi = {
   deleteDataset: (datasetId: string) =>
     api.delete(`/datasets/${datasetId}`),
 };
+
+// ZENEMOO Book a Call System API
+export const bookingApi = {
+  getAvailability: (date: string, timezone?: string) =>
+    api.get('/bookings/availability', { params: { date, timezone } }),
+  createBooking: (data: {
+    fullName: string;
+    email: string;
+    phone: string;
+    companyName: string;
+    notes?: string;
+    slot: string;
+    turnstileToken: string;
+  }) => api.post('/bookings', data),
+  getBookingById: (bookingId: string) =>
+    api.get(`/bookings/${encodeURIComponent(bookingId)}`),
+  getAdminBookings: (params?: { search?: string; status?: string; meetingStatus?: string; timeframe?: string; date?: string }) =>
+    api.get('/bookings/admin/list', { params }),
+  generateMeetingLink: (id: string) =>
+    api.post(`/bookings/admin/${encodeURIComponent(id)}/generate-meeting`),
+  updateAdminBooking: (id: string, data: { status?: string; adminNotes?: string }) =>
+    api.patch(`/bookings/admin/${encodeURIComponent(id)}`, data),
+  deleteAdminBooking: (id: string) =>
+    api.delete(`/bookings/admin/${encodeURIComponent(id)}`),
+};
+

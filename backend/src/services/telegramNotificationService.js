@@ -344,3 +344,101 @@ Immediate attention required.`;
 
   await broadcastTelegramNotification(text);
 };
+
+/**
+ * 6. New Call Booking Notification
+ */
+export const sendBookingNotification = async (data = {}) => {
+  const { date, time } = getFormattedDateTimeIST();
+  const bookingId = data.booking_id || 'ZEN-CALL-UNKNOWN';
+  const name = data.full_name || 'Anonymous Visitor';
+  const email = data.email || 'Not Provided';
+  const phone = data.phone || 'Not Provided';
+  const company = data.company_name || 'Not Specified';
+  const bookingDate = data.booking_date || date;
+  const timezone = data.timezone || 'Asia/Kolkata';
+  const notes = data.notes || 'None provided.';
+
+  const text = `📅 ZENEMOO • NEW CALL BOOKING
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🆔 Booking ID
+${bookingId}
+
+👤 Full Name
+${name}
+
+📧 Email
+${email}
+
+📞 Phone
+${phone}
+
+🏢 Company / Agency
+${company}
+
+📆 Date & Time
+${bookingDate} (${timezone})
+
+💬 Notes
+${notes}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🕒 Booked At
+${date} • ${time}
+
+🌐 Dashboard
+${ADMIN_PANEL_LINK}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+Zenemoo Admin Control Center`;
+
+  await broadcastTelegramNotification(text);
+};
+
+/**
+ * 7. Call Booking 1-Hour Reminder Notification
+ */
+export const sendBookingReminderNotification = async (data = {}) => {
+  const { date, time } = getFormattedDateTimeIST();
+  const bookingId = data.booking_id || 'ZEN-CALL-UNKNOWN';
+  const name = data.full_name || 'Client';
+  const company = data.company_name || 'Company';
+  const bookingDate = data.booking_date || date;
+
+  const text = `⏰ ZENEMOO • CALL REMINDER (1 HOUR)
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🆔 Booking ID
+${bookingId}
+
+👤 Client Name
+${name}
+
+🏢 Company / Agency
+${company}
+
+📆 Scheduled Date
+${bookingDate}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🕒 System Time
+${date} • ${time}
+
+This 30-minute call starts in ~1 hour.
+
+🌐 Dashboard
+${ADMIN_PANEL_LINK}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+Zenemoo Admin Control Center`;
+
+  await broadcastTelegramNotification(text);
+};
+

@@ -28,13 +28,34 @@ import exportRoutes from './routes/exportRoutes.js';
 import brandingRoutes from './routes/brandingRoutes.js';
 import talentRegistrationRoutes from './routes/talentRegistrationRoutes.js';
 import datasetRoutes from './routes/datasetRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
-// Global Middleware
-app.use(helmet());
-app.use(cors({ origin: '*', credentials: true, exposedHeaders: ['X-New-Token'] }));
+// Robust CORS configuration supporting localhost dev and production domains
+const allowedOrigins = [
+  'https://www.zenemoo.in',
+  'https://zenemoo.in',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+    exposedHeaders: ['X-New-Token'],
+  })
+);
 app.use(morgan('dev'));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
@@ -101,11 +122,15 @@ app.use('/api/admin-hr-ai', adminHrAiRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/directory', teamDirectoryRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/admin/bookings', bookingRoutes);
 app.use('/api/admin', exportRoutes);
 app.use('/api/export', exportRoutes);
 
 // Root Fallback Aliases
 app.use('/datasets', datasetRoutes);
+app.use('/bookings', bookingRoutes);
+app.use('/30min', bookingRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
