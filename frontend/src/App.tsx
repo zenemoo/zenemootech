@@ -47,10 +47,11 @@ import { ZenemooAppsHubPage } from './components/ZenemooAppsHubPage';
 import { ZenemooTeamPortalPage } from './components/ZenemooTeamPortalPage';
 import { ZenemooTeamAndroidAppPage } from './components/ZenemooTeamAndroidAppPage';
 import { ZenemooBookingPage } from './components/ZenemooBookingPage';
+import { ZenemooWebsiteDirectoryPage } from './components/ZenemooWebsiteDirectoryPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -117,6 +118,7 @@ export function App() {
         | 'app-team-android'
         | 'team-portal'
         | 'book-a-call'
+        | 'sitemap'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -284,7 +286,18 @@ export function App() {
         hash.startsWith('#/30min')
       ) {
         matchedRoute = 'book-a-call';
-      } else if (path === '/' || path === '') {
+      } else if (
+        path === '/sitemap' ||
+        path === '/sitemap/' ||
+        path === '/directory' ||
+        path === '/directory/' ||
+        hash === '#sitemap' ||
+        hash === '#/sitemap' ||
+        hash === '#directory' ||
+        hash.startsWith('#sitemap')
+      ) {
+        matchedRoute = 'sitemap';
+      } else if (path === '/' || path === '' || path === '/subscribe' || path === '/subscribe/') {
         matchedRoute = 'home';
       } else {
         matchedRoute = '404';
@@ -354,6 +367,14 @@ export function App() {
         pageTitle = 'Zenemoo AI Assistant — Multilingual AI Engine';
         canonicalUrl = 'https://www.zenemoo.in/zenemooai';
         metaDescription = 'Interact with Zenemoo AI Assistant for instant information on multilingual speech datasets, enterprise data annotation, and AI services.';
+      } else if (matchedRoute === 'book-a-call' || path.startsWith('/30min') || hash.includes('30min')) {
+        pageTitle = 'Book a 30-Minute Discovery Call — Zenemoo Enterprise AI Solutions';
+        canonicalUrl = 'https://www.zenemoo.in/30min';
+        metaDescription = 'Schedule a 30-minute discovery call with Zenemoo AI Data Solutions experts. Discuss multilingual speech annotation, audio transcription, custom AI training datasets, data collection, and language technology.';
+      } else if (matchedRoute === 'sitemap' || path === '/sitemap' || path === '/directory' || hash.includes('sitemap')) {
+        pageTitle = 'Zenemoo Website Directory | AI, Data Solutions, Careers & More';
+        canonicalUrl = 'https://www.zenemoo.in/sitemap';
+        metaDescription = 'Explore the official Zenemoo website directory for AI and data solutions, multilingual technology, scheduling, careers, applications, company information, resources, contact options, and legal pages.';
       }
 
       document.title = pageTitle;
@@ -373,6 +394,68 @@ export function App() {
         document.head.appendChild(descMeta);
       }
       descMeta.setAttribute('content', metaDescription);
+
+      // Dynamically update OpenGraph & Twitter tags for social previews & Google Search Rich Snippets
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) ogTitle.setAttribute('content', pageTitle);
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) ogDesc.setAttribute('content', metaDescription);
+      const ogUrl = document.querySelector('meta[property="og:url"]');
+      if (ogUrl) ogUrl.setAttribute('content', canonicalUrl);
+      const twTitle = document.querySelector('meta[name="twitter:title"]');
+      if (twTitle) twTitle.setAttribute('content', pageTitle);
+      const twDesc = document.querySelector('meta[name="twitter:description"]');
+      if (twDesc) twDesc.setAttribute('content', metaDescription);
+      const twUrl = document.querySelector('meta[name="twitter:url"]');
+      if (twUrl) twUrl.setAttribute('content', canonicalUrl);
+
+      // Dynamically inject Schema.org JSON-LD Structured Data for Google Rank & Rich Results
+      let schemaScript = document.getElementById('zenemoo-dynamic-ld-json') as HTMLScriptElement | null;
+      if (!schemaScript) {
+        schemaScript = document.createElement('script');
+        schemaScript.id = 'zenemoo-dynamic-ld-json';
+        schemaScript.type = 'application/ld+json';
+        document.head.appendChild(schemaScript);
+      }
+
+      if (matchedRoute === 'book-a-call' || path.startsWith('/30min')) {
+        schemaScript.text = JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'Service',
+          name: 'Zenemoo 30-Minute AI Discovery Call',
+          serviceType: 'AI Data Solutions & Multilingual Consultation',
+          provider: {
+            '@type': 'Organization',
+            name: 'Zenemoo Data Solutions',
+            url: 'https://www.zenemoo.in',
+            logo: 'https://www.zenemoo.in/assets/logo.png',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: 'Main Road',
+              addressLocality: 'K. Barida',
+              addressRegion: 'Odisha',
+              postalCode: '761031',
+              addressCountry: 'IN',
+            },
+          },
+          url: 'https://www.zenemoo.in/30min',
+          description: metaDescription,
+          potentialAction: {
+            '@type': 'ReserveAction',
+            target: 'https://www.zenemoo.in/30min',
+            name: 'Schedule 30-Min Discovery Meeting',
+          },
+        });
+      } else {
+        schemaScript.text = JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'Organization',
+          name: 'Zenemoo Data Solutions',
+          url: 'https://www.zenemoo.in',
+          logo: 'https://www.zenemoo.in/assets/logo.png',
+          description: metaDescription,
+        });
+      }
     };
 
     checkRoute();
@@ -569,6 +652,8 @@ export function App() {
         />
       ) : currentRoute === 'book-a-call' ? (
         <ZenemooBookingPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+      ) : currentRoute === 'sitemap' ? (
+        <ZenemooWebsiteDirectoryPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

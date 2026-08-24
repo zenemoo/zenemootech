@@ -54,23 +54,64 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButt
     }
   }, []);
 
-  // Lock body scroll & listen for Escape key when mobile drawer is open
+  // Auto-close mobile drawer when user scrolls or swipes on the background page outside drawer
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && mobileOpen) {
+    if (!mobileOpen) {
+      document.body.style.overflow = '';
+      return;
+    }
+
+    let touchStartY = 0;
+    let isTouchOutsideDrawer = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const drawer = document.getElementById('mobile-navigation-drawer');
+      if (drawer && !drawer.contains(e.target as Node)) {
+        isTouchOutsideDrawer = true;
+        touchStartY = e.touches[0].clientY;
+      } else {
+        isTouchOutsideDrawer = false;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isTouchOutsideDrawer) {
+        const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
+        if (deltaY > 6) {
+          setMobileOpen(false);
+        }
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      const drawer = document.getElementById('mobile-navigation-drawer');
+      if (drawer && !drawer.contains(e.target as Node)) {
         setMobileOpen(false);
       }
     };
 
-    if (mobileOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
-    }
+    const handleScroll = () => {
+      setMobileOpen(false);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+      }
+    };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       document.body.style.overflow = '';
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [mobileOpen]);
