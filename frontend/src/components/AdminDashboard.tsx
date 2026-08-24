@@ -23,10 +23,11 @@ import { Folder } from 'lucide-react';
 import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
 import { AdminHrAiPage } from './AdminHrAiPage';
 import { AdminBookingsTab } from './AdminBookingsTab';
+import { AdminNotificationCenterTab } from './AdminNotificationCenterTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings';
   isStandaloneEmailView?: boolean;
 }
 
@@ -217,7 +218,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -287,6 +288,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [isRbacModalOpen, setIsRbacModalOpen] = useState(false);
   // Delete confirmation modal state
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId: string; userName: string; teamMemberId?: string } | null>(null);
+
+  // Call Bookings Sidebar Actionable Count State
+  const [callBookingsActionableCount, setCallBookingsActionableCount] = useState<number | undefined>(undefined);
 
   // Admin Notification Dispatcher State
   const [notifTitle, setNotifTitle] = useState('');
@@ -1872,7 +1876,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'COMMUNICATION',
       items: [
-        { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Bell },
+        { id: 'notifications', name: 'Notifications Center', icon: Bell, count: unreadNotifications.length },
+        { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
         { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
         { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
         { id: 'reviews', name: 'Review Management', icon: Star },
@@ -1883,7 +1888,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'ENTERPRISE OPERATIONS',
       items: [
-        { id: 'call-bookings', name: 'Call Bookings', icon: Calendar },
+        { id: 'call-bookings', name: 'Call Bookings', icon: Calendar, count: callBookingsActionableCount },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
@@ -2339,7 +2344,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           )}
                           <button
                             onClick={() => {
-                              setActiveTab('notifications-admin');
+                              setActiveTab('notifications');
                               setIsNotificationsOpen(false);
                             }}
                             className="text-slate-400 hover:text-white hover:underline cursor-pointer transition-colors"
@@ -2401,7 +2406,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <div className="pt-2 border-t border-white/10 text-center">
                         <button
                           onClick={() => {
-                            setActiveTab('notifications-admin');
+                            setActiveTab('notifications');
                             setIsNotificationsOpen(false);
                           }}
                           className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 font-bold hover:underline cursor-pointer w-full text-center py-1 flex items-center justify-center gap-1"
@@ -3065,7 +3070,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
         {/* TAB: CALL BOOKINGS */}
         {activeTab === 'call-bookings' && (
-          <AdminBookingsTab addToast={addToast} showConfirm={showConfirm} />
+          <AdminBookingsTab addToast={addToast} showConfirm={showConfirm} onActionableCountChange={(count) => setCallBookingsActionableCount(count)} />
+        )}
+
+        {/* TAB: DEDICATED NOTIFICATIONS CENTER */}
+        {activeTab === 'notifications' && (
+          <AdminNotificationCenterTab
+            notifications={compiledNotifications}
+            readNotificationIds={readNotifications}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+            onToggleRead={(id) => {
+              if (readNotifications.includes(id)) {
+                const nextRead = readNotifications.filter((rId) => rId !== id);
+                setReadNotifications(nextRead);
+                localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
+              } else {
+                const nextRead = [...readNotifications, id];
+                setReadNotifications(nextRead);
+                localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
+              }
+            }}
+            onDeleteNotification={(id) => {
+              const nextRead = [...readNotifications, id];
+              setReadNotifications(nextRead);
+              localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
+              showStatus('Notification removed');
+            }}
+            onRefresh={loadAdminNotifications}
+            onNavigateTab={(tabName) => setActiveTab(tabName as any)}
+            addToast={addToast}
+            showConfirm={showConfirm}
+          />
         )}
 
         {/* TAB: NOTIFICATION DISPATCHER */}

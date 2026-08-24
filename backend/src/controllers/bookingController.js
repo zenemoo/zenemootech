@@ -1,21 +1,27 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import axios from 'axios';
 import { supabase } from '../config/supabase.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import {
   generateCustomerBookingEmailHtml,
   generateAdminBookingEmailHtml,
+  generateCustomerReminderEmailHtml,
+  generateAdminReminderEmailHtml,
 } from '../services/bookingEmailTemplate.js';
 import { sendBookingNotification } from '../services/telegramNotificationService.js';
 import { createGoogleMeetForBooking } from '../services/googleMeetService.js';
+import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 
-const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAEKG_sx7PnsrKH6dRojjixiRQWo';
-const ADMIN_EMAIL = 'zenemoo-admin-email@googlegroups.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups.com';
+const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAA...'; // Site secret key
 
 /**
- * Generate unique booking ID (ZEN-CALL-XXXXX)
+ * Generate 5-character alphanumeric uppercase code
  */
 const generateBookingCode = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let randomStr = '';
   for (let i = 0; i < 5; i++) {
     randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -146,19 +152,22 @@ export const getAvailability = async (req, res, next) => {
       }
     }
 
-    // Filter slots
-    const nowUtcMs = Date.now();
-    const availableSlots = slots.map((s) => {
-      const slotTimeMs = new Date(s.iso).getTime();
-      const isPast = selectedDate === todayStr && slotTimeMs < nowUtcMs + 15 * 60 * 1000;
-      const isBooked = bookedTimesSet.has(s.iso);
+    // Filter out booked slots and past slots for today
+    const nowMs = Date.now();
+    const availableSlots = slots.map((slot) => {
+      const slotMs = new Date(slot.iso).getTime();
 
-      return {
-        iso: s.iso,
-        label: s.label,
-        available: !isPast && !isBooked,
-        reason: isBooked ? 'Booked' : isPast ? 'Past' : undefined,
-      };
+      // Rule 1: Cannot book a slot in the past (tolerance: now - 5 mins)
+      if (slotMs < nowMs - 5 * 60 * 1000) {
+        return { ...slot, available: false, reason: 'Past time slot' };
+      }
+
+      // Rule 2: Cannot book an already booked time slot
+      if (bookedTimesSet.has(slot.iso)) {
+        return { ...slot, available: false, reason: 'Already booked' };
+      }
+
+      return { ...slot, available: true };
     });
 
     return res.json({
@@ -174,26 +183,17 @@ export const getAvailability = async (req, res, next) => {
 
 /**
  * POST /api/bookings
- * Submit a new call booking with Cloudflare Turnstile anti-bot verification
+ * Public endpoint to submit a new 30 Minute Call Booking
  */
 export const createBooking = async (req, res, next) => {
   try {
-    const {
-      fullName,
-      email,
-      phone,
-      companyName,
-      notes,
-      slot,
-      turnstileToken,
-    } = req.body;
+    const { fullName, email, phone, companyName, notes = '', slot, turnstileToken } = req.body;
 
-    // Sanitize & Validate Inputs
-    const cleanName = (fullName || '').trim();
-    const cleanEmail = (email || '').trim().toLowerCase();
-    const cleanPhone = (phone || '').trim();
-    const cleanCompany = (companyName || '').trim();
-    const cleanNotes = (notes || '').trim();
+    const cleanName = fullName?.trim();
+    const cleanEmail = email?.trim().toLowerCase();
+    const cleanPhone = phone?.trim();
+    const cleanCompany = companyName?.trim();
+    const cleanNotes = notes?.trim();
 
     if (!cleanName || !cleanEmail || !cleanPhone || !cleanCompany || !slot) {
       return res.status(400).json({
@@ -298,6 +298,10 @@ export const createBooking = async (req, res, next) => {
       google_calendar_event_id: null,
       google_meet_url: null,
       reminder_sent: false,
+      customer_email_status: 'pending',
+      admin_email_status: 'pending',
+      customer_reminder_status: 'pending',
+      admin_reminder_status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString(),
@@ -320,27 +324,64 @@ export const createBooking = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Failed to record booking. Please try again.' });
     }
 
-    // 6. Asynchronous Notification Dispatches
+    // 6. Asynchronous Notification & Email Dispatches
     const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <noreply@zenemoo.in>';
 
-    // A. Send Customer Confirmation Email (No Meet URL yet)
+    // A. Customer Confirmation Email
     sendMailViaBrevo({
       sender,
       recipients: cleanEmail,
       subject: `Zenemoo Call Booking Confirmed — ${newBooking.booking_id}`,
       html: generateCustomerBookingEmailHtml(newBooking),
-    }).catch((e) => console.error('[Customer Email Dispatch Warning]:', e.message));
+    })
+      .then(() => {
+        supabase.from('call_bookings').update({
+          customer_email_status: 'sent',
+          customer_email_sent_at: new Date().toISOString(),
+          customer_email_error: null,
+        }).eq('id', newBooking.id).catch(() => {});
+      })
+      .catch((e) => {
+        console.error('[Customer Email Error]:', e.message);
+        supabase.from('call_bookings').update({
+          customer_email_status: 'failed',
+          customer_email_error: e.message,
+        }).eq('id', newBooking.id).catch(() => {});
+      });
 
-    // B. Send Admin Notification Email
+    // B. Admin Notification Email
     sendMailViaBrevo({
       sender,
       recipients: ADMIN_EMAIL,
       subject: `New Zenemoo Call Booking — ${newBooking.booking_id}`,
       html: generateAdminBookingEmailHtml(newBooking),
-    }).catch((e) => console.error('[Admin Email Dispatch Warning]:', e.message));
+    })
+      .then(() => {
+        supabase.from('call_bookings').update({
+          admin_email_status: 'sent',
+          admin_email_sent_at: new Date().toISOString(),
+          admin_email_error: null,
+        }).eq('id', newBooking.id).catch(() => {});
+      })
+      .catch((e) => {
+        console.error('[Admin Email Error]:', e.message);
+        supabase.from('call_bookings').update({
+          admin_email_status: 'failed',
+          admin_email_error: e.message,
+        }).eq('id', newBooking.id).catch(() => {});
+      });
 
-    // C. Dispatch Telegram Alert
-    sendBookingNotification(newBooking).catch((e) => console.error('[Telegram Booking Dispatch Warning]:', e.message));
+    // C. Dispatch Admin Notification Bell Alert
+    sendZenemooNotification({
+      title: 'New Call Booking Received',
+      message: `${cleanName} booked a 30-minute call for ${cleanCompany}.`,
+      notification_type: 'booking_created',
+      target_type: 'broadcast',
+      url: '/portal/9KqvA2Nz8#call-bookings',
+    }).catch((e) => console.error('[Notification Bell Warning]:', e.message));
+
+    // D. Dispatch Telegram Alert
+    sendBookingNotification(newBooking).catch((e) => console.error('[Telegram Booking Warning]:', e.message));
 
     // 7. Trigger Non-Blocking Async Background Google Calendar & Google Meet Creation
     setImmediate(() => {
@@ -349,7 +390,6 @@ export const createBooking = async (req, res, next) => {
       });
     });
 
-    // Return immediate booking confirmation to customer without waiting for Google API
     return res.status(201).json({
       success: true,
       message: 'Booking confirmed successfully.',
@@ -378,35 +418,69 @@ export const getBookingById = async (req, res, next) => {
 
     const { data: booking, error } = await supabase
       .from('call_bookings')
-      .select('booking_id, full_name, company_name, email, booking_date, start_time, end_time, timezone, status, created_at')
-      .or(`booking_id.eq.${bookingId},id.eq.${bookingId}`)
+      .select('*')
+      .or(`id.eq.${bookingId},booking_id.eq.${bookingId}`)
       .maybeSingle();
 
     if (error || !booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found.' });
+      return res.status(404).json({ success: false, message: 'Booking record not found.' });
     }
 
-    return res.json({ success: true, booking });
+    return res.json({
+      success: true,
+      booking,
+    });
   } catch (err) {
     next(err);
   }
 };
 
 /**
- * GET /api/bookings/admin/list
- * Admin list endpoint with status, search, date range, and meetingStatus filters
+ * GET /api/bookings/admin/list or GET /api/bookings/admin/bookings
+ * Admin list endpoint with automatic completion, status filtering, search, and actionable count
  */
 export const getAdminBookings = async (req, res, next) => {
   try {
-    const { status, meetingStatus, search, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const { status, meetingStatus, emailStatus, timeframe, search, startDate, endDate, page = 1, limit = 50 } = req.query;
 
     if (!supabase) {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
 
-    let query = supabase
-      .from('call_bookings')
-      .select('*', { count: 'exact' });
+    const nowIso = new Date().toISOString();
+
+    // 1. Process Automatic Completion for past confirmed bookings (end_time < now)
+    try {
+      const { data: pastConfirmed } = await supabase
+        .from('call_bookings')
+        .select('id, full_name, company_name, booking_id')
+        .eq('status', 'confirmed')
+        .lt('end_time', nowIso);
+
+      if (pastConfirmed && pastConfirmed.length > 0) {
+        const pastIds = pastConfirmed.map((b) => b.id);
+        await supabase
+          .from('call_bookings')
+          .update({ status: 'completed', completed_at: nowIso, updated_at: nowIso })
+          .in('id', pastIds);
+
+        // Notify notification bell for completed meetings
+        pastConfirmed.forEach((b) => {
+          sendZenemooNotification({
+            title: 'Meeting Completed',
+            message: `Call with ${b.full_name} (${b.company_name}) has completed.`,
+            notification_type: 'booking_completed',
+            target_type: 'broadcast',
+            url: '/portal/9KqvA2Nz8#call-bookings',
+          }).catch(() => {});
+        });
+      }
+    } catch (autoErr) {
+      console.error('[Auto Complete Error]:', autoErr.message);
+    }
+
+    // 2. Build Query
+    let query = supabase.from('call_bookings').select('*', { count: 'exact' });
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -414,6 +488,16 @@ export const getAdminBookings = async (req, res, next) => {
 
     if (meetingStatus && meetingStatus !== 'all') {
       query = query.eq('meeting_status', meetingStatus);
+    }
+
+    if (emailStatus && emailStatus !== 'all') {
+      if (emailStatus === 'failed') {
+        query = query.or('customer_email_status.eq.failed,admin_email_status.eq.failed,customer_reminder_status.eq.failed,admin_reminder_status.eq.failed');
+      } else if (emailStatus === 'sent') {
+        query = query.eq('customer_email_status', 'sent');
+      } else if (emailStatus === 'pending') {
+        query = query.eq('customer_email_status', 'pending');
+      }
     }
 
     if (startDate) {
@@ -443,10 +527,31 @@ export const getAdminBookings = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Failed to fetch bookings.' });
     }
 
+    // 3. Compute Actionable Count for Sidebar Badge (Upcoming confirmed, pending, failed meet, failed email)
+    let actionableCount = 0;
+    try {
+      const { data: allActive } = await supabase
+        .from('call_bookings')
+        .select('id, status, end_time, meeting_status, customer_email_status, admin_email_status')
+        .in('status', ['confirmed', 'pending']);
+
+      if (allActive) {
+        const nowMs = Date.now();
+        actionableCount = allActive.filter((b) => {
+          if (b.status === 'pending') return true;
+          if (b.status === 'confirmed' && new Date(b.end_time).getTime() > nowMs) return true;
+          if (b.meeting_status === 'failed') return true;
+          if (b.customer_email_status === 'failed' || b.admin_email_status === 'failed') return true;
+          return false;
+        }).length;
+      }
+    } catch (_) {}
+
     return res.json({
       success: true,
       bookings: bookings || [],
       total: count || 0,
+      actionableCount,
       page: pageNum,
       limit: limitNum,
     });
@@ -494,6 +599,15 @@ export const generateMeetingForBooking = async (req, res, next) => {
     const result = await createGoogleMeetForBooking(booking, 'admin_manual');
 
     if (result.success) {
+      // Notify Admin Notification Bell
+      sendZenemooNotification({
+        title: 'Google Meet Ready',
+        message: `Google Meet link generated for booking ${booking.booking_id} (${booking.full_name}).`,
+        notification_type: 'google_meet_generated',
+        target_type: 'broadcast',
+        url: '/portal/9KqvA2Nz8#call-bookings',
+      }).catch(() => {});
+
       return res.json({
         success: true,
         message: 'Google Calendar event & Meet link generated successfully.',
@@ -501,10 +615,132 @@ export const generateMeetingForBooking = async (req, res, next) => {
         meetUrl: result.meetUrl,
       });
     } else {
+      // Notify Admin Notification Bell on failure
+      sendZenemooNotification({
+        title: 'Google Meet Link Failed',
+        message: `Google Meet generation failed for booking ${booking.booking_id} (${booking.full_name}).`,
+        notification_type: 'google_meet_failed',
+        target_type: 'broadcast',
+        url: '/portal/9KqvA2Nz8#call-bookings',
+      }).catch(() => {});
+
       return res.status(500).json({
         success: false,
         message: result.error || 'Failed to generate Google Meet link.',
         booking: result.booking || booking,
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/bookings/admin/:id/resend-email
+ * Manually resends customer confirmation, admin confirmation, or 1-hour reminders
+ */
+export const resendBookingEmail = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { emailType } = req.body; // 'customer_confirmation' | 'admin_confirmation' | 'customer_reminder' | 'admin_reminder'
+
+    if (!id || !emailType) {
+      return res.status(400).json({ success: false, message: 'Booking ID and emailType are required.' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database service unavailable.' });
+    }
+
+    const { data: booking, error } = await supabase
+      .from('call_bookings')
+      .select('*')
+      .or(`id.eq.${id},booking_id.eq.${id}`)
+      .maybeSingle();
+
+    if (error || !booking) {
+      return res.status(404).json({ success: false, message: 'Booking record not found.' });
+    }
+
+    const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <noreply@zenemoo.in>';
+    let emailSubject = '';
+    let emailHtml = '';
+    let statusField = '';
+    let sentAtField = '';
+    let errorField = '';
+    let recipient = '';
+
+    if (emailType === 'customer_confirmation') {
+      recipient = booking.email;
+      emailSubject = `Zenemoo Call Booking Confirmed — ${booking.booking_id}`;
+      emailHtml = generateCustomerBookingEmailHtml(booking);
+      statusField = 'customer_email_status';
+      sentAtField = 'customer_email_sent_at';
+      errorField = 'customer_email_error';
+    } else if (emailType === 'admin_confirmation') {
+      recipient = ADMIN_EMAIL;
+      emailSubject = `New Zenemoo Call Booking — ${booking.booking_id}`;
+      emailHtml = generateAdminBookingEmailHtml(booking);
+      statusField = 'admin_email_status';
+      sentAtField = 'admin_email_sent_at';
+      errorField = 'admin_email_error';
+    } else if (emailType === 'customer_reminder') {
+      recipient = booking.email;
+      emailSubject = `Your Zenemoo Meeting Starts in 1 Hour — ${booking.booking_id}`;
+      emailHtml = generateCustomerReminderEmailHtml(booking);
+      statusField = 'customer_reminder_status';
+      sentAtField = 'customer_reminder_sent_at';
+      errorField = 'customer_reminder_error';
+    } else if (emailType === 'admin_reminder') {
+      recipient = ADMIN_EMAIL;
+      emailSubject = `Zenemoo Meeting Starts in 1 Hour — ${booking.booking_id}`;
+      emailHtml = generateAdminReminderEmailHtml(booking);
+      statusField = 'admin_reminder_status';
+      sentAtField = 'admin_reminder_sent_at';
+      errorField = 'admin_reminder_error';
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid emailType specified.' });
+    }
+
+    try {
+      await sendMailViaBrevo({
+        sender,
+        recipients: recipient,
+        subject: emailSubject,
+        html: emailHtml,
+      });
+
+      const updatePayload = {
+        [statusField]: 'sent',
+        [sentAtField]: new Date().toISOString(),
+        [errorField]: null,
+      };
+
+      const { data: updatedBooking } = await supabase
+        .from('call_bookings')
+        .update(updatePayload)
+        .eq('id', booking.id)
+        .select()
+        .single();
+
+      return res.json({
+        success: true,
+        message: `Email (${emailType}) sent successfully to ${recipient}.`,
+        booking: updatedBooking || booking,
+      });
+    } catch (sendErr) {
+      console.error(`[Manual Email Resend Error - ${emailType}]:`, sendErr.message);
+
+      const updatePayload = {
+        [statusField]: 'failed',
+        [errorField]: sendErr.message || 'Email delivery failed.',
+      };
+
+      await supabase.from('call_bookings').update(updatePayload).eq('id', booking.id).catch(() => {});
+
+      return res.status(500).json({
+        success: false,
+        message: `Failed to deliver email: ${sendErr.message || 'Mail server error.'}`,
       });
     }
   } catch (err) {
@@ -522,40 +758,35 @@ export const updateAdminBooking = async (req, res, next) => {
     const { status, adminNotes } = req.body;
 
     if (!id) {
-      return res.status(400).json({ success: false, message: 'Booking ID parameter is required.' });
+      return res.status(400).json({ success: false, message: 'Booking ID is required.' });
     }
 
     if (!supabase) {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
 
-    const updateFields = {
+    const updateData = {
       updated_at: new Date().toISOString(),
     };
 
     if (status) {
-      const validStatuses = ['pending', 'confirmed', 'completed', 'rejected', 'cancelled', 'no_show'];
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({ success: false, message: 'Invalid status value.' });
-      }
-      updateFields.status = status;
-      if (status === 'completed') updateFields.completed_at = new Date().toISOString();
-      if (status === 'cancelled') updateFields.cancelled_at = new Date().toISOString();
+      updateData.status = status;
+      if (status === 'completed') updateData.completed_at = new Date().toISOString();
+      if (status === 'cancelled' || status === 'rejected') updateData.cancelled_at = new Date().toISOString();
     }
 
-    if (typeof adminNotes === 'string') {
-      updateFields.admin_notes = adminNotes;
+    if (adminNotes !== undefined) {
+      updateData.admin_notes = adminNotes;
     }
 
     const { data: updatedBooking, error } = await supabase
       .from('call_bookings')
-      .update(updateFields)
+      .update(updateData)
       .or(`id.eq.${id},booking_id.eq.${id}`)
       .select()
       .single();
 
-    if (error) {
-      console.error('[Admin Update Booking Error]:', error);
+    if (error || !updatedBooking) {
       return res.status(500).json({ success: false, message: 'Failed to update booking.' });
     }
 
@@ -578,7 +809,7 @@ export const deleteAdminBooking = async (req, res, next) => {
     const { id } = req.params;
 
     if (!id) {
-      return res.status(400).json({ success: false, message: 'Booking ID parameter is required.' });
+      return res.status(400).json({ success: false, message: 'Booking ID is required.' });
     }
 
     if (!supabase) {
@@ -591,7 +822,6 @@ export const deleteAdminBooking = async (req, res, next) => {
       .or(`id.eq.${id},booking_id.eq.${id}`);
 
     if (error) {
-      console.error('[Admin Delete Booking Error]:', error);
       return res.status(500).json({ success: false, message: 'Failed to delete booking.' });
     }
 

@@ -427,10 +427,12 @@ export const bookingApi = {
   }) => api.post('/bookings', data),
   getBookingById: (bookingId: string) =>
     api.get(`/bookings/${encodeURIComponent(bookingId)}`),
-  getAdminBookings: (params?: { search?: string; status?: string; meetingStatus?: string; timeframe?: string; date?: string }) =>
+  getAdminBookings: (params?: { search?: string; status?: string; meetingStatus?: string; emailStatus?: string; timeframe?: string; date?: string }) =>
     api.get('/bookings/admin/list', { params }),
   generateMeetingLink: (id: string) =>
     api.post(`/bookings/admin/${encodeURIComponent(id)}/generate-meeting`),
+  resendEmail: (id: string, emailType: 'customer_confirmation' | 'admin_confirmation' | 'customer_reminder' | 'admin_reminder') =>
+    api.post(`/bookings/admin/${encodeURIComponent(id)}/resend-email`, { emailType }),
   updateAdminBooking: (id: string, data: { status?: string; adminNotes?: string }) =>
     api.patch(`/bookings/admin/${encodeURIComponent(id)}`, data),
   deleteAdminBooking: (id: string) =>

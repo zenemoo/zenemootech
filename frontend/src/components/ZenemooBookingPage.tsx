@@ -397,7 +397,7 @@ END:VCALENDAR`;
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-cyan-500/10 via-purple-500/5 to-transparent blur-3xl pointer-events-none" />
 
       {/* STATIC FIXED BOOKING NAVBAR */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#070a11]/90 backdrop-blur-xl shadow-lg shadow-black/40">
+      <header className="fixed top-0 left-0 right-0 z-50 w-full border-b border-white/10 bg-[#070a11]/95 backdrop-blur-xl shadow-lg shadow-black/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-2">
           {/* LEFT: ZENEMOO BRANDING */}
           <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0" onClick={onBackToHome}>
@@ -446,8 +446,8 @@ END:VCALENDAR`;
         </div>
       </header>
 
-      {/* MAIN CONTENT CONTAINER */}
-      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 pb-24 lg:pb-12 w-full overflow-x-hidden flex-1">
+      {/* MAIN CONTENT CONTAINER WITH TOP NAVBAR OFFSET */}
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-20 sm:pb-24 w-full flex-1">
         {/* SUCCESS CONFIRMATION STATE */}
         {confirmedBooking ? (
           <div className="max-w-2xl mx-auto my-6 sm:my-10 animate-fade-in">
