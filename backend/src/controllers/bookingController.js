@@ -39,6 +39,42 @@ const getTodayInTz = (tz = 'Asia/Kolkata') => {
   }
 };
 
+export const getUtcIsoStringFromLocalTime = (dateStr, hour, min, tz = 'Asia/Kolkata') => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const targetTimeMs = Date.UTC(year, month - 1, day, hour, min, 0, 0);
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const dateObj = new Date(targetTimeMs);
+  const parts = formatter.formatToParts(dateObj);
+  const p = {};
+  parts.forEach(({ type, value }) => { p[type] = value; });
+
+  const tzHour = parseInt(p.hour, 10) % 24;
+  const tzMin = parseInt(p.minute, 10);
+  const tzDay = parseInt(p.day, 10);
+
+  let dayDiff = tzDay - day;
+  if (dayDiff > 1) dayDiff = -1;
+  if (dayDiff < -1) dayDiff = 1;
+
+  const tzMinutesTotal = (dayDiff * 24 + tzHour) * 60 + tzMin;
+  const utcMinutesTotal = hour * 60 + min;
+  const offsetMinutes = tzMinutesTotal - utcMinutesTotal;
+
+  const realUtcMs = targetTimeMs - (offsetMinutes * 60 * 1000);
+  return new Date(realUtcMs).toISOString();
+};
+
 /**
  * GET /api/bookings/availability
  * Returns available 30-min slots between 10:00 AM and 10:00 PM for a specific date
@@ -62,14 +98,12 @@ export const getAvailability = async (req, res, next) => {
       });
     }
 
-    // Generate 30-min interval slots between 10:00 AM and 9:30 PM / 10:00 PM (10:00 to 22:00)
+    // Generate 30-min interval slots between 10:00 AM and 10:00 PM in selected timezone
     const slots = [];
-    const [year, month, day] = selectedDate.split('-').map(Number);
 
     for (let hour = 10; hour <= 21; hour++) {
       for (const min of [0, 30]) {
-        const slotDate = new Date(Date.UTC(year, month - 1, day, hour, min, 0, 0));
-        const isoString = slotDate.toISOString();
+        const isoString = getUtcIsoStringFromLocalTime(selectedDate, hour, min, timezone);
 
         const period = hour >= 12 ? 'PM' : 'AM';
         const displayHour = hour % 12 === 0 ? 12 : hour % 12;
@@ -85,10 +119,10 @@ export const getAvailability = async (req, res, next) => {
       }
     }
 
-    // Include 10:00 PM slot (starts at 22:00)
-    const slot22 = new Date(Date.UTC(year, month - 1, day, 22, 0, 0, 0));
+    // Include 10:00 PM slot (starts at 22:00 local time)
+    const iso22 = getUtcIsoStringFromLocalTime(selectedDate, 22, 0, timezone);
     slots.push({
-      iso: slot22.toISOString(),
+      iso: iso22,
       label: '10:00 PM',
       hour: 22,
       min: 0,

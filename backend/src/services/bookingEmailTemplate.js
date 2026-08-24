@@ -5,7 +5,7 @@
 
 const LOGO_URL = 'https://www.zenemoo.in/assets/logo.png';
 
-export const formatBookingDate = (dateStr) => {
+export const formatBookingDate = (dateStr, timezone = 'Asia/Kolkata') => {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
@@ -14,7 +14,7 @@ export const formatBookingDate = (dateStr) => {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: 'Asia/Kolkata',
+    timeZone: timezone || 'Asia/Kolkata',
   });
 };
 
@@ -30,6 +30,14 @@ export const formatBookingTime = (isoTimeStr, timezone = 'Asia/Kolkata') => {
   });
 };
 
+export const formatBookingTimeRange = (startTimeIso, endTimeIso, timezone = 'Asia/Kolkata') => {
+  const startStr = formatBookingTime(startTimeIso, timezone);
+  const endStr = formatBookingTime(endTimeIso, timezone);
+  if (!startStr) return '';
+  if (!endStr) return startStr;
+  return `${startStr} – ${endStr}`;
+};
+
 /**
  * 1. Immediate Customer Booking Confirmation Email (No Meet URL yet)
  */
@@ -38,14 +46,14 @@ export const generateCustomerBookingEmailHtml = (booking) => {
     booking_id,
     full_name,
     company_name,
-    booking_date,
     start_time,
+    end_time,
     timezone = 'Asia/Kolkata',
     meeting_type = '30 Minute Meeting',
   } = booking;
 
-  const dateFormatted = formatBookingDate(booking_date || start_time);
-  const timeFormatted = formatBookingTime(start_time, timezone);
+  const dateFormatted = formatBookingDate(start_time, timezone);
+  const timeFormatted = formatBookingTimeRange(start_time, end_time, timezone);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -157,15 +165,15 @@ export const generateAdminBookingEmailHtml = (booking) => {
     phone,
     company_name,
     notes,
-    booking_date,
     start_time,
+    end_time,
     timezone = 'Asia/Kolkata',
     google_meet_url,
     meeting_status = 'pending',
   } = booking;
 
-  const dateFormatted = formatBookingDate(booking_date || start_time);
-  const timeFormatted = formatBookingTime(start_time, timezone);
+  const dateFormatted = formatBookingDate(start_time, timezone);
+  const timeFormatted = formatBookingTimeRange(start_time, end_time, timezone);
 
   const meetSectionHtml = google_meet_url
     ? `<div style="margin-top:16px; padding:12px; background-color:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.3); border-radius:8px; text-align:center;">
@@ -257,14 +265,14 @@ export const generateCustomerReminderEmailHtml = (booking) => {
     booking_id,
     full_name,
     company_name,
-    booking_date,
     start_time,
+    end_time,
     timezone = 'Asia/Kolkata',
     google_meet_url,
   } = booking;
 
-  const dateFormatted = formatBookingDate(booking_date || start_time);
-  const timeFormatted = formatBookingTime(start_time, timezone);
+  const dateFormatted = formatBookingDate(start_time, timezone);
+  const timeFormatted = formatBookingTimeRange(start_time, end_time, timezone);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -342,15 +350,15 @@ export const generateAdminReminderEmailHtml = (booking) => {
     email,
     phone,
     company_name,
-    booking_date,
     start_time,
+    end_time,
     timezone = 'Asia/Kolkata',
     google_meet_url,
     meeting_status = 'pending',
   } = booking;
 
-  const dateFormatted = formatBookingDate(booking_date || start_time);
-  const timeFormatted = formatBookingTime(start_time, timezone);
+  const dateFormatted = formatBookingDate(start_time, timezone);
+  const timeFormatted = formatBookingTimeRange(start_time, end_time, timezone);
 
   return `<!DOCTYPE html>
 <html lang="en">
