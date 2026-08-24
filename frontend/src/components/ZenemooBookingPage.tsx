@@ -38,18 +38,56 @@ interface AvailableSlot {
   reason?: string;
 }
 
+/**
+ * Get current date string (YYYY-MM-DD) in specified timezone (default: Asia/Kolkata)
+ */
+export const getTodayDateString = (tz: string = 'Asia/Kolkata'): string => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date());
+  } catch (_) {
+    const now = new Date();
+    const local = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+    return local.toISOString().split('T')[0];
+  }
+};
+
+/**
+ * Get date string (YYYY-MM-DD) for a Date object in specified timezone
+ */
+export const getDateStringInTimezone = (date: Date, tz: string = 'Asia/Kolkata'): string => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(date);
+  } catch (_) {
+    return date.toISOString().split('T')[0];
+  }
+};
+
 export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackToHome, onOpenAiDrawer }) => {
   // AI Drawer state
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(false);
+  const [timezone, setTimezone] = useState<string>('Asia/Kolkata');
 
-  // Date & Slot state
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
+  // Compute Today's YYYY-MM-DD in the active timezone
+  const todayStr = useMemo(() => {
+    return getTodayDateString(timezone);
+  }, [timezone]);
+
+  // Date & Slot state initialized to current local date in Asia/Kolkata
+  const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString('Asia/Kolkata'));
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date());
   const [selectedSlotIso, setSelectedSlotIso] = useState<string | null>(null);
-  const [timezone, setTimezone] = useState<string>('Asia/Kolkata');
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [slotFetchError, setSlotFetchError] = useState<string>('');
@@ -67,47 +105,97 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [confirmedBooking, setConfirmedBooking] = useState<any>(null);
 
-  // Compute Today's YYYY-MM-DD
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
+  // Validate URL slot parameter strictly
+  const validateSlotParam = useCallback((slotParam: string | null, activeTz: string): string | null => {
+    if (!slotParam) return null;
+
+    try {
+      const slotDate = new Date(slotParam);
+      if (isNaN(slotDate.getTime())) return null;
+
+      const nowMs = Date.now();
+      // 1. Must be in the future (at least now - 5 mins tolerance)
+      if (slotDate.getTime() < nowMs - 5 * 60 * 1000) {
+        console.warn('[BOOKING URL] Rejecting slot: timestamp is in the past:', slotParam);
+        return null;
+      }
+
+      // 2. Date in timezone must be >= today
+      const currentToday = getTodayDateString(activeTz);
+      const slotDateStr = getDateStringInTimezone(slotDate, activeTz);
+      if (slotDateStr < currentToday) {
+        console.warn('[BOOKING URL] Rejecting slot: date is in the past:', slotDateStr, '<', currentToday);
+        return null;
+      }
+
+      // 3. Hour must be within 10:00 AM (10) and 10:00 PM (22)
+      const hourStr = new Intl.DateTimeFormat('en-US', {
+        timeZone: activeTz,
+        hour: 'numeric',
+        hour12: false,
+      }).format(slotDate);
+      const hour = parseInt(hourStr, 10);
+
+      if (hour < 10 || hour > 22) {
+        console.warn('[BOOKING URL] Rejecting slot: hour outside booking window:', hour);
+        return null;
+      }
+
+      return slotParam;
+    } catch (_) {
+      return null;
+    }
   }, []);
 
-  // Parse URL parameter on initial load or browser navigation
-  useEffect(() => {
-    const parseUrlParams = () => {
-      const searchParams = new URLSearchParams(window.location.search);
-      const slotParam = searchParams.get('slot');
-      if (slotParam) {
-        try {
-          const d = new Date(slotParam);
-          if (!isNaN(d.getTime())) {
-            setSelectedSlotIso(slotParam);
-            setSelectedDate(d.toISOString().split('T')[0]);
-          }
-        } catch (_) {}
+  // Parse and validate URL parameter on initial load or browser back/forward navigation
+  const syncAndValidateUrlState = useCallback(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawSlotParam = searchParams.get('slot');
+    const validSlot = validateSlotParam(rawSlotParam, timezone);
+
+    const currentToday = getTodayDateString(timezone);
+
+    if (validSlot) {
+      const d = new Date(validSlot);
+      const slotDateStr = getDateStringInTimezone(d, timezone);
+      setSelectedSlotIso(validSlot);
+      setSelectedDate(slotDateStr);
+    } else {
+      // Invalid or past slot: purge slot state, set date to today, clean URL
+      setSelectedSlotIso(null);
+      setSelectedDate((prev) => (prev < currentToday ? currentToday : prev));
+      if (rawSlotParam) {
+        console.warn('[BOOKING URL] Purging invalid or past slot parameter from URL');
+        window.history.replaceState(null, '', '/30min');
       }
-    };
-    parseUrlParams();
-    window.addEventListener('popstate', parseUrlParams);
-    return () => window.removeEventListener('popstate', parseUrlParams);
-  }, []);
+    }
+  }, [timezone, validateSlotParam]);
+
+  useEffect(() => {
+    syncAndValidateUrlState();
+    window.addEventListener('popstate', syncAndValidateUrlState);
+    return () => window.removeEventListener('popstate', syncAndValidateUrlState);
+  }, [syncAndValidateUrlState]);
 
   // Fetch available slots from backend with diagnostic logging
   const fetchSlots = useCallback((date: string, tz: string) => {
-    if (!date) return;
+    const currentToday = getTodayDateString(tz);
+
+    // Prevent fetching slots for past dates
+    if (!date || date < currentToday) {
+      setAvailableSlots([]);
+      setLoadingSlots(false);
+      return;
+    }
+
     setLoadingSlots(true);
     setSlotFetchError('');
 
-    console.log('[BOOKING] Availability request initiated');
-    console.log('[BOOKING] Selected date:', date);
-    console.log('[BOOKING] Timezone:', tz);
+    console.log('[BOOKING] Availability request initiated for date:', date, 'timezone:', tz);
 
     bookingApi
       .getAvailability(date, tz)
       .then((res) => {
-        console.log('[BOOKING] Response status:', res.status);
-        console.log('[BOOKING] Response data:', res.data);
         if (res.data?.success) {
           setAvailableSlots(res.data.availableSlots || []);
         } else {
@@ -115,13 +203,7 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
         }
       })
       .catch((err: any) => {
-        console.error('[BOOKING] Availability Error details:', {
-          message: err.message,
-          code: err.code,
-          configUrl: err.config?.url,
-          baseURL: err.config?.baseURL,
-          responseStatus: err.response?.status,
-        });
+        console.error('[BOOKING] Availability Error:', err.message);
         setSlotFetchError('Unable to load available times. Please check your connection and try again.');
       })
       .finally(() => {
@@ -133,8 +215,14 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
     fetchSlots(selectedDate, timezone);
   }, [selectedDate, timezone, fetchSlots]);
 
-  // Sync URL when slot is selected
+  // Sync URL when a valid slot is selected
   const handleSelectSlot = (slotIso: string) => {
+    const validSlot = validateSlotParam(slotIso, timezone);
+    if (!validSlot) {
+      setErrorMessage('This time slot is in the past or invalid.');
+      return;
+    }
+
     setSelectedSlotIso(slotIso);
     setErrorMessage('');
     const newUrl = `/30min?layout=month_view&slot=${encodeURIComponent(slotIso)}`;
@@ -199,8 +287,8 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
       return;
     }
 
-    if (!selectedSlotIso) {
-      setErrorMessage('Please select a meeting time slot.');
+    if (!selectedSlotIso || !validateSlotParam(selectedSlotIso, timezone)) {
+      setErrorMessage('Please select a valid future meeting time slot.');
       return;
     }
 
@@ -308,8 +396,8 @@ END:VCALENDAR`;
       {/* Ambient Background Glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[400px] bg-gradient-to-b from-cyan-500/10 via-purple-500/5 to-transparent blur-3xl pointer-events-none" />
 
-      {/* STATIC BOOKING NAVBAR */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#070a11]/90 backdrop-blur-xl">
+      {/* STATIC FIXED BOOKING NAVBAR */}
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#070a11]/90 backdrop-blur-xl shadow-lg shadow-black/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-2">
           {/* LEFT: ZENEMOO BRANDING */}
           <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0" onClick={onBackToHome}>
@@ -402,7 +490,7 @@ END:VCALENDAR`;
                         month: 'long',
                         day: 'numeric',
                         year: 'numeric',
-                        timeZone: confirmedBooking.timezone || 'Asia/Kolkata',
+                        timeZone: confirmedBooking.timezone || timezone,
                       })}
                     </span>
                   </div>
@@ -413,9 +501,9 @@ END:VCALENDAR`;
                         hour: '2-digit',
                         minute: '2-digit',
                         hour12: true,
-                        timeZone: confirmedBooking.timezone || 'Asia/Kolkata',
+                        timeZone: confirmedBooking.timezone || timezone,
                       })}{' '}
-                      ({confirmedBooking.timezone || 'Asia/Kolkata'})
+                      ({confirmedBooking.timezone || timezone})
                     </span>
                   </div>
                 </div>
@@ -484,7 +572,7 @@ END:VCALENDAR`;
 
                   {/* Selected Slot Summary (If picked) */}
                   {formattedSelectedSlot && (
-                    <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-4 space-y-2 font-mono text-xs">
+                    <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-4 space-y-2 font-mono text-xs animate-fade-in">
                       <div className="text-[11px] text-cyan-400 uppercase font-bold tracking-wider flex items-center justify-between">
                         <span>Selected Slot</span>
                         <button
@@ -560,16 +648,18 @@ END:VCALENDAR`;
                               key={cell.dateStr}
                               disabled={cell.isPast}
                               onClick={() => {
-                                setSelectedDate(cell.dateStr);
+                                if (!cell.isPast) {
+                                  setSelectedDate(cell.dateStr);
+                                }
                               }}
-                              className={`h-9 sm:h-10 rounded-xl font-mono text-xs font-bold transition-all relative flex flex-col items-center justify-center cursor-pointer ${
+                              className={`h-9 sm:h-10 rounded-xl font-mono text-xs font-bold transition-all relative flex flex-col items-center justify-center ${
                                 cell.isPast
-                                  ? 'text-slate-700 bg-white/[0.01] cursor-not-allowed line-through opacity-40'
+                                  ? 'text-slate-700 bg-white/[0.01] cursor-not-allowed line-through opacity-40 select-none'
                                   : cell.isSelected
-                                  ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/25 scale-105 z-10'
+                                  ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/25 scale-105 z-10 cursor-pointer'
                                   : cell.isToday
-                                  ? 'bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20'
-                                  : 'bg-white/[0.03] hover:bg-white/[0.08] text-slate-200 border border-white/5'
+                                  ? 'bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 cursor-pointer'
+                                  : 'bg-white/[0.03] hover:bg-white/[0.08] text-slate-200 border border-white/5 cursor-pointer'
                               }`}
                             >
                               <span>{cell.dayNum}</span>
@@ -613,8 +703,13 @@ END:VCALENDAR`;
                         <h3 className="text-xs sm:text-sm font-bold font-mono text-white flex items-center gap-2">
                           <Clock className="w-4 h-4 text-cyan-400" /> Available Slots
                         </h3>
-                        <span className="text-[11px] font-mono text-slate-400">
-                          {new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        <span className="text-[11px] font-mono text-slate-400 font-semibold">
+                          {selectedDate
+                            ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : ''}
                         </span>
                       </div>
 
@@ -655,13 +750,13 @@ END:VCALENDAR`;
                                 onClick={() => handleSelectSlot(slotItem.iso)}
                                 className={`w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
                                   !slotItem.available
-                                    ? 'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed line-through'
+                                    ? 'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed line-through select-none'
                                     : 'bg-white/[0.04] border border-white/10 hover:border-cyan-400/50 hover:bg-cyan-500/10 text-slate-200 hover:text-cyan-300'
                                 }`}
                               >
                                 <span>{slotItem.label}</span>
                                 <span className="text-[10px] uppercase text-slate-500">
-                                  {slotItem.available ? 'Book' : 'Booked'}
+                                  {slotItem.available ? 'Book' : 'Unavailable'}
                                 </span>
                               </button>
                             );

@@ -23,6 +23,22 @@ const generateBookingCode = () => {
   return `ZEN-CALL-${randomStr}`;
 };
 
+const getTodayInTz = (tz = 'Asia/Kolkata') => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date());
+  } catch (_) {
+    const now = new Date();
+    const local = new Date(now.getTime() - (now.getTimezoneOffset() * 60000));
+    return local.toISOString().split('T')[0];
+  }
+};
+
 /**
  * GET /api/bookings/availability
  * Returns available 30-min slots between 10:00 AM and 10:00 PM for a specific date
@@ -36,12 +52,7 @@ export const getAvailability = async (req, res, next) => {
     }
 
     const selectedDate = reqDate;
-    
-    // Compute today's date string in Asia/Kolkata
-    const now = new Date();
-    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
-      .toISOString()
-      .split('T')[0];
+    const todayStr = getTodayInTz(timezone);
 
     if (selectedDate < todayStr) {
       return res.status(400).json({
