@@ -90,29 +90,96 @@ interface AdminEmailInboxTabProps {
   onUnreadCountChange?: (count: number) => void;
 }
 
+// ============================================================================
+// PERSISTENT MODULE-LEVEL INBOX CACHE (Survives Admin Tab Switching)
+// ============================================================================
+interface InboxCacheState {
+  emails: EmailMessageRecord[];
+  selectedEmailId: string | null;
+  activeMailbox: string;
+  activeCategory: string;
+  viewFilter: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
+  searchQuery: string;
+  sortBy: 'newest' | 'oldest';
+  currentPage: number;
+  pageSize: number;
+  lastFetchedAt: number | null;
+}
+
+const globalInboxCache: InboxCacheState = {
+  emails: MOCK_EMAILS,
+  selectedEmailId: null,
+  activeMailbox: 'all',
+  activeCategory: 'all',
+  viewFilter: 'all',
+  searchQuery: '',
+  sortBy: 'newest',
+  currentPage: 1,
+  pageSize: 20,
+  lastFetchedAt: null,
+};
+
 export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   addToast,
   showConfirm,
   onUnreadCountChange,
 }) => {
-  // State
-  const [emails, setEmails] = useState<EmailMessageRecord[]>(MOCK_EMAILS);
-  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
-  const [activeMailbox, setActiveMailbox] = useState<string>('all');
-  const [activeCategory, setActiveCategory] = useState<string>('all');
-  const [viewFilter, setViewFilter] = useState<'all' | 'unread' | 'starred' | 'archived' | 'trash'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
-  const [isLoading, setIsLoading] = useState(false);
+  // State initialized from persistent cache
+  const [emails, setEmails] = useState<EmailMessageRecord[]>(globalInboxCache.emails);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(globalInboxCache.selectedEmailId);
+  const [activeMailbox, setActiveMailboxState] = useState<string>(globalInboxCache.activeMailbox);
+  const [activeCategory, setActiveCategoryState] = useState<string>(globalInboxCache.activeCategory);
+  const [viewFilter, setViewFilterState] = useState<'all' | 'unread' | 'starred' | 'archived' | 'trash'>(globalInboxCache.viewFilter);
+  const [searchQuery, setSearchQueryState] = useState(globalInboxCache.searchQuery);
+  const [sortBy, setSortByState] = useState<'newest' | 'oldest'>(globalInboxCache.sortBy);
+  const [currentPage, setCurrentPageState] = useState(globalInboxCache.currentPage);
+  const [pageSize] = useState<number>(globalInboxCache.pageSize);
+
+  // Separate loading vs background refreshing states
+  const [isLoading, setIsLoading] = useState(globalInboxCache.emails.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showTechDetails, setShowTechDetails] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(20);
-
-  // Mobile / Tablet overlay state
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+
+  // Synchronize local setters with persistent module cache
+  const updateSelectedEmailId = (id: string | null) => {
+    setSelectedEmailId(id);
+    globalInboxCache.selectedEmailId = id;
+  };
+
+  const setActiveMailbox = (mb: string) => {
+    setActiveMailboxState(mb);
+    globalInboxCache.activeMailbox = mb;
+  };
+
+  const setActiveCategory = (cat: string) => {
+    setActiveCategoryState(cat);
+    globalInboxCache.activeCategory = cat;
+  };
+
+  const setViewFilter = (vf: 'all' | 'unread' | 'starred' | 'archived' | 'trash') => {
+    setViewFilterState(vf);
+    globalInboxCache.viewFilter = vf;
+  };
+
+  const setSearchQuery = (sq: string) => {
+    setSearchQueryState(sq);
+    globalInboxCache.searchQuery = sq;
+  };
+
+  const setSortBy = (sb: 'newest' | 'oldest') => {
+    setSortByState(sb);
+    globalInboxCache.sortBy = sb;
+  };
+
+  const setCurrentPage = (cp: number | ((prev: number) => number)) => {
+    setCurrentPageState((prev) => {
+      const next = typeof cp === 'function' ? cp(prev) : cp;
+      globalInboxCache.currentPage = next;
+      return next;
+    });
+  };
 
   // Live Real Storage Usage State
   const [storageStats, setStorageStats] = useState<{
@@ -138,10 +205,60 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     } catch (_) {}
   }, []);
 
-  // Fetch / Sync Emails
-  const fetchEmails = useCallback(async () => {
-    setIsLoading(true);
+  // Merge server data with local cache without losing optimistic states
+  const mergeEmailsWithCache = useCallback((existingList: EmailMessageRecord[], serverList: EmailMessageRecord[]) => {
+    const existingMap = new Map<string, EmailMessageRecord>();
+    existingList.forEach((e) => {
+      const key = e.message_id || e.id;
+      existingMap.set(key, e);
+    });
+
+    const merged: EmailMessageRecord[] = [];
+    const seenKeys = new Set<string>();
+
+    serverList.forEach((s) => {
+      const key = s.message_id || s.id;
+      seenKeys.add(key);
+
+      const local = existingMap.get(key);
+      if (local) {
+        // Retain optimistic flags if local state has diverged
+        merged.push({
+          ...s,
+          is_read: local.is_read || s.is_read,
+          is_starred: local.is_starred !== undefined ? local.is_starred : s.is_starred,
+          is_archived: local.is_archived !== undefined ? local.is_archived : s.is_archived,
+          is_trashed: local.is_trashed !== undefined ? local.is_trashed : s.is_trashed,
+        });
+      } else {
+        // Brand new message from server
+        merged.push(s);
+      }
+    });
+
+    // Retain any existing emails not in current server page slice
+    existingList.forEach((e) => {
+      const key = e.message_id || e.id;
+      if (!seenKeys.has(key)) {
+        merged.push(e);
+      }
+    });
+
+    return merged.sort(
+      (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
+    );
+  }, []);
+
+  // Fetch / Sync Emails (Supports Silent Background Refreshing)
+  const fetchEmails = useCallback(async (isSilentBackground = false) => {
+    if (isSilentBackground || globalInboxCache.emails.length > 0) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
     fetchStorageUsage();
+
     try {
       const res = await emailInboxApi.getEmails({
         search: searchQuery,
@@ -153,18 +270,32 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       });
 
       if (res.data?.success && Array.isArray(res.data.emails)) {
-        setEmails(res.data.emails);
+        const merged = mergeEmailsWithCache(globalInboxCache.emails, res.data.emails);
+        globalInboxCache.emails = merged;
+        globalInboxCache.lastFetchedAt = Date.now();
+        setEmails(merged);
       }
     } catch (_) {
-      // Retain data
+      // Retain current local cache on failure
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  }, [searchQuery, activeMailbox, activeCategory, viewFilter, currentPage, pageSize, fetchStorageUsage]);
+  }, [searchQuery, activeMailbox, activeCategory, viewFilter, currentPage, pageSize, fetchStorageUsage, mergeEmailsWithCache]);
 
+  // Initial Fetch & Silent Background Polling
   useEffect(() => {
-    fetchEmails();
-  }, [fetchEmails]);
+    // Only trigger full load if cache is empty, otherwise background refresh
+    const isFirstTime = globalInboxCache.emails.length === 0;
+    fetchEmails(!isFirstTime);
+
+    // Silent background synchronization timer (every 30 seconds)
+    const intervalTimer = setInterval(() => {
+      fetchEmails(true);
+    }, 30000);
+
+    return () => clearInterval(intervalTimer);
+  }, []); // Run on mount with stable cache
 
   // Compute Unread Counts per Mailbox
   const mailboxUnreadCounts = useMemo(() => {
@@ -243,69 +374,98 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   // Auto Select first email if none selected
   useEffect(() => {
     if (!selectedEmailId && filteredEmails.length > 0) {
-      setSelectedEmailId(filteredEmails[0].id);
+      updateSelectedEmailId(filteredEmails[0].id);
     }
   }, [filteredEmails, selectedEmailId]);
 
+  // OPTIMISTIC ACTIONS (Instant UI feedback without full list refetches)
+
   // Handle Mark Read / Unread
   const handleToggleRead = async (email: EmailMessageRecord) => {
-    const nextRead = !email.is_read;
-    setEmails((prev) =>
-      prev.map((e) => (e.id === email.id ? { ...e, is_read: nextRead } : e))
+    if (email.is_read) return;
+    const nextRead = true;
+
+    const updated = emails.map((e) =>
+      e.message_id === email.message_id || e.id === email.id ? { ...e, is_read: nextRead } : e
     );
+    setEmails(updated);
+    globalInboxCache.emails = updated;
+
     try {
       await emailInboxApi.updateEmailState(email.id, { is_read: nextRead });
     } catch (_) {}
   };
 
-  // Handle Star / Unstar
+  // Handle Star / Unstar (Optimistic 0ms)
   const handleToggleStar = async (email: EmailMessageRecord, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const nextStarred = !email.is_starred;
-    setEmails((prev) =>
-      prev.map((item) => (item.id === email.id ? { ...item, is_starred: nextStarred } : item))
+
+    const updated = emails.map((item) =>
+      item.message_id === email.message_id || item.id === email.id ? { ...item, is_starred: nextStarred } : item
     );
+    setEmails(updated);
+    globalInboxCache.emails = updated;
+
     try {
       await emailInboxApi.updateEmailState(email.id, { is_starred: nextStarred });
-    } catch (_) {}
+    } catch (_) {
+      // Revert on error
+      const reverted = emails.map((item) =>
+        item.message_id === email.message_id || item.id === email.id ? { ...item, is_starred: !nextStarred } : item
+      );
+      setEmails(reverted);
+      globalInboxCache.emails = reverted;
+      addToast('Star Failed', 'Could not update star status on server.', 'error');
+    }
   };
 
-  // Handle Archive
+  // Handle Archive (Optimistic 0ms)
   const handleArchive = async (email: EmailMessageRecord) => {
-    setEmails((prev) =>
-      prev.map((item) => (item.id === email.id ? { ...item, is_archived: true } : item))
+    const updated = emails.map((item) =>
+      item.message_id === email.message_id || item.id === email.id ? { ...item, is_archived: true } : item
     );
+    setEmails(updated);
+    globalInboxCache.emails = updated;
     addToast('Email Archived', 'Message moved to archive.', 'info');
+
     try {
       await emailInboxApi.updateEmailState(email.id, { is_archived: true });
     } catch (_) {}
   };
 
-  // Handle Trash / Delete
+  // Handle Trash / Delete (Optimistic 0ms)
   const handleDelete = (email: EmailMessageRecord) => {
     if (email.is_trashed) {
       showConfirm(
         'Permanently Delete Email?',
         `Are you sure you want to permanently delete "${email.subject}"? This action cannot be undone.`,
         () => {
-          setEmails((prev) => prev.filter((item) => item.id !== email.id));
+          const updated = emails.filter((item) => item.message_id !== email.message_id && item.id !== email.id);
+          setEmails(updated);
+          globalInboxCache.emails = updated;
+          if (selectedEmailId === email.id) {
+            updateSelectedEmailId(null);
+          }
           addToast('Deleted', 'Email permanently deleted.', 'info');
           emailInboxApi.deleteEmail(email.id).catch(() => {});
         },
         { intent: 'danger', confirmText: 'Permanently Delete' }
       );
     } else {
-      setEmails((prev) =>
-        prev.map((item) => (item.id === email.id ? { ...item, is_trashed: true } : item))
+      const updated = emails.map((item) =>
+        item.message_id === email.message_id || item.id === email.id ? { ...item, is_trashed: true } : item
       );
+      setEmails(updated);
+      globalInboxCache.emails = updated;
       addToast('Moved to Trash', 'Email moved to trash.', 'info');
       emailInboxApi.updateEmailState(email.id, { is_trashed: true }).catch(() => {});
     }
   };
 
-  // Handle Select Email Item
+  // Handle Select Email Item (Updates selection ONLY, no list refetch)
   const handleSelectEmail = (email: EmailMessageRecord) => {
-    setSelectedEmailId(email.id);
+    updateSelectedEmailId(email.id);
     if (!email.is_read) {
       handleToggleRead(email);
     }
@@ -366,12 +526,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
         <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto flex-wrap">
           <button
-            onClick={fetchEmails}
-            disabled={isLoading}
+            onClick={() => fetchEmails(true)}
+            disabled={isLoading || isRefreshing}
             className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/10 text-slate-300 font-mono text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 shrink-0 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <RefreshCw className={`w-4 h-4 shrink-0 ${isLoading || isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
 
           <button
