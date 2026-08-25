@@ -557,7 +557,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     setIsLoadingAdminNotifs(true);
     setAdminNotifFetchError(null);
     try {
-      const res = await notificationApi.getAll();
+      const res = await notificationApi.getAdminNotifications();
       if (res.data && res.data.success && Array.isArray(res.data.data)) {
         // Guarantee newest first created_at DESC
         const sorted = [...res.data.data].sort(
@@ -1844,8 +1844,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       }
     });
 
-    // Sort notifications by timestamp descending (newest first)
-    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // F. Admin Operational & System Notifications (Call Bookings, Google Meet, Email status)
+    adminNotifList.forEach((notif) => {
+      const nType = (notif.notification_type || notif.type || '').toLowerCase();
+      let mappedType = nType;
+      if (nType.includes('booking') || nType.includes('meet')) {
+        mappedType = 'booking';
+      } else if (nType.includes('email')) {
+        mappedType = 'email';
+      }
+
+      list.push({
+        id: notif.id,
+        type: mappedType,
+        title: notif.title,
+        description: notif.message || notif.description,
+        timestamp: notif.created_at || notif.timestamp || new Date().toISOString(),
+        url: notif.url,
+        booking_id: notif.metadata?.booking_id,
+        client_name: notif.metadata?.client,
+        email: notif.metadata?.email,
+        company_name: notif.metadata?.company,
+        meet_url: notif.metadata?.meet_url,
+        raw: notif,
+      });
+    });
+
+    // Deduplicate by ID and sort notifications by timestamp descending (newest first)
+    const seenIds = new Set<string>();
+    const deduped = list.filter((item) => {
+      if (seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
+      return true;
+    });
+
+    return deduped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   };
 
   const compiledNotifications = getNotificationsList();
@@ -2372,6 +2405,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                     setReadNotifications(nextRead);
                                     localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
                                   }
+                                  const t = (notif.type || '').toLowerCase();
+                                  if (t.includes('booking') || t.includes('meet') || (notif.url && notif.url.includes('call-bookings'))) {
+                                    setActiveTab('call-bookings');
+                                    setIsNotificationsOpen(false);
+                                  } else if (t === 'inquiry') {
+                                    setActiveTab('inquiries');
+                                    setIsNotificationsOpen(false);
+                                  } else if (t === 'subscriber') {
+                                    setActiveTab('subscribers');
+                                    setIsNotificationsOpen(false);
+                                  } else if (t === 'application') {
+                                    setActiveTab('opportunities');
+                                    setIsNotificationsOpen(false);
+                                  } else if (t === 'partner') {
+                                    setActiveTab('partners');
+                                    setIsNotificationsOpen(false);
+                                  } else if (t === 'login' || t === 'security') {
+                                    setActiveTab('keys');
+                                    setIsNotificationsOpen(false);
+                                  }
                                 }}
                                 className={`p-3 rounded-xl border text-xs transition-all hover:bg-white/[0.04] cursor-pointer flex gap-3 relative ${
                                   isRead ? 'border-white/5 opacity-60 bg-white/[0.01]' : 'border-cyan-500/20 bg-cyan-500/[0.03] text-white shadow-sm'
@@ -2390,6 +2443,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                   {notif.type === 'login' && '🔐'}
                                   {notif.type === 'security' && '🔑'}
                                   {notif.type === 'cloudinary' && '🖼️'}
+                                  {(notif.type.includes('booking') || notif.type.includes('meet')) && '📅'}
+                                  {notif.type.includes('email') && '⚠️'}
+                                  {!['inquiry', 'subscriber', 'application', 'partner', 'login', 'security', 'cloudinary'].includes(notif.type) && !notif.type.includes('booking') && !notif.type.includes('meet') && !notif.type.includes('email') && '🔔'}
                                 </div>
                                 <div className="space-y-0.5 min-w-0 flex-1">
                                   <div className="font-bold text-white leading-snug">{notif.title}</div>

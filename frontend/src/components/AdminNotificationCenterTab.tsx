@@ -115,6 +115,8 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             n.title.toLowerCase().includes('booking') ||
             n.title.toLowerCase().includes('call')
         );
+      } else if (typeFilter === 'email') {
+        list = list.filter((n) => n.type === 'email' || n.type.includes('email') || n.title.toLowerCase().includes('email'));
       } else if (typeFilter === 'inquiry') {
         list = list.filter((n) => n.type === 'inquiry' || n.title.toLowerCase().includes('inquiry'));
       } else if (typeFilter === 'subscriber') {
@@ -216,6 +218,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
     if (t.includes('booking') || t.includes('call') || t.includes('meet')) {
       return <Calendar className="w-4 h-4 text-cyan-400" />;
     }
+    if (t.includes('email')) return <Mail className="w-4 h-4 text-amber-400" />;
     if (t === 'inquiry') return <Mail className="w-4 h-4 text-purple-400" />;
     if (t === 'subscriber') return <Sparkles className="w-4 h-4 text-amber-400" />;
     if (t === 'application') return <Briefcase className="w-4 h-4 text-blue-400" />;
@@ -328,6 +331,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
           >
             <option value="all" className="bg-[#0b0f19]">Category: All Types</option>
             <option value="booking" className="bg-[#0b0f19]">Category: Call Bookings</option>
+            <option value="email" className="bg-[#0b0f19]">Category: Email Delivery</option>
             <option value="inquiry" className="bg-[#0b0f19]">Category: Contact Inquiries</option>
             <option value="subscriber" className="bg-[#0b0f19]">Category: Subscribers</option>
             <option value="application" className="bg-[#0b0f19]">Category: Applications</option>

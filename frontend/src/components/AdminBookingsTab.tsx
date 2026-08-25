@@ -188,7 +188,6 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
     }
   };
 
-  // Handle Resend Email (Customer Confirmation / Admin Confirmation / Reminders)
   const handleResendEmail = async (
     booking: CallBookingRecord,
     emailType: 'customer_confirmation' | 'admin_confirmation' | 'customer_reminder' | 'admin_reminder'
@@ -198,18 +197,24 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
     try {
       const res = await bookingApi.resendEmail(booking.id, emailType);
       if (res.data?.success) {
-        addToast('Email Sent', res.data.message || 'Email delivered successfully.', 'success');
-        fetchBookings();
-        if (viewDetailBooking && viewDetailBooking.id === booking.id) {
-          setViewDetailBooking(res.data.booking || viewDetailBooking);
+        addToast('Email Sent', res.data.message || 'Email sent/accepted successfully.', 'success');
+        if (res.data.booking && viewDetailBooking && viewDetailBooking.id === booking.id) {
+          setViewDetailBooking(res.data.booking);
         }
       } else {
         addToast('Email Failed', res.data?.message || 'Failed to deliver email.', 'error');
+        if (res.data?.booking && viewDetailBooking && viewDetailBooking.id === booking.id) {
+          setViewDetailBooking(res.data.booking);
+        }
       }
     } catch (err: any) {
       addToast('Email Failed', err.response?.data?.message || 'Failed to send email.', 'error');
+      if (err.response?.data?.booking && viewDetailBooking && viewDetailBooking.id === booking.id) {
+        setViewDetailBooking(err.response.data.booking);
+      }
     } finally {
       setResendingEmailId(null);
+      await fetchBookings();
     }
   };
 

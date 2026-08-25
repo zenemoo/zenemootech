@@ -328,56 +328,96 @@ export const createBooking = async (req, res, next) => {
     const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <noreply@zenemoo.in>';
 
     // A. Customer Confirmation Email
-    sendMailViaBrevo({
-      sender,
-      recipients: cleanEmail,
-      subject: `Zenemoo Call Booking Confirmed — ${newBooking.booking_id}`,
-      html: generateCustomerBookingEmailHtml(newBooking),
-    })
-      .then(() => {
-        supabase.from('call_bookings').update({
-          customer_email_status: 'sent',
-          customer_email_sent_at: new Date().toISOString(),
-          customer_email_error: null,
-        }).eq('id', newBooking.id).catch(() => {});
-      })
-      .catch((e) => {
-        console.error('[Customer Email Error]:', e.message);
-        supabase.from('call_bookings').update({
-          customer_email_status: 'failed',
-          customer_email_error: e.message,
-        }).eq('id', newBooking.id).catch(() => {});
-      });
+    (async () => {
+      try {
+        await sendMailViaBrevo({
+          sender,
+          recipients: cleanEmail,
+          subject: `Zenemoo Call Booking Confirmed — ${newBooking.booking_id}`,
+          html: generateCustomerBookingEmailHtml(newBooking),
+        });
+
+        const { error: dbErr } = await supabase
+          .from('call_bookings')
+          .update({
+            customer_email_status: 'sent',
+            customer_email_sent_at: new Date().toISOString(),
+            customer_email_error: null,
+          })
+          .eq('id', newBooking.id);
+
+        if (dbErr) {
+          console.error('[Customer Email DB Status Update Error]:', dbErr.message);
+        } else {
+          console.log(`✅ [DB Status Updated] customer_email_status = 'sent' for ${newBooking.booking_id}`);
+        }
+      } catch (e) {
+        console.error('[Customer Email Send Error]:', e.message || e);
+        const errMsg = (e.message || String(e)).substring(0, 500);
+        await supabase
+          .from('call_bookings')
+          .update({
+            customer_email_status: 'failed',
+            customer_email_error: errMsg,
+          })
+          .eq('id', newBooking.id)
+          .catch(() => {});
+      }
+    })();
 
     // B. Admin Notification Email
-    sendMailViaBrevo({
-      sender,
-      recipients: ADMIN_EMAIL,
-      subject: `New Zenemoo Call Booking — ${newBooking.booking_id}`,
-      html: generateAdminBookingEmailHtml(newBooking),
-    })
-      .then(() => {
-        supabase.from('call_bookings').update({
-          admin_email_status: 'sent',
-          admin_email_sent_at: new Date().toISOString(),
-          admin_email_error: null,
-        }).eq('id', newBooking.id).catch(() => {});
-      })
-      .catch((e) => {
-        console.error('[Admin Email Error]:', e.message);
-        supabase.from('call_bookings').update({
-          admin_email_status: 'failed',
-          admin_email_error: e.message,
-        }).eq('id', newBooking.id).catch(() => {});
-      });
+    (async () => {
+      try {
+        await sendMailViaBrevo({
+          sender,
+          recipients: ADMIN_EMAIL,
+          subject: `New Zenemoo Call Booking — ${newBooking.booking_id}`,
+          html: generateAdminBookingEmailHtml(newBooking),
+        });
 
-    // C. Dispatch Admin Notification Bell Alert
+        const { error: dbErr } = await supabase
+          .from('call_bookings')
+          .update({
+            admin_email_status: 'sent',
+            admin_email_sent_at: new Date().toISOString(),
+            admin_email_error: null,
+          })
+          .eq('id', newBooking.id);
+
+        if (dbErr) {
+          console.error('[Admin Email DB Status Update Error]:', dbErr.message);
+        } else {
+          console.log(`✅ [DB Status Updated] admin_email_status = 'sent' for ${newBooking.booking_id}`);
+        }
+      } catch (e) {
+        console.error('[Admin Email Send Error]:', e.message || e);
+        const errMsg = (e.message || String(e)).substring(0, 500);
+        await supabase
+          .from('call_bookings')
+          .update({
+            admin_email_status: 'failed',
+            admin_email_error: errMsg,
+          })
+          .eq('id', newBooking.id)
+          .catch(() => {});
+      }
+    })();
+
+    // C. Dispatch Admin Notification Bell Alert (ADMIN ONLY)
     sendZenemooNotification({
       title: 'New Call Booking Received',
       message: `${cleanName} booked a 30-minute call for ${cleanCompany}.`,
       notification_type: 'booking_created',
-      target_type: 'broadcast',
+      target_type: 'admin',
       url: '/portal/9KqvA2Nz8#call-bookings',
+      metadata: {
+        booking_id: newBooking.booking_id,
+        client: cleanName,
+        company: cleanCompany,
+        meeting_type: newBooking.meeting_type || 'Discovery Call',
+        start_time: newBooking.start_time,
+        end_time: newBooking.end_time,
+      },
     }).catch((e) => console.error('[Notification Bell Warning]:', e.message));
 
     // D. Dispatch Telegram Alert
@@ -397,6 +437,52 @@ export const createBooking = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+/**
+ * Helper to process automatic completion for past confirmed bookings (end_time < now)
+ * Idempotent: Only completes confirmed meetings, updates DB, and sends ONE admin notification.
+ */
+export const processAutomaticBookingCompletion = async () => {
+  if (!supabase) return;
+  const nowIso = new Date().toISOString();
+  try {
+    const { data: pastConfirmed } = await supabase
+      .from('call_bookings')
+      .select('id, full_name, company_name, booking_id, start_time, end_time, meeting_type, meeting_status')
+      .eq('status', 'confirmed')
+      .lt('end_time', nowIso);
+
+    if (pastConfirmed && pastConfirmed.length > 0) {
+      const pastIds = pastConfirmed.map((b) => b.id);
+      await supabase
+        .from('call_bookings')
+        .update({ status: 'completed', completed_at: nowIso, updated_at: nowIso })
+        .in('id', pastIds);
+
+      // Notify admin notification bell for completed meetings (strictly ADMIN ONLY)
+      for (const b of pastConfirmed) {
+        sendZenemooNotification({
+          title: 'Meeting Completed',
+          message: `The 30-minute call with ${b.full_name} (${b.company_name}) has completed.`,
+          notification_type: 'booking_completed',
+          target_type: 'admin',
+          url: '/portal/9KqvA2Nz8#call-bookings',
+          metadata: {
+            booking_id: b.booking_id,
+            client: b.full_name,
+            company: b.company_name,
+            meeting_type: b.meeting_type || 'Discovery Call',
+            start_time: b.start_time,
+            end_time: b.end_time,
+            meeting_status: b.meeting_status || 'completed',
+          },
+        }).catch(() => {});
+      }
+    }
+  } catch (autoErr) {
+    console.error('[Auto Complete Error]:', autoErr.message);
   }
 };
 
@@ -447,37 +533,8 @@ export const getAdminBookings = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
 
-    const nowIso = new Date().toISOString();
-
     // 1. Process Automatic Completion for past confirmed bookings (end_time < now)
-    try {
-      const { data: pastConfirmed } = await supabase
-        .from('call_bookings')
-        .select('id, full_name, company_name, booking_id')
-        .eq('status', 'confirmed')
-        .lt('end_time', nowIso);
-
-      if (pastConfirmed && pastConfirmed.length > 0) {
-        const pastIds = pastConfirmed.map((b) => b.id);
-        await supabase
-          .from('call_bookings')
-          .update({ status: 'completed', completed_at: nowIso, updated_at: nowIso })
-          .in('id', pastIds);
-
-        // Notify notification bell for completed meetings
-        pastConfirmed.forEach((b) => {
-          sendZenemooNotification({
-            title: 'Meeting Completed',
-            message: `Call with ${b.full_name} (${b.company_name}) has completed.`,
-            notification_type: 'booking_completed',
-            target_type: 'broadcast',
-            url: '/portal/9KqvA2Nz8#call-bookings',
-          }).catch(() => {});
-        });
-      }
-    } catch (autoErr) {
-      console.error('[Auto Complete Error]:', autoErr.message);
-    }
+    await processAutomaticBookingCompletion();
 
     // 2. Build Query
     let query = supabase.from('call_bookings').select('*', { count: 'exact' });
@@ -599,13 +656,19 @@ export const generateMeetingForBooking = async (req, res, next) => {
     const result = await createGoogleMeetForBooking(booking, 'admin_manual');
 
     if (result.success) {
-      // Notify Admin Notification Bell
+      // Notify Admin Notification Bell (ADMIN ONLY)
       sendZenemooNotification({
         title: 'Google Meet Ready',
         message: `Google Meet link generated for booking ${booking.booking_id} (${booking.full_name}).`,
         notification_type: 'google_meet_generated',
-        target_type: 'broadcast',
+        target_type: 'admin',
         url: '/portal/9KqvA2Nz8#call-bookings',
+        metadata: {
+          booking_id: booking.booking_id,
+          client: booking.full_name,
+          company: booking.company_name,
+          meet_url: result.meetUrl,
+        },
       }).catch(() => {});
 
       return res.json({
@@ -615,13 +678,19 @@ export const generateMeetingForBooking = async (req, res, next) => {
         meetUrl: result.meetUrl,
       });
     } else {
-      // Notify Admin Notification Bell on failure
+      // Notify Admin Notification Bell on failure (ADMIN ONLY)
       sendZenemooNotification({
         title: 'Google Meet Link Failed',
         message: `Google Meet generation failed for booking ${booking.booking_id} (${booking.full_name}).`,
         notification_type: 'google_meet_failed',
-        target_type: 'broadcast',
+        target_type: 'admin',
         url: '/portal/9KqvA2Nz8#call-bookings',
+        metadata: {
+          booking_id: booking.booking_id,
+          client: booking.full_name,
+          company: booking.company_name,
+          error: result.error,
+        },
       }).catch(() => {});
 
       return res.status(500).json({
@@ -733,14 +802,20 @@ export const resendBookingEmail = async (req, res, next) => {
 
       const updatePayload = {
         [statusField]: 'failed',
-        [errorField]: sendErr.message || 'Email delivery failed.',
+        [errorField]: (sendErr.message || 'Email delivery failed.').substring(0, 500),
       };
 
-      await supabase.from('call_bookings').update(updatePayload).eq('id', booking.id).catch(() => {});
+      const { data: updatedBooking } = await supabase
+        .from('call_bookings')
+        .update(updatePayload)
+        .eq('id', booking.id)
+        .select()
+        .maybeSingle();
 
       return res.status(500).json({
         success: false,
         message: `Failed to deliver email: ${sendErr.message || 'Mail server error.'}`,
+        booking: updatedBooking || { ...booking, ...updatePayload },
       });
     }
   } catch (err) {

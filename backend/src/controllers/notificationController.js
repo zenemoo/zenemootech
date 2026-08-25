@@ -165,14 +165,29 @@ export const registerSubscription = async (req, res, next) => {
   }
 };
 
+// Operational notification types that are strictly ADMIN ONLY and must NEVER leak to public
+export const ADMIN_OPERATIONAL_TYPES = [
+  'booking_created',
+  'google_meet_generated',
+  'google_meet_failed',
+  'booking_completed',
+  'booking_reminder',
+  'email_failed',
+  'admin_alert',
+  'inquiry_received',
+  'application_received',
+  'security_alert',
+  'system_error',
+];
+
 /**
  * 3. GET /api/notifications
- * Fetch notification history for website / app / logged in user
+ * Fetch notification history strictly scoped for public website / app visitors
+ * Internal/admin operational notifications are filtered out at the data level.
  */
 export const getUserNotifications = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.query.installation_id || 'guest_user';
-    const userRole = (req.user?.role || 'user').toLowerCase();
     const days = parseInt(req.query.days, 10) || 7;
     const sevenDaysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -183,6 +198,7 @@ export const getUserNotifications = async (req, res, next) => {
           .from('zenemoo_notifications')
           .select('*')
           .eq('record_type', 'notification')
+          .neq('target_type', 'admin')
           .gte('created_at', sevenDaysAgo)
           .order('created_at', { ascending: false })
           .limit(50);
@@ -200,17 +216,25 @@ export const getUserNotifications = async (req, res, next) => {
 
     const readSet = memoryReadNotifications.get(userId) || new Set();
 
-    // Filter notifications based on target_type
+    // Strict Data-Level Filter for Public Users:
+    // Exclude any admin-targeted records and any internal operational notification types
     const filtered = allNotifs.filter((n) => {
-      if (userRole === 'admin') return true;
       const target = (n.target_type || 'broadcast').toLowerCase();
-      if (target === 'broadcast') return true;
-      if (target === 'app_users') return true;
-      if (target === 'web_users') return true;
-      if (target === 'team' && (userRole === 'team_member' || userRole === 'admin')) return true;
-      if (target === 'hr' && (userRole === 'hr' || userRole === 'admin')) return true;
+      const nType = (n.notification_type || n.type || '').toLowerCase();
+
+      // Rule 1: Never allow target_type === 'admin'
+      if (target === 'admin' || target === 'system_internal') return false;
+
+      // Rule 2: Never allow admin operational types
+      if (ADMIN_OPERATIONAL_TYPES.includes(nType)) return false;
+
+      // Rule 3: Only allow genuine public target types
+      if (['broadcast', 'app_users', 'web_users', 'public'].includes(target)) return true;
+
+      // Rule 4: Explicit individual target for current user (if logged in non-admin)
       if (target === 'individual' && n.target_id === userId) return true;
-      return true;
+
+      return false;
     });
 
     const formatted = filtered.map((n) => ({
@@ -228,7 +252,98 @@ export const getUserNotifications = async (req, res, next) => {
 
     const unreadCount = formatted.filter((n) => !n.is_read).length;
 
-    res.json({
+    return res.json({
+      success: true,
+      count: formatted.length,
+      unread_count: unreadCount,
+      data: formatted,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 3b. GET /api/notifications/admin
+ * Authenticated Admin Notifications Endpoint
+ * Returns all internal operational events (bookings, meet generation, email delivery, system alerts)
+ */
+export const getAdminNotifications = async (req, res, next) => {
+  try {
+    const { category, type, search, page = 1, limit = 100, days = 30 } = req.query;
+    const sinceDate = new Date(Date.now() - parseInt(days, 10) * 24 * 60 * 60 * 1000).toISOString();
+
+    let allNotifs = [];
+    if (supabase) {
+      try {
+        let query = supabase
+          .from('zenemoo_notifications')
+          .select('*')
+          .eq('record_type', 'notification')
+          .gte('created_at', sinceDate)
+          .order('created_at', { ascending: false })
+          .limit(parseInt(limit, 10) || 100);
+
+        if (type && type !== 'all') {
+          query = query.eq('notification_type', type);
+        }
+
+        const { data, error } = await query;
+        if (!error && Array.isArray(data)) {
+          allNotifs = data;
+        }
+      } catch (e) {
+        console.warn('[Admin Notifications Fetch Warning]:', e.message);
+      }
+    }
+
+    if (!Array.isArray(allNotifs) || allNotifs.length === 0) {
+      allNotifs = memoryNotifications.filter((n) => !n.created_at || new Date(n.created_at) >= new Date(sinceDate));
+    }
+
+    const readSet = memoryReadNotifications.get('admin') || new Set();
+
+    let filtered = allNotifs;
+    if (category && category !== 'all') {
+      const cat = category.toLowerCase();
+      filtered = filtered.filter((n) => {
+        const t = (n.notification_type || n.type || '').toLowerCase();
+        if (cat === 'booking') return t.includes('booking') || t.includes('meet');
+        if (cat === 'email') return t.includes('email') || t.includes('brevo');
+        if (cat === 'system') return t.includes('system') || t.includes('security');
+        return t === cat;
+      });
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      filtered = filtered.filter((n) =>
+        (n.title && n.title.toLowerCase().includes(q)) ||
+        (n.message && n.message.toLowerCase().includes(q)) ||
+        (n.metadata && JSON.stringify(n.metadata).toLowerCase().includes(q))
+      );
+    }
+
+    const formatted = filtered.map((n) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      description: n.message,
+      type: n.notification_type || 'general',
+      notification_type: n.notification_type || 'general',
+      target_type: n.target_type || 'admin',
+      url: n.url || null,
+      opportunity_id: n.opportunity_id || null,
+      metadata: n.metadata || {},
+      created_at: n.created_at || new Date().toISOString(),
+      timestamp: n.created_at || new Date().toISOString(),
+      is_read: n.is_read || readSet.has(n.id),
+      read: n.is_read || readSet.has(n.id),
+    }));
+
+    const unreadCount = formatted.filter((n) => !n.is_read).length;
+
+    return res.json({
       success: true,
       count: formatted.length,
       unread_count: unreadCount,

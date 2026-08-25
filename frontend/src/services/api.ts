@@ -322,7 +322,9 @@ export const notificationApi = {
     app_version?: string;
     permission_status?: string;
   }) => api.post('/notifications/subscribe', data),
-  getAll: (params?: { installation_id?: string }) => api.get('/notifications', { params }),
+  getAll: (params?: { installation_id?: string; days?: number; scope?: string }) => api.get('/notifications', { params }),
+  getAdminNotifications: (params?: { category?: string; type?: string; search?: string; page?: number; limit?: number; days?: number }) =>
+    api.get('/notifications/admin', { params }),
   markRead: (id: string, installation_id?: string) => api.put(`/notifications/${id}/read`, { installation_id }),
   markAllRead: (installation_id?: string) => api.put('/notifications/read-all', { installation_id }),
   deleteNotification: (id: string) => api.delete(`/notifications/${id}`),

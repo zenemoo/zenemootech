@@ -87,6 +87,20 @@ export const sanitizeZenemooUrl = (rawUrl) => {
   return null;
 };
 
+const ADMIN_OPERATIONAL_NOTIFICATION_TYPES = [
+  'booking_created',
+  'google_meet_generated',
+  'google_meet_failed',
+  'booking_completed',
+  'booking_reminder',
+  'email_failed',
+  'admin_alert',
+  'inquiry_received',
+  'application_received',
+  'security_alert',
+  'system_error',
+];
+
 /**
  * Single Centralized Zenemoo Notification Dispatch Engine
  */
@@ -101,11 +115,41 @@ export const sendZenemooNotification = async ({
   metadata = {},
   sender_email = 'system@zenemoo.in',
 }) => {
-  console.log(`[Notification Engine] Processing notification: "${title}" (${target_type})`);
+  // Enforce ADMIN ONLY scope for operational event types
+  let resolvedTargetType = target_type;
+  if (ADMIN_OPERATIONAL_NOTIFICATION_TYPES.includes(notification_type)) {
+    resolvedTargetType = 'admin';
+  }
+
+  console.log(`[Notification Engine] Processing notification: "${title}" (Type: ${notification_type} | Target: ${resolvedTargetType})`);
 
   let finalUrl = sanitizeZenemooUrl(url);
   if (!finalUrl && notification_type === 'opportunity_published') {
     finalUrl = 'https://www.zenemoo.in/opportunities';
+  }
+
+  // Idempotency check for booking_completed to prevent duplicate records & pushes
+  if (notification_type === 'booking_completed' && metadata?.booking_id && supabase) {
+    try {
+      const { data: existingCompleted } = await supabase
+        .from('zenemoo_notifications')
+        .select('id, created_at')
+        .eq('record_type', 'notification')
+        .eq('notification_type', 'booking_completed')
+        .contains('metadata', { booking_id: metadata.booking_id })
+        .limit(1);
+
+      if (existingCompleted && existingCompleted.length > 0) {
+        console.log(`[Notification Engine Idempotency] Skipping duplicate booking_completed notification for ${metadata.booking_id}`);
+        return {
+          success: true,
+          notification: existingCompleted[0],
+          summary: { formatted_summary: 'Duplicate notification skipped (already processed).' },
+        };
+      }
+    } catch (dedupErr) {
+      console.warn('[Notification Dedup Check Warning]:', dedupErr.message);
+    }
   }
 
   // 1. Create ONE notification history record in zenemoo_notifications
@@ -114,7 +158,7 @@ export const sendZenemooNotification = async ({
     notification_type,
     title,
     message,
-    target_type,
+    target_type: resolvedTargetType,
     target_id,
     url: finalUrl,
     opportunity_id,
@@ -159,17 +203,17 @@ export const sendZenemooNotification = async ({
         .eq('record_type', 'subscription')
         .eq('is_active', true);
 
-      if (target_type === 'app_users') {
+      if (resolvedTargetType === 'app_users') {
         query = query.eq('platform', 'android');
-      } else if (target_type === 'web_users') {
+      } else if (resolvedTargetType === 'web_users') {
         query = query.eq('platform', 'web');
-      } else if (target_type === 'team') {
+      } else if (resolvedTargetType === 'team') {
         query = query.eq('user_role', 'team_member');
-      } else if (target_type === 'hr') {
+      } else if (resolvedTargetType === 'hr') {
         query = query.eq('user_role', 'hr');
-      } else if (target_type === 'admin') {
-        query = query.eq('user_role', 'admin');
-      } else if (target_type === 'individual' && target_id) {
+      } else if (resolvedTargetType === 'admin') {
+        query = query.or('user_role.eq.admin,user_role.eq.super_admin,user_role.eq.administrator,app_type.eq.zenemoo_admin');
+      } else if (resolvedTargetType === 'individual' && target_id) {
         query = query.or(`user_id.eq.${target_id},installation_id.eq.${target_id}`);
       }
 

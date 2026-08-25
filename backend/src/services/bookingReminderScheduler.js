@@ -6,6 +6,8 @@ import {
 } from './bookingEmailTemplate.js';
 import { sendBookingReminderNotification } from './telegramNotificationService.js';
 import { createGoogleMeetForBooking, processPendingMeetingGenerations } from './googleMeetService.js';
+import { processAutomaticBookingCompletion } from '../controllers/bookingController.js';
+import { sendZenemooNotification } from './pushNotificationEngine.js';
 
 const ADMIN_EMAIL = 'zenemoo-admin-email@googlegroups.com';
 
@@ -16,8 +18,11 @@ export const processBookingReminders = async () => {
   if (!supabase) return;
 
   try {
-    // First, process any pending or failed background meeting generations
+    // 1. Process any pending or failed background meeting generations
     await processPendingMeetingGenerations();
+
+    // 2. Process automatic meeting completions for past confirmed bookings
+    await processAutomaticBookingCompletion();
 
     const nowMs = Date.now();
     // Window: meetings starting between 50 minutes (3000s) and 70 minutes (4200s) from now
@@ -78,8 +83,42 @@ export const processBookingReminders = async () => {
               html: generateCustomerReminderEmailHtml(booking),
             });
             console.log(`✅ [Reminder Sent] Customer email sent for ${booking.booking_id} to ${booking.email}`);
+
+            const { error: dbErr } = await supabase
+              .from('call_bookings')
+              .update({
+                customer_reminder_status: 'sent',
+                customer_reminder_sent_at: new Date().toISOString(),
+                customer_reminder_error: null,
+              })
+              .eq('id', booking.id);
+
+            if (dbErr) console.error('[Customer Reminder DB Status Error]:', dbErr.message);
           } catch (eErr) {
             console.error(`❌ [Reminder Email Failed] Customer email for ${booking.booking_id}: ${eErr.message}`);
+            const errMsg = (eErr.message || String(eErr)).substring(0, 500);
+
+            await supabase
+              .from('call_bookings')
+              .update({
+                customer_reminder_status: 'failed',
+                customer_reminder_error: errMsg,
+              })
+              .eq('id', booking.id);
+
+            sendZenemooNotification({
+              title: 'Reminder Email Failed',
+              message: `Customer reminder email failed for booking ${booking.booking_id} (${booking.full_name}).`,
+              notification_type: 'email_failed',
+              target_type: 'admin',
+              url: '/portal/9KqvA2Nz8#call-bookings',
+              metadata: {
+                booking_id: booking.booking_id,
+                client: booking.full_name,
+                email: booking.email,
+                error: eErr.message,
+              },
+            }).catch(() => {});
           }
         }
 
@@ -92,8 +131,28 @@ export const processBookingReminders = async () => {
             html: generateAdminReminderEmailHtml(booking),
           });
           console.log(`✅ [Reminder Sent] Admin email sent for ${booking.booking_id} to ${ADMIN_EMAIL}`);
+
+          const { error: dbErr } = await supabase
+            .from('call_bookings')
+            .update({
+              admin_reminder_status: 'sent',
+              admin_reminder_sent_at: new Date().toISOString(),
+              admin_reminder_error: null,
+            })
+            .eq('id', booking.id);
+
+          if (dbErr) console.error('[Admin Reminder DB Status Error]:', dbErr.message);
         } catch (aErr) {
           console.error(`❌ [Reminder Email Failed] Admin email for ${booking.booking_id}: ${aErr.message}`);
+          const errMsg = (aErr.message || String(aErr)).substring(0, 500);
+
+          await supabase
+            .from('call_bookings')
+            .update({
+              admin_reminder_status: 'failed',
+              admin_reminder_error: errMsg,
+            })
+            .eq('id', booking.id);
         }
 
         // 3. Dispatch Telegram 1-Hour Reminder Alert
@@ -103,6 +162,22 @@ export const processBookingReminders = async () => {
         } catch (tErr) {
           console.error(`❌ [Reminder Telegram Failed] Telegram for ${booking.booking_id}: ${tErr.message}`);
         }
+
+        // 4. Dispatch Admin Notification Bell for Reminder (ADMIN ONLY)
+        sendZenemooNotification({
+          title: '1-Hour Meeting Reminder Sent',
+          message: `1-hour pre-meeting reminder sent for call with ${booking.full_name} (${booking.company_name}).`,
+          notification_type: 'booking_reminder',
+          target_type: 'admin',
+          url: '/portal/9KqvA2Nz8#call-bookings',
+          metadata: {
+            booking_id: booking.booking_id,
+            client: booking.full_name,
+            company: booking.company_name,
+            start_time: booking.start_time,
+            meet_url: booking.google_meet_url,
+          },
+        }).catch(() => {});
       } catch (err) {
         console.error(`[Reminder Processing Exception] Booking ${booking.booking_id}:`, err.message);
       }
@@ -116,7 +191,7 @@ export const processBookingReminders = async () => {
  * Start background timer for processing reminders every 5 minutes
  */
 export const startBookingReminderScheduler = () => {
-  console.log('⏰ [Booking Reminder Scheduler] Initialized with Google Meet check (Interval: 5 minutes)');
+  console.log('⏰ [Booking Reminder Scheduler] Initialized with Google Meet check & auto-completion (Interval: 5 minutes)');
   // Run once immediately on server start
   processBookingReminders();
   // Schedule recurring execution
