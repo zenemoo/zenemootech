@@ -32,12 +32,8 @@ app.listen(PORT, async () => {
     console.warn('[Booking Reminder Scheduler Startup Warning]:', err.message);
   }
 
-  // Start Scheduled Email Processor Worker
-  try {
-    startScheduledEmailWorker(20000);
-  } catch (err) {
-    console.warn('[Scheduled Email Worker Startup Warning]:', err.message);
-  }
+  // Cloudflare Cron Scheduled Email Processor Active Notice
+  console.log('⚡ [Scheduled Email Processor] Cloudflare Cron Trigger Active (* * * * * → POST /api/emails/scheduled/process)');
 
   // Automatic App Release Notification Check
   try {

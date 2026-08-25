@@ -1,9 +1,44 @@
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { parseRecipients, validateEmail, sanitizeHtml, encrypt, decrypt } from '../utils/emailUtils.js';
+import { runScheduledEmailProcessorTick } from '../services/scheduledEmailWorker.js';
 
 // In-memory fallback cache for high-resiliency background processing
 export const memoryScheduledEmails = [];
+
+/**
+ * POST /api/emails/scheduled/process — Cloudflare Cron Webhook Endpoint
+ * Secret Header: x-zenemoo-scheduler-secret
+ */
+export const processScheduledEmailsEndpoint = async (req, res, next) => {
+  try {
+    const providedSecret =
+      req.headers['x-zenemoo-scheduler-secret'] ||
+      req.headers['x-scheduler-secret'] ||
+      req.headers['authorization'];
+
+    const expectedSecret = process.env.ZENEMOO_SCHEDULER_SECRET || 'zenemoo_cloudflare_cron_secret_2026';
+
+    if (!providedSecret || (providedSecret !== expectedSecret && providedSecret !== `Bearer ${expectedSecret}`)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized: Invalid or missing x-zenemoo-scheduler-secret header.',
+      });
+    }
+
+    const stats = await runScheduledEmailProcessorTick();
+
+    return res.json({
+      success: true,
+      message: 'Cloudflare cron scheduled email processor execution completed.',
+      source: req.body?.source || 'cloudflare-cron',
+      timestamp: new Date().toISOString(),
+      ...stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * Helper to normalize scheduled email record for response

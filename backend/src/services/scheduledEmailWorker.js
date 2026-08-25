@@ -59,7 +59,7 @@ const processScheduledItem = async (item) => {
 
   // 1. Atomic claim check: ensure item status is still 'scheduled'
   if (item.status !== 'scheduled') {
-    return;
+    return false;
   }
 
   // Set status to 'processing' atomically to lock
@@ -129,6 +129,7 @@ const processScheduledItem = async (item) => {
     memoryHistory.unshift(historyPayload);
 
     console.log(`✓ [Scheduled Email Worker] Delivered email ${item.id} ("${normalized.subject}") via Brevo. Message ID: ${providerMsgId}`);
+    return true;
   } catch (err) {
     const errorMsg = err.message || 'Delivery via Brevo failed.';
     console.error(`✕ [Scheduled Email Worker] Failed to send scheduled email ${item.id}:`, errorMsg);
@@ -144,6 +145,8 @@ const processScheduledItem = async (item) => {
         updated_at: item.updated_at,
       });
     } catch (_) {}
+
+    return false;
   }
 };
 
@@ -151,8 +154,12 @@ const processScheduledItem = async (item) => {
  * Worker execution tick
  */
 export const runScheduledEmailProcessorTick = async () => {
-  if (isProcessingTick) return;
+  if (isProcessingTick) return { processed: 0, sent: 0, failed: 0 };
   isProcessingTick = true;
+
+  let processed = 0;
+  let sent = 0;
+  let failed = 0;
 
   try {
     const now = new Date();
@@ -181,30 +188,28 @@ export const runScheduledEmailProcessorTick = async () => {
     });
 
     const dueList = Array.from(itemMap.values());
+    processed = dueList.length;
 
     for (const item of dueList) {
-      await processScheduledItem(item);
+      const success = await processScheduledItem(item);
+      if (success) sent++;
+      else failed++;
     }
   } catch (err) {
     console.error('[Scheduled Email Worker] Processor tick error:', err.message);
   } finally {
     isProcessingTick = false;
   }
+
+  return { processed, sent, failed };
 };
 
 /**
- * Start Background Scheduled Email Processor Worker
+ * Start Background Scheduled Email Processor Worker (Optional - Disabled in favor of Cloudflare Cron)
  */
 export const startScheduledEmailWorker = (intervalMs = 20000) => {
   if (workerIntervalHandle) return;
-  console.log(`⚡ [Scheduled Email Worker] Started (Polling every ${intervalMs / 1000}s)`);
-  
-  // Initial tick
-  runScheduledEmailProcessorTick();
-
-  workerIntervalHandle = setInterval(() => {
-    runScheduledEmailProcessorTick();
-  }, intervalMs);
+  console.log(`⚡ [Scheduled Email Worker] Node interval disabled (Cloudflare Cron active)`);
 };
 
 /**
@@ -215,4 +220,5 @@ export const stopScheduledEmailWorker = () => {
     clearInterval(workerIntervalHandle);
     workerIntervalHandle = null;
   }
+};  }
 };

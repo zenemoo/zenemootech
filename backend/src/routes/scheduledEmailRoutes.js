@@ -6,12 +6,16 @@ import {
   updateScheduledEmail,
   cancelScheduledEmail,
   retryScheduledEmail,
+  processScheduledEmailsEndpoint,
 } from '../controllers/scheduledEmailController.js';
 import { verifyToken, requireEmailAccess } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
 
-// Scheduled Email management routes
+// Cloudflare Cron Webhook Endpoint (Authenticated via x-zenemoo-scheduler-secret header)
+router.post('/process', processScheduledEmailsEndpoint);
+
+// Scheduled Email management routes (Admin authenticated)
 router.post('/', verifyToken, requireEmailAccess, createScheduledEmail);
 router.get('/', verifyToken, requireEmailAccess, getScheduledEmails);
 router.get('/:id', verifyToken, requireEmailAccess, getScheduledEmailById);

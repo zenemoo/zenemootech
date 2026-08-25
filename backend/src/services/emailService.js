@@ -570,9 +570,6 @@ export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, h
     console.log(`🎯 [${requestId}] Execution Finished (SMTP Fallback). Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (smtpError) {
-    console.log(`🎯 [${requestId}] Execution Finished (SMTP Fallback). Total Elapsed Time: ${Date.now() - startTime}ms`);
-    return res;
-  } catch (smtpError) {
     const totalElapsedMs = Date.now() - startTime;
     console.error(`💥 [${requestId}] All Dispatch Protocols Failed in ${totalElapsedMs}ms`);
 

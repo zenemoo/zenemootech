@@ -1,0 +1,10 @@
+name = "zenemoo-scheduled-email-cron"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+SCHEDULER_BACKEND_URL = "https://zenemootech-api.onrender.com/api/emails/scheduled/process"
+ZENEMOO_SCHEDULER_SECRET = "zenemoo_cloudflare_cron_secret_2026"
