@@ -24,10 +24,11 @@ import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
 import { AdminHrAiPage } from './AdminHrAiPage';
 import { AdminBookingsTab } from './AdminBookingsTab';
 import { AdminNotificationCenterTab } from './AdminNotificationCenterTab';
+import { AdminEmailInboxTab } from './AdminEmailInboxTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
   isStandaloneEmailView?: boolean;
 }
 
@@ -131,6 +132,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [emailSubTab, setEmailSubTab] = useState<'history' | 'compose' | 'drafts'>('history');
   const [emailSearchQuery, setEmailSearchQuery] = useState('');
   const [emailStatusFilter, setEmailStatusFilter] = useState<'all' | 'sent' | 'failed'>('all');
+  const [emailInboxUnreadCount, setEmailInboxUnreadCount] = useState(12);
 
   const [composerViewMode, setComposerViewMode] = useState<'edit' | 'preview-desktop' | 'preview-mobile'>('edit');
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
@@ -218,7 +220,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -1910,6 +1912,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       group: 'COMMUNICATION',
       items: [
         { id: 'notifications', name: 'Notifications Center', icon: Bell, count: unreadNotifications.length },
+        { id: 'email-inbox', name: 'Email Inbox', icon: Mail, count: emailInboxUnreadCount },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
         { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
         { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
@@ -2408,6 +2411,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                   const t = (notif.type || '').toLowerCase();
                                   if (t.includes('booking') || t.includes('meet') || (notif.url && notif.url.includes('call-bookings'))) {
                                     setActiveTab('call-bookings');
+                                    setIsNotificationsOpen(false);
+                                  } else if (t.includes('email_received') || (notif.url && notif.url.includes('email-inbox'))) {
+                                    setActiveTab('email-inbox');
                                     setIsNotificationsOpen(false);
                                   } else if (t === 'inquiry') {
                                     setActiveTab('inquiries');
@@ -3127,6 +3133,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: CALL BOOKINGS */}
         {activeTab === 'call-bookings' && (
           <AdminBookingsTab addToast={addToast} showConfirm={showConfirm} onActionableCountChange={(count) => setCallBookingsActionableCount(count)} />
+        )}
+
+        {/* TAB: EMAIL INBOX */}
+        {activeTab === 'email-inbox' && (
+          <AdminEmailInboxTab
+            addToast={addToast}
+            showConfirm={showConfirm}
+            onUnreadCountChange={(count) => setEmailInboxUnreadCount(count)}
+          />
         )}
 
         {/* TAB: DEDICATED NOTIFICATIONS CENTER */}

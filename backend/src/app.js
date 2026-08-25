@@ -29,6 +29,7 @@ import brandingRoutes from './routes/brandingRoutes.js';
 import talentRegistrationRoutes from './routes/talentRegistrationRoutes.js';
 import datasetRoutes from './routes/datasetRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
+import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -124,6 +125,7 @@ app.use('/api/directory', teamDirectoryRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/admin/bookings', bookingRoutes);
+app.use('/api/emails', emailInboxRoutes);
 app.use('/api/admin', exportRoutes);
 app.use('/api/export', exportRoutes);
 

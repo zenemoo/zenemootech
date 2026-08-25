@@ -343,6 +343,39 @@ export const notificationApi = {
   adminDelete: (id: string) => api.delete(`/notifications/admin/${id}`),
 };
 
+// Email Inbox & Address Management APIs
+export const emailInboxApi = {
+  getEmails: (params?: {
+    search?: string;
+    mailbox?: string;
+    category?: string;
+    view?: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
+    page?: number;
+    limit?: number;
+  }) => api.get('/emails/inbox', { params }),
+  getEmailById: (id: string) => api.get(`/emails/inbox/${id}`),
+  updateEmailState: (
+    id: string,
+    data: {
+      is_read?: boolean;
+      is_starred?: boolean;
+      is_archived?: boolean;
+      is_trashed?: boolean;
+      category?: string;
+    }
+  ) => api.patch(`/emails/inbox/${id}`, data),
+  deleteEmail: (id: string) => api.delete(`/emails/inbox/${id}`),
+  getAttachmentUrl: (messageId: string, attachmentId: string) =>
+    api.get(`/emails/inbox/${messageId}/attachments/${attachmentId}/url`),
+  getEmailAddresses: () => api.get('/emails/addresses'),
+  addEmailAddress: (data: {
+    display_name: string;
+    email: string;
+    description?: string;
+    mailbox_type?: string;
+  }) => api.post('/emails/addresses', data),
+};
+
 // Team Member & HR Self-Service Profile APIs
 export const selfProfileApi = {
   updateProfile: (data: any) => api.put('/team/profile/me', data),
