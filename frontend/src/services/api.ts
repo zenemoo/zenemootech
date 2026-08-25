@@ -368,6 +368,7 @@ export const emailInboxApi = {
   getAttachmentUrl: (messageId: string, attachmentId: string) =>
     api.get(`/emails/inbox/${messageId}/attachments/${attachmentId}/url`),
   getEmailAddresses: () => api.get('/emails/addresses'),
+  getStorageUsage: () => api.get('/emails/storage-usage'),
   addEmailAddress: (data: {
     display_name: string;
     email: string;

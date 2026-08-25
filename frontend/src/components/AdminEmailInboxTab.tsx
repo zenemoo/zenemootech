@@ -114,9 +114,34 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   // Mobile / Tablet overlay state
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
+  // Live Real Storage Usage State
+  const [storageStats, setStorageStats] = useState<{
+    used_formatted: string;
+    max_formatted: string;
+    percentage: number;
+  }>({
+    used_formatted: '0.0 KB',
+    max_formatted: '500 MB',
+    percentage: 0.0,
+  });
+
+  const fetchStorageUsage = useCallback(async () => {
+    try {
+      const res = await emailInboxApi.getStorageUsage();
+      if (res.data?.success) {
+        setStorageStats({
+          used_formatted: res.data.used_formatted || '0.0 KB',
+          max_formatted: res.data.max_formatted || '500 MB',
+          percentage: typeof res.data.percentage === 'number' ? res.data.percentage : 0.0,
+        });
+      }
+    } catch (_) {}
+  }, []);
+
   // Fetch / Sync Emails
   const fetchEmails = useCallback(async () => {
     setIsLoading(true);
+    fetchStorageUsage();
     try {
       const res = await emailInboxApi.getEmails({
         search: searchQuery,
@@ -131,11 +156,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         setEmails(res.data.emails);
       }
     } catch (_) {
-      // Retain mock data on initial frontend render
+      // Retain data
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, activeMailbox, activeCategory, viewFilter, currentPage, pageSize]);
+  }, [searchQuery, activeMailbox, activeCategory, viewFilter, currentPage, pageSize, fetchStorageUsage]);
 
   useEffect(() => {
     fetchEmails();
@@ -451,17 +476,20 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             </div>
           </div>
 
-          {/* Storage Usage Card */}
+          {/* Real Live Supabase Storage Usage Card */}
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 font-mono text-[11px] space-y-2">
             <div className="flex items-center justify-between text-slate-400 font-bold">
-              <span>Storage Usage</span>
-              <span className="text-cyan-400 font-bold">24.5%</span>
+              <span>Database &amp; Email Storage</span>
+              <span className="text-cyan-400 font-bold">{storageStats.percentage}%</span>
             </div>
             <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full bg-cyan-400 rounded-full w-[24.5%]" />
+              <div
+                className="h-full bg-cyan-400 rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(storageStats.percentage > 0 ? 1 : 0, storageStats.percentage)}%` }}
+              />
             </div>
             <div className="text-[10px] text-slate-500 text-right">
-              2.45 GB / 10 GB
+              {storageStats.used_formatted} / {storageStats.max_formatted}
             </div>
           </div>
         </div>

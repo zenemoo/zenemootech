@@ -7,6 +7,7 @@ import {
   updateIncomingEmailState,
   deleteIncomingEmail,
   ingestCloudflareEmail,
+  getEmailStorageUsage,
 } from '../controllers/emailInboxController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -16,6 +17,7 @@ const router = express.Router();
 router.post('/webhook/cloudflare', ingestCloudflareEmail);
 
 // Admin Authorized Email Inbox Routes
+router.get('/storage-usage', verifyToken, requireRole(['admin']), getEmailStorageUsage);
 router.get('/inbox', verifyToken, requireRole(['admin']), getIncomingEmails);
 router.get('/inbox/:id', verifyToken, requireRole(['admin']), getIncomingEmailById);
 router.patch('/inbox/:id', verifyToken, requireRole(['admin']), updateIncomingEmailState);

@@ -545,3 +545,71 @@ export const ingestCloudflareEmail = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * GET /api/emails/storage-usage
+ * Calculate live real email database & attachment storage space usage from Supabase
+ */
+export const getEmailStorageUsage = async (req, res, next) => {
+  try {
+    let totalBytes = 0;
+    const MAX_STORAGE_BYTES = 524288000; // 500 MB (Supabase DB free allocation)
+
+    if (supabase) {
+      const { data: messages, error } = await supabase
+        .from('incoming_email_messages')
+        .select('subject, body_text, body_html, attachments');
+
+      if (!error && Array.isArray(messages)) {
+        messages.forEach((msg) => {
+          const textLength = (msg.subject || '').length + (msg.body_text || '').length + (msg.body_html || '').length;
+          totalBytes += (textLength * 2);
+
+          if (Array.isArray(msg.attachments)) {
+            msg.attachments.forEach((att) => {
+              if (att && typeof att.size === 'number') {
+                totalBytes += att.size;
+              }
+            });
+          }
+        });
+      }
+    } else {
+      inMemoryEmails.forEach((msg) => {
+        const textLength = (msg.subject || '').length + (msg.body_text || '').length + (msg.body_html || '').length;
+        totalBytes += (textLength * 2);
+
+        if (Array.isArray(msg.attachments)) {
+          msg.attachments.forEach((att) => {
+            if (att && typeof att.size === 'number') {
+              totalBytes += att.size;
+            }
+          });
+        }
+      });
+    }
+
+    let usedFormatted = '0 KB';
+    if (totalBytes >= 1073741824) {
+      usedFormatted = `${(totalBytes / 1073741824).toFixed(2)} GB`;
+    } else if (totalBytes >= 1048576) {
+      usedFormatted = `${(totalBytes / 1048576).toFixed(2)} MB`;
+    } else {
+      usedFormatted = `${(totalBytes / 1024).toFixed(1)} KB`;
+    }
+
+    const rawPercentage = (totalBytes / MAX_STORAGE_BYTES) * 100;
+    const percentage = totalBytes > 0 ? Math.min(100, Math.max(0.1, rawPercentage)).toFixed(1) : '0.0';
+
+    return res.json({
+      success: true,
+      used_bytes: totalBytes,
+      max_bytes: MAX_STORAGE_BYTES,
+      used_formatted: usedFormatted,
+      max_formatted: '500 MB',
+      percentage: parseFloat(percentage),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
