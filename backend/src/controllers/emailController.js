@@ -16,16 +16,25 @@ const memoryDrafts = [];
 // POST /api/email/send - Send email via Brevo SMTP and store AES-256 encrypted log in Supabase
 export const sendEmail = async (req, res, next) => {
   try {
-    const { sender, recipients, cc, bcc, subject, html, attachments = [] } = req.body;
+    const { sender, from, recipients, to, cc, bcc, subject, html, text, attachments = [] } = req.body;
 
-    if (!recipients || !subject || !html) {
+    const targetRecipients = recipients || to;
+    const fromSender = sender || from || 'contact@zenemoo.in';
+
+    let safeHtml = html ? sanitizeHtml(html) : '';
+    if (!safeHtml && text) {
+      const escapedText = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      safeHtml = `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #1e293b;">${escapedText}</div>`;
+    }
+
+    if (!targetRecipients || !subject || !safeHtml) {
       return res.status(400).json({
         success: false,
-        message: 'Recipients, subject, and email body content are required.',
+        message: 'Recipients, subject, and email message content are required.',
       });
     }
 
-    const parsedTo = parseRecipients(recipients);
+    const parsedTo = parseRecipients(targetRecipients);
 
     if (parsedTo.length === 0) {
       return res.status(400).json({
@@ -34,8 +43,6 @@ export const sendEmail = async (req, res, next) => {
       });
     }
 
-    const fromSender = sender || 'contact@zenemoo.in';
-    const safeHtml = sanitizeHtml(html);
     const attachmentsMeta = extractAttachmentMetadata(attachments);
 
     let sendResult;

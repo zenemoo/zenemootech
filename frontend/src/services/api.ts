@@ -362,17 +362,35 @@ export const emailInboxApi = {
     page?: number;
     limit?: number;
   }) => api.get('/emails/sent', { params }),
-  sendEmail: (payload: {
-    mode: 'reply' | 'forward' | 'new';
+  sendEmail: async (payload: {
+    mode?: 'reply' | 'forward' | 'new';
     originalEmailId?: string;
-    from: string;
-    to: string[];
-    cc?: string[];
-    bcc?: string[];
+    from?: string;
+    sender?: string;
+    to?: string[] | string;
+    recipients?: string[] | string;
+    cc?: string[] | string;
+    bcc?: string[] | string;
     subject: string;
     html: string;
     text?: string;
-  }) => api.post('/emails/send', payload),
+  }) => {
+    const requestData = {
+      ...payload,
+      sender: payload.from || payload.sender || 'contact@zenemoo.in',
+      from: payload.from || payload.sender || 'contact@zenemoo.in',
+      recipients: payload.to || payload.recipients,
+      to: payload.to || payload.recipients,
+    };
+    try {
+      return await api.post('/emails/send', requestData);
+    } catch (err: any) {
+      if (err.response && (err.response.status === 404 || err.response.status === 405)) {
+        return await api.post('/email/send', requestData);
+      }
+      throw err;
+    }
+  },
   getEmailById: (id: string) => api.get(`/emails/inbox/${id}`),
   updateEmailState: (
     id: string,
