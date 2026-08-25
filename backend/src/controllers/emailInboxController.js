@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { supabase } from '../config/supabase.js';
+import { supabaseService } from '../services/supabaseService.js';
+import { decrypt } from '../services/encryptionService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 
 const CLOUDFLARE_WEBHOOK_SECRET = process.env.CLOUDFLARE_WEBHOOK_SECRET || 'zenemoo_cloudflare_worker_secret_2026';
@@ -849,3 +851,134 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
     attachments,
   };
 }
+
+/**
+ * GET /api/emails/sent
+ * Fetch sent emails from Brevo/email_history DB table and return normalized EmailMessageRecord objects
+ */
+export const getSentEmails = async (req, res, next) => {
+  try {
+    const {
+      search = '',
+      mailbox = '',
+      category = '',
+      status = '',
+      view = 'all',
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    let dbLogs = [];
+    try {
+      dbLogs = await supabaseService.selectAll('email_history', 'created_at', false);
+    } catch (e) {
+      dbLogs = [];
+    }
+
+    if (!Array.isArray(dbLogs)) dbLogs = [];
+
+    const normalizedLogs = dbLogs.map((log) => {
+      const recs = decrypt(log.recipients, true);
+      const recipientStr = Array.isArray(recs) ? recs.join(', ') : String(recs || '');
+      const subject = decrypt(log.subject) || '(No Subject)';
+      const html = decrypt(log.html) || '';
+      const cleanText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const snippet = cleanText.substring(0, 160) || 'Sent message';
+
+      const realAttachments = Array.isArray(log.attachments_meta)
+        ? log.attachments_meta.filter(
+            (a) => a && typeof a === 'object' && !a._sender_account_email && (a.name || a.filename || a.type || a.content)
+          )
+        : [];
+
+      return {
+        id: String(log.id || log.message_id || `sent_${Date.now()}`),
+        message_id: log.message_id || `msg_${log.id || Date.now()}`,
+        mailbox_email: (log.sender || 'contact@zenemoo.in').toLowerCase(),
+        sender_name: 'Zenemoo',
+        sender_email: (log.sender || 'contact@zenemoo.in').toLowerCase(),
+        recipient_email: recipientStr,
+        reply_to: (log.sender || 'contact@zenemoo.in').toLowerCase(),
+        subject,
+        body_text: cleanText,
+        body_html: html,
+        snippet,
+        category: log.category || 'general',
+        is_read: true,
+        is_starred: Boolean(log.is_starred || log.starred),
+        is_archived: Boolean(log.is_archived),
+        is_trashed: Boolean(log.is_trashed),
+        status: log.status || 'sent',
+        received_at: log.created_at || new Date().toISOString(),
+        sent_at: log.created_at || new Date().toISOString(),
+        attachments: realAttachments.map((att, idx) => ({
+          id: att.id || `att_${idx}`,
+          filename: att.filename || att.name || 'attachment',
+          contentType: att.contentType || att.type || 'application/octet-stream',
+          size: att.size || 1024,
+        })),
+      };
+    });
+
+    let filtered = normalizedLogs;
+
+    // View Filter (all / unread / starred / archived / trash)
+    if (view === 'starred') {
+      filtered = filtered.filter((e) => e.is_starred && !e.is_trashed);
+    } else if (view === 'archived') {
+      filtered = filtered.filter((e) => e.is_archived && !e.is_trashed);
+    } else if (view === 'trash') {
+      filtered = filtered.filter((e) => e.is_trashed);
+    } else {
+      filtered = filtered.filter((e) => !e.is_trashed && !e.is_archived);
+    }
+
+    // Mailbox Filter
+    if (mailbox && mailbox !== 'all') {
+      filtered = filtered.filter((e) => e.mailbox_email.toLowerCase() === mailbox.toLowerCase());
+    }
+
+    // Category Label Filter
+    if (category && category !== 'all') {
+      filtered = filtered.filter((e) => e.category === category);
+    }
+
+    // Status Filter
+    if (status && status !== 'all') {
+      filtered = filtered.filter((e) => e.status.toLowerCase() === status.toLowerCase());
+    }
+
+    // Search Query
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      filtered = filtered.filter(
+        (e) =>
+          e.sender_name.toLowerCase().includes(q) ||
+          e.sender_email.toLowerCase().includes(q) ||
+          e.recipient_email.toLowerCase().includes(q) ||
+          e.subject.toLowerCase().includes(q) ||
+          e.snippet.toLowerCase().includes(q) ||
+          e.message_id.toLowerCase().includes(q)
+      );
+    }
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+    const totalCount = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
+
+    const from = (pageNum - 1) * limitNum;
+    const paginated = filtered.slice(from, from + limitNum);
+
+    return res.json({
+      success: true,
+      count: totalCount,
+      page: pageNum,
+      limit: limitNum,
+      totalPages,
+      emails: paginated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

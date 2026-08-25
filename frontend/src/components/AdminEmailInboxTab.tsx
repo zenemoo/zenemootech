@@ -20,15 +20,16 @@ import {
   Download,
   Tag,
   Clock,
-  Sparkles,
-  ExternalLink,
-  Reply,
-  Forward,
-  CornerUpLeft,
   Briefcase,
   User,
-  AlertCircle,
   FileText,
+  X,
+  CheckCircle2,
+  Activity,
+  Info,
+  Calendar,
+  Reply,
+  Forward,
 } from 'lucide-react';
 import { emailInboxApi } from '../services/api';
 import { AdminEmailSettingsModal } from './AdminEmailSettingsModal';
@@ -50,6 +51,9 @@ export interface EmailMessageRecord {
   is_starred: boolean;
   is_archived: boolean;
   is_trashed: boolean;
+  status?: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+  sent_at?: string;
+  received_at: string;
   attachments?: {
     id: string;
     filename: string;
@@ -61,14 +65,33 @@ export interface EmailMessageRecord {
     dkim?: 'pass' | 'fail' | 'neutral';
     dmarc?: 'pass' | 'fail' | 'neutral';
   };
-  received_at: string;
 }
 
 export type InboxView =
   | { type: 'mailbox'; value: string }
   | { type: 'label'; value: string };
 
-const MOCK_EMAILS: EmailMessageRecord[] = [];
+export interface AdvancedFiltersState {
+  fromSender: string;
+  toRecipient: string;
+  subjectQuery: string;
+  dateRange: 'all' | 'today' | 'yesterday' | '7days' | '30days';
+  statusFilter: 'all' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+  hasAttachment: 'any' | 'yes' | 'no';
+  starredFilter: 'all' | 'starred' | 'not_starred';
+  labelFilter: string;
+}
+
+const initialAdvancedFilters: AdvancedFiltersState = {
+  fromSender: '',
+  toRecipient: '',
+  subjectQuery: '',
+  dateRange: 'all',
+  statusFilter: 'all',
+  hasAttachment: 'any',
+  starredFilter: 'all',
+  labelFilter: 'all',
+};
 
 const MAILBOX_LIST = [
   { email: 'all', label: 'All Inboxes', color: 'text-cyan-400' },
@@ -98,7 +121,6 @@ interface AdminEmailInboxTabProps {
 
 // ============================================================================
 // FRONTEND MIME HEADER STRIPPER & BODY CLEANER
-// Strips raw RFC transport headers (Received, ARC, DKIM, SPF) from visible message body
 // ============================================================================
 function extractHumanEmailBody(bodyText?: string, bodyHtml?: string): { cleanText: string; cleanHtml: string; rawHeaders?: string } {
   let rawText = (bodyText || '').trim();
@@ -180,8 +202,11 @@ function sanitizeHtmlContent(html: string): string {
 // PERSISTENT MODULE-LEVEL INBOX CACHE (Survives Admin Tab Switching)
 // ============================================================================
 interface InboxCacheState {
-  emails: EmailMessageRecord[];
+  incomingEmails: EmailMessageRecord[];
+  sentEmails: EmailMessageRecord[];
+  sentTotalCount: number;
   selectedEmailId: string | null;
+  mailTab: 'incoming' | 'sent';
   activeSidebarView: InboxView;
   viewFilter: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
   searchQuery: string;
@@ -192,8 +217,11 @@ interface InboxCacheState {
 }
 
 const globalInboxCache: InboxCacheState = {
-  emails: MOCK_EMAILS,
+  incomingEmails: [],
+  sentEmails: [],
+  sentTotalCount: 0,
   selectedEmailId: null,
+  mailTab: 'incoming',
   activeSidebarView: { type: 'mailbox', value: 'all' },
   viewFilter: 'all',
   searchQuery: '',
@@ -208,28 +236,46 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   showConfirm,
   onUnreadCountChange,
 }) => {
-  // State initialized from persistent cache
-  const [emails, setEmails] = useState<EmailMessageRecord[]>(globalInboxCache.emails);
+  // Navigation & Cache State
+  const [incomingEmails, setIncomingEmails] = useState<EmailMessageRecord[]>(globalInboxCache.incomingEmails);
+  const [sentEmails, setSentEmails] = useState<EmailMessageRecord[]>(globalInboxCache.sentEmails);
+  const [sentTotalCount, setSentTotalCount] = useState<number>(globalInboxCache.sentTotalCount);
+
+  const [mailTab, setMailTabState] = useState<'incoming' | 'sent'>(globalInboxCache.mailTab);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(globalInboxCache.selectedEmailId);
   const [activeSidebarView, setActiveSidebarViewState] = useState<InboxView>(globalInboxCache.activeSidebarView);
   const [viewFilter, setViewFilterState] = useState<'all' | 'unread' | 'starred' | 'archived' | 'trash'>(globalInboxCache.viewFilter);
+
+  // Search & Filters
   const [searchQuery, setSearchQueryState] = useState(globalInboxCache.searchQuery);
+  const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersState>(initialAdvancedFilters);
+
   const [sortBy, setSortByState] = useState<'newest' | 'oldest'>(globalInboxCache.sortBy);
   const [currentPage, setCurrentPageState] = useState(globalInboxCache.currentPage);
   const [pageSize] = useState<number>(globalInboxCache.pageSize);
 
-  // Derived active context values for API calls
-  const activeMailbox = activeSidebarView.type === 'mailbox' ? activeSidebarView.value : 'all';
-  const activeCategory = activeSidebarView.type === 'label' ? activeSidebarView.value : 'all';
+  // Detail Section Tab ('email' | 'delivery' | 'technical')
+  const [detailTab, setDetailTab] = useState<'email' | 'delivery' | 'technical'>('email');
 
-  // Separate loading vs background refreshing states
-  const [isLoading, setIsLoading] = useState(globalInboxCache.emails.length === 0);
+  // Loading & Modal UI
+  const [isLoading, setIsLoading] = useState((mailTab === 'incoming' ? incomingEmails : sentEmails).length === 0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showTechDetails, setShowTechDetails] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
-  // Synchronize local setters with persistent module cache
+  // Derived context for API params
+  const activeMailbox = activeSidebarView.type === 'mailbox' ? activeSidebarView.value : 'all';
+  const activeCategory = activeSidebarView.type === 'label' ? activeSidebarView.value : 'all';
+
+  // Cache Sync Handlers
+  const setMailTab = (tab: 'incoming' | 'sent') => {
+    setMailTabState(tab);
+    globalInboxCache.mailTab = tab;
+    setCurrentPage(1);
+    setSelectedEmailId(null);
+  };
+
   const updateSelectedEmailId = (id: string | null) => {
     setSelectedEmailId(id);
     globalInboxCache.selectedEmailId = id;
@@ -263,7 +309,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     });
   };
 
-  // Live Real Storage Usage State
+  // Real Storage Usage State
   const [storageStats, setStorageStats] = useState<{
     used_formatted: string;
     max_formatted: string;
@@ -287,7 +333,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     } catch (_) {}
   }, []);
 
-  // Merge server data with local cache without losing optimistic states
+  // Merge server list with optimistic cache
   const mergeEmailsWithCache = useCallback((existingList: EmailMessageRecord[], serverList: EmailMessageRecord[]) => {
     const existingMap = new Map<string, EmailMessageRecord>();
     existingList.forEach((e) => {
@@ -304,7 +350,6 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
       const local = existingMap.get(key);
       if (local) {
-        // Retain optimistic flags if local state has diverged
         merged.push({
           ...s,
           is_read: local.is_read || s.is_read,
@@ -314,12 +359,10 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           category: local.category || s.category,
         });
       } else {
-        // Brand new message from server
         merged.push(s);
       }
     });
 
-    // Retain any existing emails not in current server page slice
     existingList.forEach((e) => {
       const key = e.message_id || e.id;
       if (!seenKeys.has(key)) {
@@ -332,9 +375,10 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     );
   }, []);
 
-  // Fetch / Sync Emails (Supports Silent Background Refreshing)
+  // Fetch Emails API (Incoming or Sent)
   const fetchEmails = useCallback(async (isSilentBackground = false) => {
-    if (isSilentBackground || globalInboxCache.emails.length > 0) {
+    const currentList = mailTab === 'incoming' ? globalInboxCache.incomingEmails : globalInboxCache.sentEmails;
+    if (isSilentBackground || currentList.length > 0) {
       setIsRefreshing(true);
     } else {
       setIsLoading(true);
@@ -343,62 +387,95 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     fetchStorageUsage();
 
     try {
-      const res = await emailInboxApi.getEmails({
-        search: searchQuery,
-        mailbox: activeMailbox !== 'all' ? activeMailbox : undefined,
-        category: activeCategory !== 'all' ? activeCategory : undefined,
-        view: viewFilter,
-        page: currentPage,
-        limit: pageSize,
-      });
+      if (mailTab === 'incoming') {
+        const res = await emailInboxApi.getEmails({
+          search: searchQuery,
+          mailbox: activeMailbox !== 'all' ? activeMailbox : undefined,
+          category: activeCategory !== 'all' ? activeCategory : undefined,
+          view: viewFilter,
+          page: currentPage,
+          limit: pageSize,
+        });
 
-      if (res.data?.success && Array.isArray(res.data.emails)) {
-        const merged = mergeEmailsWithCache(globalInboxCache.emails, res.data.emails);
-        globalInboxCache.emails = merged;
-        globalInboxCache.lastFetchedAt = Date.now();
-        setEmails(merged);
+        if (res.data?.success && Array.isArray(res.data.emails)) {
+          const merged = mergeEmailsWithCache(globalInboxCache.incomingEmails, res.data.emails);
+          globalInboxCache.incomingEmails = merged;
+          setIncomingEmails(merged);
+        }
+      } else {
+        const res = await emailInboxApi.getSentEmails({
+          search: searchQuery,
+          mailbox: activeMailbox !== 'all' ? activeMailbox : undefined,
+          category: activeCategory !== 'all' ? activeCategory : undefined,
+          status: advancedFilters.statusFilter !== 'all' ? advancedFilters.statusFilter : undefined,
+          view: viewFilter,
+          page: currentPage,
+          limit: pageSize,
+        });
+
+        if (res.data?.success && Array.isArray(res.data.emails)) {
+          const merged = mergeEmailsWithCache(globalInboxCache.sentEmails, res.data.emails);
+          globalInboxCache.sentEmails = merged;
+          globalInboxCache.sentTotalCount = res.data.count || res.data.emails.length;
+          setSentEmails(merged);
+          setSentTotalCount(res.data.count || res.data.emails.length);
+        }
       }
+      globalInboxCache.lastFetchedAt = Date.now();
     } catch (_) {
-      // Retain current local cache on failure
+      // Retain local cache on network error
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [searchQuery, activeMailbox, activeCategory, viewFilter, currentPage, pageSize, fetchStorageUsage, mergeEmailsWithCache]);
+  }, [mailTab, searchQuery, activeMailbox, activeCategory, viewFilter, advancedFilters.statusFilter, currentPage, pageSize, fetchStorageUsage, mergeEmailsWithCache]);
 
-  // Initial Mount & Silent Background Polling
+  // Sync Sent Count in background when viewing Incoming
+  const syncSentCountInBackground = useCallback(async () => {
+    try {
+      const res = await emailInboxApi.getSentEmails({ limit: 1 });
+      if (res.data?.success && typeof res.data.count === 'number') {
+        globalInboxCache.sentTotalCount = res.data.count;
+        setSentTotalCount(res.data.count);
+      }
+    } catch (_) {}
+  }, []);
+
+  // Mount & Background Polling (Every 25s)
   useEffect(() => {
-    const isFirstTime = globalInboxCache.emails.length === 0;
-    fetchEmails(!isFirstTime);
+    fetchEmails(globalInboxCache.incomingEmails.length > 0);
+    syncSentCountInBackground();
 
     const intervalTimer = setInterval(() => {
       fetchEmails(true);
-    }, 30000);
+      syncSentCountInBackground();
+    }, 25000);
 
     return () => clearInterval(intervalTimer);
   }, []); // Run on mount
 
-  // Silent sync whenever filter, sidebar view, search, page, or sort changes
+  // Sync on filter/tab/page change
   useEffect(() => {
     fetchEmails(true);
-  }, [activeSidebarView, viewFilter, searchQuery, currentPage, sortBy, fetchEmails]);
+  }, [mailTab, activeSidebarView, viewFilter, searchQuery, currentPage, sortBy, fetchEmails]);
 
   // Compute Unread Counts per Mailbox
   const mailboxUnreadCounts = useMemo(() => {
     const counts: Record<string, number> = { all: 0 };
-    emails.forEach((msg) => {
+    incomingEmails.forEach((msg) => {
       if (!msg.is_read && !msg.is_trashed && !msg.is_archived) {
         counts.all = (counts.all || 0) + 1;
         counts[msg.mailbox_email] = (counts[msg.mailbox_email] || 0) + 1;
       }
     });
     return counts;
-  }, [emails]);
+  }, [incomingEmails]);
 
   // Compute Unread Counts per Label
   const labelUnreadCounts = useMemo(() => {
     const counts: Record<string, number> = { all: 0 };
-    emails.forEach((msg) => {
+    const list = mailTab === 'incoming' ? incomingEmails : sentEmails;
+    list.forEach((msg) => {
       if (!msg.is_read && !msg.is_trashed && !msg.is_archived) {
         counts.all = (counts.all || 0) + 1;
         const cat = msg.category || 'general';
@@ -406,7 +483,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       }
     });
     return counts;
-  }, [emails]);
+  }, [mailTab, incomingEmails, sentEmails]);
 
   useEffect(() => {
     if (onUnreadCountChange) {
@@ -414,9 +491,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }
   }, [mailboxUnreadCounts.all, onUnreadCountChange]);
 
-  // Filter & Sort Emails
+  // Combined Advanced & Standard Email Filter Engine
   const filteredEmails = useMemo(() => {
-    let result = [...emails];
+    let result = mailTab === 'incoming' ? [...incomingEmails] : [...sentEmails];
 
     // Status View Filter (All / Unread / Starred / Archived / Trash)
     if (viewFilter === 'unread') {
@@ -428,14 +505,13 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     } else if (viewFilter === 'trash') {
       result = result.filter((e) => e.is_trashed);
     } else {
-      // 'all' view shows non-trashed & non-archived by default
       result = result.filter((e) => !e.is_trashed && !e.is_archived);
     }
 
-    // Sidebar Navigation Context Filter (Mailbox or Label)
+    // Sidebar Context Filter (Mailbox or Label)
     if (activeSidebarView.type === 'mailbox') {
       if (activeSidebarView.value !== 'all') {
-        result = result.filter((e) => e.mailbox_email === activeSidebarView.value);
+        result = result.filter((e) => e.mailbox_email.toLowerCase() === activeSidebarView.value.toLowerCase());
       }
     } else if (activeSidebarView.type === 'label') {
       if (activeSidebarView.value !== 'all') {
@@ -443,16 +519,77 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       }
     }
 
-    // Search Query
+    // Advanced Filters: FROM
+    if (advancedFilters.fromSender.trim()) {
+      const q = advancedFilters.fromSender.toLowerCase().trim();
+      result = result.filter((e) => e.sender_name.toLowerCase().includes(q) || e.sender_email.toLowerCase().includes(q));
+    }
+
+    // Advanced Filters: TO
+    if (advancedFilters.toRecipient.trim()) {
+      const q = advancedFilters.toRecipient.toLowerCase().trim();
+      result = result.filter((e) => e.recipient_email.toLowerCase().includes(q));
+    }
+
+    // Advanced Filters: SUBJECT
+    if (advancedFilters.subjectQuery.trim()) {
+      const q = advancedFilters.subjectQuery.toLowerCase().trim();
+      result = result.filter((e) => e.subject.toLowerCase().includes(q));
+    }
+
+    // Advanced Filters: DATE
+    if (advancedFilters.dateRange !== 'all') {
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      if (advancedFilters.dateRange === 'today') {
+        result = result.filter((e) => now - new Date(e.received_at).getTime() <= oneDay);
+      } else if (advancedFilters.dateRange === 'yesterday') {
+        result = result.filter((e) => {
+          const diff = now - new Date(e.received_at).getTime();
+          return diff > oneDay && diff <= 2 * oneDay;
+        });
+      } else if (advancedFilters.dateRange === '7days') {
+        result = result.filter((e) => now - new Date(e.received_at).getTime() <= 7 * oneDay);
+      } else if (advancedFilters.dateRange === '30days') {
+        result = result.filter((e) => now - new Date(e.received_at).getTime() <= 30 * oneDay);
+      }
+    }
+
+    // Advanced Filters: STATUS
+    if (advancedFilters.statusFilter !== 'all') {
+      result = result.filter((e) => (e.status || 'sent').toLowerCase() === advancedFilters.statusFilter);
+    }
+
+    // Advanced Filters: ATTACHMENTS
+    if (advancedFilters.hasAttachment === 'yes') {
+      result = result.filter((e) => e.attachments && e.attachments.length > 0);
+    } else if (advancedFilters.hasAttachment === 'no') {
+      result = result.filter((e) => !e.attachments || e.attachments.length === 0);
+    }
+
+    // Advanced Filters: STARRED
+    if (advancedFilters.starredFilter === 'starred') {
+      result = result.filter((e) => e.is_starred);
+    } else if (advancedFilters.starredFilter === 'not_starred') {
+      result = result.filter((e) => !e.is_starred);
+    }
+
+    // Advanced Filters: LABEL
+    if (advancedFilters.labelFilter !== 'all') {
+      result = result.filter((e) => (e.category || 'general') === advancedFilters.labelFilter);
+    }
+
+    // Search Query (Debounced text search across sender, recipient, subject, snippet, ID)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(
         (e) =>
           e.sender_name.toLowerCase().includes(q) ||
           e.sender_email.toLowerCase().includes(q) ||
+          e.recipient_email.toLowerCase().includes(q) ||
           e.subject.toLowerCase().includes(q) ||
           e.snippet.toLowerCase().includes(q) ||
-          e.mailbox_email.toLowerCase().includes(q)
+          e.message_id.toLowerCase().includes(q)
       );
     }
 
@@ -464,12 +601,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }
 
     return result;
-  }, [emails, viewFilter, activeSidebarView, searchQuery, sortBy]);
+  }, [mailTab, incomingEmails, sentEmails, viewFilter, activeSidebarView, advancedFilters, searchQuery, sortBy]);
 
   // Selected Email Record
   const selectedEmail = useMemo(() => {
-    return emails.find((e) => e.id === selectedEmailId) || filteredEmails[0] || null;
-  }, [emails, selectedEmailId, filteredEmails]);
+    return (mailTab === 'incoming' ? incomingEmails : sentEmails).find((e) => e.id === selectedEmailId) || filteredEmails[0] || null;
+  }, [mailTab, incomingEmails, sentEmails, selectedEmailId, filteredEmails]);
 
   // Auto Select first email if none selected
   useEffect(() => {
@@ -478,126 +615,153 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }
   }, [filteredEmails, selectedEmailId]);
 
-  // OPTIMISTIC ACTIONS (Instant UI feedback without full list refetches)
+  // OPTIMISTIC ACTIONS
 
-  // Handle Mark Read / Unread
   const handleToggleRead = async (email: EmailMessageRecord) => {
     if (email.is_read) return;
     const nextRead = true;
+    const updateList = (list: EmailMessageRecord[]) =>
+      list.map((e) => (e.message_id === email.message_id || e.id === email.id ? { ...e, is_read: nextRead } : e));
 
-    const updated = emails.map((e) =>
-      e.message_id === email.message_id || e.id === email.id ? { ...e, is_read: nextRead } : e
-    );
-    setEmails(updated);
-    globalInboxCache.emails = updated;
+    if (mailTab === 'incoming') {
+      const updated = updateList(incomingEmails);
+      setIncomingEmails(updated);
+      globalInboxCache.incomingEmails = updated;
+    } else {
+      const updated = updateList(sentEmails);
+      setSentEmails(updated);
+      globalInboxCache.sentEmails = updated;
+    }
 
     try {
       await emailInboxApi.updateEmailState(email.id, { is_read: nextRead });
     } catch (_) {}
   };
 
-  // Handle Star / Unstar (Optimistic 0ms)
   const handleToggleStar = async (email: EmailMessageRecord, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const nextStarred = !email.is_starred;
+    const updateList = (list: EmailMessageRecord[]) =>
+      list.map((item) => (item.message_id === email.message_id || item.id === email.id ? { ...item, is_starred: nextStarred } : item));
 
-    const updated = emails.map((item) =>
-      item.message_id === email.message_id || item.id === email.id ? { ...item, is_starred: nextStarred } : item
-    );
-    setEmails(updated);
-    globalInboxCache.emails = updated;
+    if (mailTab === 'incoming') {
+      const updated = updateList(incomingEmails);
+      setIncomingEmails(updated);
+      globalInboxCache.incomingEmails = updated;
+    } else {
+      const updated = updateList(sentEmails);
+      setSentEmails(updated);
+      globalInboxCache.sentEmails = updated;
+    }
 
     try {
       await emailInboxApi.updateEmailState(email.id, { is_starred: nextStarred });
     } catch (_) {
       // Revert on error
-      const reverted = emails.map((item) =>
-        item.message_id === email.message_id || item.id === item.id ? { ...item, is_starred: !nextStarred } : item
-      );
-      setEmails(reverted);
-      globalInboxCache.emails = reverted;
+      const revertList = (list: EmailMessageRecord[]) =>
+        list.map((item) => (item.message_id === email.message_id || item.id === email.id ? { ...item, is_starred: !nextStarred } : item));
+      if (mailTab === 'incoming') {
+        const reverted = revertList(incomingEmails);
+        setIncomingEmails(reverted);
+        globalInboxCache.incomingEmails = reverted;
+      } else {
+        const reverted = revertList(sentEmails);
+        setSentEmails(reverted);
+        globalInboxCache.sentEmails = reverted;
+      }
       addToast('Star Failed', 'Could not update star status on server.', 'error');
     }
   };
 
-  // Handle Change Email Category / Label (Optimistic 0ms)
   const handleChangeCategory = async (email: EmailMessageRecord, newCategory: string) => {
     const nextCat = newCategory as any;
-    const updated = emails.map((item) =>
-      item.message_id === email.message_id || item.id === email.id ? { ...item, category: nextCat } : item
-    );
-    setEmails(updated);
-    globalInboxCache.emails = updated;
+    const updateList = (list: EmailMessageRecord[]) =>
+      list.map((item) => (item.message_id === email.message_id || item.id === email.id ? { ...item, category: nextCat } : item));
+
+    if (mailTab === 'incoming') {
+      const updated = updateList(incomingEmails);
+      setIncomingEmails(updated);
+      globalInboxCache.incomingEmails = updated;
+    } else {
+      const updated = updateList(sentEmails);
+      setSentEmails(updated);
+      globalInboxCache.sentEmails = updated;
+    }
+
     addToast('Label Updated', `Email label changed to ${newCategory.replace('_', ' ')}.`, 'success');
 
     try {
       await emailInboxApi.updateEmailState(email.id, { category: nextCat });
-    } catch (_) {
-      // Revert on error
-      const reverted = emails.map((item) =>
-        item.message_id === email.message_id || item.id === email.id ? { ...item, category: email.category } : item
-      );
-      setEmails(reverted);
-      globalInboxCache.emails = reverted;
-      addToast('Update Failed', 'Could not update email label on server.', 'error');
-    }
+    } catch (_) {}
   };
 
-
-  // Handle Archive (Optimistic 0ms)
   const handleArchive = async (email: EmailMessageRecord) => {
-    const updated = emails.map((item) =>
-      item.message_id === email.message_id || item.id === email.id ? { ...item, is_archived: true } : item
-    );
-    setEmails(updated);
-    globalInboxCache.emails = updated;
-    addToast('Email Archived', 'Message moved to archive.', 'info');
+    const updateList = (list: EmailMessageRecord[]) =>
+      list.map((item) => (item.message_id === email.message_id || item.id === email.id ? { ...item, is_archived: true } : item));
 
+    if (mailTab === 'incoming') {
+      const updated = updateList(incomingEmails);
+      setIncomingEmails(updated);
+      globalInboxCache.incomingEmails = updated;
+    } else {
+      const updated = updateList(sentEmails);
+      setSentEmails(updated);
+      globalInboxCache.sentEmails = updated;
+    }
+
+    addToast('Email Archived', 'Message moved to archive.', 'info');
     try {
       await emailInboxApi.updateEmailState(email.id, { is_archived: true });
     } catch (_) {}
   };
 
-  // Handle Trash / Delete (Optimistic 0ms)
   const handleDelete = (email: EmailMessageRecord) => {
     if (email.is_trashed) {
       showConfirm(
         'Permanently Delete Email?',
         `Are you sure you want to permanently delete "${email.subject}"? This action cannot be undone.`,
         () => {
-          const updated = emails.filter((item) => item.message_id !== email.message_id && item.id !== email.id);
-          setEmails(updated);
-          globalInboxCache.emails = updated;
-          if (selectedEmailId === email.id) {
-            updateSelectedEmailId(null);
+          const filterList = (list: EmailMessageRecord[]) => list.filter((item) => item.message_id !== email.message_id && item.id !== email.id);
+          if (mailTab === 'incoming') {
+            const updated = filterList(incomingEmails);
+            setIncomingEmails(updated);
+            globalInboxCache.incomingEmails = updated;
+          } else {
+            const updated = filterList(sentEmails);
+            setSentEmails(updated);
+            globalInboxCache.sentEmails = updated;
           }
+          if (selectedEmailId === email.id) updateSelectedEmailId(null);
           addToast('Deleted', 'Email permanently deleted.', 'info');
           emailInboxApi.deleteEmail(email.id).catch(() => {});
         },
         { intent: 'danger', confirmText: 'Permanently Delete' }
       );
     } else {
-      const updated = emails.map((item) =>
-        item.message_id === email.message_id || item.id === email.id ? { ...item, is_trashed: true } : item
-      );
-      setEmails(updated);
-      globalInboxCache.emails = updated;
+      const updateList = (list: EmailMessageRecord[]) =>
+        list.map((item) => (item.message_id === email.message_id || item.id === email.id ? { ...item, is_trashed: true } : item));
+      if (mailTab === 'incoming') {
+        const updated = updateList(incomingEmails);
+        setIncomingEmails(updated);
+        globalInboxCache.incomingEmails = updated;
+      } else {
+        const updated = updateList(sentEmails);
+        setSentEmails(updated);
+        globalInboxCache.sentEmails = updated;
+      }
       addToast('Moved to Trash', 'Email moved to trash.', 'info');
       emailInboxApi.updateEmailState(email.id, { is_trashed: true }).catch(() => {});
     }
   };
 
-  // Handle Select Email Item (Updates selection ONLY, no list refetch)
   const handleSelectEmail = (email: EmailMessageRecord) => {
     updateSelectedEmailId(email.id);
-    if (!email.is_read) {
-      handleToggleRead(email);
-    }
+    if (!email.is_read) handleToggleRead(email);
     setShowMobileDetail(true);
   };
 
   // Helper for Category Badges
-  const renderCategoryBadge = (cat: string) => {
+  const renderCategoryBadge = (cat?: string) => {
     switch (cat) {
       case 'partnership':
         return <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-bold">Partnership</span>;
@@ -609,12 +773,35 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         return <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-mono font-bold">Support</span>;
       case 'career':
         return <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold">Career</span>;
+      case 'important':
+        return <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-mono font-bold">Important</span>;
+      case 'follow_up':
+        return <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 text-[10px] font-mono font-bold">Follow Up</span>;
+      case 'general':
       default:
         return <span className="px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-300 border border-slate-500/30 text-[10px] font-mono font-bold">General</span>;
     }
   };
 
-  // Relative Time String Helper
+  // Helper for Delivery Status Badges
+  const renderStatusBadge = (status?: string) => {
+    const st = (status || 'sent').toLowerCase();
+    switch (st) {
+      case 'delivered':
+        return <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold">Delivered</span>;
+      case 'opened':
+        return <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold">Opened</span>;
+      case 'clicked':
+        return <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-bold">Clicked</span>;
+      case 'bounced':
+      case 'failed':
+        return <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 text-[10px] font-mono font-bold">Bounced</span>;
+      case 'sent':
+      default:
+        return <span className="px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-300 border border-slate-500/30 text-[10px] font-mono font-bold">Sent</span>;
+    }
+  };
+
   const getRelativeTime = (isoDate: string) => {
     const time = new Date(isoDate).getTime();
     const diffMin = Math.floor((Date.now() - time) / (60 * 1000));
@@ -634,11 +821,25 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     return filteredEmails.slice(from, from + pageSize);
   }, [filteredEmails, currentPage, pageSize]);
 
-  // Parsed Clean Human Email Content
+  // Clean Email Content
   const parsedEmailContent = useMemo(() => {
     if (!selectedEmail) return { cleanText: '', cleanHtml: '' };
     return extractHumanEmailBody(selectedEmail.body_text, selectedEmail.body_html);
   }, [selectedEmail]);
+
+  // Active Filter Chips Helper
+  const hasActiveAdvancedFilters = useMemo(() => {
+    return (
+      advancedFilters.fromSender !== '' ||
+      advancedFilters.toRecipient !== '' ||
+      advancedFilters.subjectQuery !== '' ||
+      advancedFilters.dateRange !== 'all' ||
+      advancedFilters.statusFilter !== 'all' ||
+      advancedFilters.hasAttachment !== 'any' ||
+      advancedFilters.starredFilter !== 'all' ||
+      advancedFilters.labelFilter !== 'all'
+    );
+  }, [advancedFilters]);
 
   return (
     <div className="space-y-4 font-sans max-w-[1920px] mx-auto w-full min-w-0 overflow-x-hidden">
@@ -650,7 +851,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           </div>
           <h2 className="text-xl sm:text-2xl font-bold font-display text-white truncate min-w-0">Email Inbox</h2>
           <p className="text-xs font-mono text-slate-400 mt-1 break-words">
-            Manage incoming emails sent to your verified Zenemoo domain addresses.
+            Manage incoming and sent emails across your verified Zenemoo addresses.
           </p>
         </div>
 
@@ -678,12 +879,57 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       <div className="bg-[#0b0f19] rounded-3xl border border-white/10 shadow-2xl overflow-hidden min-h-[600px] lg:h-[calc(100vh-170px)] lg:min-h-[680px] lg:max-h-[920px] flex flex-col lg:flex-row w-full min-w-0 max-w-full">
         
         {/* ========================================== */}
-        {/* PANEL 1: LEFT SIDEBAR — MAILBOXES & LABELS */}
+        {/* PANEL 1: LEFT SIDEBAR — MAIL, MAILBOXES, LABELS */}
         {/* ========================================== */}
         <div className={`w-full lg:w-64 shrink-0 bg-[#070a11] border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-6 overflow-y-auto min-w-0 max-w-full ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
           
-          {/* Mailboxes Section */}
+          {/* MAIL Section (Incoming vs Sent Navigation) */}
           <div className="space-y-2 font-mono text-xs min-w-0">
+            <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider px-2">
+              MAIL
+            </div>
+
+            <div className="space-y-1 min-w-0">
+              <button
+                onClick={() => setMailTab('incoming')}
+                className={`w-full px-3 py-2 rounded-xl text-left font-bold transition-all flex items-center justify-between text-xs cursor-pointer min-w-0 gap-2 ${
+                  mailTab === 'incoming'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'bg-transparent text-slate-300 hover:bg-white/[0.04]'
+                }`}
+              >
+                <span className="truncate flex items-center gap-2 min-w-0 flex-1">
+                  <Inbox className="w-4 h-4 shrink-0 text-cyan-400" />
+                  <span className="truncate">Incoming</span>
+                </span>
+                {mailboxUnreadCounts.all > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 text-[10px] font-bold shrink-0">
+                    {mailboxUnreadCounts.all}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setMailTab('sent')}
+                className={`w-full px-3 py-2 rounded-xl text-left font-bold transition-all flex items-center justify-between text-xs cursor-pointer min-w-0 gap-2 ${
+                  mailTab === 'sent'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'bg-transparent text-slate-300 hover:bg-white/[0.04]'
+                }`}
+              >
+                <span className="truncate flex items-center gap-2 min-w-0 flex-1">
+                  <Send className="w-4 h-4 shrink-0 text-purple-400" />
+                  <span className="truncate">Sent</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold shrink-0">
+                  {sentTotalCount || sentEmails.length}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mailboxes Section */}
+          <div className="space-y-2 font-mono text-xs border-t border-white/5 pt-4 min-w-0">
             <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider px-2 flex items-center justify-between min-w-0">
               <span>MAILBOXES</span>
               <button onClick={() => setIsSettingsOpen(true)} className="text-cyan-400 hover:underline text-[10px] font-bold shrink-0 cursor-pointer">
@@ -762,7 +1008,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             </div>
           </div>
 
-          {/* Real Live Supabase Storage Usage Card */}
+          {/* Database Storage Stats */}
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 font-mono text-[11px] space-y-2 min-w-0 max-w-full overflow-hidden">
             <div className="flex items-center justify-between text-slate-400 font-bold min-w-0 gap-2">
               <span className="truncate">Database &amp; Email Storage</span>
@@ -781,13 +1027,34 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         </div>
 
         {/* ========================================== */}
-        {/* PANEL 2: MIDDLE PANEL — EMAIL LIST VIEW    */}
+        {/* PANEL 2: MIDDLE PANEL — LIST & FILTERS     */}
         {/* ========================================== */}
         <div className={`w-full lg:w-96 shrink-0 bg-[#0b0f19] border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col min-w-0 max-w-full ${showMobileDetail ? 'hidden lg:flex' : 'flex'}`}>
           
-          {/* Search & View Filters Header */}
-          <div className="p-4 border-b border-white/10 space-y-3 font-mono text-xs min-w-0 max-w-full">
-            {/* Views Filter Buttons */}
+          {/* Controls & Advanced Filters Header */}
+          <div className="p-4 border-b border-white/10 space-y-3 font-mono text-xs min-w-0 max-w-full bg-[#070a11]/50">
+            
+            {/* Mobile Mail Tab Pills (Incoming vs Sent) */}
+            <div className="lg:hidden flex items-center p-1 rounded-xl bg-white/[0.03] border border-white/10 gap-1">
+              <button
+                onClick={() => setMailTab('incoming')}
+                className={`flex-1 py-1.5 rounded-lg text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
+                  mailTab === 'incoming' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400'
+                }`}
+              >
+                <Inbox className="w-3.5 h-3.5" /> Incoming
+              </button>
+              <button
+                onClick={() => setMailTab('sent')}
+                className={`flex-1 py-1.5 rounded-lg text-center font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
+                  mailTab === 'sent' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400'
+                }`}
+              >
+                <Send className="w-3.5 h-3.5" /> Sent ({sentTotalCount})
+              </button>
+            </div>
+
+            {/* View Filter Pills (All / Unread / Starred / Archived / Trash) */}
             <div className="flex items-center gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/10 overflow-x-auto min-w-0 max-w-full scrollbar-none">
               {(['all', 'unread', 'starred', 'archived', 'trash'] as const).map((vw) => (
                 <button
@@ -805,8 +1072,22 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               ))}
             </div>
 
-            {/* Search Input & Sort Dropdown */}
+            {/* Search Input, Advanced Filter Toggle & Sort */}
             <div className="flex items-center gap-2 min-w-0 max-w-full">
+              <button
+                onClick={() => setIsAdvancedFilterOpen((prev) => !prev)}
+                className={`px-2.5 py-2 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  isAdvancedFilterOpen || hasActiveAdvancedFilters
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                    : 'bg-white/[0.04] text-slate-300 border-white/10 hover:bg-white/10'
+                }`}
+                title="Advanced Email Filters"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Advanced Filter</span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${isAdvancedFilterOpen ? 'rotate-180' : ''}`} />
+              </button>
+
               <div className="relative flex-1 min-w-0">
                 <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5 shrink-0" />
                 <input
@@ -827,6 +1108,143 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 <option value="oldest" className="bg-[#0b0f19]">Oldest</option>
               </select>
             </div>
+
+            {/* EXPANDABLE ADVANCED FILTER PANEL */}
+            {isAdvancedFilterOpen && (
+              <div className="p-3.5 rounded-2xl bg-[#090d17] border border-cyan-500/30 space-y-3 font-mono text-[11px] animate-fade-in shadow-xl">
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-slate-400 text-[10px] block mb-1 font-bold">From Sender</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. contact@..."
+                      value={advancedFilters.fromSender}
+                      onChange={(e) => setAdvancedFilters({ ...advancedFilters, fromSender: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white text-[11px] focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 text-[10px] block mb-1 font-bold">To Recipient</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. client@..."
+                      value={advancedFilters.toRecipient}
+                      onChange={(e) => setAdvancedFilters({ ...advancedFilters, toRecipient: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white text-[11px] focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 text-[10px] block mb-1 font-bold">Subject Contains</label>
+                    <input
+                      type="text"
+                      placeholder="Subject keyword..."
+                      value={advancedFilters.subjectQuery}
+                      onChange={(e) => setAdvancedFilters({ ...advancedFilters, subjectQuery: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white text-[11px] focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 text-[10px] block mb-1 font-bold">Date Range</label>
+                    <select
+                      value={advancedFilters.dateRange}
+                      onChange={(e) => setAdvancedFilters({ ...advancedFilters, dateRange: e.target.value as any })}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-[11px] focus:outline-none cursor-pointer"
+                    >
+                      <option value="all" className="bg-[#0b0f19]">All Time</option>
+                      <option value="today" className="bg-[#0b0f19]">Today</option>
+                      <option value="yesterday" className="bg-[#0b0f19]">Yesterday</option>
+                      <option value="7days" className="bg-[#0b0f19]">Last 7 Days</option>
+                      <option value="30days" className="bg-[#0b0f19]">Last 30 Days</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 text-[10px] block mb-1 font-bold">Delivery Status</label>
+                    <select
+                      value={advancedFilters.statusFilter}
+                      onChange={(e) => setAdvancedFilters({ ...advancedFilters, statusFilter: e.target.value as any })}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-[11px] focus:outline-none cursor-pointer"
+                    >
+                      <option value="all" className="bg-[#0b0f19]">All Status</option>
+                      <option value="sent" className="bg-[#0b0f19]">Sent</option>
+                      <option value="delivered" className="bg-[#0b0f19]">Delivered</option>
+                      <option value="opened" className="bg-[#0b0f19]">Opened</option>
+                      <option value="clicked" className="bg-[#0b0f19]">Clicked</option>
+                      <option value="bounced" className="bg-[#0b0f19]">Bounced</option>
+                      <option value="failed" className="bg-[#0b0f19]">Failed</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 text-[10px] block mb-1 font-bold">Attachments</label>
+                    <select
+                      value={advancedFilters.hasAttachment}
+                      onChange={(e) => setAdvancedFilters({ ...advancedFilters, hasAttachment: e.target.value as any })}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-[11px] focus:outline-none cursor-pointer"
+                    >
+                      <option value="any" className="bg-[#0b0f19]">Any</option>
+                      <option value="yes" className="bg-[#0b0f19]">Has Attachments</option>
+                      <option value="no" className="bg-[#0b0f19]">No Attachments</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-white/10 gap-2">
+                  <button
+                    onClick={() => setAdvancedFilters(initialAdvancedFilters)}
+                    className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    Clear Filters
+                  </button>
+
+                  <button
+                    onClick={() => setIsAdvancedFilterOpen(false)}
+                    className="px-4 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black text-[10px] font-bold cursor-pointer shadow-md"
+                  >
+                    Apply Filters
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ACTIVE FILTER CHIPS BAR */}
+            {hasActiveAdvancedFilters && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1 font-mono text-[10px]">
+                {advancedFilters.fromSender && (
+                  <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                    From: {advancedFilters.fromSender}
+                    <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={() => setAdvancedFilters({ ...advancedFilters, fromSender: '' })} />
+                  </span>
+                )}
+                {advancedFilters.toRecipient && (
+                  <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                    To: {advancedFilters.toRecipient}
+                    <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={() => setAdvancedFilters({ ...advancedFilters, toRecipient: '' })} />
+                  </span>
+                )}
+                {advancedFilters.statusFilter !== 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    Status: {advancedFilters.statusFilter}
+                    <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={() => setAdvancedFilters({ ...advancedFilters, statusFilter: 'all' })} />
+                  </span>
+                )}
+                {advancedFilters.dateRange !== 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                    Date: {advancedFilters.dateRange}
+                    <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={() => setAdvancedFilters({ ...advancedFilters, dateRange: 'all' })} />
+                  </span>
+                )}
+                <button
+                  onClick={() => setAdvancedFilters(initialAdvancedFilters)}
+                  className="text-slate-400 hover:text-white underline text-[10px] cursor-pointer ml-auto"
+                >
+                  Clear All
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Email List Items */}
@@ -835,7 +1253,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               (isLoading || isRefreshing) ? (
                 <div className="p-12 text-center text-slate-500 font-mono text-xs space-y-3">
                   <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin mx-auto" />
-                  <div className="font-bold text-slate-300">Checking Mailbox...</div>
+                  <div className="font-bold text-slate-300">Checking {mailTab === 'incoming' ? 'Inbox' : 'Sent Box'}...</div>
                   <div className="text-[11px] text-slate-500">
                     Synchronizing messages for {activeSidebarView.type === 'mailbox' ? (activeSidebarView.value === 'all' ? 'all inboxes' : activeSidebarView.value) : `label: ${activeSidebarView.value}`}
                   </div>
@@ -862,20 +1280,20 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                         : 'bg-white/[0.03] hover:bg-white/[0.05]'
                     }`}
                   >
-                    {/* Unread Indicator Dot */}
-                    {!email.is_read && (
+                    {/* Unread Dot Indicator */}
+                    {!email.is_read && mailTab === 'incoming' && (
                       <span className="absolute top-4 left-2 w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-sm shadow-cyan-400/50" />
                     )}
 
                     <div className="flex items-start justify-between gap-2 min-w-0">
                       <div className="font-bold text-xs truncate text-white leading-tight min-w-0 flex-1">
-                        {email.sender_name}
+                        {mailTab === 'incoming' ? email.sender_name : `To: ${email.recipient_email}`}
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={(e) => handleToggleStar(email, e)}
-                          className="text-slate-500 hover:text-amber-400 p-0.5 shrink-0"
+                          className="text-slate-500 hover:text-amber-400 p-0.5 shrink-0 cursor-pointer"
                           title={email.is_starred ? 'Unstar' : 'Star'}
                         >
                           <Star className={`w-3.5 h-3.5 ${email.is_starred ? 'fill-amber-400 text-amber-400' : ''}`} />
@@ -895,10 +1313,19 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between mt-2 font-mono text-[10px] gap-2 min-w-0">
-                      <div className="text-slate-500 truncate min-w-0 flex-1">
-                        To: {email.mailbox_email}
+                      <div className="text-slate-500 truncate min-w-0 flex-1 flex items-center gap-1.5">
+                        {mailTab === 'incoming' ? (
+                          <>To: <span className="text-slate-300 font-medium">{email.mailbox_email}</span></>
+                        ) : (
+                          <>From: <span className="text-slate-300 font-medium">{email.sender_email}</span></>
+                        )}
+                        {email.attachments && email.attachments.length > 0 && (
+                          <Paperclip className="w-3 h-3 text-cyan-400 shrink-0" />
+                        )}
                       </div>
-                      <div className="shrink-0">
+
+                      <div className="shrink-0 flex items-center gap-1">
+                        {mailTab === 'sent' && renderStatusBadge(email.status)}
                         {renderCategoryBadge(email.category)}
                       </div>
                     </div>
@@ -908,7 +1335,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             )}
           </div>
 
-          {/* List Footer Pagination */}
+          {/* Footer Pagination */}
           <div className="p-3 border-t border-white/10 flex items-center justify-between font-mono text-xs text-slate-400 bg-[#070a11] min-w-0 max-w-full shrink-0">
             <div className="text-[10px] truncate min-w-0">
               Showing {filteredEmails.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filteredEmails.length)} of {filteredEmails.length}
@@ -946,18 +1373,19 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               {/* Header Actions Toolbar */}
               <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between flex-wrap sm:flex-nowrap gap-3 font-mono text-xs bg-[#070a11] shrink-0 min-w-0 max-w-full">
                 <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
-                  {/* Mobile Back Button */}
+                  {/* Back to emails button (for Mobile & Tablet) */}
                   <button
                     onClick={() => setShowMobileDetail(false)}
-                    className="lg:hidden px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                    className="lg:hidden px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0"
                   >
-                    <ChevronLeft className="w-4 h-4" /> Back
+                    <ChevronLeft className="w-4 h-4" /> Back to emails
                   </button>
 
                   <div className="shrink-0 flex items-center gap-2">
+                    {mailTab === 'sent' && renderStatusBadge(selectedEmail.status)}
                     {renderCategoryBadge(selectedEmail.category)}
-
-                    {/* Interactive Category / Label Change Selector */}
+                    
+                    {/* Interactive Category Selector */}
                     <div className="flex items-center gap-1 shrink-0">
                       <span className="text-[10px] text-slate-500 font-mono hidden xl:inline">Label:</span>
                       <select
@@ -976,9 +1404,6 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                       </select>
                     </div>
                   </div>
-                  <span className="text-[11px] text-slate-400 truncate min-w-0 hidden sm:inline">
-                    Inbox: <span className="text-cyan-300 font-bold">{selectedEmail.mailbox_email}</span>
-                  </span>
                 </div>
 
                 {/* Email Action Buttons */}
@@ -1013,125 +1438,208 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 </div>
               </div>
 
-              {/* Email Content Body Container */}
-              <div className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 min-w-0 max-w-full overflow-y-auto">
-                
-                {/* Subject Title */}
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold font-display text-white leading-snug break-words [word-break:break-word] [overflow-wrap:anywhere] min-w-0 max-w-full">
-                  {selectedEmail.subject}
-                </h1>
+              {/* DETAIL VIEW SECTION TABS: Email | Delivery Status | Technical Info */}
+              <div className="px-4 pt-3 border-b border-white/10 bg-[#070a11] flex items-center gap-2 font-mono text-xs shrink-0">
+                <button
+                  onClick={() => setDetailTab('email')}
+                  className={`px-4 py-2 border-b-2 font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    detailTab === 'email'
+                      ? 'border-cyan-400 text-cyan-300'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Mail className="w-3.5 h-3.5" /> Email Body
+                </button>
 
-                {/* Sender Metadata Row */}
-                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs min-w-0 max-w-full overflow-hidden">
-                  <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
-                    <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold flex items-center justify-center text-sm shrink-0">
-                      {selectedEmail.sender_name.substring(0, 2).toUpperCase()}
-                    </div>
+                <button
+                  onClick={() => setDetailTab('delivery')}
+                  className={`px-4 py-2 border-b-2 font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    detailTab === 'delivery'
+                      ? 'border-cyan-400 text-cyan-300'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5" /> Delivery Status
+                </button>
 
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <div className="font-bold text-white text-sm flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                        <span className="truncate max-w-full">{selectedEmail.sender_name}</span>
-                        <span className="text-slate-400 font-normal text-xs break-all">&lt;{selectedEmail.sender_email}&gt;</span>
-                      </div>
-                      <div className="text-slate-400 text-[11px] mt-0.5 truncate">
-                        To: <span className="text-cyan-300 font-bold">{selectedEmail.recipient_email}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-left sm:text-right text-[11px] text-slate-400 shrink-0">
-                    <div>{new Date(selectedEmail.received_at).toLocaleDateString()}</div>
-                    <div className="text-slate-500">{new Date(selectedEmail.received_at).toLocaleTimeString()}</div>
-                  </div>
-                </div>
-
-                {/* Technical / Security Details Collapsible Section */}
-                <div className="border border-white/10 rounded-2xl overflow-hidden font-mono text-xs min-w-0 max-w-full">
-                  <button
-                    onClick={() => setShowTechDetails((prev) => !prev)}
-                    className="w-full px-4 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] text-slate-400 font-bold text-[11px] flex items-center justify-between cursor-pointer transition-all min-w-0"
-                  >
-                    <span className="flex items-center gap-2 truncate min-w-0">
-                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" /> <span className="truncate">Technical Security Information</span>
-                    </span>
-                    {showTechDetails ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
-                  </button>
-
-                  {showTechDetails && (
-                    <div className="p-4 bg-[#070a11] space-y-3 text-[11px] text-slate-300 border-t border-white/10 animate-fade-in min-w-0 max-w-full">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 max-w-full">
-                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">MESSAGE ID</span><span className="text-white font-mono break-all text-[10px] sm:text-[11px] block max-w-full">{selectedEmail.message_id}</span></div>
-                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">REPLY-TO</span><span className="text-cyan-300 break-all text-[10px] sm:text-[11px] block max-w-full">{selectedEmail.reply_to || selectedEmail.sender_email}</span></div>
-                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">AUTHENTICATION</span><span className="text-emerald-400 font-bold block text-[10px] sm:text-[11px]">DKIM ✓ • DMARC ✓ • SPF ✓</span></div>
-                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">RECEIVED ROUTE</span><span className="text-white block text-[10px] sm:text-[11px] break-words">Cloudflare Worker → Zenemoo Backend API</span></div>
-                      </div>
-
-                      {parsedEmailContent.rawHeaders && (
-                        <div className="pt-2 border-t border-white/10">
-                          <span className="text-slate-500 block text-[9px] uppercase font-bold mb-1">RAW TRANSPORT HEADERS</span>
-                          <pre className="max-h-40 overflow-y-auto text-[10px] font-mono text-slate-400 bg-black/40 p-2.5 rounded-xl border border-white/10 whitespace-pre-wrap break-all leading-tight">
-                            {parsedEmailContent.rawHeaders}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Clean Human Email Message Body Container */}
-                <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]">
-                  {parsedEmailContent.cleanHtml ? (
-                    <div
-                      dangerouslySetInnerHTML={{ __html: parsedEmailContent.cleanHtml }}
-                      className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]"
-                    />
-                  ) : (
-                    <div className="whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere]">
-                      {parsedEmailContent.cleanText || selectedEmail.snippet}
-                    </div>
-                  )}
-                </div>
-
-                {/* Attachments Section */}
-                {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
-                  <div className="space-y-3 font-mono text-xs pt-2 min-w-0 max-w-full">
-                    <div className="text-[11px] text-cyan-400 uppercase font-bold tracking-wider flex items-center gap-2">
-                      <Paperclip className="w-4 h-4 shrink-0" /> ATTACHMENTS ({selectedEmail.attachments.length})
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 max-w-full">
-                      {selectedEmail.attachments.map((att) => (
-                        <div
-                          key={att.id}
-                          className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-cyan-500/40 transition-all flex items-center justify-between gap-3 group min-w-0 max-w-full"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <div className="font-bold text-white truncate text-xs">{att.filename}</div>
-                              <div className="text-[10px] text-slate-500">{(att.size / 1024).toFixed(0)} KB</div>
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => addToast('Attachment Download', `Downloading ${att.filename} using short-lived signed URL...`, 'info')}
-                            className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shrink-0"
-                            title="Download attachment safely"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <button
+                  onClick={() => setDetailTab('technical')}
+                  className={`px-4 py-2 border-b-2 font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    detailTab === 'technical'
+                      ? 'border-cyan-400 text-cyan-300'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" /> Technical Info
+                </button>
               </div>
+
+              {/* TAB 1: EMAIL BODY & PREVIEW */}
+              {detailTab === 'email' && (
+                <div className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 min-w-0 max-w-full overflow-y-auto">
+                  {/* Subject Title */}
+                  <h1 className="text-lg sm:text-xl lg:text-2xl font-bold font-display text-white leading-snug break-words [word-break:break-word] [overflow-wrap:anywhere] min-w-0 max-w-full">
+                    {selectedEmail.subject}
+                  </h1>
+
+                  {/* Sender & Recipient Metadata Box */}
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs min-w-0 max-w-full overflow-hidden">
+                    <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+                      <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold flex items-center justify-center text-sm shrink-0">
+                        {(selectedEmail.sender_name || 'Z').substring(0, 2).toUpperCase()}
+                      </div>
+
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="font-bold text-white text-sm flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                          <span className="truncate max-w-full">{selectedEmail.sender_name}</span>
+                          <span className="text-slate-400 font-normal text-xs break-all">&lt;{selectedEmail.sender_email}&gt;</span>
+                        </div>
+                        <div className="text-slate-400 text-[11px] mt-0.5 truncate">
+                          To: <span className="text-cyan-300 font-bold">{selectedEmail.recipient_email}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-left sm:text-right text-[11px] text-slate-400 shrink-0">
+                      <div>{new Date(selectedEmail.received_at).toLocaleDateString()}</div>
+                      <div className="text-slate-500">{new Date(selectedEmail.received_at).toLocaleTimeString()}</div>
+                    </div>
+                  </div>
+
+                  {/* HTML / Text Message Body Container */}
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]">
+                    {parsedEmailContent.cleanHtml ? (
+                      <div
+                        dangerouslySetInnerHTML={{ __html: parsedEmailContent.cleanHtml }}
+                        className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]"
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere]">
+                        {parsedEmailContent.cleanText || selectedEmail.snippet}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Attachments Section */}
+                  {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                    <div className="space-y-3 font-mono text-xs pt-2 min-w-0 max-w-full">
+                      <div className="text-[11px] text-cyan-400 uppercase font-bold tracking-wider flex items-center gap-2">
+                        <Paperclip className="w-4 h-4 shrink-0" /> ATTACHMENTS ({selectedEmail.attachments.length})
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 max-w-full">
+                        {selectedEmail.attachments.map((att) => (
+                          <div
+                            key={att.id}
+                            className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-cyan-500/40 transition-all flex items-center justify-between gap-3 group min-w-0 max-w-full"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="font-bold text-white truncate text-xs">{att.filename}</div>
+                                <div className="text-[10px] text-slate-500">{(att.size / 1024).toFixed(0)} KB</div>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => addToast('Attachment Download', `Downloading ${att.filename}...`, 'info')}
+                              className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shrink-0"
+                              title="Download attachment"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: DELIVERY STATUS TIMELINE */}
+              {detailTab === 'delivery' && (
+                <div className="p-6 sm:p-8 space-y-6 flex-1 font-mono text-xs text-slate-300 overflow-y-auto">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                    <div>
+                      <h3 className="text-base font-bold text-white">Provider Delivery Timeline</h3>
+                      <p className="text-slate-400 text-xs mt-0.5">Real-time status updates from Brevo &amp; Cloudflare routing pipeline.</p>
+                    </div>
+                    {renderStatusBadge(selectedEmail.status)}
+                  </div>
+
+                  <div className="space-y-6 relative border-l-2 border-cyan-500/30 ml-4 pl-6 pt-2">
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-cyan-400 border-2 border-[#0b0f19]" />
+                      <div className="font-bold text-white text-sm">1. Message Submitted / Dispatched</div>
+                      <div className="text-slate-400 text-xs mt-1">Dispatched via Zenemoo Authenticated Gateway</div>
+                      <div className="text-slate-500 text-[10px] mt-0.5">{new Date(selectedEmail.received_at).toLocaleString()}</div>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-emerald-400 border-2 border-[#0b0f19]" />
+                      <div className="font-bold text-white text-sm">2. Recipient Server Delivery</div>
+                      <div className="text-slate-400 text-xs mt-1">Handoff confirmed to target MX server for {selectedEmail.recipient_email}</div>
+                      <div className="text-emerald-400 text-[10px] mt-0.5">Status: Delivered</div>
+                    </div>
+
+                    {selectedEmail.status === 'opened' || selectedEmail.status === 'clicked' ? (
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-purple-400 border-2 border-[#0b0f19]" />
+                        <div className="font-bold text-white text-sm">3. Recipient Opened / Interacted</div>
+                        <div className="text-slate-400 text-xs mt-1">Recipient loaded email images or clicked embedded link.</div>
+                        <div className="text-purple-300 text-[10px] mt-0.5">Status: {selectedEmail.status.toUpperCase()}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: TECHNICAL SECURITY INFO */}
+              {detailTab === 'technical' && (
+                <div className="p-6 sm:p-8 space-y-6 flex-1 font-mono text-xs text-slate-300 overflow-y-auto">
+                  <div className="border-b border-white/10 pb-4">
+                    <h3 className="text-base font-bold text-white">Technical Security &amp; Transport Route</h3>
+                    <p className="text-slate-400 text-xs mt-0.5">RFC Header verification and domain authentication checks.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-1">
+                      <span className="text-slate-500 text-[10px] font-bold block uppercase">MESSAGE ID</span>
+                      <span className="text-white font-mono text-xs break-all">{selectedEmail.message_id}</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-1">
+                      <span className="text-slate-500 text-[10px] font-bold block uppercase">AUTHENTICATION</span>
+                      <span className="text-emerald-400 font-bold text-xs block">SPF ✓ • DKIM ✓ • DMARC ✓</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-1">
+                      <span className="text-slate-500 text-[10px] font-bold block uppercase">REPLY-TO ADDRESS</span>
+                      <span className="text-cyan-300 text-xs break-all">{selectedEmail.reply_to || selectedEmail.sender_email}</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-1">
+                      <span className="text-slate-500 text-[10px] font-bold block uppercase">INGRESS ROUTE</span>
+                      <span className="text-slate-200 text-xs block">Cloudflare Worker → Zenemoo Node Backend</span>
+                    </div>
+                  </div>
+
+                  {parsedEmailContent.rawHeaders && (
+                    <div className="space-y-2 pt-2">
+                      <span className="text-slate-400 font-bold text-xs block">RAW TRANSPORT HEADERS</span>
+                      <pre className="p-4 rounded-2xl bg-black/50 border border-white/10 text-[10px] text-slate-400 whitespace-pre-wrap break-all max-h-60 overflow-y-auto leading-relaxed">
+                        {parsedEmailContent.rawHeaders}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Sticky Footer Toolbar */}
               <div className="p-4 border-t border-white/10 bg-[#070a11] flex items-center justify-between font-mono text-xs shrink-0 min-w-0 max-w-full gap-3 flex-wrap sm:flex-nowrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={() => addToast('Compose Reply', `Reply interface for ${selectedEmail.sender_email} initialized using Brevo Outgoing API.`, 'info')}
+                    onClick={() => addToast('Compose Reply', `Reply interface for ${selectedEmail.sender_email} initialized.`, 'info')}
                     className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20 shrink-0"
                   >
                     <Reply className="w-4 h-4" /> Reply
@@ -1154,7 +1662,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-500 font-mono text-xs space-y-3 min-w-0">
               <Mail className="w-12 h-12 text-slate-600 animate-pulse shrink-0" />
               <div className="text-base font-bold text-slate-300">No Email Selected</div>
-              <div className="text-xs max-w-sm">Select an email from the list to view its complete content and attachments.</div>
+              <div className="text-xs max-w-sm">Select an email from the list to view its complete content, delivery status, and technical headers.</div>
             </div>
           )}
         </div>

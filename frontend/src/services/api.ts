@@ -353,6 +353,15 @@ export const emailInboxApi = {
     page?: number;
     limit?: number;
   }) => api.get('/emails/inbox', { params }),
+  getSentEmails: (params?: {
+    search?: string;
+    mailbox?: string;
+    category?: string;
+    status?: string;
+    view?: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
+    page?: number;
+    limit?: number;
+  }) => api.get('/emails/sent', { params }),
   getEmailById: (id: string) => api.get(`/emails/inbox/${id}`),
   updateEmailState: (
     id: string,

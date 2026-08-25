@@ -3,6 +3,7 @@ import {
   getEmailAddresses,
   addEmailAddress,
   getIncomingEmails,
+  getSentEmails,
   getIncomingEmailById,
   updateIncomingEmailState,
   deleteIncomingEmail,
@@ -19,6 +20,7 @@ router.post('/webhook/cloudflare', ingestCloudflareEmail);
 // Admin Authorized Email Inbox Routes
 router.get('/storage-usage', verifyToken, requireRole(['admin']), getEmailStorageUsage);
 router.get('/inbox', verifyToken, requireRole(['admin']), getIncomingEmails);
+router.get('/sent', verifyToken, requireRole(['admin']), getSentEmails);
 router.get('/inbox/:id', verifyToken, requireRole(['admin']), getIncomingEmailById);
 router.patch('/inbox/:id', verifyToken, requireRole(['admin']), updateIncomingEmailState);
 router.delete('/inbox/:id', verifyToken, requireRole(['admin']), deleteIncomingEmail);
