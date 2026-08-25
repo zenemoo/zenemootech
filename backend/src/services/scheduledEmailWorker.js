@@ -2,7 +2,6 @@ import { supabaseService } from './supabaseService.js';
 import { sendMailViaBrevo, parseRecipients } from './emailService.js';
 import { encrypt, decrypt } from './encryptionService.js';
 import { memoryScheduledEmails } from '../controllers/scheduledEmailController.js';
-import { memoryHistory } from '../controllers/emailController.js';
 
 let isProcessingTick = false;
 let workerIntervalHandle = null;
@@ -125,8 +124,6 @@ const processScheduledItem = async (item) => {
     try {
       await supabaseService.insert('email_history', historyPayload);
     } catch (_) {}
-
-    memoryHistory.unshift(historyPayload);
 
     console.log(`✓ [Scheduled Email Worker] Delivered email ${item.id} ("${normalized.subject}") via Brevo. Message ID: ${providerMsgId}`);
     return true;
