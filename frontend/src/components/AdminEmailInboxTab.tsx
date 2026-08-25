@@ -91,6 +91,86 @@ interface AdminEmailInboxTabProps {
 }
 
 // ============================================================================
+// FRONTEND MIME HEADER STRIPPER & BODY CLEANER
+// Strips raw RFC transport headers (Received, ARC, DKIM, SPF) from visible message body
+// ============================================================================
+function extractHumanEmailBody(bodyText?: string, bodyHtml?: string): { cleanText: string; cleanHtml: string; rawHeaders?: string } {
+  let rawText = (bodyText || '').trim();
+  let rawHtml = (bodyHtml || '').trim();
+  let rawHeaders = '';
+
+  const headerMatchPattern = /^(Received|ARC-Seal|ARC-Message-Signature|ARC-Authentication-Results|DKIM-Signature|Return-Path|MIME-Version|Content-Type|Authentication-Results|Received-SPF):/i;
+
+  if (rawText && headerMatchPattern.test(rawText)) {
+    const doubleNewlineSplit = rawText.split(/\r?\n\r?\n/);
+    if (doubleNewlineSplit.length > 1) {
+      rawHeaders = doubleNewlineSplit[0];
+      const remainingSections = doubleNewlineSplit.slice(1);
+      
+      const bodyLines: string[] = [];
+      remainingSections.forEach((sec) => {
+        const lines = sec.split(/\r?\n/);
+        const filteredLines = lines.filter(
+          (line) => !/^(Content-Type|Content-Transfer-Encoding|Content-Disposition|Boundary)=?/i.test(line.trim()) && !line.trim().startsWith('--')
+        );
+        if (filteredLines.length > 0) {
+          bodyLines.push(filteredLines.join('\n'));
+        }
+      });
+      
+      if (bodyLines.length > 0) {
+        rawText = bodyLines.join('\n\n').trim();
+      }
+    }
+  }
+
+  if (rawHtml && (rawHtml.includes('Received:') || rawHtml.includes('ARC-Seal:') || rawHtml.includes('DKIM-Signature:'))) {
+    const preMatch = rawHtml.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+    if (preMatch && preMatch[1] && headerMatchPattern.test(preMatch[1].trim())) {
+      const split = preMatch[1].trim().split(/\r?\n\r?\n/);
+      if (split.length > 1) {
+        rawHeaders = rawHeaders || split[0];
+        rawText = rawText || split.slice(1).join('\n\n').trim();
+        rawHtml = '';
+      }
+    }
+  }
+
+  let cleanHtml = rawHtml ? sanitizeHtmlContent(rawHtml) : '';
+  let cleanText = rawText || '';
+
+  if (!cleanHtml && cleanText) {
+    const escaped = escapeHtml(cleanText);
+    const linkified = escaped.replace(
+      /(https?:\/\/[^\s<]+)/g,
+      '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-cyan-400 underline font-medium hover:text-cyan-300">$1</a>'
+    );
+    cleanHtml = `<div class="whitespace-pre-wrap font-sans text-slate-200 text-sm leading-relaxed [overflow-wrap:anywhere] [word-break:break-word]">${linkified}</div>`;
+  }
+
+  return { cleanText, cleanHtml, rawHeaders };
+}
+
+function escapeHtml(str: string): string {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function sanitizeHtmlContent(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+}
+
+// ============================================================================
 // PERSISTENT MODULE-LEVEL INBOX CACHE (Survives Admin Tab Switching)
 // ============================================================================
 interface InboxCacheState {
@@ -283,19 +363,22 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }
   }, [searchQuery, activeMailbox, activeCategory, viewFilter, currentPage, pageSize, fetchStorageUsage, mergeEmailsWithCache]);
 
-  // Initial Fetch & Silent Background Polling
+  // Initial Mount & Silent Background Polling
   useEffect(() => {
-    // Only trigger full load if cache is empty, otherwise background refresh
     const isFirstTime = globalInboxCache.emails.length === 0;
     fetchEmails(!isFirstTime);
 
-    // Silent background synchronization timer (every 30 seconds)
     const intervalTimer = setInterval(() => {
       fetchEmails(true);
     }, 30000);
 
     return () => clearInterval(intervalTimer);
-  }, []); // Run on mount with stable cache
+  }, []); // Run on mount
+
+  // Silent sync whenever filter, mailbox, search, page, or sort changes
+  useEffect(() => {
+    fetchEmails(true);
+  }, [activeMailbox, activeCategory, viewFilter, searchQuery, currentPage, sortBy, fetchEmails]);
 
   // Compute Unread Counts per Mailbox
   const mailboxUnreadCounts = useMemo(() => {
@@ -510,6 +593,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     return filteredEmails.slice(from, from + pageSize);
   }, [filteredEmails, currentPage, pageSize]);
 
+  // Parsed Clean Human Email Content
+  const parsedEmailContent = useMemo(() => {
+    if (!selectedEmail) return { cleanText: '', cleanHtml: '' };
+    return extractHumanEmailBody(selectedEmail.body_text, selectedEmail.body_html);
+  }, [selectedEmail]);
+
   return (
     <div className="space-y-4 font-sans max-w-[1920px] mx-auto w-full min-w-0 overflow-x-hidden">
       {/* 1. TOP MODULE HEADER */}
@@ -706,11 +795,21 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           {/* Email List Items */}
           <div className="flex-1 overflow-y-auto divide-y divide-white/5 min-w-0 max-w-full">
             {paginatedEmails.length === 0 ? (
-              <div className="p-12 text-center text-slate-500 font-mono text-xs space-y-2">
-                <Mail className="w-8 h-8 text-slate-600 mx-auto" />
-                <div className="font-bold text-slate-400">No emails found</div>
-                <div className="text-[11px]">This mailbox has no matching messages.</div>
-              </div>
+              (isLoading || isRefreshing) ? (
+                <div className="p-12 text-center text-slate-500 font-mono text-xs space-y-3">
+                  <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin mx-auto" />
+                  <div className="font-bold text-slate-300">Checking Mailbox...</div>
+                  <div className="text-[11px] text-slate-500">
+                    Synchronizing messages for {activeMailbox !== 'all' ? activeMailbox : 'all inboxes'}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-12 text-center text-slate-500 font-mono text-xs space-y-2">
+                  <Mail className="w-8 h-8 text-slate-600 mx-auto" />
+                  <div className="font-bold text-slate-400">No emails found</div>
+                  <div className="text-[11px]">This mailbox has no matching messages.</div>
+                </div>
+              )
             ) : (
               paginatedEmails.map((email) => {
                 const isSelected = selectedEmail?.id === email.id;
@@ -910,19 +1009,30 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                         <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">AUTHENTICATION</span><span className="text-emerald-400 font-bold block text-[10px] sm:text-[11px]">DKIM ✓ • DMARC ✓ • SPF ✓</span></div>
                         <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">RECEIVED ROUTE</span><span className="text-white block text-[10px] sm:text-[11px] break-words">Cloudflare Worker → Zenemoo Backend API</span></div>
                       </div>
+
+                      {parsedEmailContent.rawHeaders && (
+                        <div className="pt-2 border-t border-white/10">
+                          <span className="text-slate-500 block text-[9px] uppercase font-bold mb-1">RAW TRANSPORT HEADERS</span>
+                          <pre className="max-h-40 overflow-y-auto text-[10px] font-mono text-slate-400 bg-black/40 p-2.5 rounded-xl border border-white/10 whitespace-pre-wrap break-all leading-tight">
+                            {parsedEmailContent.rawHeaders}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Email HTML / Text Message Body */}
-                <div className="p-4 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]">
-                  {selectedEmail.body_html ? (
+                {/* Clean Human Email Message Body Container */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]">
+                  {parsedEmailContent.cleanHtml ? (
                     <div
-                      dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }}
+                      dangerouslySetInnerHTML={{ __html: parsedEmailContent.cleanHtml }}
                       className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]"
                     />
                   ) : (
-                    <div className="whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere]">{selectedEmail.body_text || selectedEmail.snippet}</div>
+                    <div className="whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere]">
+                      {parsedEmailContent.cleanText || selectedEmail.snippet}
+                    </div>
                   )}
                 </div>
 
