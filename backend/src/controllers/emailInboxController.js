@@ -430,7 +430,13 @@ export const deleteIncomingEmail = async (req, res, next) => {
 export const ingestCloudflareEmail = async (req, res, next) => {
   try {
     const authHeader = req.headers['x-cloudflare-webhook-secret'] || req.headers.authorization;
-    if (authHeader && authHeader !== CLOUDFLARE_WEBHOOK_SECRET && authHeader !== `Bearer ${CLOUDFLARE_WEBHOOK_SECRET}`) {
+    const expectedSecret =
+      process.env.CLOUDFLARE_WEBHOOK_SECRET ||
+      process.env.CLOUDFLARE_WEBHOOK_SECRET_2026 ||
+      'zenemoo_cloudflare_worker_secret_2026';
+
+    if (authHeader && authHeader !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+      console.warn('[Cloudflare Webhook] Unauthorized token attempt.');
       return res.status(401).json({ success: false, message: 'Unauthorized Cloudflare Webhook token.' });
     }
 
@@ -507,14 +513,19 @@ export const ingestCloudflareEmail = async (req, res, next) => {
 
     let createdId = emailRow.id;
     if (supabase) {
+      // Strip custom text id for Supabase insert so PostgreSQL UUID auto-generates cleanly
+      const { id: _tmpId, ...dbPayload } = emailRow;
       const { data: inserted, error: insErr } = await supabase
         .from('incoming_email_messages')
-        .insert([emailRow])
+        .insert([dbPayload])
         .select()
         .maybeSingle();
 
       if (!insErr && inserted) {
         createdId = inserted.id;
+        emailRow.id = inserted.id;
+      } else if (insErr) {
+        console.error('[Cloudflare Webhook Supabase Insert Error]:', insErr.message || insErr);
       }
     }
 
