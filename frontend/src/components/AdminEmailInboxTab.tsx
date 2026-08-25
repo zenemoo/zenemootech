@@ -97,7 +97,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 }) => {
   // State
   const [emails, setEmails] = useState<EmailMessageRecord[]>(MOCK_EMAILS);
-  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(MOCK_EMAILS[0].id);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [activeMailbox, setActiveMailbox] = useState<string>('all');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [viewFilter, setViewFilter] = useState<'all' | 'unread' | 'starred' | 'archived' | 'trash'>('all');
