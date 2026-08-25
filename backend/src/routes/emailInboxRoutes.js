@@ -8,7 +8,7 @@ import {
   deleteIncomingEmail,
   ingestCloudflareEmail,
 } from '../controllers/emailInboxController.js';
-import { verifyToken, requireRole } from '../middleware/authMiddleware.js';
+import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
 
