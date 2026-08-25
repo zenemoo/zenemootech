@@ -484,9 +484,16 @@ export const ingestCloudflareEmail = async (req, res, next) => {
       return res.json({ success: true, message: 'Duplicate email ignored idempotently.', email_id: memExisting.id });
     }
 
-    // 2. Auto Categorization
-    const assignedCategory = autoCategorizeEmail(subject, body_text || snippet || '', targetMailbox);
-    const snipText = snippet || (body_text || '').substring(0, 160) || 'No text snippet available.';
+    // 2. Parse MIME Raw Email Payload to extract clean body_text, body_html, snippet, auth_results & attachments
+    const parsedMime = parseMimeEmailPayload(body_text, body_html, attachments);
+
+    const cleanBodyText = parsedMime.body_text || body_text || '';
+    const cleanBodyHtml = parsedMime.body_html || body_html || `<p>${cleanBodyText}</p>`;
+    const cleanSnippet = parsedMime.snippet || snippet || cleanBodyText.substring(0, 160) || 'No snippet available.';
+    const finalAuthResults = auth_results || parsedMime.auth_results || { spf: 'pass', dkim: 'pass', dmarc: 'pass' };
+    const finalAttachments = parsedMime.attachments.length > 0 ? parsedMime.attachments : (Array.isArray(attachments) ? attachments : []);
+
+    const assignedCategory = autoCategorizeEmail(subject, cleanBodyText || cleanSnippet, targetMailbox);
 
     const emailRow = {
       id: `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -497,16 +504,16 @@ export const ingestCloudflareEmail = async (req, res, next) => {
       recipient_email: targetMailbox,
       reply_to: reply_to || sender_email,
       subject: subject.trim(),
-      body_text: body_text || '',
-      body_html: body_html || `<p>${body_text || snipText}</p>`,
-      snippet: snipText,
+      body_text: cleanBodyText,
+      body_html: cleanBodyHtml,
+      snippet: cleanSnippet,
       category: assignedCategory,
       is_read: false,
       is_starred: false,
       is_archived: false,
       is_trashed: false,
-      attachments: Array.isArray(attachments) ? attachments : [],
-      auth_results: auth_results || { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
+      attachments: finalAttachments,
+      auth_results: finalAuthResults,
       received_at: received_at || new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
@@ -624,3 +631,221 @@ export const getEmailStorageUsage = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * Helper Utilities for MIME Email Parsing & Sanitization
+ */
+function decodeQuotedPrintable(str) {
+  if (!str) return '';
+  return str
+    .replace(/=\r?\n/g, '')
+    .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function escapeHtml(str) {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function sanitizeEmailHtml(html) {
+  if (!html) return '';
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+}
+
+/**
+ * Robust RFC822 / MIME Email Parser
+ * Separates transport/security headers, MIME boundaries, text/plain, text/html, and attachments.
+ */
+export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachments) {
+  let cleanText = '';
+  let cleanHtml = '';
+  const extractedAuth = { spf: 'pass', dkim: 'pass', dmarc: 'pass' };
+  const attachments = Array.isArray(incomingAttachments) ? [...incomingAttachments] : [];
+
+  if (!rawEmail || typeof rawEmail !== 'string') {
+    cleanText = '';
+    cleanHtml = sanitizeEmailHtml(incomingHtml) || '';
+    return {
+      body_text: cleanText,
+      body_html: cleanHtml,
+      snippet: '',
+      auth_results: extractedAuth,
+      attachments,
+    };
+  }
+
+  const trimmedRaw = rawEmail.trim();
+  const isRawRfc = /^(Received|DKIM-Signature|ARC-Seal|Return-Path|MIME-Version|Content-Type|Authentication-Results):/im.test(trimmedRaw);
+
+  if (!isRawRfc) {
+    cleanText = trimmedRaw;
+    cleanHtml = sanitizeEmailHtml(incomingHtml) || `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #e2e8f0;">${escapeHtml(cleanText)}</div>`;
+    const snippetText = cleanText.replace(/\s+/g, ' ').trim().substring(0, 160);
+    return {
+      body_text: cleanText,
+      body_html: cleanHtml,
+      snippet: snippetText,
+      auth_results: extractedAuth,
+      attachments,
+    };
+  }
+
+  // 1. Parse Authentication-Results from RFC headers
+  const authHeaderMatch = trimmedRaw.match(/(?:Authentication-Results|ARC-Authentication-Results):([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)/i);
+  if (authHeaderMatch) {
+    const authStr = authHeaderMatch[1].toLowerCase();
+    if (authStr.includes('spf=pass')) extractedAuth.spf = 'pass';
+    else if (authStr.includes('spf=fail') || authStr.includes('spf=softfail')) extractedAuth.spf = 'fail';
+
+    if (authStr.includes('dkim=pass')) extractedAuth.dkim = 'pass';
+    else if (authStr.includes('dkim=fail')) extractedAuth.dkim = 'fail';
+
+    if (authStr.includes('dmarc=pass')) extractedAuth.dmarc = 'pass';
+    else if (authStr.includes('dmarc=fail')) extractedAuth.dmarc = 'fail';
+  }
+
+  // 2. Separate RFC Header Section and Body Section
+  const headerBodySplit = trimmedRaw.split(/\r?\n\r?\n/);
+  const rawHeaderSection = headerBodySplit[0] || '';
+  const rawBodySection = headerBodySplit.slice(1).join('\n\n');
+
+  // 3. Detect MIME Boundaries
+  const boundaryMatch = rawHeaderSection.match(/boundary="?([^";\r\n]+)"?/i) || trimmedRaw.match(/boundary="?([^";\r\n]+)"?/i);
+
+  if (boundaryMatch && boundaryMatch[1]) {
+    const boundary = boundaryMatch[1].trim();
+    const parts = rawBodySection.split(new RegExp(`--${escapeRegExp(boundary)}(?:--)?`));
+
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (!trimmedPart || trimmedPart === '--') continue;
+
+      const partSplit = trimmedPart.split(/\r?\n\r?\n/);
+      const partHeaders = partSplit[0] || '';
+      let partBody = partSplit.slice(1).join('\n\n').trim();
+
+      const contentTypeMatch = partHeaders.match(/Content-Type:\s*([^;\r\n]+)/i);
+      const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase().trim() : '';
+
+      const contentTransferEncodingMatch = partHeaders.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i);
+      const encoding = contentTransferEncodingMatch ? contentTransferEncodingMatch[1].toLowerCase().trim() : '';
+
+      if (encoding === 'base64') {
+        try {
+          partBody = Buffer.from(partBody.replace(/\s/g, ''), 'base64').toString('utf8');
+        } catch (_) {}
+      } else if (encoding === 'quoted-printable') {
+        partBody = decodeQuotedPrintable(partBody);
+      }
+
+      // Check Content-Disposition for attachments
+      const filenameMatch = partHeaders.match(/filename="?([^";\r\n]+)"?/i) || partHeaders.match(/name="?([^";\r\n]+)"?/i);
+
+      if (filenameMatch && filenameMatch[1]) {
+        const filename = filenameMatch[1].trim();
+        attachments.push({
+          id: `att_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          filename,
+          contentType: contentType || 'application/octet-stream',
+          size: Buffer.byteLength(partBody, 'utf8'),
+        });
+        continue;
+      }
+
+      // Check sub-boundaries (e.g. multipart/alternative inside multipart/mixed)
+      const subBoundaryMatch = partHeaders.match(/boundary="?([^";\r\n]+)"?/i) || partBody.match(/boundary="?([^";\r\n]+)"?/i);
+      if (subBoundaryMatch && subBoundaryMatch[1]) {
+        const subBoundary = subBoundaryMatch[1].trim();
+        const subParts = partBody.split(new RegExp(`--${escapeRegExp(subBoundary)}(?:--)?`));
+
+        for (const subPart of subParts) {
+          const subTrimmed = subPart.trim();
+          if (!subTrimmed || subTrimmed === '--') continue;
+
+          const subSplit = subTrimmed.split(/\r?\n\r?\n/);
+          const subHeaders = subSplit[0] || '';
+          let subBody = subSplit.slice(1).join('\n\n').trim();
+
+          const subContentTypeMatch = subHeaders.match(/Content-Type:\s*([^;\r\n]+)/i);
+          const subContentType = subContentTypeMatch ? subContentTypeMatch[1].toLowerCase().trim() : '';
+
+          const subEncodingMatch = subHeaders.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i);
+          const subEncoding = subEncodingMatch ? subEncodingMatch[1].toLowerCase().trim() : '';
+
+          if (subEncoding === 'base64') {
+            try {
+              subBody = Buffer.from(subBody.replace(/\s/g, ''), 'base64').toString('utf8');
+            } catch (_) {}
+          } else if (subEncoding === 'quoted-printable') {
+            subBody = decodeQuotedPrintable(subBody);
+          }
+
+          if (subContentType.includes('text/plain') && !cleanText) {
+            cleanText = subBody.replace(/^--.*$/gm, '').trim();
+          } else if (subContentType.includes('text/html') && !cleanHtml) {
+            cleanHtml = subBody.replace(/^--.*$/gm, '').trim();
+          }
+        }
+      } else {
+        if (contentType.includes('text/plain') && !cleanText) {
+          cleanText = partBody.replace(/^--.*$/gm, '').trim();
+        } else if (contentType.includes('text/html') && !cleanHtml) {
+          cleanHtml = partBody.replace(/^--.*$/gm, '').trim();
+        }
+      }
+    }
+  }
+
+  // Fallback: if MIME boundary parsing didn't extract text/html, clean rawBodySection by stripping RFC headers
+  if (!cleanText && !cleanHtml) {
+    const lines = rawBodySection.split(/\r?\n/);
+    const contentLines = [];
+    let inHeaders = true;
+
+    for (const line of lines) {
+      if (inHeaders) {
+        if (!line.trim() || (!line.startsWith(' ') && !line.startsWith('\t') && !line.includes(':'))) {
+          inHeaders = false;
+          if (line.trim()) contentLines.push(line);
+        }
+      } else {
+        if (!line.startsWith('--') && !/^(Content-Type|Content-Transfer-Encoding|Content-Disposition):/i.test(line)) {
+          contentLines.push(line);
+        }
+      }
+    }
+    cleanText = contentLines.join('\n').trim() || rawBodySection.trim();
+  }
+
+  if (!cleanHtml && cleanText) {
+    cleanHtml = `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #e2e8f0;">${escapeHtml(cleanText)}</div>`;
+  }
+
+  if (!cleanText && cleanHtml) {
+    cleanText = cleanHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  cleanHtml = sanitizeEmailHtml(cleanHtml);
+  const snippet = (cleanText || '').replace(/\s+/g, ' ').trim().substring(0, 160);
+
+  return {
+    body_text: cleanText,
+    body_html: cleanHtml,
+    snippet: snippet || 'No text content',
+    auth_results: extractedAuth,
+    attachments,
+  };
+}

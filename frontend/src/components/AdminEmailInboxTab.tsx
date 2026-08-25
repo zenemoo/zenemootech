@@ -758,7 +758,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                       className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed"
                     />
                   ) : (
-                    <div className="whitespace-pre-wrap">{selectedEmail.snippet}</div>
+                    <div className="whitespace-pre-wrap">{selectedEmail.body_text || selectedEmail.snippet}</div>
                   )}
                 </div>
 
