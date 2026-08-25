@@ -351,26 +351,26 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   }, [filteredEmails, currentPage, pageSize]);
 
   return (
-    <div className="space-y-4 font-sans max-w-[1920px] mx-auto">
+    <div className="space-y-4 font-sans max-w-[1920px] mx-auto w-full min-w-0 overflow-x-hidden">
       {/* 1. TOP MODULE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#0b0f19] p-5 rounded-3xl border border-white/10 shadow-xl">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold mb-2">
-            <Mail className="w-3.5 h-3.5" /> ENTERPRISE EMAIL OPERATIONS CENTER
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#0b0f19] p-4 sm:p-5 rounded-3xl border border-white/10 shadow-xl min-w-0 max-w-full">
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold mb-2 max-w-full truncate">
+            <Mail className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">ENTERPRISE EMAIL OPERATIONS CENTER</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold font-display text-white">Email Inbox</h2>
-          <p className="text-xs font-mono text-slate-400 mt-1">
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-white truncate min-w-0">Email Inbox</h2>
+          <p className="text-xs font-mono text-slate-400 mt-1 break-words">
             Manage incoming emails sent to your verified Zenemoo domain addresses.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+        <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto flex-wrap">
           <button
             onClick={fetchEmails}
             disabled={isLoading}
             className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/10 text-slate-300 font-mono text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 shrink-0 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
 
@@ -378,30 +378,30 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             onClick={() => setIsSettingsOpen(true)}
             className="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-mono text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/10"
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-4 h-4 shrink-0" />
             <span>Email Settings</span>
           </button>
         </div>
       </div>
 
       {/* 2. MAIN RESPONSIVE THREE-PANEL CONTAINER */}
-      <div className="bg-[#0b0f19] rounded-3xl border border-white/10 shadow-2xl overflow-hidden min-h-[720px] flex flex-col lg:flex-row">
+      <div className="bg-[#0b0f19] rounded-3xl border border-white/10 shadow-2xl overflow-hidden min-h-[600px] lg:h-[calc(100vh-170px)] lg:min-h-[680px] lg:max-h-[920px] flex flex-col lg:flex-row w-full min-w-0 max-w-full">
         
         {/* ========================================== */}
         {/* PANEL 1: LEFT SIDEBAR — MAILBOXES & LABELS */}
         {/* ========================================== */}
-        <div className={`w-full lg:w-64 shrink-0 bg-[#070a11] border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-6 ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
+        <div className={`w-full lg:w-64 shrink-0 bg-[#070a11] border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-6 overflow-y-auto min-w-0 max-w-full ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
           
           {/* Mailboxes Section */}
-          <div className="space-y-2 font-mono text-xs">
-            <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider px-2 flex items-center justify-between">
+          <div className="space-y-2 font-mono text-xs min-w-0">
+            <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider px-2 flex items-center justify-between min-w-0">
               <span>MAILBOXES</span>
-              <button onClick={() => setIsSettingsOpen(true)} className="text-cyan-400 hover:underline text-[10px] font-bold">
+              <button onClick={() => setIsSettingsOpen(true)} className="text-cyan-400 hover:underline text-[10px] font-bold shrink-0">
                 + Manage
               </button>
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               {MAILBOX_LIST.map((mb) => {
                 const isActive = activeMailbox === mb.email;
                 const count = mailboxUnreadCounts[mb.email] || 0;
@@ -412,18 +412,18 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                       setActiveMailbox(mb.email);
                       setCurrentPage(1);
                     }}
-                    className={`w-full px-3 py-2 rounded-xl text-left font-bold transition-all flex items-center justify-between text-xs cursor-pointer ${
+                    className={`w-full px-3 py-2 rounded-xl text-left font-bold transition-all flex items-center justify-between text-xs cursor-pointer min-w-0 gap-2 ${
                       isActive
                         ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
                         : 'text-slate-300 hover:bg-white/[0.04]'
                     }`}
                   >
-                    <span className="truncate flex items-center gap-2">
-                      <Inbox className={`w-3.5 h-3.5 ${mb.color}`} />
+                    <span className="truncate flex items-center gap-2 min-w-0 flex-1">
+                      <Inbox className={`w-3.5 h-3.5 shrink-0 ${mb.color}`} />
                       <span className="truncate">{mb.label}</span>
                     </span>
                     {count > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 text-[10px] font-bold">
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 text-[10px] font-bold shrink-0">
                         {count}
                       </span>
                     )}
@@ -434,22 +434,22 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           </div>
 
           {/* Business Labels Section */}
-          <div className="space-y-2 font-mono text-xs border-t border-white/5 pt-4">
+          <div className="space-y-2 font-mono text-xs border-t border-white/5 pt-4 min-w-0">
             <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider px-2">
               LABELS
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <button
                 onClick={() => {
                   setActiveCategory('all');
                   setCurrentPage(1);
                 }}
-                className={`w-full px-3 py-1.5 rounded-xl text-left font-bold transition-all flex items-center justify-between text-xs cursor-pointer ${
+                className={`w-full px-3 py-1.5 rounded-xl text-left font-bold transition-all flex items-center justify-between text-xs cursor-pointer min-w-0 ${
                   activeCategory === 'all' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <span>All Labels</span>
+                <span className="truncate">All Labels</span>
               </button>
 
               {LABEL_LIST.map((lbl) => {
@@ -462,12 +462,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                       setActiveCategory(lbl.id);
                       setCurrentPage(1);
                     }}
-                    className={`w-full px-3 py-1.5 rounded-xl text-left transition-all flex items-center justify-between text-xs cursor-pointer ${
+                    className={`w-full px-3 py-1.5 rounded-xl text-left transition-all flex items-center justify-between text-xs cursor-pointer min-w-0 ${
                       isActive ? 'bg-white/10 text-white font-bold' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <span className="flex items-center gap-2 truncate">
-                      <IconComp className={`w-3.5 h-3.5 ${lbl.color}`} />
+                    <span className="flex items-center gap-2 truncate min-w-0">
+                      <IconComp className={`w-3.5 h-3.5 shrink-0 ${lbl.color}`} />
                       <span className="truncate">{lbl.label}</span>
                     </span>
                   </button>
@@ -477,10 +477,10 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           </div>
 
           {/* Real Live Supabase Storage Usage Card */}
-          <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 font-mono text-[11px] space-y-2">
-            <div className="flex items-center justify-between text-slate-400 font-bold">
-              <span>Database &amp; Email Storage</span>
-              <span className="text-cyan-400 font-bold">{storageStats.percentage}%</span>
+          <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 font-mono text-[11px] space-y-2 min-w-0 max-w-full overflow-hidden">
+            <div className="flex items-center justify-between text-slate-400 font-bold min-w-0 gap-2">
+              <span className="truncate">Database &amp; Email Storage</span>
+              <span className="text-cyan-400 font-bold shrink-0">{storageStats.percentage}%</span>
             </div>
             <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
@@ -488,7 +488,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 style={{ width: `${Math.max(storageStats.percentage > 0 ? 1 : 0, storageStats.percentage)}%` }}
               />
             </div>
-            <div className="text-[10px] text-slate-500 text-right">
+            <div className="text-[10px] text-slate-500 text-right truncate">
               {storageStats.used_formatted} / {storageStats.max_formatted}
             </div>
           </div>
@@ -497,12 +497,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         {/* ========================================== */}
         {/* PANEL 2: MIDDLE PANEL — EMAIL LIST VIEW    */}
         {/* ========================================== */}
-        <div className={`w-full lg:w-96 shrink-0 bg-[#0b0f19] border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col ${showMobileDetail ? 'hidden lg:flex' : 'flex'}`}>
+        <div className={`w-full lg:w-96 shrink-0 bg-[#0b0f19] border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col min-w-0 max-w-full ${showMobileDetail ? 'hidden lg:flex' : 'flex'}`}>
           
           {/* Search & View Filters Header */}
-          <div className="p-4 border-b border-white/10 space-y-3 font-mono text-xs">
+          <div className="p-4 border-b border-white/10 space-y-3 font-mono text-xs min-w-0 max-w-full">
             {/* Views Filter Buttons */}
-            <div className="flex items-center gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/10 overflow-x-auto">
+            <div className="flex items-center gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/10 overflow-x-auto min-w-0 max-w-full scrollbar-none">
               {(['all', 'unread', 'starred', 'archived', 'trash'] as const).map((vw) => (
                 <button
                   key={vw}
@@ -510,7 +510,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     setViewFilter(vw);
                     setCurrentPage(1);
                   }}
-                  className={`px-2.5 py-1 rounded-lg capitalize font-bold text-[11px] transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg capitalize font-bold text-[11px] transition-all cursor-pointer shrink-0 ${
                     viewFilter === vw ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -520,22 +520,22 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             </div>
 
             {/* Search Input & Sort Dropdown */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            <div className="flex items-center gap-2 min-w-0 max-w-full">
+              <div className="relative flex-1 min-w-0">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5 shrink-0" />
                 <input
                   type="text"
                   placeholder="Search emails..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400 min-w-0"
                 />
               </div>
 
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="px-2.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-[11px] focus:outline-none cursor-pointer"
+                className="px-2.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-[11px] focus:outline-none cursor-pointer shrink-0"
               >
                 <option value="newest" className="bg-[#0b0f19]">Newest</option>
                 <option value="oldest" className="bg-[#0b0f19]">Oldest</option>
@@ -544,7 +544,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           </div>
 
           {/* Email List Items */}
-          <div className="flex-1 overflow-y-auto divide-y divide-white/5">
+          <div className="flex-1 overflow-y-auto divide-y divide-white/5 min-w-0 max-w-full">
             {paginatedEmails.length === 0 ? (
               <div className="p-12 text-center text-slate-500 font-mono text-xs space-y-2">
                 <Mail className="w-8 h-8 text-slate-600 mx-auto" />
@@ -558,7 +558,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   <div
                     key={email.id}
                     onClick={() => handleSelectEmail(email)}
-                    className={`p-4 transition-all cursor-pointer relative group ${
+                    className={`p-4 transition-all cursor-pointer relative group min-w-0 max-w-full overflow-hidden ${
                       isSelected
                         ? 'bg-cyan-500/[0.08] border-l-4 border-l-cyan-400'
                         : email.is_read
@@ -571,38 +571,40 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                       <span className="absolute top-4 left-2 w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-sm shadow-cyan-400/50" />
                     )}
 
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-bold text-xs truncate text-white leading-tight">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="font-bold text-xs truncate text-white leading-tight min-w-0 flex-1">
                         {email.sender_name}
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={(e) => handleToggleStar(email, e)}
-                          className="text-slate-500 hover:text-amber-400 p-0.5"
+                          className="text-slate-500 hover:text-amber-400 p-0.5 shrink-0"
                           title={email.is_starred ? 'Unstar' : 'Star'}
                         >
                           <Star className={`w-3.5 h-3.5 ${email.is_starred ? 'fill-amber-400 text-amber-400' : ''}`} />
                         </button>
-                        <span className="text-[10px] font-mono text-slate-400">
+                        <span className="text-[10px] font-mono text-slate-400 shrink-0">
                           {getRelativeTime(email.received_at)}
                         </span>
                       </div>
                     </div>
 
-                    <div className={`text-xs font-semibold mt-1 truncate ${email.is_read ? 'text-slate-300' : 'text-cyan-300 font-bold'}`}>
+                    <div className={`text-xs font-semibold mt-1 truncate min-w-0 ${email.is_read ? 'text-slate-300' : 'text-cyan-300 font-bold'}`}>
                       {email.subject}
                     </div>
 
-                    <div className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                    <div className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed break-words [word-break:break-word] [overflow-wrap:anywhere] min-w-0">
                       {email.snippet}
                     </div>
 
-                    <div className="flex items-center justify-between mt-2 font-mono text-[10px]">
-                      <div className="text-slate-500 truncate max-w-[140px]">
+                    <div className="flex items-center justify-between mt-2 font-mono text-[10px] gap-2 min-w-0">
+                      <div className="text-slate-500 truncate min-w-0 flex-1">
                         To: {email.mailbox_email}
                       </div>
-                      {renderCategoryBadge(email.category)}
+                      <div className="shrink-0">
+                        {renderCategoryBadge(email.category)}
+                      </div>
                     </div>
                   </div>
                 );
@@ -611,12 +613,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           </div>
 
           {/* List Footer Pagination */}
-          <div className="p-3 border-t border-white/10 flex items-center justify-between font-mono text-xs text-slate-400 bg-[#070a11]">
-            <div className="text-[10px]">
+          <div className="p-3 border-t border-white/10 flex items-center justify-between font-mono text-xs text-slate-400 bg-[#070a11] min-w-0 max-w-full shrink-0">
+            <div className="text-[10px] truncate min-w-0">
               Showing {filteredEmails.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filteredEmails.length)} of {filteredEmails.length}
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
@@ -641,29 +643,31 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         {/* ========================================== */}
         {/* PANEL 3: RIGHT PANEL — EMAIL DETAIL VIEW   */}
         {/* ========================================== */}
-        <div className={`flex-1 bg-[#0b0f19] flex flex-col ${showMobileDetail ? 'flex' : 'hidden lg:flex'}`}>
+        <div className={`flex-1 bg-[#0b0f19] flex flex-col min-w-0 max-w-full overflow-hidden ${showMobileDetail ? 'flex' : 'hidden lg:flex'}`}>
           {selectedEmail ? (
-            <div className="flex-1 flex flex-col h-full overflow-y-auto">
+            <div className="flex-1 flex flex-col h-full overflow-y-auto min-w-0 max-w-full">
               
               {/* Header Actions Toolbar */}
-              <div className="p-4 border-b border-white/10 flex items-center justify-between flex-wrap gap-3 font-mono text-xs bg-[#070a11]">
-                <div className="flex items-center gap-2">
+              <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between flex-wrap sm:flex-nowrap gap-3 font-mono text-xs bg-[#070a11] shrink-0 min-w-0 max-w-full">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
                   {/* Mobile Back Button */}
                   <button
                     onClick={() => setShowMobileDetail(false)}
-                    className="lg:hidden px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    className="lg:hidden px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0"
                   >
                     <ChevronLeft className="w-4 h-4" /> Back
                   </button>
 
-                  {renderCategoryBadge(selectedEmail.category)}
-                  <span className="text-[11px] text-slate-400 hidden sm:inline">
+                  <div className="shrink-0">
+                    {renderCategoryBadge(selectedEmail.category)}
+                  </div>
+                  <span className="text-[11px] text-slate-400 truncate min-w-0 hidden sm:inline">
                     Inbox: <span className="text-cyan-300 font-bold">{selectedEmail.mailbox_email}</span>
                   </span>
                 </div>
 
                 {/* Email Action Buttons */}
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <button
                     onClick={() => handleToggleStar(selectedEmail)}
                     className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -695,89 +699,89 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               </div>
 
               {/* Email Content Body Container */}
-              <div className="p-6 sm:p-8 space-y-6 flex-1">
+              <div className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 min-w-0 max-w-full overflow-y-auto">
                 
                 {/* Subject Title */}
-                <h1 className="text-xl sm:text-2xl font-bold font-display text-white leading-snug">
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-bold font-display text-white leading-snug break-words [word-break:break-word] [overflow-wrap:anywhere] min-w-0 max-w-full">
                   {selectedEmail.subject}
                 </h1>
 
                 {/* Sender Metadata Row */}
-                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex items-start justify-between gap-4 font-mono text-xs">
-                  <div className="flex items-center gap-3">
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs min-w-0 max-w-full overflow-hidden">
+                  <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
                     <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold flex items-center justify-center text-sm shrink-0">
                       {selectedEmail.sender_name.substring(0, 2).toUpperCase()}
                     </div>
 
-                    <div>
-                      <div className="font-bold text-white text-sm flex items-center gap-2">
-                        <span>{selectedEmail.sender_name}</span>
-                        <span className="text-slate-400 font-normal text-xs">&lt;{selectedEmail.sender_email}&gt;</span>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <div className="font-bold text-white text-sm flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                        <span className="truncate max-w-full">{selectedEmail.sender_name}</span>
+                        <span className="text-slate-400 font-normal text-xs break-all">&lt;{selectedEmail.sender_email}&gt;</span>
                       </div>
-                      <div className="text-slate-400 text-[11px] mt-0.5">
+                      <div className="text-slate-400 text-[11px] mt-0.5 truncate">
                         To: <span className="text-cyan-300 font-bold">{selectedEmail.recipient_email}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right text-[11px] text-slate-400 shrink-0">
+                  <div className="text-left sm:text-right text-[11px] text-slate-400 shrink-0">
                     <div>{new Date(selectedEmail.received_at).toLocaleDateString()}</div>
                     <div className="text-slate-500">{new Date(selectedEmail.received_at).toLocaleTimeString()}</div>
                   </div>
                 </div>
 
                 {/* Technical / Security Details Collapsible Section */}
-                <div className="border border-white/10 rounded-2xl overflow-hidden font-mono text-xs">
+                <div className="border border-white/10 rounded-2xl overflow-hidden font-mono text-xs min-w-0 max-w-full">
                   <button
                     onClick={() => setShowTechDetails((prev) => !prev)}
-                    className="w-full px-4 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] text-slate-400 font-bold text-[11px] flex items-center justify-between cursor-pointer transition-all"
+                    className="w-full px-4 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] text-slate-400 font-bold text-[11px] flex items-center justify-between cursor-pointer transition-all min-w-0"
                   >
-                    <span className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" /> Technical Security Information
+                    <span className="flex items-center gap-2 truncate min-w-0">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" /> <span className="truncate">Technical Security Information</span>
                     </span>
-                    {showTechDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    {showTechDetails ? <ChevronUp className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
                   </button>
 
                   {showTechDetails && (
-                    <div className="p-4 bg-[#070a11] space-y-2 text-[11px] text-slate-300 border-t border-white/10 animate-fade-in">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div><span className="text-slate-500 block text-[9px]">MESSAGE ID</span><span className="text-white font-mono break-all">{selectedEmail.message_id}</span></div>
-                        <div><span className="text-slate-500 block text-[9px]">REPLY-TO</span><span className="text-cyan-300">{selectedEmail.reply_to || selectedEmail.sender_email}</span></div>
-                        <div><span className="text-slate-500 block text-[9px]">AUTHENTICATION</span><span className="text-emerald-400 font-bold">DKIM ✓ • DMARC ✓ • SPF ✓</span></div>
-                        <div><span className="text-slate-500 block text-[9px]">RECEIVED ROUTE</span><span className="text-white">Cloudflare Worker → Zenemoo Backend API</span></div>
+                    <div className="p-4 bg-[#070a11] space-y-3 text-[11px] text-slate-300 border-t border-white/10 animate-fade-in min-w-0 max-w-full">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 max-w-full">
+                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">MESSAGE ID</span><span className="text-white font-mono break-all text-[10px] sm:text-[11px] block max-w-full">{selectedEmail.message_id}</span></div>
+                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">REPLY-TO</span><span className="text-cyan-300 break-all text-[10px] sm:text-[11px] block max-w-full">{selectedEmail.reply_to || selectedEmail.sender_email}</span></div>
+                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">AUTHENTICATION</span><span className="text-emerald-400 font-bold block text-[10px] sm:text-[11px]">DKIM ✓ • DMARC ✓ • SPF ✓</span></div>
+                        <div className="min-w-0 max-w-full"><span className="text-slate-500 block text-[9px] uppercase font-bold">RECEIVED ROUTE</span><span className="text-white block text-[10px] sm:text-[11px] break-words">Cloudflare Worker → Zenemoo Backend API</span></div>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Email HTML / Text Message Body */}
-                <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner">
+                <div className="p-4 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]">
                   {selectedEmail.body_html ? (
                     <div
                       dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }}
-                      className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed"
+                      className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]"
                     />
                   ) : (
-                    <div className="whitespace-pre-wrap">{selectedEmail.body_text || selectedEmail.snippet}</div>
+                    <div className="whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere]">{selectedEmail.body_text || selectedEmail.snippet}</div>
                   )}
                 </div>
 
                 {/* Attachments Section */}
                 {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
-                  <div className="space-y-3 font-mono text-xs pt-2">
+                  <div className="space-y-3 font-mono text-xs pt-2 min-w-0 max-w-full">
                     <div className="text-[11px] text-cyan-400 uppercase font-bold tracking-wider flex items-center gap-2">
-                      <Paperclip className="w-4 h-4" /> ATTACHMENTS ({selectedEmail.attachments.length})
+                      <Paperclip className="w-4 h-4 shrink-0" /> ATTACHMENTS ({selectedEmail.attachments.length})
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 max-w-full">
                       {selectedEmail.attachments.map((att) => (
                         <div
                           key={att.id}
-                          className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-cyan-500/40 transition-all flex items-center justify-between gap-3 group"
+                          className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-cyan-500/40 transition-all flex items-center justify-between gap-3 group min-w-0 max-w-full"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="font-bold text-white truncate text-xs">{att.filename}</div>
                               <div className="text-[10px] text-slate-500">{(att.size / 1024).toFixed(0)} KB</div>
                             </div>
@@ -785,7 +789,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
                           <button
                             onClick={() => addToast('Attachment Download', `Downloading ${att.filename} using short-lived signed URL...`, 'info')}
-                            className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer"
+                            className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 transition-all cursor-pointer shrink-0"
                             title="Download attachment safely"
                           >
                             <Download className="w-4 h-4" />
@@ -798,31 +802,31 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               </div>
 
               {/* Sticky Footer Toolbar */}
-              <div className="p-4 border-t border-white/10 bg-[#070a11] flex items-center justify-between font-mono text-xs">
-                <div className="flex items-center gap-2">
+              <div className="p-4 border-t border-white/10 bg-[#070a11] flex items-center justify-between font-mono text-xs shrink-0 min-w-0 max-w-full gap-3 flex-wrap sm:flex-nowrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => addToast('Compose Reply', `Reply interface for ${selectedEmail.sender_email} initialized using Brevo Outgoing API.`, 'info')}
-                    className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20"
+                    className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20 shrink-0"
                   >
                     <Reply className="w-4 h-4" /> Reply
                   </button>
 
                   <button
                     onClick={() => addToast('Forward Email', 'Forwarding composer initialized.', 'info')}
-                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                   >
                     <Forward className="w-4 h-4" /> Forward
                   </button>
                 </div>
 
-                <div className="text-slate-500 text-[10px] hidden sm:block">
+                <div className="text-slate-500 text-[10px] hidden sm:block truncate shrink-0">
                   Private Corporate Operational Inbox
                 </div>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-500 font-mono text-xs space-y-3">
-              <Mail className="w-12 h-12 text-slate-600 animate-pulse" />
+            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-500 font-mono text-xs space-y-3 min-w-0">
+              <Mail className="w-12 h-12 text-slate-600 animate-pulse shrink-0" />
               <div className="text-base font-bold text-slate-300">No Email Selected</div>
               <div className="text-xs max-w-sm">Select an email from the list to view its complete content and attachments.</div>
             </div>
