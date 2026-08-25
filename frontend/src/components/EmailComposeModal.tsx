@@ -9,7 +9,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { emailInboxApi } from '../services/api';
+import { emailApi, emailInboxApi } from '../services/api';
 import { EmailMessageRecord } from './AdminEmailInboxTab';
 
 const VERIFIED_SENDERS = [
@@ -184,17 +184,30 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     }
 
     try {
-      const response = await emailInboxApi.sendEmail({
-        mode,
-        originalEmailId: originalEmail.id || originalEmail.message_id,
+      const payload = {
+        sender: fromSender,
         from: fromSender,
+        recipients: validTo.join(', '),
         to: validTo,
-        cc: validCc,
-        bcc: validBcc,
+        cc: validCc.join(', '),
+        bcc: validBcc.join(', '),
         subject,
         html: fullHtml,
         text: cleanUserText,
-      });
+        mode,
+        originalEmailId: originalEmail.id || originalEmail.message_id,
+      };
+
+      let response: any;
+      try {
+        response = await emailApi.send(payload);
+      } catch (e: any) {
+        if (e.response && (e.response.status === 404 || e.response.status === 405)) {
+          response = await emailInboxApi.sendEmail(payload);
+        } else {
+          throw e;
+        }
+      }
 
       if (response.data?.success) {
         addToast(
@@ -202,9 +215,31 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           `✓ Email ${mode === 'reply' ? 'reply' : 'forward'} sent successfully via Brevo.`,
           'success'
         );
-        if (response.data.entry) {
-          onSendSuccess(response.data.entry);
-        }
+
+        const createdRecord: EmailMessageRecord = {
+          id: String(response.data.entry?.id || response.data.messageId || `sent_${Date.now()}`),
+          message_id: response.data.messageId || `msg_sent_${Date.now()}`,
+          mailbox_email: fromSender,
+          sender_name: 'Zenemoo',
+          sender_email: fromSender,
+          recipient_email: validTo.join(', '),
+          reply_to: fromSender,
+          subject,
+          body_text: cleanUserText,
+          body_html: fullHtml,
+          snippet: cleanUserText.substring(0, 160) || 'Sent email',
+          category: 'general',
+          is_read: true,
+          is_starred: false,
+          is_archived: false,
+          is_trashed: false,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+          attachments: [],
+        };
+
+        onSendSuccess(createdRecord);
         onClose();
       } else {
         setErrorMsg(response.data?.message || '✕ Failed to send email via Brevo.');
