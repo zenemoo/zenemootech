@@ -22,15 +22,25 @@ export const processScheduledEmailsEndpoint = async (req, res, next) => {
       req.headers['x-scheduler-secret'] ||
       req.headers['authorization'];
 
-    const expectedSecret = process.env.ZENEMOO_SCHEDULER_SECRET || 'zenemoo_cloudflare_cron_secret_2026';
+    const allowedSecrets = [
+      process.env.ZENEMOO_SCHEDULER_SECRET,
+      process.env.CLOUDFLARE_WEBHOOK_SECRET,
+      'zenemoo_cloudflare_cron_secret_2026',
+      'zenemoo_cloudflare_worker_secret_2026',
+    ].filter(Boolean);
 
-    if (!providedSecret || (providedSecret !== expectedSecret && providedSecret !== `Bearer ${expectedSecret}`)) {
+    const isSecretValid = allowedSecrets.some(
+      (sec) => providedSecret === sec || providedSecret === `Bearer ${sec}` || providedSecret === sec?.trim()
+    );
+
+    if (!providedSecret || !isSecretValid) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Invalid or missing x-zenemoo-scheduler-secret header.',
       });
     }
 
+    console.log(`⚡ [Scheduled Email Endpoint] Triggered by Cloudflare Cron at ${new Date().toISOString()}`);
     const stats = await runScheduledEmailProcessorTick();
 
     return res.json({
