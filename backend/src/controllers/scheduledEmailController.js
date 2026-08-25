@@ -1,6 +1,11 @@
 import { supabaseService } from '../services/supabaseService.js';
-import { sendMailViaBrevo } from '../services/emailService.js';
-import { parseRecipients, validateEmail, sanitizeHtml, encrypt, decrypt } from '../utils/emailUtils.js';
+import {
+  sendMailViaBrevo,
+  parseRecipients,
+  validateEmail,
+  sanitizeHtml,
+} from '../services/emailService.js';
+import { encrypt, decrypt } from '../services/encryptionService.js';
 import { runScheduledEmailProcessorTick } from '../services/scheduledEmailWorker.js';
 
 // In-memory fallback cache for high-resiliency background processing

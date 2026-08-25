@@ -1,8 +1,8 @@
 import { supabaseService } from './supabaseService.js';
-import { sendMailViaBrevo } from './emailService.js';
+import { sendMailViaBrevo, parseRecipients } from './emailService.js';
+import { encrypt, decrypt } from './encryptionService.js';
 import { memoryScheduledEmails } from '../controllers/scheduledEmailController.js';
 import { memoryHistory } from '../controllers/emailController.js';
-import { parseRecipients, encrypt, decrypt } from '../utils/emailUtils.js';
 
 let isProcessingTick = false;
 let workerIntervalHandle = null;
