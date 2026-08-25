@@ -464,6 +464,16 @@ export const talentRegistrationApi = {
     api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
 
+// Zenemoo Scheduled Email Engine API
+export const scheduledEmailApi = {
+  getScheduled: (params?: { status?: string }) => api.get('/emails/scheduled', { params }),
+  getScheduledById: (id: string) => api.get(`/emails/scheduled/${id}`),
+  createScheduled: (data: any) => api.post('/emails/scheduled', data),
+  updateScheduled: (id: string, data: any) => api.patch(`/emails/scheduled/${id}`, data),
+  cancelScheduled: (id: string) => api.post(`/emails/scheduled/${id}/cancel`),
+  retryScheduled: (id: string, data?: any) => api.post(`/emails/scheduled/${id}/retry`, data),
+};
+
 // AI Data Portfolio & Dataset Management API (Timeout set to 3 minutes for large audio/video file uploads)
 export const datasetApi = {
   getDatasets: (params?: { search?: string; category?: string; status?: string }) =>

@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { checkAndNotifyAppRelease } from './services/appReleaseNotifier.js';
 import { startBookingReminderScheduler } from './services/bookingReminderScheduler.js';
 import { checkGoogleMeetConfiguration } from './services/googleMeetService.js';
+import { startScheduledEmailWorker } from './services/scheduledEmailWorker.js';
 
 dotenv.config();
 
@@ -29,6 +30,13 @@ app.listen(PORT, async () => {
     startBookingReminderScheduler();
   } catch (err) {
     console.warn('[Booking Reminder Scheduler Startup Warning]:', err.message);
+  }
+
+  // Start Scheduled Email Processor Worker
+  try {
+    startScheduledEmailWorker(20000);
+  } catch (err) {
+    console.warn('[Scheduled Email Worker Startup Warning]:', err.message);
   }
 
   // Automatic App Release Notification Check
