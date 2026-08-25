@@ -157,6 +157,7 @@ app.use('/upload', uploadRoutes);
 app.use('/media', uploadRoutes);
 app.use('/ai', aiRoutes);
 app.use('/email', emailRoutes);
+app.use('/emails', emailInboxRoutes);
 app.use('/support', supportRoutes);
 
 // Global 404 Route Handler
