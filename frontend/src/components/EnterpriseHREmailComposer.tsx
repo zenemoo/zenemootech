@@ -40,6 +40,11 @@ import {
   Calendar,
 } from 'lucide-react';
 import { emailApi, scheduledEmailApi, userManagementApi } from '../services/api';
+import {
+  getDateTimeInTimezone,
+  parseLocalDateInTimezoneToUtc,
+  formatScheduledDateInTimezone,
+} from '../utils/timezoneUtils';
 
 interface EnterpriseHREmailComposerProps {
   showToast: (text: string, type: 'success' | 'error') => void;
@@ -365,16 +370,26 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       return;
     }
 
-    if (!scheduleDate || !scheduleTime) {
-      const future = new Date(Date.now() + 60 * 60 * 1000);
-      const dateStr = future.toISOString().split('T')[0];
-      const hours = String(future.getHours()).padStart(2, '0');
-      const mins = String(future.getMinutes()).padStart(2, '0');
+    if (!editingScheduledId || !scheduleDate || !scheduleTime) {
+      const initialFutureUtc = new Date(Date.now() + 5 * 60 * 1000);
+      const { dateStr, timeStr } = getDateTimeInTimezone(initialFutureUtc, scheduleTimezone);
       setScheduleDate(dateStr);
-      setScheduleTime(`${hours}:${mins}`);
+      setScheduleTime(timeStr);
     }
 
     setIsScheduleModalOpen(true);
+  };
+
+  const handleTimezoneChange = (newTz: string) => {
+    if (scheduleDate && scheduleTime) {
+      const utcDate = parseLocalDateInTimezoneToUtc(scheduleDate, scheduleTime, scheduleTimezone);
+      if (!isNaN(utcDate.getTime())) {
+        const { dateStr, timeStr } = getDateTimeInTimezone(utcDate, newTz);
+        setScheduleDate(dateStr);
+        setScheduleTime(timeStr);
+      }
+    }
+    setScheduleTimezone(newTz);
   };
 
   const handleConfirmSchedule = async () => {
@@ -383,8 +398,8 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       return;
     }
 
-    const scheduledIsoString = `${scheduleDate}T${scheduleTime}:00`;
-    const scheduledTimestamp = new Date(scheduledIsoString).getTime();
+    const scheduledUtcDate = parseLocalDateInTimezoneToUtc(scheduleDate, scheduleTime, scheduleTimezone);
+    const scheduledTimestamp = scheduledUtcDate.getTime();
     const now = Date.now();
 
     if (isNaN(scheduledTimestamp) || scheduledTimestamp <= now - 5000) {
@@ -413,7 +428,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       subject,
       html: currentContent,
       attachments: formattedAttachments,
-      scheduled_at: new Date(scheduledIsoString).toISOString(),
+      scheduled_at: scheduledUtcDate.toISOString(),
       timezone: scheduleTimezone,
     };
 
@@ -483,10 +498,14 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       setAttachments(restored);
     }
 
+    const itemTz = item.timezone || 'Asia/Kolkata';
+    setScheduleTimezone(itemTz);
+
     if (item.scheduled_at) {
-      const dt = new Date(item.scheduled_at);
-      setScheduleDate(dt.toISOString().split('T')[0]);
-      setScheduleTime(`${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`);
+      const utcDate = new Date(item.scheduled_at);
+      const { dateStr, timeStr } = getDateTimeInTimezone(utcDate, itemTz);
+      setScheduleDate(dateStr);
+      setScheduleTime(timeStr);
     }
     if (item.timezone) setScheduleTimezone(item.timezone);
 
@@ -2121,7 +2140,7 @@ ${customPara}
                   <input
                     type="date"
                     value={scheduleDate}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getDateTimeInTimezone(new Date(), scheduleTimezone).dateStr}
                     onChange={(e) => setScheduleDate(e.target.value)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-amber-300 font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
                   />
@@ -2147,7 +2166,7 @@ ${customPara}
                 </label>
                 <select
                   value={scheduleTimezone}
-                  onChange={(e) => setScheduleTimezone(e.target.value)}
+                  onChange={(e) => handleTimezoneChange(e.target.value)}
                   className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-200 font-bold focus:outline-none focus:border-amber-400 cursor-pointer appearance-none pr-8"
                 >
                   <option value="Asia/Kolkata" className="bg-[#090d16]">Asia/Kolkata (IST - UTC+05:30)</option>
@@ -2258,10 +2277,7 @@ ${customPara}
                 scheduledLogs.map((item) => {
                   const toDisplay = Array.isArray(item.to_emails) ? item.to_emails.join(', ') : item.to_emails;
                   const attCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
-                  const scheduledDateFormatted = new Date(item.scheduled_at).toLocaleString('en-US', {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  });
+                  const scheduledDateFormatted = formatScheduledDateInTimezone(item.scheduled_at, item.timezone || 'Asia/Kolkata');
 
                   let statusBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
                   if (item.status === 'sent') statusBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
