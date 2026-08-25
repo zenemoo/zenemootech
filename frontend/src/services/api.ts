@@ -362,6 +362,17 @@ export const emailInboxApi = {
     page?: number;
     limit?: number;
   }) => api.get('/emails/sent', { params }),
+  sendEmail: (payload: {
+    mode: 'reply' | 'forward' | 'new';
+    originalEmailId?: string;
+    from: string;
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    html: string;
+    text?: string;
+  }) => api.post('/emails/send', payload),
   getEmailById: (id: string) => api.get(`/emails/inbox/${id}`),
   updateEmailState: (
     id: string,

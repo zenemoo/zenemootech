@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { emailInboxApi } from '../services/api';
 import { AdminEmailSettingsModal } from './AdminEmailSettingsModal';
+import { EmailComposeModal } from './EmailComposeModal';
 
 export interface EmailMessageRecord {
   id: string;
@@ -263,6 +264,36 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+
+  // Compose Reply & Forward Modal State
+  const [isComposeOpen, setIsComposeOpen] = useState<boolean>(false);
+  const [composeMode, setComposeMode] = useState<'reply' | 'forward'>('reply');
+
+  const handleOpenReply = (email?: EmailMessageRecord) => {
+    const target = email || selectedEmail;
+    if (target) {
+      updateSelectedEmailId(target.id);
+      setComposeMode('reply');
+      setIsComposeOpen(true);
+    }
+  };
+
+  const handleOpenForward = (email?: EmailMessageRecord) => {
+    const target = email || selectedEmail;
+    if (target) {
+      updateSelectedEmailId(target.id);
+      setComposeMode('forward');
+      setIsComposeOpen(true);
+    }
+  };
+
+  const handleSendSuccess = (sentRecord: EmailMessageRecord) => {
+    const updated = [sentRecord, ...sentEmails];
+    setSentEmails(updated);
+    globalInboxCache.sentEmails = updated;
+    globalInboxCache.sentTotalCount = (globalInboxCache.sentTotalCount || 0) + 1;
+    setSentTotalCount(globalInboxCache.sentTotalCount);
+  };
 
   // Derived context for API params
   const activeMailbox = activeSidebarView.type === 'mailbox' ? activeSidebarView.value : 'all';
@@ -1639,14 +1670,14 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               <div className="p-4 border-t border-white/10 bg-[#070a11] flex items-center justify-between font-mono text-xs shrink-0 min-w-0 max-w-full gap-3 flex-wrap sm:flex-nowrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={() => addToast('Compose Reply', `Reply interface for ${selectedEmail.sender_email} initialized.`, 'info')}
+                    onClick={() => handleOpenReply(selectedEmail)}
                     className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20 shrink-0"
                   >
                     <Reply className="w-4 h-4" /> Reply
                   </button>
 
                   <button
-                    onClick={() => addToast('Forward Email', 'Forwarding composer initialized.', 'info')}
+                    onClick={() => handleOpenForward(selectedEmail)}
                     className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                   >
                     <Forward className="w-4 h-4" /> Forward
@@ -1675,6 +1706,18 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         onClose={() => setIsSettingsOpen(false)}
         addToast={addToast}
       />
+
+      {/* 4. EMAIL COMPOSE MODAL (REPLY & FORWARD) */}
+      {selectedEmail && (
+        <EmailComposeModal
+          isOpen={isComposeOpen}
+          onClose={() => setIsComposeOpen(false)}
+          mode={composeMode}
+          originalEmail={selectedEmail}
+          onSendSuccess={handleSendSuccess}
+          addToast={addToast}
+        />
+      )}
     </div>
   );
 };

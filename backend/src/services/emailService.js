@@ -294,7 +294,7 @@ export const normalizeAttachments = (attachments = []) => {
 /**
  * 4. Primary Delivery Method: Brevo HTTPS REST API v3
  */
-const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, subject, html, attachments }) => {
+const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
   console.log(`[${requestId}] 🌐 [Stage 1/2] Attempting Brevo HTTPS REST API v3 (Port 443)...`);
 
   const rawKey = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY;
@@ -350,6 +350,14 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
   }
   if (parsedBcc.length > 0) {
     payload.bcc = parsedBcc.map((email) => ({ email }));
+  }
+
+  if (headers && typeof headers === 'object') {
+    payload.headers = headers;
+  } else if (inReplyTo || references) {
+    payload.headers = {};
+    if (inReplyTo) payload.headers['In-Reply-To'] = inReplyTo;
+    if (references) payload.headers['References'] = references;
   }
 
   if (Array.isArray(attachments) && attachments.length > 0) {
@@ -418,7 +426,7 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
 /**
  * 5. Secondary Fallback Method: Nodemailer SMTP with Full Stage Handshake Tracing
  */
-const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, subject, html, attachments }) => {
+const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
   console.log(`[${requestId}] ⚡ [Stage 2/2] Attempting Nodemailer SMTP Fallback...`);
 
   const host = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
@@ -498,6 +506,9 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
       subject: subject || '(No Subject)',
       html: safeHtml,
       attachments: normalizedAttachments,
+      inReplyTo,
+      references,
+      headers,
     });
 
     const elapsedTimeMs = Date.now() - startTime;
@@ -533,7 +544,7 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
 /**
  * Master Dispatcher with Request ID Tracking & Stage Logs
  */
-export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, html, attachments }) => {
+export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const startTime = Date.now();
 
@@ -545,7 +556,7 @@ export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, h
 
   // 1. Attempt Primary REST API
   try {
-    const res = await sendViaBrevoRestApi({ requestId, sender, recipients, cc, bcc, subject, html, attachments });
+    const res = await sendViaBrevoRestApi({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
     console.log(`🎯 [${requestId}] Execution Finished. Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (err) {
@@ -555,7 +566,10 @@ export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, h
 
   // 2. Attempt SMTP Fallback ONLY if REST API fails
   try {
-    const res = await sendViaNodemailerSmtp({ requestId, sender, recipients, cc, bcc, subject, html, attachments });
+    const res = await sendViaNodemailerSmtp({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
+    console.log(`🎯 [${requestId}] Execution Finished (SMTP Fallback). Total Elapsed Time: ${Date.now() - startTime}ms`);
+    return res;
+  } catch (smtpError) {
     console.log(`🎯 [${requestId}] Execution Finished (SMTP Fallback). Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (smtpError) {

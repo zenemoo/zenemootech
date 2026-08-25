@@ -3,7 +3,8 @@ dotenv.config();
 
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
-import { decrypt } from '../services/encryptionService.js';
+import { encrypt, decrypt } from '../services/encryptionService.js';
+import { sendMailViaBrevo, parseRecipients, validateEmail, sanitizeHtml } from '../services/emailService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 
 const CLOUDFLARE_WEBHOOK_SECRET = process.env.CLOUDFLARE_WEBHOOK_SECRET || 'zenemoo_cloudflare_worker_secret_2026';
@@ -980,5 +981,169 @@ export const getSentEmails = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+/**
+ * POST /api/emails/send (also /api/emails/reply & /api/emails/forward)
+ * Unified Send / Reply / Forward Email handler via Brevo SMTP & REST API
+ */
+export const sendInboxEmail = async (req, res, next) => {
+  try {
+    const {
+      mode = 'new',
+      originalEmailId = null,
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      html,
+      text,
+      attachments = [],
+    } = req.body;
+
+    const allowedSenders = [
+      'contact@zenemoo.in',
+      'support@zenemoo.in',
+      'info@zenemoo.in',
+      'prem@zenemoo.in',
+      'hemanta@zenemoo.in',
+      'sangita@zenemoo.in',
+      'noreply@zenemoo.in',
+    ];
+
+    const fromSender = (from || 'contact@zenemoo.in').toLowerCase().trim();
+    if (!allowedSenders.includes(fromSender)) {
+      return res.status(400).json({
+        success: false,
+        message: `Unauthorized sender email address (${fromSender}). Must be a verified Zenemoo sender address.`,
+      });
+    }
+
+    const parsedTo = parseRecipients(to);
+    if (parsedTo.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide at least one valid recipient email address.',
+      });
+    }
+
+    const parsedCc = parseRecipients(cc);
+    const parsedBcc = parseRecipients(bcc);
+
+    if (!subject || (!html && !text)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subject and email message content are required.',
+      });
+    }
+
+    // Convert plain text to clean HTML if html is empty
+    let safeHtml = html ? sanitizeHtml(html) : '';
+    if (!safeHtml && text) {
+      const escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      safeHtml = `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #e2e8f0;">${escapedText}</div>`;
+    }
+
+    let inReplyTo = undefined;
+    let references = undefined;
+
+    // Load original email if originalEmailId provided
+    if (originalEmailId) {
+      let orig = inMemoryEmails.find((e) => e.id === originalEmailId || e.message_id === originalEmailId);
+      if (!orig) {
+        try {
+          orig = await supabaseService.selectOne('incoming_emails', 'id', originalEmailId);
+        } catch (_) {}
+      }
+
+      if (orig && orig.message_id) {
+        if (mode === 'reply') {
+          inReplyTo = orig.message_id;
+          references = orig.message_id;
+        }
+      }
+    }
+
+    // Dispatch via Brevo Service
+    const sendResult = await sendMailViaBrevo({
+      sender: fromSender,
+      recipients: parsedTo,
+      cc: parsedCc,
+      bcc: parsedBcc,
+      subject,
+      html: safeHtml,
+      attachments,
+      inReplyTo,
+      references,
+      headers: inReplyTo ? { 'In-Reply-To': inReplyTo, 'References': references } : undefined,
+    });
+
+    // Save Sent Record to DB & Memory History
+    const currentUserEmail = (req.user?.email || fromSender).toLowerCase();
+    const currentUserId = req.user?.id || req.user?.team_member_id || null;
+
+    const payload = {
+      user_id: currentUserId,
+      user_email: currentUserEmail,
+      sender: fromSender,
+      recipients: encrypt(parsedTo),
+      cc: encrypt(parsedCc),
+      bcc: encrypt(parsedBcc),
+      subject: encrypt(subject),
+      html: encrypt(safeHtml),
+      status: 'sent',
+      message_id: sendResult.messageId || `msg_sent_${Date.now()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let insertedRecord = null;
+    try {
+      insertedRecord = await supabaseService.insert('email_history', payload);
+    } catch (dbErr) {
+      delete payload.user_id;
+      delete payload.user_email;
+      try {
+        insertedRecord = await supabaseService.insert('email_history', payload);
+      } catch (_) {}
+    }
+
+    const createdRecord = {
+      id: String(insertedRecord?.id || sendResult.messageId || `sent_${Date.now()}`),
+      message_id: sendResult.messageId || payload.message_id,
+      mailbox_email: fromSender,
+      sender_name: 'Zenemoo',
+      sender_email: fromSender,
+      recipient_email: parsedTo.join(', '),
+      reply_to: fromSender,
+      subject,
+      body_text: text || safeHtml.replace(/<[^>]+>/g, ' ').trim(),
+      body_html: safeHtml,
+      snippet: (text || safeHtml.replace(/<[^>]+>/g, ' ')).substring(0, 160).trim(),
+      category: 'general',
+      is_read: true,
+      is_starred: false,
+      is_archived: false,
+      is_trashed: false,
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+      received_at: new Date().toISOString(),
+      attachments: Array.isArray(sendResult.attachmentsMeta) ? sendResult.attachmentsMeta : [],
+    };
+
+    return res.json({
+      success: true,
+      message: '✓ Email sent successfully via Brevo.',
+      messageId: sendResult.messageId,
+      entry: createdRecord,
+    });
+  } catch (err) {
+    console.error('Send Inbox Email Error:', err.message || err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || '✕ Failed to send email via Brevo infrastructure.',
+    });
   }
 };
