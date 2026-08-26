@@ -60,7 +60,8 @@ const executeAction = (action: string) => {
     if (path === '/subscribe' || path === '#subscribe') {
       window.location.hash = 'subscribe';
     } else if (path === '/unsubscribe' || path === '#unsubscribe') {
-      window.location.hash = 'unsubscribe';
+      window.history.pushState(null, '', '/unsubscribe');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     } else {
       window.location.hash = path.replace('/', '');
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -91,11 +92,11 @@ const ActionButtonsBar: React.FC<{
           key={i}
           type="button"
           onClick={() => {
-            if (btn.action.startsWith('sub:') && onSubAction) {
+            if ((btn.action.startsWith('sub:') || btn.action.startsWith('unsub:')) && onSubAction) {
               onSubAction(btn.action);
             } else {
               executeAction(btn.action);
-              if (!btn.action.startsWith('navigate:')) onClose();
+              onClose();
             }
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/30 text-cyan-300 hover:text-white hover:border-cyan-400 hover:bg-cyan-500/20 transition-all text-[11px] font-mono font-bold cursor-pointer shadow-sm active:scale-95"
@@ -192,6 +193,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
       );
     } else if (action.startsWith('navigate:')) {
       executeAction(action);
+      onClose();
     }
   };
 

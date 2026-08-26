@@ -177,7 +177,8 @@ export const ZenemooAiPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
       if (targetPath === '/subscribe' || targetPath === '#subscribe') {
         window.location.hash = 'subscribe';
       } else if (targetPath === '/unsubscribe' || targetPath === '#unsubscribe') {
-        window.location.hash = 'unsubscribe';
+        window.history.pushState(null, '', '/unsubscribe');
+        window.dispatchEvent(new PopStateEvent('popstate'));
       } else {
         window.location.pathname = targetPath;
       }
