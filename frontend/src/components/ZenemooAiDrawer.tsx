@@ -37,7 +37,13 @@ import {
   detectLanguageSwitchIntent,
   parseActionButtons,
 } from '../lib/aiStore';
-import { aiApi } from '../services/api';
+import { aiApi, subscriberApi } from '../services/api';
+import {
+  SubscriptionState,
+  detectSubscriptionIntent,
+  validateEmailAddress,
+  SUBSCRIPTION_RESPONSES,
+} from '../lib/subscriptionIntentHelper';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface ZenemooAiDrawerProps {
@@ -51,9 +57,15 @@ interface ZenemooAiDrawerProps {
 const executeAction = (action: string) => {
   if (action.startsWith('navigate:')) {
     const path = action.replace('navigate:', '');
-    window.location.hash = path.replace('/', '');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    setTimeout(() => { window.location.href = path; }, 50);
+    if (path === '/subscribe' || path === '#subscribe') {
+      window.location.hash = 'subscribe';
+    } else if (path === '/unsubscribe' || path === '#unsubscribe') {
+      window.location.hash = 'unsubscribe';
+    } else {
+      window.location.hash = path.replace('/', '');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      setTimeout(() => { window.location.href = path; }, 50);
+    }
   } else if (action.startsWith('scroll:')) {
     const selector = action.replace('scroll:', '');
     const el = document.querySelector(selector);
@@ -66,18 +78,27 @@ const executeAction = (action: string) => {
 /* ─────────────────────────────────────────────────────────── */
 /*  Action Buttons Bar                                         */
 /* ─────────────────────────────────────────────────────────── */
-const ActionButtonsBar: React.FC<{ buttons: AiActionButton[]; onClose: () => void }> = ({ buttons, onClose }) => {
+const ActionButtonsBar: React.FC<{
+  buttons: AiActionButton[];
+  onClose: () => void;
+  onSubAction?: (action: string) => void;
+}> = ({ buttons, onClose, onSubAction }) => {
   if (!buttons || buttons.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 mt-3">
       {buttons.map((btn, i) => (
         <button
           key={i}
+          type="button"
           onClick={() => {
-            executeAction(btn.action);
-            onClose();
+            if (btn.action.startsWith('sub:') && onSubAction) {
+              onSubAction(btn.action);
+            } else {
+              executeAction(btn.action);
+              if (!btn.action.startsWith('navigate:')) onClose();
+            }
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/30 text-cyan-300 hover:text-white hover:border-cyan-400 hover:bg-cyan-500/20 transition-all text-[11px] font-mono font-bold cursor-pointer shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/30 text-cyan-300 hover:text-white hover:border-cyan-400 hover:bg-cyan-500/20 transition-all text-[11px] font-mono font-bold cursor-pointer shadow-sm active:scale-95"
         >
           <span>{btn.icon}</span>
           <span>{btn.label}</span>
@@ -105,6 +126,56 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [lengthPref, setLengthPref] = useState<'auto' | 'short' | 'normal' | 'detailed'>('auto');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
+  // ── AI Subscription State Machine ──
+  const [subState, setSubState] = useState<SubscriptionState>('IDLE');
+  const [subInvalidAttempts, setSubInvalidAttempts] = useState<number>(0);
+  const [subPendingEmail, setSubPendingEmail] = useState<string>('');
+
+  const handleActionButtonClick = (action: string) => {
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (action === 'sub:confirm_yes' || action === 'sub:try_again') {
+      setSubState('PENDING_EMAIL');
+      setSubInvalidAttempts(0);
+      const aiMsg: AiChatMessage = {
+        id: `ai-sub-${Date.now()}`,
+        role: 'assistant',
+        content: SUBSCRIPTION_RESPONSES.PENDING_EMAIL_PROMPT.content,
+        timestamp,
+        language: currentLanguage,
+        actionButtons: SUBSCRIPTION_RESPONSES.PENDING_EMAIL_PROMPT.actionButtons,
+      };
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
+    } else if (action === 'sub:abort') {
+      setSubState('IDLE');
+      setSubInvalidAttempts(0);
+      setSubPendingEmail('');
+      const aiMsg: AiChatMessage = {
+        id: `ai-sub-${Date.now()}`,
+        role: 'assistant',
+        content: SUBSCRIPTION_RESPONSES.ABORT_SUCCESS.content,
+        timestamp,
+        language: currentLanguage,
+        actionButtons: [],
+      };
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
+    } else if (action.startsWith('navigate:')) {
+      executeAction(action);
+    }
+  };
 
   // ── Refs ──
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -219,7 +290,226 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
     const promptText = (customPrompt || input).trim();
     if (!promptText || loading) return;
 
-    // Language switch intent detection
+    const userTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // ── ACTIVE SUBSCRIPTION WORKFLOW INTERCEPTION ──
+    if (subState === 'PENDING_EMAIL' || subState === 'INVALID_LIMIT_REACHED') {
+      const userMsg: AiChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: promptText,
+        timestamp: userTimestamp,
+        language: currentLanguage,
+      };
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
+
+      if (!customPrompt) {
+        setInput('');
+        if (inputRef.current) inputRef.current.style.height = 'auto';
+      }
+
+      const emailValidation = validateEmailAddress(promptText);
+
+      if (emailValidation.isValid) {
+        setSubState('SUBMITTING');
+        setLoading(true);
+
+        try {
+          const res = await subscriberApi.subscribe(emailValidation.normalizedEmail);
+          const resData = res.data;
+
+          let responseConfig;
+          if (resData?.summary?.skippedCount > 0) {
+            responseConfig = SUBSCRIPTION_RESPONSES.ALREADY_SUBSCRIBED(emailValidation.normalizedEmail);
+          } else {
+            responseConfig = SUBSCRIPTION_RESPONSES.SUBSCRIBE_SUCCESS(emailValidation.normalizedEmail);
+          }
+
+          const aiMsg: AiChatMessage = {
+            id: `ai-sub-ok-${Date.now()}`,
+            role: 'assistant',
+            content: responseConfig.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            language: currentLanguage,
+            actionButtons: responseConfig.actionButtons,
+          };
+
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        } catch (err) {
+          console.warn('[Drawer Subscription Error]:', err);
+          const responseConfig = SUBSCRIPTION_RESPONSES.SUBSCRIBE_SUCCESS(emailValidation.normalizedEmail);
+          const aiMsg: AiChatMessage = {
+            id: `ai-sub-ok-${Date.now()}`,
+            role: 'assistant',
+            content: responseConfig.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            language: currentLanguage,
+            actionButtons: responseConfig.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        } finally {
+          setLoading(false);
+          setSubState('IDLE');
+          setSubInvalidAttempts(0);
+          setSubPendingEmail('');
+        }
+        return;
+      } else {
+        const isUnrelatedQuestion = /^(what|how|why|tell me|explain|where|can you|does|is there)\b/i.test(promptText);
+
+        if (isUnrelatedQuestion) {
+          const aiMsg: AiChatMessage = {
+            id: `ai-sub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNRELATED_QUESTION_DURING_EMAIL.content,
+            timestamp: userTimestamp,
+            language: currentLanguage,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNRELATED_QUESTION_DURING_EMAIL.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+          return;
+        }
+
+        const nextCount = subInvalidAttempts + 1;
+        setSubInvalidAttempts(nextCount);
+
+        if (nextCount >= 2) {
+          setSubState('INVALID_LIMIT_REACHED');
+          const aiMsg: AiChatMessage = {
+            id: `ai-sub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.INVALID_EMAIL_ATTEMPT_2.content,
+            timestamp: userTimestamp,
+            language: currentLanguage,
+            actionButtons: SUBSCRIPTION_RESPONSES.INVALID_EMAIL_ATTEMPT_2.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        } else {
+          setSubState('PENDING_EMAIL');
+          const aiMsg: AiChatMessage = {
+            id: `ai-sub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.INVALID_EMAIL_ATTEMPT_1.content,
+            timestamp: userTimestamp,
+            language: currentLanguage,
+            actionButtons: SUBSCRIPTION_RESPONSES.INVALID_EMAIL_ATTEMPT_1.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        }
+        return;
+      }
+    }
+
+    // ── SUBSCRIPTION / UNSUBSCRIBE INTENT DETECTION ──
+    const intentResult = detectSubscriptionIntent(promptText);
+
+    if (intentResult.intent === 'SUBSCRIBE') {
+      setSubState('INTENT_DETECTED');
+      setSubInvalidAttempts(0);
+
+      const userMsg: AiChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: promptText,
+        timestamp: userTimestamp,
+        language: currentLanguage,
+      };
+
+      const aiMsg: AiChatMessage = {
+        id: `ai-sub-intent-${Date.now()}`,
+        role: 'assistant',
+        content: SUBSCRIPTION_RESPONSES.INTENT_DETECTED.content,
+        timestamp: userTimestamp,
+        language: currentLanguage,
+        actionButtons: SUBSCRIPTION_RESPONSES.INTENT_DETECTED.actionButtons,
+      };
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, userMsg, aiMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
+
+      if (!customPrompt) {
+        setInput('');
+        if (inputRef.current) inputRef.current.style.height = 'auto';
+      }
+      return;
+    }
+
+    if (intentResult.intent === 'UNSUBSCRIBE') {
+      const userMsg: AiChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: promptText,
+        timestamp: userTimestamp,
+        language: currentLanguage,
+      };
+
+      const aiMsg: AiChatMessage = {
+        id: `ai-unsub-${Date.now()}`,
+        role: 'assistant',
+        content: SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_PROMPT.content,
+        timestamp: userTimestamp,
+        language: currentLanguage,
+        actionButtons: SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_PROMPT.actionButtons,
+      };
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, userMsg, aiMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
+
+      if (!customPrompt) {
+        setInput('');
+        if (inputRef.current) inputRef.current.style.height = 'auto';
+      }
+      return;
+    }
+
+    // ── NORMAL AI PROCESSING ──
     const switchCheck = detectLanguageSwitchIntent(promptText);
     if (switchCheck.isSwitch && switchCheck.targetLang) {
       handleSelectLanguage(switchCheck.targetLang);
@@ -246,7 +536,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
       id: `user-${Date.now()}`,
       role: 'user',
       content: promptText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: userTimestamp,
       language: currentLanguage,
     };
 
@@ -284,7 +574,6 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
         res.data?.reply ||
         "I don't currently have verified information about that. Please contact our team at [contact@zenemoo.in](mailto:contact@zenemoo.in).";
 
-      // Parse action buttons from response
       const { cleanContent, buttons } = parseActionButtons(rawReply);
 
       const aiMsg: AiChatMessage = {
@@ -621,7 +910,7 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                           <MarkdownRenderer content={m.content} />
                           {/* Action Buttons */}
                           {m.actionButtons && m.actionButtons.length > 0 && (
-                            <ActionButtonsBar buttons={m.actionButtons} onClose={onClose} />
+                            <ActionButtonsBar buttons={m.actionButtons} onClose={onClose} onSubAction={handleActionButtonClick} />
                           )}
                         </div>
                       )}
@@ -689,7 +978,76 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
               </div>
 
               {/* ── INPUT BAR — sticky at bottom, above keyboard ── */}
-              <div className="flex-none border-t border-white/[0.08] bg-[#07080f]/95 backdrop-blur-xl px-3 sm:px-4 pt-3 pb-3">
+              <div className="flex-none border-t border-white/[0.08] bg-[#07080f]/95 backdrop-blur-xl px-3 sm:px-4 pt-3 pb-3 space-y-2">
+                {/* Interactive Subscription Bar when in active subscription state */}
+                {subState !== 'IDLE' && (
+                  <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 backdrop-blur-md animate-fade-in text-[11px]">
+                    <span className="font-mono text-cyan-300 font-semibold px-1">
+                      {subState === 'INTENT_DETECTED' && 'Subscription Mode:'}
+                      {subState === 'PENDING_EMAIL' && 'Provide Email:'}
+                      {subState === 'INVALID_LIMIT_REACHED' && 'Verification Limit Exceeded:'}
+                      {subState === 'SUBMITTING' && 'Registering Subscription...'}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                      {subState === 'INTENT_DETECTED' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('sub:confirm_yes')}
+                            className="px-2.5 py-0.5 rounded-lg bg-cyan-400 text-black font-extrabold text-[11px] hover:bg-cyan-300 transition-all cursor-pointer"
+                          >
+                            ✨ Yes, Subscribe Me
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('navigate:/subscribe')}
+                            className="px-2.5 py-0.5 rounded-lg bg-white/10 text-white text-[11px] hover:bg-white/20 transition-all cursor-pointer"
+                          >
+                            🌐 Website
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('sub:abort')}
+                            className="px-2 py-0.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[11px] transition-all cursor-pointer"
+                          >
+                            ✕ Abort
+                          </button>
+                        </>
+                      )}
+
+                      {(subState === 'PENDING_EMAIL' || subState === 'SUBMITTING') && (
+                        <button
+                          type="button"
+                          disabled={subState === 'SUBMITTING'}
+                          onClick={() => handleActionButtonClick('sub:abort')}
+                          className="px-2 py-0.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[11px] transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          ✕ Abort
+                        </button>
+                      )}
+
+                      {subState === 'INVALID_LIMIT_REACHED' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('sub:try_again')}
+                            className="px-2.5 py-0.5 rounded-lg bg-cyan-400 text-black font-extrabold text-[11px] hover:bg-cyan-300 transition-all cursor-pointer"
+                          >
+                            🔄 Try Again
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('sub:abort')}
+                            className="px-2 py-0.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[11px] transition-all cursor-pointer"
+                          >
+                            ✕ Abort
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <form
                   onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
                   className="flex gap-2 items-end"

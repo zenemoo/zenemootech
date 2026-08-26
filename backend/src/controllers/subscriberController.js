@@ -104,6 +104,15 @@ export const subscribeNewsletter = async (req, res, next) => {
         if (saved) savedRecords.push(saved);
       } catch (insertErr) {
         console.warn(`[Bulk subscriber insert note for ${newEmail}]:`, insertErr.message);
+        if (
+          insertErr.message?.includes('duplicate key') ||
+          insertErr.code === '23505' ||
+          insertErr.message?.includes('subscribers_email_key')
+        ) {
+          if (!alreadySubscribedEmails.includes(newEmail)) {
+            alreadySubscribedEmails.push(newEmail);
+          }
+        }
       }
     }
 
