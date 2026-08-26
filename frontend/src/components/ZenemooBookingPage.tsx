@@ -20,6 +20,7 @@ import {
   X,
   Check,
   RefreshCw,
+  Info,
 } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { TurnstileWidget } from './TurnstileWidget';
@@ -74,10 +75,315 @@ export const getDateStringInTimezone = (date: Date, tz: string = 'Asia/Kolkata')
   }
 };
 
+/**
+ * Format live clock time with seconds according to 12H/24H format and target timezone
+ */
+export const formatLiveClock = (dateObj: Date, format: '12H' | '24H', tz: string): string => {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: format === '12H',
+    }).format(dateObj);
+  } catch (_) {
+    return dateObj.toLocaleTimeString();
+  }
+};
+
+/**
+ * Format digital time into main HH:MM:SS and period AM/PM parts
+ */
+export const formatDigitalTimeParts = (dateObj: Date, format: '12H' | '24H', tz: string) => {
+  try {
+    const formatted = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: format === '12H',
+    }).format(dateObj);
+
+    if (format === '12H') {
+      const parts = formatted.split(' ');
+      return {
+        timeMain: parts[0] || formatted,
+        timePeriod: parts[1] || '',
+      };
+    }
+    return {
+      timeMain: formatted,
+      timePeriod: '',
+    };
+  } catch (_) {
+    return { timeMain: dateObj.toLocaleTimeString(), timePeriod: '' };
+  }
+};
+
+/**
+ * Extract timezone metadata (abbreviation, formatted date, UTC offset, hours/minutes/seconds)
+ */
+export const getTimezoneMetadata = (dateObj: Date, tz: string) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'short',
+    }).formatToParts(dateObj);
+    const abbrPart = parts.find((p) => p.type === 'timeZoneName');
+    const abbr = abbrPart ? abbrPart.value : tz.split('/')[1] || tz;
+
+    const dateStr = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(dateObj);
+
+    const tzDateStr = dateObj.toLocaleString('en-US', { timeZone: tz });
+    const utcDateStr = dateObj.toLocaleString('en-US', { timeZone: 'UTC' });
+    const diffMs = new Date(tzDateStr).getTime() - new Date(utcDateStr).getTime();
+    const totalMins = Math.round(diffMs / 60000);
+    const sign = totalMins >= 0 ? '+' : '-';
+    const absMins = Math.abs(totalMins);
+    const offsetHours = String(Math.floor(absMins / 60)).padStart(2, '0');
+    const offsetMins = String(absMins % 60).padStart(2, '0');
+    const utcOffset = `UTC ${sign}${offsetHours}:${offsetMins}`;
+
+    const localTimeParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    }).formatToParts(dateObj);
+
+    const h = parseInt(localTimeParts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const m = parseInt(localTimeParts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const s = parseInt(localTimeParts.find((p) => p.type === 'second')?.value || '0', 10);
+
+    return { abbr, dateStr, utcOffset, h, m, s };
+  } catch (_) {
+    return { abbr: 'TZ', dateStr: '', utcOffset: 'UTC +00:00', h: 0, m: 0, s: 0 };
+  }
+};
+
+/**
+ * Format sunrise / sunset times for 12H vs 24H mode
+ */
+export const formatSunTime = (time12: string, format: '12H' | '24H') => {
+  if (format === '12H') return time12;
+  const [time, period] = time12.split(' ');
+  if (!time || !period) return time12;
+  const [hStr, mStr] = time.split(':');
+  let h = parseInt(hStr, 10);
+  if (period === 'PM' && h < 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${mStr}`;
+};
+
+/**
+ * Animated Dot Analog Clock SVG Accent
+ */
+export const AnalogDotClock: React.FC<{ h: number; m: number; s: number; sizeClass?: string }> = ({
+  h,
+  m,
+  s,
+  sizeClass = 'w-10 h-10 sm:w-11 sm:h-11',
+}) => {
+  const hourAngle = ((h % 12) + m / 60) * 30;
+  const minuteAngle = (m + s / 60) * 6;
+  const secondAngle = s * 6;
+
+  const dots = Array.from({ length: 12 }).map((_, i) => {
+    const angleRad = (i * 30 * Math.PI) / 180;
+    const cx = 24 + 18 * Math.sin(angleRad);
+    const cy = 24 - 18 * Math.cos(angleRad);
+    return { cx, cy, isMajor: i % 3 === 0 };
+  });
+
+  return (
+    <svg viewBox="0 0 48 48" className={`${sizeClass} shrink-0 select-none`}>
+      {dots.map((dot, idx) => (
+        <circle
+          key={idx}
+          cx={dot.cx}
+          cy={dot.cy}
+          r={dot.isMajor ? 1.5 : 0.8}
+          className={dot.isMajor ? 'fill-cyan-400' : 'fill-slate-600'}
+        />
+      ))}
+      <line
+        x1="24"
+        y1="24"
+        x2="24"
+        y2="13"
+        stroke="#06b6d4"
+        strokeWidth="2"
+        strokeLinecap="round"
+        transform={`rotate(${hourAngle} 24 24)`}
+      />
+      <line
+        x1="24"
+        y1="24"
+        x2="24"
+        y2="9"
+        stroke="#38bdf8"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        transform={`rotate(${minuteAngle} 24 24)`}
+      />
+      <line
+        x1="24"
+        y1="24"
+        x2="24"
+        y2="7"
+        stroke="#f43f5e"
+        strokeWidth="0.75"
+        strokeLinecap="round"
+        transform={`rotate(${secondAngle} 24 24)`}
+      />
+      <circle cx="24" cy="24" r="1.5" className="fill-white" />
+    </svg>
+  );
+};
+
+export interface WorldClockCity {
+  name: string;
+  timezone: string;
+  flag: string;
+  sunrise: string;
+  sunset: string;
+  defaultAbbr: string;
+}
+
+export const WORLD_CLOCK_CITIES: WorldClockCity[] = [
+  { name: 'India', timezone: 'Asia/Kolkata', flag: '🇮🇳', sunrise: '06:05 AM', sunset: '06:40 PM', defaultAbbr: 'IST' },
+  { name: 'London', timezone: 'Europe/London', flag: '🇬🇧', sunrise: '05:55 AM', sunset: '08:05 PM', defaultAbbr: 'BST' },
+  { name: 'New York', timezone: 'America/New_York', flag: '🇺🇸', sunrise: '06:15 AM', sunset: '07:45 PM', defaultAbbr: 'EDT' },
+  { name: 'Dubai', timezone: 'Asia/Dubai', flag: '🇦🇪', sunrise: '05:50 AM', sunset: '06:45 PM', defaultAbbr: 'GST' },
+];
+
+/**
+ * Reusable World Clock Section Component
+ */
+export const WorldClockSection: React.FC<{
+  now: Date;
+  timeFormat: '12H' | '24H';
+}> = ({ now, timeFormat }) => {
+  return (
+    <div className="pt-4 border-t border-white/10 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold font-mono text-white tracking-wider uppercase flex items-center gap-1.5">
+          <Globe className="w-3.5 h-3.5 text-cyan-400" /> World Clock
+        </span>
+        <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" /> LIVE
+        </span>
+      </div>
+
+      {/* 4 Rich Cards Side-by-Side Left-to-Right */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        {WORLD_CLOCK_CITIES.map((city) => {
+          const meta = getTimezoneMetadata(now, city.timezone);
+          const { timeMain, timePeriod } = formatDigitalTimeParts(now, timeFormat, city.timezone);
+
+          return (
+            <div
+              key={city.timezone}
+              className="bg-[#070a11]/95 border border-cyan-500/30 hover:border-cyan-400/60 rounded-xl p-2.5 font-mono shadow-md shadow-black/40 space-y-1.5 transition-all flex flex-col justify-between"
+            >
+              {/* Top Row: Flag, Name & LIVE Dot */}
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="text-sm leading-none shrink-0">{city.flag}</span>
+                  <span className="text-[11px] font-bold text-white font-display truncate">
+                    {city.name}
+                  </span>
+                </div>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Live Clock" />
+              </div>
+
+              {/* Digital Time & Mini Analog Clock Row */}
+              <div className="flex items-center justify-between gap-1 pt-0.5">
+                <div className="flex items-baseline gap-0.5 min-w-0">
+                  <span className="text-xs font-extrabold text-cyan-400 font-mono tracking-tight leading-none">
+                    {timeMain}
+                  </span>
+                  {timePeriod && (
+                    <span className="text-[8.5px] font-bold text-slate-300 font-mono uppercase">
+                      {timePeriod}
+                    </span>
+                  )}
+                </div>
+                {/* Mini Analog Dot Accent Clock */}
+                <AnalogDotClock h={meta.h} m={meta.m} s={meta.s} sizeClass="w-6 h-6 shrink-0" />
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-white/10 my-0.5" />
+
+              {/* Extra Info: Abbr & UTC Offset */}
+              <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono gap-1">
+                <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-bold uppercase text-[8px]">
+                  {meta.abbr || city.defaultAbbr}
+                </span>
+                <span className="truncate text-[8.5px] font-medium text-slate-400">
+                  {meta.utcOffset}
+                </span>
+              </div>
+
+              {/* Sunrise & Sunset Row */}
+              <div className="flex items-center justify-between text-[8.5px] text-slate-400 font-mono pt-0.5">
+                <span className="text-amber-300/90 flex items-center gap-0.5">
+                  🌅 {formatSunTime(city.sunrise, timeFormat)}
+                </span>
+                <span className="text-orange-400/90 flex items-center gap-0.5">
+                  🌇 {formatSunTime(city.sunset, timeFormat)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Format slot time according to 12H or 24H mode in target timezone
+ */
+export const formatSlotLabel = (isoString: string, format: '12H' | '24H', tz: string): string => {
+  try {
+    const d = new Date(isoString);
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: format === '12H',
+    }).format(d);
+  } catch (_) {
+    return isoString;
+  }
+};
+
 export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackToHome, onOpenAiDrawer }) => {
-  // AI Drawer state
+  // AI Drawer & Timezone state
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState<boolean>(false);
   const [timezone, setTimezone] = useState<string>('Asia/Kolkata');
+  const [timeFormat, setTimeFormat] = useState<'12H' | '24H'>('12H');
+  const [now, setNow] = useState<Date>(() => new Date());
+  const [autoDateNotice, setAutoDateNotice] = useState<string>('');
+  const [activeClockCityIndex, setActiveClockCityIndex] = useState<number>(0);
+
+  // 1-second live clock ticker
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Compute Today's YYYY-MM-DD in the active timezone
   const todayStr = useMemo(() => {
@@ -177,7 +483,39 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
     return () => window.removeEventListener('popstate', syncAndValidateUrlState);
   }, [syncAndValidateUrlState]);
 
-  // Fetch available slots from backend with diagnostic logging
+  // Helper to find the next date with at least 1 valid bookable slot (resource available + 2h buffer)
+  const findNextAvailableDate = useCallback(async (startDate: string, activeTz: string) => {
+    const parts = startDate.split('-').map(Number);
+    const startDateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+
+    for (let offset = 1; offset <= 30; offset++) {
+      const checkD = new Date(startDateObj);
+      checkD.setDate(checkD.getDate() + offset);
+      const nextDateStr = getDateStringInTimezone(checkD, activeTz);
+
+      try {
+        const res = await bookingApi.getAvailability(nextDateStr, activeTz);
+        if (res.data?.success && Array.isArray(res.data.availableSlots)) {
+          const thresholdMs = Date.now() + 2 * 60 * 60 * 1000;
+          const validSlots = res.data.availableSlots.filter((slot: AvailableSlot) => {
+            const slotMs = new Date(slot.iso).getTime();
+            return slot.available && slotMs >= thresholdMs;
+          });
+
+          if (validSlots.length > 0) {
+            setSelectedDate(nextDateStr);
+            setCurrentMonthDate(new Date(checkD.getFullYear(), checkD.getMonth(), 1));
+            setAutoDateNotice('No more bookable times today — showing the next available date.');
+            return;
+          }
+        }
+      } catch (_) {
+        // Continue checking next day
+      }
+    }
+  }, []);
+
+  // Fetch available slots from backend with diagnostic logging and auto-advance logic
   const fetchSlots = useCallback((date: string, tz: string) => {
     const currentToday = getTodayDateString(tz);
 
@@ -197,7 +535,21 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
       .getAvailability(date, tz)
       .then((res) => {
         if (res.data?.success) {
-          setAvailableSlots(res.data.availableSlots || []);
+          const slots: AvailableSlot[] = res.data.availableSlots || [];
+          setAvailableSlots(slots);
+
+          // Check if today has zero valid bookable slots (resource available + 2h lead buffer)
+          if (date === currentToday) {
+            const thresholdMs = Date.now() + 2 * 60 * 60 * 1000;
+            const validCount = slots.filter((s) => {
+              const slotTime = new Date(s.iso).getTime();
+              return s.available && slotTime >= thresholdMs;
+            }).length;
+
+            if (validCount === 0) {
+              findNextAvailableDate(date, tz);
+            }
+          }
         } else {
           setSlotFetchError('Unable to load available times. Please check your connection and try again.');
         }
@@ -209,11 +561,12 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
       .finally(() => {
         setLoadingSlots(false);
       });
-  }, []);
+  }, [findNextAvailableDate]);
 
   useEffect(() => {
     fetchSlots(selectedDate, timezone);
   }, [selectedDate, timezone, fetchSlots]);
+
 
   // Sync URL when a valid slot is selected
   const handleSelectSlot = (slotIso: string) => {
@@ -376,12 +729,23 @@ END:VCALENDAR`;
     const timeStr = d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true,
+      hour12: timeFormat === '12H',
       timeZone: timezone,
     });
 
     return { dateStr, timeStr };
-  }, [selectedSlotIso, timezone]);
+  }, [selectedSlotIso, timezone, timeFormat]);
+
+  // World clock cities definition
+  const worldClockCities = useMemo(
+    () => [
+      { name: 'India', timezone: 'Asia/Kolkata', flag: '🇮🇳' },
+      { name: 'London', timezone: 'Europe/London', flag: '🇬🇧' },
+      { name: 'New York', timezone: 'America/New_York', flag: '🇺🇸' },
+      { name: 'Dubai', timezone: 'Asia/Dubai', flag: '🇦🇪' },
+    ],
+    []
+  );
 
   const handleOpenAi = () => {
     if (onOpenAiDrawer) {
@@ -600,7 +964,7 @@ END:VCALENDAR`;
                 {!selectedSlotIso ? (
                   /* STEP 1: CALENDAR & SLOTS SELECTOR */
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8">
-                    {/* CALENDAR (LEFT / CENTER) */}
+                    {/* CENTER COLUMN: CALENDAR & TIMEZONE (DESKTOP: TOP LEFT/CENTER, MOBILE: FIRST) */}
                     <div className="md:col-span-7 space-y-5">
                       <div className="flex items-center justify-between">
                         <h3 className="text-xs sm:text-sm font-bold font-mono text-white flex items-center gap-2">
@@ -650,6 +1014,7 @@ END:VCALENDAR`;
                               onClick={() => {
                                 if (!cell.isPast) {
                                   setSelectedDate(cell.dateStr);
+                                  setAutoDateNotice('');
                                 }
                               }}
                               className={`h-9 sm:h-10 rounded-xl font-mono text-xs font-bold transition-all relative flex flex-col items-center justify-center ${
@@ -671,47 +1036,105 @@ END:VCALENDAR`;
                         })}
                       </div>
 
-                      {/* Timezone Selector */}
-                      <div className="pt-3 border-t border-white/5 flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-slate-400 flex items-center gap-1.5">
-                          <Globe className="w-3.5 h-3.5 text-cyan-400" /> Timezone:
-                        </span>
-                        <select
-                          value={timezone}
-                          onChange={(e) => setTimezone(e.target.value)}
-                          className="px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-[11px] focus:outline-none focus:border-cyan-400 font-mono cursor-pointer"
-                        >
-                          <option value="Asia/Kolkata" className="bg-[#0b0f19] text-white">
-                            Asia/Kolkata (IST +5:30)
-                          </option>
-                          <option value="UTC" className="bg-[#0b0f19] text-white">
-                            UTC (GMT +0:00)
-                          </option>
-                          <option value="America/New_York" className="bg-[#0b0f19] text-white">
-                            America/New_York (EST)
-                          </option>
-                          <option value="Europe/London" className="bg-[#0b0f19] text-white">
-                            Europe/London (BST)
-                          </option>
-                        </select>
+                      {/* Timezone Selector & Live Current Time */}
+                      <div className="pt-3 border-t border-white/5 space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+                          <span className="text-slate-400 flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-cyan-400" /> Timezone:
+                          </span>
+                          <select
+                            value={timezone}
+                            onChange={(e) => {
+                              setTimezone(e.target.value);
+                              setAutoDateNotice('');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-[11px] focus:outline-none focus:border-cyan-400 font-mono cursor-pointer"
+                          >
+                            <option value="Asia/Kolkata" className="bg-[#0b0f19] text-white">
+                              Asia/Kolkata (IST +5:30)
+                            </option>
+                            <option value="UTC" className="bg-[#0b0f19] text-white">
+                              UTC (GMT +0:00)
+                            </option>
+                            <option value="America/New_York" className="bg-[#0b0f19] text-white">
+                              America/New_York (EST)
+                            </option>
+                            <option value="Europe/London" className="bg-[#0b0f19] text-white">
+                              Europe/London (BST)
+                            </option>
+                          </select>
+                        </div>
+
+                        {/* Live Current Time Indicator */}
+                        <div className="flex items-center justify-between text-[11px] font-mono bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                          <span className="text-slate-400 flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" /> Current Time ({timezone}):
+                          </span>
+                          <span className="font-bold text-cyan-300 tracking-wider">
+                            {formatLiveClock(now, timeFormat, timezone)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* DESKTOP WORLD CLOCK (Visible only on md: screens and above, directly under Calendar) */}
+                      <div className="hidden md:block">
+                        <WorldClockSection now={now} timeFormat={timeFormat} />
                       </div>
                     </div>
 
-                    {/* TIME SLOTS (RIGHT SIDE) */}
+                    {/* RIGHT COLUMN: AVAILABLE SLOTS (DESKTOP: TOP RIGHT ALIGNED WITH CALENDAR, MOBILE: DIRECTLY AFTER CALENDAR) */}
                     <div className="md:col-span-5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs sm:text-sm font-bold font-mono text-white flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-cyan-400" /> Available Slots
-                        </h3>
-                        <span className="text-[11px] font-mono text-slate-400 font-semibold">
-                          {selectedDate
-                            ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })
-                            : ''}
-                        </span>
+                      {/* Header with Date and 12H / 24H Toggle */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+                        <div>
+                          <h3 className="text-xs sm:text-sm font-bold font-mono text-white flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-cyan-400" /> Available Slots
+                          </h3>
+                          <span className="text-[11px] font-mono text-slate-400 font-semibold block sm:inline">
+                            {selectedDate
+                              ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })
+                              : ''}
+                          </span>
+                        </div>
+
+                        {/* 12H / 24H Segmented Control Toggle */}
+                        <div className="flex items-center gap-1 bg-white/[0.04] p-1 rounded-xl border border-white/10 text-[10px] font-mono font-bold shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setTimeFormat('12H')}
+                            className={`px-2 py-0.5 rounded-lg transition-all cursor-pointer ${
+                              timeFormat === '12H'
+                                ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-extrabold'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            12H
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTimeFormat('24H')}
+                            className={`px-2.5 py-0.5 rounded-lg transition-all cursor-pointer ${
+                              timeFormat === '24H'
+                                ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-extrabold'
+                                : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            24H
+                          </button>
+                        </div>
                       </div>
+
+                      {/* Auto Date Advance Informational Notice */}
+                      {autoDateNotice && (
+                        <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[11px] flex items-start sm:items-center gap-2 animate-fade-in">
+                          <Info className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5 sm:mt-0" />
+                          <span>{autoDateNotice}</span>
+                        </div>
+                      )}
 
                       {loadingSlots ? (
                         <div className="h-64 flex items-center justify-center text-slate-400 font-mono text-xs">
@@ -730,6 +1153,7 @@ END:VCALENDAR`;
                             Please check your connection and try again.
                           </p>
                           <button
+                            type="button"
                             onClick={() => fetchSlots(selectedDate, timezone)}
                             className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex items-center justify-center gap-1.5 mx-auto cursor-pointer shadow-md"
                           >
@@ -743,26 +1167,65 @@ END:VCALENDAR`;
                       ) : (
                         <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
                           {availableSlots.map((slotItem) => {
+                            const slotTimeMs = new Date(slotItem.iso).getTime();
+                            const nowMs = now.getTime();
+                            const thresholdMs = nowMs + 2 * 60 * 60 * 1000;
+
+                            const isPast = slotTimeMs < nowMs;
+                            const isTooSoon = !isPast && slotTimeMs < thresholdMs;
+                            const isBookable = slotItem.available && !isPast && !isTooSoon;
+
+                            const formattedTimeLabel = formatSlotLabel(slotItem.iso, timeFormat, timezone);
+
+                            let buttonClasses = '';
+                            let badgeText = '';
+
+                            if (isBookable) {
+                              buttonClasses =
+                                'bg-white/[0.04] border border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-500/10 text-cyan-300 cursor-pointer shadow-sm';
+                              badgeText = 'Book';
+                            } else if (isTooSoon) {
+                              buttonClasses =
+                                'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed select-none opacity-60';
+                              badgeText = 'Too Soon (<2h)';
+                            } else if (isPast) {
+                              buttonClasses =
+                                'bg-white/[0.01] border border-white/5 text-slate-700 cursor-not-allowed line-through opacity-40 select-none';
+                              badgeText = 'Past';
+                            } else {
+                              buttonClasses =
+                                'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed line-through select-none';
+                              badgeText = 'Unavailable';
+                            }
+
                             return (
                               <button
                                 key={slotItem.iso}
-                                disabled={!slotItem.available}
+                                disabled={!isBookable}
                                 onClick={() => handleSelectSlot(slotItem.iso)}
-                                className={`w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
-                                  !slotItem.available
-                                    ? 'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed line-through select-none'
-                                    : 'bg-white/[0.04] border border-white/10 hover:border-cyan-400/50 hover:bg-cyan-500/10 text-slate-200 hover:text-cyan-300'
-                                }`}
+                                title={
+                                  isTooSoon
+                                    ? 'Minimum 2 hours lead time required for bookings.'
+                                    : !slotItem.available
+                                    ? 'This time slot is unavailable.'
+                                    : `Book slot for ${formattedTimeLabel}`
+                                }
+                                className={`w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-between ${buttonClasses}`}
                               >
-                                <span>{slotItem.label}</span>
-                                <span className="text-[10px] uppercase text-slate-500">
-                                  {slotItem.available ? 'Book' : 'Unavailable'}
+                                <span>{formattedTimeLabel}</span>
+                                <span className="text-[10px] uppercase font-semibold">
+                                  {badgeText}
                                 </span>
                               </button>
                             );
                           })}
                         </div>
                       )}
+
+                      {/* MOBILE WORLD CLOCK (Visible only on mobile screens < md, placed after slots) */}
+                      <div className="block md:hidden">
+                        <WorldClockSection now={now} timeFormat={timeFormat} />
+                      </div>
                     </div>
                   </div>
                 ) : (
