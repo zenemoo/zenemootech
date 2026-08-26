@@ -26,6 +26,12 @@ import { SeoImage } from '../seo/components/SeoImage';
 import { TurnstileWidget } from './TurnstileWidget';
 import { ZenemooAiDrawer } from './ZenemooAiDrawer';
 import { bookingApi } from '../services/api';
+import {
+  fetchSunriseSunset,
+  getTodayDateInTimezone,
+  formatSunTimeFromIso,
+  SunriseSunsetData,
+} from '../services/sunriseSunsetService';
 
 interface ZenemooBookingPageProps {
   onBackToHome: () => void;
@@ -252,100 +258,207 @@ export const AnalogDotClock: React.FC<{ h: number; m: number; s: number; sizeCla
 export interface WorldClockCity {
   name: string;
   timezone: string;
-  flag: string;
-  sunrise: string;
-  sunset: string;
+  lat: number;
+  lng: number;
+  flagUrl: string;
   defaultAbbr: string;
 }
 
 export const WORLD_CLOCK_CITIES: WorldClockCity[] = [
-  { name: 'India', timezone: 'Asia/Kolkata', flag: '🇮🇳', sunrise: '06:05 AM', sunset: '06:40 PM', defaultAbbr: 'IST' },
-  { name: 'London', timezone: 'Europe/London', flag: '🇬🇧', sunrise: '05:55 AM', sunset: '08:05 PM', defaultAbbr: 'BST' },
-  { name: 'New York', timezone: 'America/New_York', flag: '🇺🇸', sunrise: '06:15 AM', sunset: '07:45 PM', defaultAbbr: 'EDT' },
-  { name: 'Dubai', timezone: 'Asia/Dubai', flag: '🇦🇪', sunrise: '05:50 AM', sunset: '06:45 PM', defaultAbbr: 'GST' },
+  {
+    name: 'India',
+    timezone: 'Asia/Kolkata',
+    lat: 28.6139,
+    lng: 77.2090,
+    flagUrl: 'https://flagcdn.com/w80/in.png',
+    defaultAbbr: 'IST',
+  },
+  {
+    name: 'London',
+    timezone: 'Europe/London',
+    lat: 51.5074,
+    lng: -0.1278,
+    flagUrl: 'https://flagcdn.com/w80/gb.png',
+    defaultAbbr: 'BST',
+  },
+  {
+    name: 'New York',
+    timezone: 'America/New_York',
+    lat: 40.7128,
+    lng: -74.0060,
+    flagUrl: 'https://flagcdn.com/w80/us.png',
+    defaultAbbr: 'EDT',
+  },
+  {
+    name: 'Dubai',
+    timezone: 'Asia/Dubai',
+    lat: 25.2048,
+    lng: 55.2708,
+    flagUrl: 'https://flagcdn.com/w80/ae.png',
+    defaultAbbr: 'GST',
+  },
 ];
 
 /**
- * Reusable World Clock Section Component
+ * Reusable World Clock Section Component - Dynamic Astronomical Data
  */
 export const WorldClockSection: React.FC<{
   now: Date;
   timeFormat: '12H' | '24H';
 }> = ({ now, timeFormat }) => {
-  return (
-    <div className="pt-4 border-t border-white/10 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold font-mono text-white tracking-wider uppercase flex items-center gap-1.5">
-          <Globe className="w-3.5 h-3.5 text-cyan-400" /> World Clock
-        </span>
-        <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" /> LIVE
-        </span>
-      </div>
+  const [sunDataMap, setSunDataMap] = useState<Record<string, SunriseSunsetData | null>>({});
+  const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({});
 
-      {/* 4 Rich Cards Side-by-Side Left-to-Right */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+  // Compute today's date (YYYY-MM-DD) per location's timezone.
+  // Re-evaluates automatically when date/hour advances.
+  const cityDates = useMemo(() => {
+    const dates: Record<string, string> = {};
+    WORLD_CLOCK_CITIES.forEach((city) => {
+      dates[city.timezone] = getTodayDateInTimezone(city.timezone, now);
+    });
+    return dates;
+  }, [now.getDate(), now.getHours()]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    WORLD_CLOCK_CITIES.forEach((city) => {
+      const targetDate = cityDates[city.timezone];
+      if (!targetDate) return;
+
+      // Don't refetch if already loaded for current date
+      if (sunDataMap[city.timezone]?.dateStr === targetDate) {
+        return;
+      }
+
+      setLoadingMap((prev) => ({ ...prev, [city.timezone]: true }));
+
+      fetchSunriseSunset(city.lat, city.lng, targetDate, city.timezone)
+        .then((data) => {
+          if (isMounted) {
+            setSunDataMap((prev) => ({ ...prev, [city.timezone]: data }));
+            setLoadingMap((prev) => ({ ...prev, [city.timezone]: false }));
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setLoadingMap((prev) => ({ ...prev, [city.timezone]: false }));
+          }
+        });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [cityDates]);
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {WORLD_CLOCK_CITIES.map((city) => {
           const meta = getTimezoneMetadata(now, city.timezone);
           const { timeMain, timePeriod } = formatDigitalTimeParts(now, timeFormat, city.timezone);
+          const sunData = sunDataMap[city.timezone];
+          const isLoadingSun = loadingMap[city.timezone];
+
+          const formattedSunrise = isLoadingSun
+            ? '--:--'
+            : formatSunTimeFromIso(sunData?.sunriseIso, timeFormat, city.timezone);
+          const formattedSunset = isLoadingSun
+            ? '--:--'
+            : formatSunTimeFromIso(sunData?.sunsetIso, timeFormat, city.timezone);
 
           return (
             <div
               key={city.timezone}
-              className="bg-[#070a11]/95 border border-cyan-500/30 hover:border-cyan-400/60 rounded-xl p-2.5 font-mono shadow-md shadow-black/40 space-y-1.5 transition-all flex flex-col justify-between"
+              className="bg-[#070a11]/95 border border-cyan-500/30 hover:border-cyan-400/60 rounded-2xl p-4 sm:p-5 font-mono shadow-xl shadow-cyan-500/5 space-y-3 transition-all"
             >
-              {/* Top Row: Flag, Name & LIVE Dot */}
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm leading-none shrink-0">{city.flag}</span>
-                  <span className="text-[11px] font-bold text-white font-display truncate">
-                    {city.name}
-                  </span>
+              {/* Top Row: Flag Image + City Name + IANA Timezone ID & LIVE Pill Badge */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src={city.flagUrl}
+                    alt={`${city.name} Flag`}
+                    className="w-7 h-5 rounded-md object-cover shrink-0 shadow-md border border-white/10"
+                    loading="lazy"
+                  />
+                  <div>
+                    <h4 className="text-base sm:text-lg font-extrabold text-white font-display leading-tight">
+                      {city.name}
+                    </h4>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      {city.timezone}
+                    </div>
+                  </div>
                 </div>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" title="Live Clock" />
+
+                {/* LIVE Pill Badge */}
+                <div className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[10px] font-bold flex items-center gap-1.5 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>LIVE</span>
+                </div>
               </div>
 
-              {/* Digital Time & Mini Analog Clock Row */}
-              <div className="flex items-center justify-between gap-1 pt-0.5">
-                <div className="flex items-baseline gap-0.5 min-w-0">
-                  <span className="text-xs font-extrabold text-cyan-400 font-mono tracking-tight leading-none">
+              {/* Main Digital Time & SVG Analog Clock Row */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl sm:text-3xl font-extrabold text-cyan-400 font-mono tracking-tight">
                     {timeMain}
                   </span>
                   {timePeriod && (
-                    <span className="text-[8.5px] font-bold text-slate-300 font-mono uppercase">
+                    <span className="text-xs font-bold text-slate-200 uppercase font-mono">
                       {timePeriod}
                     </span>
                   )}
                 </div>
-                {/* Mini Analog Dot Accent Clock */}
-                <AnalogDotClock h={meta.h} m={meta.m} s={meta.s} sizeClass="w-6 h-6 shrink-0" />
+
+                {/* Dynamic SVG Analog Dot Clock */}
+                <AnalogDotClock h={meta.h} m={meta.m} s={meta.s} sizeClass="w-11 h-11 sm:w-12 sm:h-12" />
               </div>
 
-              {/* Divider */}
-              <div className="border-t border-white/10 my-0.5" />
+              {/* Divider Line */}
+              <div className="border-t border-white/10 my-2" />
 
-              {/* Extra Info: Abbr & UTC Offset */}
-              <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono gap-1">
-                <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-bold uppercase text-[8px]">
+              {/* Info Row 1: Date, Dynamic Sunrise & Sunset */}
+              <div className="flex items-center justify-between text-[11px] text-slate-300 font-mono gap-1 flex-wrap">
+                <div className="flex items-center gap-1 text-slate-300">
+                  <CalendarIcon className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>{meta.dateStr}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-300 flex items-center gap-1">
+                    🌅 {formattedSunrise}
+                  </span>
+                  <span className="text-slate-600">|</span>
+                  <span className="text-orange-400 flex items-center gap-1">
+                    🌇 {formattedSunset}
+                  </span>
+                </div>
+              </div>
+
+              {/* Info Row 2: Timezone Abbr Pill & UTC Offset */}
+              <div className="flex items-center gap-2.5 pt-1 text-xs font-mono">
+                <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold uppercase text-[11px]">
                   {meta.abbr || city.defaultAbbr}
                 </span>
-                <span className="truncate text-[8.5px] font-medium text-slate-400">
-                  {meta.utcOffset}
-                </span>
-              </div>
-
-              {/* Sunrise & Sunset Row */}
-              <div className="flex items-center justify-between text-[8.5px] text-slate-400 font-mono pt-0.5">
-                <span className="text-amber-300/90 flex items-center gap-0.5">
-                  🌅 {formatSunTime(city.sunrise, timeFormat)}
-                </span>
-                <span className="text-orange-400/90 flex items-center gap-0.5">
-                  🌇 {formatSunTime(city.sunset, timeFormat)}
-                </span>
+                <span className="text-slate-400 font-semibold">{meta.utcOffset}</span>
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* API Attribution Note */}
+      <div className="text-[10px] text-slate-500 font-mono text-center pt-1">
+        Sunrise &amp; sunset data &middot;{' '}
+        <a
+          href="https://sunrise-sunset.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-slate-400 underline"
+        >
+          Sunrise-Sunset.org
+        </a>
       </div>
     </div>
   );
@@ -811,7 +924,7 @@ END:VCALENDAR`;
       </header>
 
       {/* MAIN CONTENT CONTAINER WITH TOP NAVBAR OFFSET */}
-      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-20 sm:pb-24 w-full flex-1">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-4 sm:pb-6 w-full flex-1">
         {/* SUCCESS CONFIRMATION STATE */}
         {confirmedBooking ? (
           <div className="max-w-2xl mx-auto my-6 sm:my-10 animate-fade-in">
@@ -1075,14 +1188,9 @@ END:VCALENDAR`;
                           </span>
                         </div>
                       </div>
-
-                      {/* DESKTOP WORLD CLOCK (Visible only on md: screens and above, directly under Calendar) */}
-                      <div className="hidden md:block">
-                        <WorldClockSection now={now} timeFormat={timeFormat} />
-                      </div>
                     </div>
 
-                    {/* RIGHT COLUMN: AVAILABLE SLOTS (DESKTOP: TOP RIGHT ALIGNED WITH CALENDAR, MOBILE: DIRECTLY AFTER CALENDAR) */}
+                    {/* RIGHT COLUMN: AVAILABLE SLOTS */}
                     <div className="md:col-span-5 space-y-4">
                       {/* Header with Date and 12H / 24H Toggle */}
                       <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
@@ -1221,11 +1329,6 @@ END:VCALENDAR`;
                           })}
                         </div>
                       )}
-
-                      {/* MOBILE WORLD CLOCK (Visible only on mobile screens < md, placed after slots) */}
-                      <div className="block md:hidden">
-                        <WorldClockSection now={now} timeFormat={timeFormat} />
-                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1372,6 +1475,11 @@ END:VCALENDAR`;
           </div>
         )}
       </main>
+
+      {/* LIVE WORLD CLOCK SECTION (OUTSIDE MAIN BOX — DIRECTLY ABOVE FOOTER) */}
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 my-2">
+        <WorldClockSection now={now} timeFormat={timeFormat} />
+      </div>
 
       {/* SUBTLE BOOKING FOOTER */}
       <footer className="relative z-10 py-5 border-t border-white/5 bg-[#030406] text-center font-mono text-[11px] text-slate-500">
