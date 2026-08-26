@@ -22,18 +22,22 @@ export const processScheduledEmailsEndpoint = async (req, res, next) => {
       req.headers['x-scheduler-secret'] ||
       req.headers['authorization'];
 
-    const allowedSecrets = [
-      process.env.ZENEMOO_SCHEDULER_SECRET,
-      process.env.CLOUDFLARE_WEBHOOK_SECRET,
-      'zenemoo_cloudflare_cron_secret_2026',
-      'zenemoo_cloudflare_worker_secret_2026',
-    ].filter(Boolean);
+    const expectedSecret =
+      process.env.ZENEMOO_SCHEDULER_SECRET ||
+      process.env.CLOUDFLARE_WEBHOOK_SECRET;
 
-    const isSecretValid = allowedSecrets.some(
-      (sec) => providedSecret === sec || providedSecret === `Bearer ${sec}` || providedSecret === sec?.trim()
-    );
+    if (!expectedSecret) {
+      console.error('❌ [Scheduled Email Endpoint] ZENEMOO_SCHEDULER_SECRET environment variable is not configured on server.');
+      return res.status(500).json({
+        success: false,
+        message: 'Server Configuration Error: ZENEMOO_SCHEDULER_SECRET environment variable is not configured on backend server.',
+      });
+    }
 
-    if (!providedSecret || !isSecretValid) {
+    const cleanProvided = providedSecret ? String(providedSecret).replace(/^Bearer\s+/i, '').trim() : '';
+    const cleanExpected = String(expectedSecret).trim();
+
+    if (!cleanProvided || cleanProvided !== cleanExpected) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Invalid or missing x-zenemoo-scheduler-secret header.',
