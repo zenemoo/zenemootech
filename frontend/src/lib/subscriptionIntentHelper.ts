@@ -28,7 +28,6 @@ export interface IntentCheckResult {
 export function normalizeEmail(email: string): string {
   if (!email || typeof email !== 'string') return '';
   let clean = email.trim().toLowerCase();
-  // Remove enclosing quotes or brackets if present
   clean = clean.replace(/^["'<\(\[]+|["'>\)\],.]+$/g, '').trim();
   return clean;
 }
@@ -43,7 +42,6 @@ export function validateEmailAddress(email: string): { isValid: boolean; normali
     return { isValid: false, normalizedEmail: '' };
   }
 
-  // Count '@' occurrences
   const atParts = normalized.split('@');
   if (atParts.length !== 2) {
     return { isValid: false, normalizedEmail: '' };
@@ -71,7 +69,7 @@ export function validateEmailAddress(email: string): { isValid: boolean; normali
 }
 
 /**
- * 3. Detect Subscription & Unsubscribe Intent
+ * 3. Detect Subscription & Unsubscribe Intent with Typo Tolerance
  */
 export function detectSubscriptionIntent(userMessage: string): IntentCheckResult {
   if (!userMessage || typeof userMessage !== 'string') {
@@ -80,21 +78,20 @@ export function detectSubscriptionIntent(userMessage: string): IntentCheckResult
 
   const text = userMessage.trim().toLowerCase();
 
-  // A. Check Unsubscribe Intent first (to avoid matching 'subscribe' inside 'unsubscribe')
+  // A. Check Unsubscribe Intent first (typo-tolerant matching for unsubscribe/unsucribe/unsuscribe)
   const unsubscribePatterns = [
-    /\bunsubscribe\b/,
-    /\bstop (emails|updates|notifications|newsletter|messages|announcements)\b/,
-    /\bremove me (from|off)\b/,
-    /\bdon'?t want (updates|emails|newsletter|notifications) anymore\b/,
-    /\bcancel (my )?subscription\b/,
-    /\bopt out\b/,
-    /\bcan i unsubscribe\b/,
-    /\bhow (can|do) i unsubscribe\b/,
-    /\bi want to unsubscribe\b/,
+    // Typo-tolerant keyword matches (unsubscribe, unsucribe, unsuscribe, unsubcribe, etc.)
+    /\b(unsub|unsuc|unsus|unsubc|unsubs|unscub|unsucr|unsubr)[a-z]*\b/,
+    /\bstop\b.*(email|update|updat|notif|newslet|message|announc)/,
+    /\bremove\b.*(me|my email|my address)/,
+    /\b(cancel|cancle)\b.*(sub|subscription|membership)/,
+    /\bdon'?t want\b.*(update|updat|email|newslet|notif) (anymore|any more)/,
+    /\b(opt out|leave list|take me off)\b/,
+    /\bno more (emails|updates|notifications)\b/,
   ];
 
   if (unsubscribePatterns.some((pattern) => pattern.test(text))) {
-    const genericQuestion = /^(what|explain|how does|definition of)\b.*unsubscribe/i;
+    const genericQuestion = /^(what|explain|how does|definition of)\b.*unsub/i;
     if (!genericQuestion.test(text)) {
       return { intent: 'UNSUBSCRIBE', matchReason: 'Unsubscribe intent detected' };
     }
@@ -111,36 +108,18 @@ export function detectSubscriptionIntent(userMessage: string): IntentCheckResult
     return { intent: 'NORMAL' };
   }
 
-  // C. Positive Subscription Intent Patterns
+  // C. Positive Subscription Intent Patterns (typo-tolerant matching)
   const subscribePatterns = [
-    /\b(can i|i want|how (can|do) i|please|would like to|wish to) (subscribe|get updates|receive updates|join (the |your )?newsletter|join dispatch)\b/,
-    /\b(subscribe|subscribing) (to|me)\b/,
-    /\bcan i subscribe\b/,
-    /\bi want updates\b/,
-    /\bhow can i get updates\b/,
-    /\bi want to receive zenemoo updates\b/,
-    /\bcan you send me your latest updates\b/,
-    /\bi want to join your newsletter\b/,
-    /\bkeep me updated\b/,
-    /\bi want zenemoo notifications\b/,
-    /\bcan i get regular updates\b/,
-    /\bi want to subscribe to zenemoo dispatch\b/,
-    /\bhow do i get your updates\b/,
-    /\bplease add me to your updates\b/,
-    /\bsend me your announcements\b/,
-    /\bi want to receive your emails\b/,
+    /\b(subscribe|subcribe|subsribe|subscibe|subscripe|subscrib|subscribing|subscript)[a-z]*\b/,
+    /\b(want|need|get|receive|send|keep|add)\b.*(update|updat|updats|notif|newslet|announc|email)/,
+    /\bjoin\b.*(newslet|dispatch|list|mailing)/,
     /\bsign me up\b/,
-    /\badd me to (the|your) (mailing list|newsletter|updates|dispatch)\b/,
-    /\bget regular updates\b/,
-    /\bsubscribe to newsletter\b/,
+    /\badd me to\b.*(list|newsletter|updates|dispatch)/,
+    /\bkeep me updated\b/,
   ];
 
   if (subscribePatterns.some((p) => p.test(text))) {
     return { intent: 'SUBSCRIBE', matchReason: 'Subscription intent detected' };
-  }
-
-  if (/^subscribe\b/i.test(text) && !/^subscribe (meaning|definition|info|details)/i.test(text)) {
-    return { intent: 'SUBSCRIBE', matchReason: 'Direct subscribe keyword match' };
   }
 
   return { intent: 'NORMAL' };
