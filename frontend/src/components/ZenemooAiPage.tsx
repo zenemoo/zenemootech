@@ -149,6 +149,17 @@ export const ZenemooAiPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
         actionButtons: SUBSCRIPTION_RESPONSES.PENDING_EMAIL_PROMPT.actionButtons,
       };
       setMessages((prev) => [...prev, aiMsg]);
+    } else if (action === 'unsub:confirm_yes' || action === 'unsub:try_again') {
+      setSubState('UNSUB_PENDING_EMAIL');
+      setSubInvalidAttempts(0);
+      const aiMsg: Message = {
+        id: `ai-unsub-${Date.now()}`,
+        role: 'assistant',
+        content: SUBSCRIPTION_RESPONSES.UNSUB_PENDING_EMAIL_PROMPT.content,
+        timestamp,
+        actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_PENDING_EMAIL_PROMPT.actionButtons,
+      };
+      setMessages((prev) => [...prev, aiMsg]);
     } else if (action === 'sub:abort') {
       setSubState('IDLE');
       setSubInvalidAttempts(0);
@@ -412,6 +423,112 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
       }
     }
 
+    // ── ACTIVE UNSUBSCRIPTION WORKFLOW INTERCEPTION ──
+    if (subState === 'UNSUB_PENDING_EMAIL' || subState === 'UNSUB_INVALID_LIMIT_REACHED') {
+      const userMsg: Message = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: query,
+        timestamp: userTimestamp,
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+      if (!textToSend) setInput('');
+
+      const emailValidation = validateEmailAddress(query);
+
+      if (emailValidation.isValid) {
+        setSubState('UNSUB_SUBMITTING');
+        setLoading(true);
+
+        try {
+          const res = await subscriberApi.unsubscribe(emailValidation.normalizedEmail);
+          const resData = res.data;
+
+          let responseConfig;
+          if (resData?.code === 'NOT_SUBSCRIBED') {
+            responseConfig = SUBSCRIPTION_RESPONSES.NOT_SUBSCRIBED_FOUND(emailValidation.normalizedEmail);
+          } else if (resData?.code === 'ALREADY_UNSUBSCRIBED') {
+            responseConfig = SUBSCRIPTION_RESPONSES.ALREADY_UNSUBSCRIBED(emailValidation.normalizedEmail);
+          } else {
+            responseConfig = SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_SUCCESS(emailValidation.normalizedEmail);
+          }
+
+          const aiMsg: Message = {
+            id: `ai-unsub-ok-${Date.now()}`,
+            role: 'assistant',
+            content: responseConfig.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            actionButtons: responseConfig.actionButtons,
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+        } catch (err: any) {
+          console.warn('[Unsubscription Error]:', err);
+          const errResData = err.response?.data;
+          let responseConfig;
+          if (errResData?.code === 'NOT_SUBSCRIBED' || err.status === 404) {
+            responseConfig = SUBSCRIPTION_RESPONSES.NOT_SUBSCRIBED_FOUND(emailValidation.normalizedEmail);
+          } else {
+            responseConfig = SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_SUCCESS(emailValidation.normalizedEmail);
+          }
+          const aiMsg: Message = {
+            id: `ai-unsub-ok-${Date.now()}`,
+            role: 'assistant',
+            content: responseConfig.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            actionButtons: responseConfig.actionButtons,
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+        } finally {
+          setLoading(false);
+          setSubState('IDLE');
+          setSubInvalidAttempts(0);
+          setSubPendingEmail('');
+        }
+        return;
+      } else {
+        const isUnrelatedQuestion = /^(what|how|why|tell me|explain|where|can you|does|is there)\b/i.test(query);
+
+        if (isUnrelatedQuestion) {
+          const aiMsg: Message = {
+            id: `ai-unsub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNSUB_UNRELATED_QUESTION_DURING_EMAIL.content,
+            timestamp: userTimestamp,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_UNRELATED_QUESTION_DURING_EMAIL.actionButtons,
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+          return;
+        }
+
+        const nextCount = subInvalidAttempts + 1;
+        setSubInvalidAttempts(nextCount);
+
+        if (nextCount >= 2) {
+          setSubState('UNSUB_INVALID_LIMIT_REACHED');
+          const aiMsg: Message = {
+            id: `ai-unsub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_2.content,
+            timestamp: userTimestamp,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_2.actionButtons,
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+        } else {
+          setSubState('UNSUB_PENDING_EMAIL');
+          const aiMsg: Message = {
+            id: `ai-unsub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_1.content,
+            timestamp: userTimestamp,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_1.actionButtons,
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+        }
+        return;
+      }
+    }
+
     // ── SUBSCRIPTION / UNSUBSCRIBE INTENT DETECTION ──
     const intentResult = detectSubscriptionIntent(query);
 
@@ -437,6 +554,8 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
     }
 
     if (intentResult.intent === 'UNSUBSCRIBE') {
+      setSubState('UNSUB_INTENT_DETECTED');
+      setSubInvalidAttempts(0);
       const userMsg: Message = {
         id: `user-${Date.now()}`,
         role: 'user',
@@ -444,11 +563,11 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
         timestamp: userTimestamp,
       };
       const aiMsg: Message = {
-        id: `ai-unsub-${Date.now()}`,
+        id: `ai-unsub-intent-${Date.now()}`,
         role: 'assistant',
-        content: SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_PROMPT.content,
+        content: SUBSCRIPTION_RESPONSES.UNSUB_INTENT_DETECTED.content,
         timestamp: userTimestamp,
-        actionButtons: SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_PROMPT.actionButtons,
+        actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_INTENT_DETECTED.actionButtons,
       };
       setMessages((prev) => [...prev, userMsg, aiMsg]);
       if (!textToSend) setInput('');
@@ -1427,14 +1546,18 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
         {/* ── BOTTOM INPUT CAPSULE (ChatGPT Style) + SINGLE LINE FOOTER ── */}
         <div className="p-3 sm:p-5 bg-gradient-to-t from-[#080c16] via-[#080c16] to-transparent shrink-0">
           <div className="max-w-3xl mx-auto space-y-2.5">
-            {/* Interactive Subscription Bar when in active subscription state */}
+            {/* Interactive Subscription / Unsubscription Bar when in active state */}
             {subState !== 'IDLE' && (
               <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 backdrop-blur-md animate-fade-in">
                 <span className="text-xs font-mono text-cyan-300 font-semibold px-1">
                   {subState === 'INTENT_DETECTED' && 'Subscription Mode:'}
-                  {subState === 'PENDING_EMAIL' && 'Provide Email:'}
+                  {subState === 'PENDING_EMAIL' && 'Provide Email to Subscribe:'}
                   {subState === 'INVALID_LIMIT_REACHED' && 'Verification Limit Exceeded:'}
                   {subState === 'SUBMITTING' && 'Registering Subscription...'}
+                  {subState === 'UNSUB_INTENT_DETECTED' && 'Unsubscription Mode:'}
+                  {subState === 'UNSUB_PENDING_EMAIL' && 'Provide Email to Unsubscribe:'}
+                  {subState === 'UNSUB_INVALID_LIMIT_REACHED' && 'Verification Limit Exceeded:'}
+                  {subState === 'UNSUB_SUBMITTING' && 'Processing Unsubscription...'}
                 </span>
                 <div className="flex flex-wrap items-center gap-1.5 ml-auto">
                   {subState === 'INTENT_DETECTED' && (
@@ -1463,10 +1586,36 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
                     </>
                   )}
 
-                  {(subState === 'PENDING_EMAIL' || subState === 'SUBMITTING') && (
+                  {subState === 'UNSUB_INTENT_DETECTED' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleActionButtonClick('unsub:confirm_yes')}
+                        className="px-3 py-1 rounded-xl bg-cyan-400 text-black font-extrabold text-xs flex items-center gap-1 hover:bg-cyan-300 transition-all cursor-pointer"
+                      >
+                        🔕 Yes, Unsubscribe Me
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleActionButtonClick('navigate:/unsubscribe')}
+                        className="px-3 py-1 rounded-xl bg-white/10 text-white text-xs flex items-center gap-1 hover:bg-white/20 transition-all cursor-pointer"
+                      >
+                        🌐 Website
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleActionButtonClick('sub:abort')}
+                        className="px-3 py-1 rounded-xl bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        ✕ Abort
+                      </button>
+                    </>
+                  )}
+
+                  {(subState === 'PENDING_EMAIL' || subState === 'SUBMITTING' || subState === 'UNSUB_PENDING_EMAIL' || subState === 'UNSUB_SUBMITTING') && (
                     <button
                       type="button"
-                      disabled={subState === 'SUBMITTING'}
+                      disabled={subState === 'SUBMITTING' || subState === 'UNSUB_SUBMITTING'}
                       onClick={() => handleActionButtonClick('sub:abort')}
                       className="px-3 py-1 rounded-xl bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                     >
@@ -1479,6 +1628,25 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
                       <button
                         type="button"
                         onClick={() => handleActionButtonClick('sub:try_again')}
+                        className="px-3 py-1 rounded-xl bg-cyan-400 text-black font-extrabold text-xs flex items-center gap-1 hover:bg-cyan-300 transition-all cursor-pointer"
+                      >
+                        🔄 Try Again
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleActionButtonClick('sub:abort')}
+                        className="px-3 py-1 rounded-xl bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        ✕ Abort
+                      </button>
+                    </>
+                  )}
+
+                  {subState === 'UNSUB_INVALID_LIMIT_REACHED' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleActionButtonClick('unsub:try_again')}
                         className="px-3 py-1 rounded-xl bg-cyan-400 text-black font-extrabold text-xs flex items-center gap-1 hover:bg-cyan-300 transition-all cursor-pointer"
                       >
                         🔄 Try Again

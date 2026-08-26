@@ -1,6 +1,6 @@
 /**
  * subscriptionIntentHelper.ts
- * Core AI Intent Detection, Email Validation & Subscription State Engine
+ * Core AI Intent Detection, Email Validation & Subscription/Unsubscription State Engine
  */
 
 export type SubscriptionState =
@@ -8,7 +8,11 @@ export type SubscriptionState =
   | 'INTENT_DETECTED'
   | 'PENDING_EMAIL'
   | 'INVALID_LIMIT_REACHED'
-  | 'SUBMITTING';
+  | 'SUBMITTING'
+  | 'UNSUB_INTENT_DETECTED'
+  | 'UNSUB_PENDING_EMAIL'
+  | 'UNSUB_INVALID_LIMIT_REACHED'
+  | 'UNSUB_SUBMITTING';
 
 export type IntentType = 'SUBSCRIBE' | 'UNSUBSCRIBE' | 'NORMAL';
 
@@ -31,12 +35,6 @@ export function normalizeEmail(email: string): string {
 
 /**
  * 2. Validate Email Address Format
- * Ensures:
- * - Exactly one @ symbol
- * - Valid local part (no spaces, non-empty)
- * - Valid domain part with standard TLD extension
- * - No whitespace characters
- * - Reasonable length limits (max 254 chars)
  */
 export function validateEmailAddress(email: string): { isValid: boolean; normalizedEmail: string } {
   const normalized = normalizeEmail(email);
@@ -56,7 +54,6 @@ export function validateEmailAddress(email: string): { isValid: boolean; normali
     return { isValid: false, normalizedEmail: '' };
   }
 
-  // Domain must contain at least one dot, and TLD must be at least 2 chars
   const domainParts = domainPart.split('.');
   if (domainParts.length < 2 || domainParts.some((p) => p.length === 0)) {
     return { isValid: false, normalizedEmail: '' };
@@ -67,7 +64,6 @@ export function validateEmailAddress(email: string): { isValid: boolean; normali
     return { isValid: false, normalizedEmail: '' };
   }
 
-  // Standard robust RFC-compliant email regex
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   const isValid = emailRegex.test(normalized);
 
@@ -76,10 +72,6 @@ export function validateEmailAddress(email: string): { isValid: boolean; normali
 
 /**
  * 3. Detect Subscription & Unsubscribe Intent
- * Evaluates natural language messages to determine whether the user intends to:
- * - SUBSCRIBE to Zenemoo Dispatch
- * - UNSUBSCRIBE / Stop receiving updates
- * - Perform regular AI conversation (NORMAL)
  */
 export function detectSubscriptionIntent(userMessage: string): IntentCheckResult {
   if (!userMessage || typeof userMessage !== 'string') {
@@ -96,10 +88,12 @@ export function detectSubscriptionIntent(userMessage: string): IntentCheckResult
     /\bdon'?t want (updates|emails|newsletter|notifications) anymore\b/,
     /\bcancel (my )?subscription\b/,
     /\bopt out\b/,
+    /\bcan i unsubscribe\b/,
+    /\bhow (can|do) i unsubscribe\b/,
+    /\bi want to unsubscribe\b/,
   ];
 
   if (unsubscribePatterns.some((pattern) => pattern.test(text))) {
-    // Avoid false positive if user is asking general question like "what does unsubscribe mean?"
     const genericQuestion = /^(what|explain|how does|definition of)\b.*unsubscribe/i;
     if (!genericQuestion.test(text)) {
       return { intent: 'UNSUBSCRIBE', matchReason: 'Unsubscribe intent detected' };
@@ -107,7 +101,6 @@ export function detectSubscriptionIntent(userMessage: string): IntentCheckResult
   }
 
   // B. Exclude Informational & General Corporate Enquiries
-  // Do NOT trigger subscription mode for general inquiry phrases
   const generalInquiryPatterns = [
     /^(what is|tell me about|explain|what projects|what services|contact details|i need a quotation|quote|price|pricing)\b/i,
     /^(what does|does zenemoo have|is there a|definition of)\b.*(subscribe|subscriber|subscription)/i,
@@ -146,7 +139,6 @@ export function detectSubscriptionIntent(userMessage: string): IntentCheckResult
     return { intent: 'SUBSCRIBE', matchReason: 'Subscription intent detected' };
   }
 
-  // Fallback check for direct "subscribe" or "subscribe me" command
   if (/^subscribe\b/i.test(text) && !/^subscribe (meaning|definition|info|details)/i.test(text)) {
     return { intent: 'SUBSCRIBE', matchReason: 'Direct subscribe keyword match' };
   }
@@ -158,6 +150,7 @@ export function detectSubscriptionIntent(userMessage: string): IntentCheckResult
  * 4. Predefined Standard Response Messages & Actions
  */
 export const SUBSCRIPTION_RESPONSES = {
+  // --- SUBSCRIBE FLOW ---
   INTENT_DETECTED: {
     content: `Absolutely! You can subscribe to Zenemoo Dispatch in two easy ways:
 
@@ -191,7 +184,7 @@ Would you like me to subscribe you directly?`,
     actionButtons: [{ label: 'Abort', icon: '✕', action: 'sub:abort' }],
   },
   ABORT_SUCCESS: {
-    content: `No problem. The subscription process has been cancelled.`,
+    content: `No problem. The process has been cancelled.`,
     actionButtons: [],
   },
   ALREADY_SUBSCRIBED: (email: string) => ({
@@ -206,8 +199,52 @@ We've registered **${email}** in the official **Zenemoo Dispatch** subscriber da
 You'll receive future Zenemoo updates at this email address.`,
     actionButtons: [],
   }),
-  UNSUBSCRIBE_PROMPT: {
-    content: `You can manage your subscription or unsubscribe from Zenemoo Dispatch at any time on our official unsubscribe page.`,
-    actionButtons: [{ label: 'Go to Unsubscribe Page', icon: '🔕', action: 'navigate:/unsubscribe' }],
+
+  // --- UNSUBSCRIBE FLOW ---
+  UNSUB_INTENT_DETECTED: {
+    content: `We're sorry to see you go! You can unsubscribe from Zenemoo Dispatch in two easy ways:
+
+1. Unsubscribe directly from our official unsubscribe page.
+2. Or, if you prefer, I can process your email unsubscription directly for you.
+
+Would you like me to unsubscribe you directly?`,
+    actionButtons: [
+      { label: 'Yes, Unsubscribe Me', icon: '🔕', action: 'unsub:confirm_yes' },
+      { label: 'Unsubscribe on Website', icon: '🌐', action: 'navigate:/unsubscribe' },
+      { label: 'Abort', icon: '✕', action: 'sub:abort' },
+    ],
   },
+  UNSUB_PENDING_EMAIL_PROMPT: {
+    content: `Please provide the email address you'd like to unsubscribe from Zenemoo Dispatch.`,
+    actionButtons: [{ label: 'Abort', icon: '✕', action: 'sub:abort' }],
+  },
+  UNSUB_INVALID_EMAIL_ATTEMPT_1: {
+    content: `I couldn't verify that email address. Please provide a valid email address to unsubscribe.`,
+    actionButtons: [{ label: 'Abort', icon: '✕', action: 'sub:abort' }],
+  },
+  UNSUB_INVALID_EMAIL_ATTEMPT_2: {
+    content: `I still couldn't verify that email address. For your security, I haven't modified your subscription status yet.`,
+    actionButtons: [
+      { label: 'Try Again', icon: '🔄', action: 'unsub:try_again' },
+      { label: 'Abort', icon: '✕', action: 'sub:abort' },
+    ],
+  },
+  UNSUB_UNRELATED_QUESTION_DURING_EMAIL: {
+    content: `Before I can complete your unsubscription request, I need a valid email address. Please provide your email address or choose Abort.`,
+    actionButtons: [{ label: 'Abort', icon: '✕', action: 'sub:abort' }],
+  },
+  NOT_SUBSCRIBED_FOUND: (email: string) => ({
+    content: `The email address **${email}** was not found in the official **Zenemoo Dispatch** subscriber database.`,
+    actionButtons: [],
+  }),
+  ALREADY_UNSUBSCRIBED: (email: string) => ({
+    content: `The email address **${email}** is already unsubscribed from Zenemoo Dispatch.`,
+    actionButtons: [],
+  }),
+  UNSUBSCRIBE_SUCCESS: (email: string) => ({
+    content: `You've Been Unsubscribed.
+
+We've removed **${email}** from the official **Zenemoo Dispatch** subscriber database. You will no longer receive regular updates from us.`,
+    actionButtons: [],
+  }),
 };

@@ -153,6 +153,24 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
             : c
         )
       );
+    } else if (action === 'unsub:confirm_yes' || action === 'unsub:try_again') {
+      setSubState('UNSUB_PENDING_EMAIL');
+      setSubInvalidAttempts(0);
+      const aiMsg: AiChatMessage = {
+        id: `ai-unsub-${Date.now()}`,
+        role: 'assistant',
+        content: SUBSCRIPTION_RESPONSES.UNSUB_PENDING_EMAIL_PROMPT.content,
+        timestamp,
+        language: currentLanguage,
+        actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_PENDING_EMAIL_PROMPT.actionButtons,
+      };
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
     } else if (action === 'sub:abort') {
       setSubState('IDLE');
       setSubInvalidAttempts(0);
@@ -437,6 +455,159 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
       }
     }
 
+    // ── ACTIVE UNSUBSCRIPTION WORKFLOW INTERCEPTION ──
+    if (subState === 'UNSUB_PENDING_EMAIL' || subState === 'UNSUB_INVALID_LIMIT_REACHED') {
+      const userMsg: AiChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: promptText,
+        timestamp: userTimestamp,
+        language: currentLanguage,
+      };
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConv?.id
+            ? { ...c, messages: [...c.messages, userMsg], updatedAt: new Date().toISOString() }
+            : c
+        )
+      );
+
+      if (!customPrompt) {
+        setInput('');
+        if (inputRef.current) inputRef.current.style.height = 'auto';
+      }
+
+      const emailValidation = validateEmailAddress(promptText);
+
+      if (emailValidation.isValid) {
+        setSubState('UNSUB_SUBMITTING');
+        setLoading(true);
+
+        try {
+          const res = await subscriberApi.unsubscribe(emailValidation.normalizedEmail);
+          const resData = res.data;
+
+          let responseConfig;
+          if (resData?.code === 'NOT_SUBSCRIBED') {
+            responseConfig = SUBSCRIPTION_RESPONSES.NOT_SUBSCRIBED_FOUND(emailValidation.normalizedEmail);
+          } else if (resData?.code === 'ALREADY_UNSUBSCRIBED') {
+            responseConfig = SUBSCRIPTION_RESPONSES.ALREADY_UNSUBSCRIBED(emailValidation.normalizedEmail);
+          } else {
+            responseConfig = SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_SUCCESS(emailValidation.normalizedEmail);
+          }
+
+          const aiMsg: AiChatMessage = {
+            id: `ai-unsub-ok-${Date.now()}`,
+            role: 'assistant',
+            content: responseConfig.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            language: currentLanguage,
+            actionButtons: responseConfig.actionButtons,
+          };
+
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        } catch (err: any) {
+          console.warn('[Drawer Unsubscription Error]:', err);
+          const errResData = err.response?.data;
+          let responseConfig;
+          if (errResData?.code === 'NOT_SUBSCRIBED' || err.status === 404) {
+            responseConfig = SUBSCRIPTION_RESPONSES.NOT_SUBSCRIBED_FOUND(emailValidation.normalizedEmail);
+          } else {
+            responseConfig = SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_SUCCESS(emailValidation.normalizedEmail);
+          }
+          const aiMsg: AiChatMessage = {
+            id: `ai-unsub-ok-${Date.now()}`,
+            role: 'assistant',
+            content: responseConfig.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            language: currentLanguage,
+            actionButtons: responseConfig.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        } finally {
+          setLoading(false);
+          setSubState('IDLE');
+          setSubInvalidAttempts(0);
+          setSubPendingEmail('');
+        }
+        return;
+      } else {
+        const isUnrelatedQuestion = /^(what|how|why|tell me|explain|where|can you|does|is there)\b/i.test(promptText);
+
+        if (isUnrelatedQuestion) {
+          const aiMsg: AiChatMessage = {
+            id: `ai-unsub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNSUB_UNRELATED_QUESTION_DURING_EMAIL.content,
+            timestamp: userTimestamp,
+            language: currentLanguage,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_UNRELATED_QUESTION_DURING_EMAIL.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+          return;
+        }
+
+        const nextCount = subInvalidAttempts + 1;
+        setSubInvalidAttempts(nextCount);
+
+        if (nextCount >= 2) {
+          setSubState('UNSUB_INVALID_LIMIT_REACHED');
+          const aiMsg: AiChatMessage = {
+            id: `ai-unsub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_2.content,
+            timestamp: userTimestamp,
+            language: currentLanguage,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_2.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        } else {
+          setSubState('UNSUB_PENDING_EMAIL');
+          const aiMsg: AiChatMessage = {
+            id: `ai-unsub-err-${Date.now()}`,
+            role: 'assistant',
+            content: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_1.content,
+            timestamp: userTimestamp,
+            language: currentLanguage,
+            actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_INVALID_EMAIL_ATTEMPT_1.actionButtons,
+          };
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConv?.id
+                ? { ...c, messages: [...c.messages, aiMsg], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        }
+        return;
+      }
+    }
+
     // ── SUBSCRIPTION / UNSUBSCRIBE INTENT DETECTION ──
     const intentResult = detectSubscriptionIntent(promptText);
 
@@ -477,6 +648,9 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
     }
 
     if (intentResult.intent === 'UNSUBSCRIBE') {
+      setSubState('UNSUB_INTENT_DETECTED');
+      setSubInvalidAttempts(0);
+
       const userMsg: AiChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
@@ -486,12 +660,12 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
       };
 
       const aiMsg: AiChatMessage = {
-        id: `ai-unsub-${Date.now()}`,
+        id: `ai-unsub-intent-${Date.now()}`,
         role: 'assistant',
-        content: SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_PROMPT.content,
+        content: SUBSCRIPTION_RESPONSES.UNSUB_INTENT_DETECTED.content,
         timestamp: userTimestamp,
         language: currentLanguage,
-        actionButtons: SUBSCRIPTION_RESPONSES.UNSUBSCRIBE_PROMPT.actionButtons,
+        actionButtons: SUBSCRIPTION_RESPONSES.UNSUB_INTENT_DETECTED.actionButtons,
       };
 
       setConversations((prev) =>
@@ -979,14 +1153,18 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
 
               {/* ── INPUT BAR — sticky at bottom, above keyboard ── */}
               <div className="flex-none border-t border-white/[0.08] bg-[#07080f]/95 backdrop-blur-xl px-3 sm:px-4 pt-3 pb-3 space-y-2">
-                {/* Interactive Subscription Bar when in active subscription state */}
+                {/* Interactive Subscription / Unsubscription Bar when in active state */}
                 {subState !== 'IDLE' && (
                   <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 backdrop-blur-md animate-fade-in text-[11px]">
                     <span className="font-mono text-cyan-300 font-semibold px-1">
                       {subState === 'INTENT_DETECTED' && 'Subscription Mode:'}
-                      {subState === 'PENDING_EMAIL' && 'Provide Email:'}
+                      {subState === 'PENDING_EMAIL' && 'Provide Email to Subscribe:'}
                       {subState === 'INVALID_LIMIT_REACHED' && 'Verification Limit Exceeded:'}
                       {subState === 'SUBMITTING' && 'Registering Subscription...'}
+                      {subState === 'UNSUB_INTENT_DETECTED' && 'Unsubscription Mode:'}
+                      {subState === 'UNSUB_PENDING_EMAIL' && 'Provide Email to Unsubscribe:'}
+                      {subState === 'UNSUB_INVALID_LIMIT_REACHED' && 'Verification Limit Exceeded:'}
+                      {subState === 'UNSUB_SUBMITTING' && 'Processing Unsubscription...'}
                     </span>
                     <div className="flex flex-wrap items-center gap-1.5 ml-auto">
                       {subState === 'INTENT_DETECTED' && (
@@ -1015,10 +1193,36 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                         </>
                       )}
 
-                      {(subState === 'PENDING_EMAIL' || subState === 'SUBMITTING') && (
+                      {subState === 'UNSUB_INTENT_DETECTED' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('unsub:confirm_yes')}
+                            className="px-2.5 py-0.5 rounded-lg bg-cyan-400 text-black font-extrabold text-[11px] hover:bg-cyan-300 transition-all cursor-pointer"
+                          >
+                            🔕 Yes, Unsubscribe Me
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('navigate:/unsubscribe')}
+                            className="px-2.5 py-0.5 rounded-lg bg-white/10 text-white text-[11px] hover:bg-white/20 transition-all cursor-pointer"
+                          >
+                            🌐 Website
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('sub:abort')}
+                            className="px-2 py-0.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[11px] transition-all cursor-pointer"
+                          >
+                            ✕ Abort
+                          </button>
+                        </>
+                      )}
+
+                      {(subState === 'PENDING_EMAIL' || subState === 'SUBMITTING' || subState === 'UNSUB_PENDING_EMAIL' || subState === 'UNSUB_SUBMITTING') && (
                         <button
                           type="button"
-                          disabled={subState === 'SUBMITTING'}
+                          disabled={subState === 'SUBMITTING' || subState === 'UNSUB_SUBMITTING'}
                           onClick={() => handleActionButtonClick('sub:abort')}
                           className="px-2 py-0.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[11px] transition-all cursor-pointer disabled:opacity-50"
                         >
@@ -1031,6 +1235,25 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
                           <button
                             type="button"
                             onClick={() => handleActionButtonClick('sub:try_again')}
+                            className="px-2.5 py-0.5 rounded-lg bg-cyan-400 text-black font-extrabold text-[11px] hover:bg-cyan-300 transition-all cursor-pointer"
+                          >
+                            🔄 Try Again
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('sub:abort')}
+                            className="px-2 py-0.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-[11px] transition-all cursor-pointer"
+                          >
+                            ✕ Abort
+                          </button>
+                        </>
+                      )}
+
+                      {subState === 'UNSUB_INVALID_LIMIT_REACHED' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleActionButtonClick('unsub:try_again')}
                             className="px-2.5 py-0.5 rounded-lg bg-cyan-400 text-black font-extrabold text-[11px] hover:bg-cyan-300 transition-all cursor-pointer"
                           >
                             🔄 Try Again
