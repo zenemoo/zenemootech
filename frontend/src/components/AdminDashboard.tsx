@@ -1972,7 +1972,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       group: 'COMMUNICATION',
       items: [
         { id: 'email-inbox', name: 'Email Inbox', icon: Mail, count: emailInboxUnreadCount },
-        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
+        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.filter((log) => log.status === 'scheduled' || log.status === 'pending' || log.is_scheduled).length },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
         { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.filter((s) => s.status === 'unsubscribed').length },
       ],
@@ -1980,9 +1980,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'CUSTOMER & SUPPORT',
       items: [
-        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
+        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.filter((t) => (t.status || 'Open').toLowerCase() !== 'resolved').length },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
-        { id: 'reviews', name: 'Review Management', icon: Star },
+        { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
       ],
     },
     {
@@ -1990,7 +1990,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       items: [
         { id: 'call-bookings', name: 'Call Bookings', icon: Calendar, count: callBookingsActionableCount },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
-        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
+        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.filter((o) => o.status === 'active' || (o.status as string) === 'open').length },
       ],
     },
     {
@@ -2003,7 +2003,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'SYSTEM & BRANDING',
       items: [
-        { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
+        { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
       ],
     },
   ];
@@ -2185,7 +2185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     ● Online
                   </span>
                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/20">
-                    Super Admin
+                    {adminProfile?.role || 'Super Administrator'}
                   </span>
                 </div>
               </div>
@@ -2194,55 +2194,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         ) : (
           <div 
             onClick={() => setIsProfileDrawerOpen(true)}
-            className="h-20 shrink-0 border-t border-white/10 flex items-center justify-center cursor-pointer group"
-            title={adminProfile?.name || adminEmail}
+            className="h-20 shrink-0 border-t border-white/10 bg-black/[0.15] hover:bg-white/[0.05] flex items-center justify-center cursor-pointer transition-colors relative group"
+            title="Open Administrator Profile"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 p-[1.5px] group-hover:scale-105 transition-transform overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shadow-md group-hover:scale-105 transition-transform overflow-hidden">
               {activeAdminPhoto ? (
                 <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" />
               ) : (
-                <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase tracking-wider">
+                <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
                   {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
                 </div>
               )}
             </div>
+            <span className="absolute bottom-3 right-4 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0a0b10] animate-pulse" />
           </div>
         )}
       </aside>
 
-      {/* 2. MOBILE SLIDE-OVER NAVIGATION BACKDROP & CONTAINER */}
+      {/* 2. MOBILE DRAWER SIDEBAR PANEL */}
       <AnimatePresence>
         {isMobileMenuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="md:hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
-            />
-            <motion.div
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-              className="md:hidden fixed top-0 left-0 bottom-0 w-4/5 max-w-sm bg-[#06070b] border-r border-white/10 z-50 p-4 flex flex-col justify-between"
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 z-[100] md:hidden bg-black/60 backdrop-blur-sm flex justify-start"
+          >
+            <motion.aside 
+              initial={{ translateX: '-100%' }}
+              animate={{ translateX: 0 }}
+              exit={{ translateX: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-64 h-full bg-[#0a0b10] border-r border-white/5 p-5 flex flex-col justify-between"
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px]">
-                      <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-cover rounded-lg bg-white p-0.5" />
-                    </div>
+                <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-cover rounded-xl bg-white p-0.5" />
                     <div>
                       <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider">Zenemoo</h2>
                       <p className="text-[9px] font-mono text-cyan-400">Admin Control Center</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
-                  >
+                  <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 text-slate-400 hover:text-white cursor-pointer">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -2357,8 +2353,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   </div>
                 </div>
               </div>
-            </motion.div>
-          </>
+            </motion.aside>
+          </motion.div>
         )}
       </AnimatePresence>
 
