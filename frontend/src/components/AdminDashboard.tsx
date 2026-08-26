@@ -7,9 +7,11 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi, isTempId } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk, resendCandidateAcceptanceEmail } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi } from '../services/api';
+import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
 import { sanitizeZenemooUrl, isValidZenemooUrlInput } from '../services/notificationService';
 import { supabase } from '../lib/supabaseClient';
+import { getAllReviewsForAdmin, ReviewItem } from '../lib/reviewStore';
+import { useActiveLogo } from '../lib/useActiveLogo';
 import { EnterpriseTeamDirectory } from './EnterpriseTeamDirectory';
 import { EnterpriseHREmailComposer } from './EnterpriseHREmailComposer';
 import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
@@ -292,7 +294,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId: string; userName: string; teamMemberId?: string } | null>(null);
 
   // Call Bookings Sidebar Actionable Count State
-  const [callBookingsActionableCount, setCallBookingsActionableCount] = useState<number | undefined>(undefined);
+  const [callBookingsActionableCount, setCallBookingsActionableCount] = useState<number>(0);
+
+  // Admin Reviews State for Sidebar Badge
+  const [adminReviews, setAdminReviews] = useState<ReviewItem[]>([]);
+
+  // Active Logo Status for Site Settings & Branding Sidebar Badge
+  const { logoUrl, logoData } = useActiveLogo();
+  const hasCustomLogo = Boolean(logoUrl && logoUrl !== '/assets/logo.png' && !logoData?.isDefault);
 
   // Admin Notification Dispatcher State
   const [notifTitle, setNotifTitle] = useState('');
@@ -902,6 +911,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       await loadAdminNotifications();
       await loadSupportTickets();
 
+      try {
+        const revs = await getAllReviewsForAdmin();
+        setAdminReviews(revs);
+      } catch (e) {}
+
+      try {
+        const resB = await bookingApi.getAdminBookings();
+        if (resB.data?.actionableCount !== undefined) {
+          setCallBookingsActionableCount(resB.data.actionableCount);
+        }
+      } catch (e) {}
+
       // Fetch authenticated user profile and connection metadata
       try {
         const resProfile = await authApi.getProfile();
@@ -955,6 +976,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, async () => {
         await loadSupportTickets();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_bookings' }, async () => {
+        try {
+          const resB = await bookingApi.getAdminBookings();
+          if (resB.data?.actionableCount !== undefined) {
+            setCallBookingsActionableCount(resB.data.actionableCount);
+          }
+        } catch (e) {}
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit_logs' }, async () => {
         try {
           const resLogs = await authApi.getAuditLogs();
@@ -968,15 +997,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     // Polling interval every 15 seconds to ensure notifications update live
     const pollInterval = setInterval(async () => {
       try {
-        const [contactData, appsData, resLogs] = await Promise.all([
+        const [contactData, appsData, resLogs, resB] = await Promise.all([
           getContactInquiries(),
           getStoredCandidateApplications(),
           authApi.getAuditLogs().catch(() => null),
+          bookingApi.getAdminBookings().catch(() => null),
         ]);
         setInquiries(contactData);
         setAllCandidateApps(appsData);
         if (resLogs?.data?.success) {
           setRecentLogs(resLogs.data.logs || []);
+        }
+        if (resB?.data?.actionableCount !== undefined) {
+          setCallBookingsActionableCount(resB.data.actionableCount);
         }
         await loadSupportTickets();
       } catch (err) {}
@@ -1897,7 +1930,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const activeAdminAccount = authorizedEmails.find(a => a.email.toLowerCase() === adminEmail.toLowerCase()) || null;
   const activeAdminPhoto = adminProfile?.profile_photo_url || activeAdminAccount?.profile_photo_url || getStoredAdminPhoto(adminEmail) || '';
 
-  const navGroups = [
+  const navGroups: {
+    group: string;
+    items: {
+      id: string;
+      name: string;
+      icon: any;
+      count?: number | string;
+    }[];
+  }[] = [
     {
       group: 'CORE MANAGEMENT',
       items: [
@@ -1914,10 +1955,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'notifications', name: 'Notifications Center', icon: Bell, count: unreadNotifications.length },
         { id: 'email-inbox', name: 'Email Inbox', icon: Mail, count: emailInboxUnreadCount },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
-        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
-        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
-        { id: 'reviews', name: 'Review Management', icon: Star },
-        { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
+        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.filter((log) => log.status === 'scheduled' || log.status === 'pending' || log.is_scheduled).length },
+        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.filter((t) => (t.status || 'Open').toLowerCase() !== 'resolved').length },
+        { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
+        { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
         { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.filter((s) => s.status === 'unsubscribed').length },
       ],
     },
@@ -1926,8 +1967,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       items: [
         { id: 'call-bookings', name: 'Call Bookings', icon: Calendar, count: callBookingsActionableCount },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
-        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
-        { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
+        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.filter((o) => o.status === 'active' || (o.status as string) === 'open').length },
+        { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
       ],
     },
     {
