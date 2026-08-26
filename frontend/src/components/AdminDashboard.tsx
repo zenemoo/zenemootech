@@ -1918,7 +1918,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
         { id: 'reviews', name: 'Review Management', icon: Star },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.length },
-        { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.length },
+        { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.filter((s) => s.status === 'unsubscribed').length },
       ],
     },
     {
