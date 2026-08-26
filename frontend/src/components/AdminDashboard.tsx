@@ -303,6 +303,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const { logoUrl, logoData } = useActiveLogo();
   const hasCustomLogo = Boolean(logoUrl && logoUrl !== '/assets/logo.png' && !logoData?.isDefault);
 
+  // Lightweight Collapsible Sidebar Groups State
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({
+    'AI & DATA': true,
+    'SYSTEM & BRANDING': true,
+  });
+
+  const toggleGroupCollapse = (groupName: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupName]: !prev[groupName],
+    }));
+  };
+
   // Admin Notification Dispatcher State
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
@@ -1940,48 +1953,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     }[];
   }[] = [
     {
-      group: 'CORE MANAGEMENT',
+      group: 'OVERVIEW',
+      items: [
+        { id: 'notifications', name: 'Notifications Center', icon: Bell, count: unreadNotifications.length },
+      ],
+    },
+    {
+      group: 'PEOPLE & ACCESS',
       items: [
         { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
         { id: 'directory', name: 'Team Directory', icon: UserCheck },
         { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
-        { id: 'talent-network', name: 'AI Data Network', icon: Users },
+        { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
         { id: 'admin-hr-ai', name: 'Admin & HR AI', icon: Sparkles },
       ],
     },
     {
       group: 'COMMUNICATION',
       items: [
-        { id: 'notifications', name: 'Notifications Center', icon: Bell, count: unreadNotifications.length },
         { id: 'email-inbox', name: 'Email Inbox', icon: Mail, count: emailInboxUnreadCount },
+        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.length },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
-        { id: 'history', name: 'Message History', icon: Send, count: emailLogs.filter((log) => log.status === 'scheduled' || log.status === 'pending' || log.is_scheduled).length },
-        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.filter((t) => (t.status || 'Open').toLowerCase() !== 'resolved').length },
-        { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
-        { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
         { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.filter((s) => s.status === 'unsubscribed').length },
       ],
     },
     {
-      group: 'ENTERPRISE OPERATIONS',
+      group: 'CUSTOMER & SUPPORT',
       items: [
-        { id: 'call-bookings', name: 'Call Bookings', icon: Calendar, count: callBookingsActionableCount },
-        { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
-        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.filter((o) => o.status === 'active' || (o.status as string) === 'open').length },
-        { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
+        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.length },
+        { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
+        { id: 'reviews', name: 'Review Management', icon: Star },
       ],
     },
     {
-      group: 'AI DATA PORTFOLIO',
+      group: 'BUSINESS OPERATIONS',
       items: [
+        { id: 'call-bookings', name: 'Call Bookings', icon: Calendar, count: callBookingsActionableCount },
+        { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
+        { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.length },
+      ],
+    },
+    {
+      group: 'AI & DATA',
+      items: [
+        { id: 'talent-network', name: 'AI Data Network', icon: Users },
         { id: 'datasets', name: 'Datasets', icon: Folder },
       ],
     },
     {
-      group: 'AI INTELLIGENCE & SECURITY',
+      group: 'SYSTEM & BRANDING',
       items: [
-        { id: 'ai-analytics', name: 'Zenemoo AI Analytics', icon: Bot },
-        { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
+        { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe },
       ],
     },
   ];
@@ -2074,46 +2096,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               No navigation items match "{sidebarSearchQuery}"
             </div>
           ) : (
-            filteredNavGroups.map((group, groupIdx) => (
-              <div key={groupIdx} className="space-y-1">
-                {!isSidebarCollapsed && (
-                  <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 mb-1.5">
-                    {group.group}
-                  </div>
-                )}
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-                  return (
+            filteredNavGroups.map((group, groupIdx) => {
+              const isExpanded = Boolean(
+                sidebarSearchQuery.trim() ||
+                group.items.some((item) => item.id === activeTab) ||
+                !collapsedGroups[group.group]
+              );
+              return (
+                <div key={groupIdx} className="space-y-1">
+                  {!isSidebarCollapsed && (
                     <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id as any)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-mono text-xs transition-all cursor-pointer group relative ${
-                        isActive
-                          ? 'bg-cyan-500/10 text-cyan-300 font-bold border-l-2 border-cyan-400 shadow-sm shadow-cyan-500/10'
-                          : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-                      }`}
-                      title={isSidebarCollapsed ? item.name : undefined}
+                      type="button"
+                      onClick={() => toggleGroupCollapse(group.group)}
+                      className="w-full flex items-center justify-between text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 py-1 mb-0.5 hover:text-slate-300 transition-colors cursor-pointer select-none"
                     >
-                      <Icon className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
-                      {!isSidebarCollapsed && (
-                        <span className="flex-1 text-left truncate">{item.name}</span>
-                      )}
-                      {!isSidebarCollapsed && item.count !== undefined && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
-                          {item.count}
-                        </span>
-                      )}
-                      {isSidebarCollapsed && (
-                        <div className="absolute left-full ml-3 px-3 py-1.5 rounded-xl bg-[#090a0f] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
-                          {item.name} {item.count !== undefined ? `(${item.count})` : ''}
-                        </div>
+                      <span>{group.group}</span>
+                      {!sidebarSearchQuery && (
+                        <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? '' : '-rotate-90 text-slate-600'}`} />
                       )}
                     </button>
-                  );
-                })}
-              </div>
-            ))
+                  )}
+                  {isExpanded &&
+                    group.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setActiveTab(item.id as any)}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-mono text-xs transition-all cursor-pointer group relative ${
+                            isActive
+                              ? 'bg-cyan-500/10 text-cyan-300 font-bold border-l-2 border-cyan-400 shadow-sm shadow-cyan-500/10'
+                              : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
+                          }`}
+                          title={isSidebarCollapsed ? item.name : undefined}
+                        >
+                          <Icon className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+                          {!isSidebarCollapsed && (
+                            <span className="flex-1 text-left truncate">{item.name}</span>
+                          )}
+                          {!isSidebarCollapsed && item.count !== undefined && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                              {item.count}
+                            </span>
+                          )}
+                          {isSidebarCollapsed && (
+                            <div className="absolute left-full ml-3 px-3 py-1.5 rounded-xl bg-[#090a0f] border border-white/10 text-white font-mono text-xs shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap">
+                              {item.name} {item.count !== undefined ? `(${item.count})` : ''}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              );
+            })
           )}
         </nav>
 
@@ -2148,7 +2185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     ● Online
                   </span>
                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/20">
-                    {adminProfile?.role || 'Super Administrator'}
+                    Super Admin
                   </span>
                 </div>
               </div>
@@ -2157,51 +2194,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         ) : (
           <div 
             onClick={() => setIsProfileDrawerOpen(true)}
-            className="h-20 shrink-0 border-t border-white/10 bg-black/[0.15] hover:bg-white/[0.05] flex items-center justify-center cursor-pointer transition-colors relative group"
-            title="Open Administrator Profile"
+            className="h-20 shrink-0 border-t border-white/10 flex items-center justify-center cursor-pointer group"
+            title={adminProfile?.name || adminEmail}
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1.5px] shadow-md group-hover:scale-105 transition-transform overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 p-[1.5px] group-hover:scale-105 transition-transform overflow-hidden">
               {activeAdminPhoto ? (
                 <img src={activeAdminPhoto} alt="Admin Profile" className="w-full h-full object-cover rounded-[10px]" />
               ) : (
-                <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
+                <div className="w-full h-full rounded-[10px] bg-[#0d0e15] flex items-center justify-center text-xs font-black text-cyan-300 uppercase tracking-wider">
                   {adminProfile?.name ? adminProfile.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : adminEmail.substring(0, 2).toUpperCase()}
                 </div>
               )}
             </div>
-            <span className="absolute bottom-3 right-4 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0a0b10] animate-pulse" />
           </div>
         )}
       </aside>
 
-      {/* 2. MOBILE DRAWER SIDEBAR PANEL */}
+      {/* 2. MOBILE SLIDE-OVER NAVIGATION BACKDROP & CONTAINER */}
       <AnimatePresence>
         {isMobileMenuOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="fixed inset-0 z-[100] md:hidden bg-black/60 backdrop-blur-sm flex justify-start"
-          >
-            <motion.aside 
-              initial={{ translateX: '-100%' }}
-              animate={{ translateX: 0 }}
-              exit={{ translateX: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-64 h-full bg-[#0a0b10] border-r border-white/5 p-5 flex flex-col justify-between"
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="md:hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+              className="md:hidden fixed top-0 left-0 bottom-0 w-4/5 max-w-sm bg-[#06070b] border-r border-white/10 z-50 p-4 flex flex-col justify-between"
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <div className="flex items-center gap-2">
-                    <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-cover rounded-xl bg-white p-0.5" />
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px]">
+                      <img src="/assets/logo.png" alt="Logo" className="w-full h-full object-cover rounded-lg bg-white p-0.5" />
+                    </div>
                     <div>
                       <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider">Zenemoo</h2>
                       <p className="text-[9px] font-mono text-cyan-400">Admin Control Center</p>
                     </div>
                   </div>
-                  <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 text-slate-400 hover:text-white cursor-pointer">
+                  <button
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -2232,39 +2273,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       No items match "{sidebarSearchQuery}"
                     </div>
                   ) : (
-                    filteredNavGroups.map((group, groupIdx) => (
-                      <div key={groupIdx} className="space-y-1">
-                        <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 mb-1">
-                          {group.group}
+                    filteredNavGroups.map((group, groupIdx) => {
+                      const isExpanded = Boolean(
+                        sidebarSearchQuery.trim() ||
+                        group.items.some((item) => item.id === activeTab) ||
+                        !collapsedGroups[group.group]
+                      );
+                      return (
+                        <div key={groupIdx} className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroupCollapse(group.group)}
+                            className="w-full flex items-center justify-between text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-3 py-1 mb-0.5 hover:text-slate-300 transition-colors cursor-pointer select-none"
+                          >
+                            <span>{group.group}</span>
+                            {!sidebarSearchQuery && (
+                              <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? '' : '-rotate-90 text-slate-600'}`} />
+                            )}
+                          </button>
+                          {isExpanded &&
+                            group.items.map((item) => {
+                              const Icon = item.icon;
+                              const isActive = activeTab === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={() => {
+                                    setActiveTab(item.id as any);
+                                    setIsMobileMenuOpen(false);
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-mono text-xs transition-all cursor-pointer ${
+                                    isActive
+                                      ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-cyan-400 font-bold'
+                                      : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'
+                                  }`}
+                                >
+                                  <Icon className="w-4 h-4 shrink-0" />
+                                  <span className="flex-1 text-left truncate">{item.name}</span>
+                                  {item.count !== undefined && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                                      {item.count}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
                         </div>
-                        {group.items.map((item) => {
-                          const Icon = item.icon;
-                          const isActive = activeTab === item.id;
-                          return (
-                            <button
-                              key={item.id}
-                              onClick={() => {
-                                setActiveTab(item.id as any);
-                                setIsMobileMenuOpen(false);
-                              }}
-                              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-mono text-xs transition-all cursor-pointer ${
-                                isActive
-                                  ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-cyan-400 font-bold'
-                                  : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'
-                              }`}
-                            >
-                              <Icon className="w-4 h-4 shrink-0" />
-                              <span className="flex-1 text-left truncate">{item.name}</span>
-                              {item.count !== undefined && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
-                                  {item.count}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </nav>
               </div>
@@ -2301,8 +2357,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   </div>
                 </div>
               </div>
-            </motion.aside>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
