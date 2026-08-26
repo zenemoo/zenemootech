@@ -251,13 +251,13 @@ export const saveAuthorizedEmailToSupabase = async (
     role: account.role,
     added_by: account.added_by,
   };
-  if (account.name) insertPayload.name = account.name;
-  if (account.profile_photo_url) insertPayload.profile_photo_url = account.profile_photo_url;
-  if (account.department) insertPayload.department = account.department;
-  if (account.phone) insertPayload.phone = account.phone;
-  if (account.telegram_chat_id) insertPayload.telegram_chat_id = account.telegram_chat_id;
-  if (account.notes) insertPayload.notes = account.notes;
-  if (account.status) insertPayload.status = account.status;
+  if (account.name !== undefined) insertPayload.name = account.name;
+  if (account.profile_photo_url !== undefined) insertPayload.profile_photo_url = account.profile_photo_url;
+  if (account.department !== undefined) insertPayload.department = account.department;
+  if (account.phone !== undefined) insertPayload.phone = account.phone;
+  if (account.telegram_chat_id !== undefined) insertPayload.telegram_chat_id = account.telegram_chat_id;
+  if (account.notes !== undefined) insertPayload.notes = account.notes;
+  if (account.status !== undefined) insertPayload.status = account.status;
 
   try {
     const { error } = await supabase.from('authorized_admin_emails').upsert([insertPayload], { onConflict: 'email' });
@@ -315,18 +315,44 @@ export const updateAuthorizedEmailInSupabase = async (
   updates: Partial<AuthorizedEmailAccount>
 ): Promise<AuthorizedEmailAccount[]> => {
   const cleanKey = idOrEmail.trim().toLowerCase();
-  if (updates.profile_photo_url !== undefined) {
-    setStoredAdminPhoto(cleanKey, updates.profile_photo_url || '');
+  const targetEmail = updates.email ? updates.email.trim().toLowerCase() : (cleanKey.includes('@') ? cleanKey : '');
+
+  if (updates.profile_photo_url !== undefined && targetEmail) {
+    setStoredAdminPhoto(targetEmail, updates.profile_photo_url || '');
   }
 
   try {
-    const { error } = await supabase
-      .from('authorized_admin_emails')
-      .update(updates)
-      .or(`id.eq.${idOrEmail},email.eq.${idOrEmail}`);
+    const dbPayload: any = {};
+    if (updates.email !== undefined) dbPayload.email = updates.email.trim().toLowerCase();
+    if (updates.name !== undefined) dbPayload.name = updates.name;
+    if (updates.role !== undefined) dbPayload.role = updates.role;
+    if (updates.department !== undefined) dbPayload.department = updates.department;
+    if (updates.phone !== undefined) dbPayload.phone = updates.phone;
+    if (updates.telegram_chat_id !== undefined) dbPayload.telegram_chat_id = updates.telegram_chat_id;
+    if (updates.notes !== undefined) dbPayload.notes = updates.notes;
+    if (updates.status !== undefined) dbPayload.status = updates.status;
+    if (updates.profile_photo_url !== undefined) dbPayload.profile_photo_url = updates.profile_photo_url;
 
-    if (error) {
-      console.warn('Supabase update authorized_admin_emails warning:', error.message);
+    // First try upserting by email so it works even if record wasn't previously in DB or id mismatched
+    if (targetEmail && dbPayload.email) {
+      const { error: upsertErr } = await supabase
+        .from('authorized_admin_emails')
+        .upsert([dbPayload], { onConflict: 'email' });
+
+      if (upsertErr) {
+        console.warn('Supabase upsert on update warning:', upsertErr.message);
+      }
+    } else {
+      // Fallback update by email if email present
+      const matchKey = targetEmail || cleanKey;
+      const { error } = await supabase
+        .from('authorized_admin_emails')
+        .update(dbPayload)
+        .eq('email', matchKey);
+
+      if (error) {
+        console.warn('Supabase update authorized_admin_emails warning:', error.message);
+      }
     }
   } catch (err) {
     console.warn('Supabase update authorized_admin_emails error:', err);
@@ -344,7 +370,7 @@ export const updateAuthorizedEmailInSupabase = async (
   }
 
   const updated = current.map((item) => {
-    if (item.id === idOrEmail || item.email.toLowerCase() === cleanKey) {
+    if (item.id === idOrEmail || item.email.toLowerCase() === cleanKey || (targetEmail && item.email.toLowerCase() === targetEmail)) {
       const mergedPhoto = updates.profile_photo_url !== undefined ? updates.profile_photo_url : (item.profile_photo_url || getStoredAdminPhoto(item.email));
       return { ...item, ...updates, profile_photo_url: mergedPhoto || '' };
     }
