@@ -6029,64 +6029,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           )}
         </AnimatePresence>
 
-        {/* TAB 4: TELEMETRY & CAPACITY */}
         {/* TAB: SITE SETTINGS & BRAND LOGO MANAGEMENT */}
         {activeTab === 'telemetry' && (
           <div className="space-y-8 font-sans">
             <AdminBrandLogoSettings />
-
-            <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-2xl mx-auto space-y-6">
-              <h3 className="text-xl font-bold font-display text-white">Update Site Telemetry Metrics</h3>
-
-              <form onSubmit={handleSaveTelemetry} className="space-y-4 font-mono text-xs">
-                <div>
-                  <label className="block text-slate-300 mb-1">Daily Output (Minutes)</label>
-                  <input
-                    type="number"
-                    value={telemetry.dailyOutput}
-                    onChange={(e) => setTelemetry({ ...telemetry, dailyOutput: Number(e.target.value) })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">Monthly Target Output (Minutes)</label>
-                  <input
-                    type="number"
-                    value={telemetry.monthlyOutput}
-                    onChange={(e) => setTelemetry({ ...telemetry, monthlyOutput: Number(e.target.value) })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">Accuracy SLA Rate (%)</label>
-                  <input
-                    type="number"
-                    value={telemetry.accuracyRate}
-                    onChange={(e) => setTelemetry({ ...telemetry, accuracyRate: Number(e.target.value) })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-1">Active Team Specialists</label>
-                  <input
-                    type="number"
-                    value={telemetry.activeSpecialists}
-                    onChange={(e) => setTelemetry({ ...telemetry, activeSpecialists: Number(e.target.value) })}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans text-sm"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-500/20 cursor-pointer"
-                >
-                  Save Telemetry Metrics
-                </button>
-              </form>
-            </div>
           </div>
         )}
 
