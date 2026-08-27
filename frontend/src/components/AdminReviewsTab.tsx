@@ -36,9 +36,10 @@ import {
 
 interface AdminReviewsTabProps {
   onAddToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  onReviewsChange?: (reviews: ReviewItem[]) => void;
 }
 
-export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) => {
+export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, onReviewsChange }) => {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -68,9 +69,11 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast }) 
     try {
       const data = await getAllReviewsForAdmin();
       setReviews(data);
+      if (onReviewsChange) onReviewsChange(data);
     } catch (e: any) {
       console.error('Failed to fetch admin reviews from database:', e);
       setReviews([]);
+      if (onReviewsChange) onReviewsChange([]);
       setFetchError(e.message || 'Unable to fetch reviews from database.');
       onAddToast('Database Error', 'Unable to fetch reviews from database.', 'error');
     } finally {

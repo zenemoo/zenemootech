@@ -769,6 +769,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     setAllCandidateApps(apps);
   };
 
+  const loadAdminReviewsData = async () => {
+    try {
+      const reviews = await getAllReviewsForAdmin();
+      setAdminReviews(reviews);
+    } catch (e) {
+      console.warn('Failed to load admin reviews for sidebar count:', e);
+    }
+  };
+
   // Session validation and restoration hook on mount
   useEffect(() => {
     const restoreSession = async () => {
@@ -913,6 +922,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       await loadTeamData();
       await loadPartnersData();
       await loadOpportunitiesData();
+      await loadAdminReviewsData();
       const contactData = await getContactInquiries();
       setInquiries(contactData);
       await loadSubscribers();
@@ -2136,7 +2146,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                             <span className="flex-1 text-left truncate">{item.name}</span>
                           )}
                           {!isSidebarCollapsed && item.count !== undefined && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold transition-colors ${
+                                item.id === 'reviews' && typeof item.count === 'number' && item.count > 0
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
+                                  : isActive
+                                  ? 'bg-cyan-500/20 text-cyan-300'
+                                  : 'bg-white/5 text-slate-500'
+                              }`}
+                            >
                               {item.count}
                             </span>
                           )}
@@ -2307,7 +2325,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                   <Icon className="w-4 h-4 shrink-0" />
                                   <span className="flex-1 text-left truncate">{item.name}</span>
                                   {item.count !== undefined && (
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-slate-500'}`}>
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold transition-colors ${
+                                        item.id === 'reviews' && typeof item.count === 'number' && item.count > 0
+                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                          : isActive
+                                          ? 'bg-cyan-500/20 text-cyan-300'
+                                          : 'bg-white/5 text-slate-500'
+                                      }`}
+                                    >
                                       {item.count}
                                     </span>
                                   )}
@@ -5531,7 +5557,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
         {/* TAB 3.55: REVIEWS MANAGEMENT */}
         {activeTab === 'reviews' && (
-          <AdminReviewsTab onAddToast={addToast} />
+          <AdminReviewsTab onAddToast={addToast} onReviewsChange={setAdminReviews} />
         )}
 
         {/* TAB 3.6: ENTERPRISE SUPPORT TICKETS MANAGEMENT */}
