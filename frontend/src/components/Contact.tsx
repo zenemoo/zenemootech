@@ -213,7 +213,7 @@ export const Contact: React.FC = () => {
             Get In Touch With Zenemo Tech
           </h2>
           <p className="text-slate-400 text-base sm:text-lg">
-            Whether you're an enterprise looking for a reliable language data team, or a company looking to partner with us through DesiCrew — we're ready to discuss your requirements.
+            Whether you're an enterprise looking for a reliable language data team, or an organization looking to work with us — we're ready to discuss your requirements.
           </p>
         </div>
 

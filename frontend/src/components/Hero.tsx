@@ -42,7 +42,7 @@ export const Hero: React.FC = () => {
             <SeoImage src="/assets/logo.png" alt="Zenemoo Official Logo — Enterprise AI Solutions" priority={true} width={24} height={24} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white p-0.5 shadow object-cover shrink-0" />
             <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
             <span className="text-[10px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold">
-              Trusted DesiCrew Vendor • Est. 2023
+              Working with DesiCrew since 2023
             </span>
             <span className="text-[10px] sm:text-xs text-slate-500 hidden xs:inline">•</span>
             <span className="text-[10px] sm:text-xs text-slate-300 group-hover:text-white transition-colors hidden xs:inline">
@@ -64,7 +64,7 @@ export const Hero: React.FC = () => {
 
           {/* Subtitle */}
           <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-[22px] text-slate-300 font-normal leading-relaxed max-w-3xl xl:max-w-4xl mx-auto mb-8 sm:mb-10 xl:mb-10">
-            We are <strong className="text-white font-semibold">Zenemoo Data Solutions</strong> — a specialized team delivering high-accuracy <span className="text-cyan-300 font-semibold">audio transcription</span>, <span className="text-purple-300 font-semibold">data annotation</span>, and <span className="text-blue-300 font-semibold">multilingual voice over</span> services to enterprises and AI technology companies. Delivering 100% output to <strong className="text-emerald-400 font-semibold">DesiCrew Solutions</strong> since 2023.
+            We are <strong className="text-white font-semibold">Zenemoo Data Solutions</strong> — a specialized team delivering high-accuracy <span className="text-cyan-300 font-semibold">audio transcription</span>, <span className="text-purple-300 font-semibold">data annotation</span>, and <span className="text-blue-300 font-semibold">multilingual voice over</span> services to enterprises and AI technology companies. Working with DesiCrew since 2023.
           </p>
 
           {/* Glass CTA Buttons (Directly below description, horizontally aligned with 16-20px gap on desktop) */}
@@ -110,7 +110,7 @@ export const Hero: React.FC = () => {
             <div className="text-3xl sm:text-4xl font-extrabold font-mono text-cyan-400 mb-1">
               <CountUp end={1.5} decimals={1} suffix="+ Yrs" />
             </div>
-            <div className="text-xs font-semibold text-slate-200">DesiCrew Partnership</div>
+            <div className="text-xs font-semibold text-slate-200">Working with DesiCrew</div>
             <div className="text-[11px] text-slate-400 font-mono mt-1">Active Since 2023</div>
           </div>
 
@@ -184,7 +184,7 @@ export const Hero: React.FC = () => {
                   </button>
                   <div className="min-w-0 flex-1">
                     <div className="text-white font-bold text-xs sm:text-sm truncate">English &amp; Odia Speech Transcription Sample</div>
-                    <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">DesiCrew AI Dataset Pipeline • Speaker Diarization Active</div>
+                    <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">Zenemoo AI Dataset Pipeline • Speaker Diarization Active</div>
                   </div>
                 </div>
                 <div className="text-emerald-400 font-bold text-[10px] sm:text-xs shrink-0 whitespace-nowrap self-end sm:self-center">
@@ -227,7 +227,7 @@ export const Hero: React.FC = () => {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16 opacity-70">
             <span className="text-sm font-semibold font-mono text-emerald-400 hover:text-white transition-colors">
-              DesiCrew Solutions (Vendor Since 2023)
+              Working with DesiCrew since 2023
             </span>
             <span className="text-sm font-semibold font-mono text-slate-300 hover:text-cyan-400 transition-colors">
               Hindi Audio Datasets

@@ -673,7 +673,7 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
                     required
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g. ZENEMOO × DesiCrew Solutions"
+                    placeholder="e.g. ZENEMOO Data Solutions"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
                   />
                 </div>

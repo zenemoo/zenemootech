@@ -45,7 +45,7 @@ export const buildOrganizationSchema = () => {
     'email': 'contact@zenemoo.in',
     'telephone': '+91 9827775230',
     'areaServed': ['IN', 'Global'],
-    'sameAs': ['https://www.linkedin.com/company/desicrew-solutions'],
+    'sameAs': ['https://www.linkedin.com/company/zenemoo'],
     'contactPoint': [
       {
         '@type': 'ContactPoint',

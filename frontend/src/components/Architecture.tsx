@@ -45,7 +45,7 @@ export const Architecture: React.FC = () => {
       title: 'Client Delivery',
       icon: Send,
       desc: 'Final datasets, transcripts, or annotated files are delivered in the required format (JSON, SRT, TXT, CSV) according to client specifications.',
-      details: ['Deliverable packaging & client portal sync', 'DesiCrew Solutions vendor delivery', 'Post-delivery feedback loop'],
+      details: ['Deliverable packaging & client portal sync', 'Secure deliverable dispatch', 'Post-delivery feedback loop'],
     },
   ];
 

@@ -1,6 +1,6 @@
 # ZENEMOO — Professional Language & AI Data Solutions
 
-ZENEMOO is a premier AI language data services company delivering audio transcription, AI data annotation, dataset collection, and voice-over solutions for DesiCrew Solutions and enterprise AI platforms.
+ZENEMOO is a premier AI language data services company delivering audio transcription, AI data annotation, dataset collection, and voice-over solutions for enterprise AI platforms. Working with DesiCrew since 2023.
 
 ## 🏗️ Project Architecture
 

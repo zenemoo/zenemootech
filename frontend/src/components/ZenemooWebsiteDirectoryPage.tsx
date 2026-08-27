@@ -189,7 +189,7 @@ const DIRECTORY_ITEMS: DirectoryItem[] = [
     title: 'Partners & Government MSME Recognition',
     category: 'company',
     categoryLabel: 'Company & Credentials',
-    description: 'Certified DesiCrew Solutions vendor partnership since 2023 and Government of India Udyam MSME accreditation.',
+    description: 'Working with DesiCrew since 2023 and Government of India Udyam MSME accreditation.',
     url: '/#partners',
     badge: 'Accredited',
     icon: Sparkles,

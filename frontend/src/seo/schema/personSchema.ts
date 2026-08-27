@@ -33,14 +33,13 @@ export const buildPersonSchema = (member: PersonMemberInput) => {
       '@type': 'Organization',
       'name': 'Zenemoo',
       'url': 'https://www.zenemoo.in/',
-      'sameAs': 'https://www.linkedin.com/company/desicrew-solutions',
+      'sameAs': 'https://www.zenemoo.in/',
     },
     'image': photoSchema,
     'email': member.email || undefined,
     'knowsLanguage': member.languages || ['English', 'Odia', 'Hindi'],
     'sameAs': member.sameAs || [
       'https://www.zenemoo.in/team-directory',
-      'https://www.linkedin.com/company/desicrew-solutions',
     ],
   };
 };

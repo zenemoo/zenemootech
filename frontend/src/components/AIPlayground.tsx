@@ -37,10 +37,10 @@ export const AIPlayground: React.FC = () => {
         return {
           header: `Zenemo Tech Audio Transcript (${language} • ${format})`,
           content: language === 'Hindi'
-            ? `[00:00.00] Speaker 1 (Male): नमस्ते, ज़ेनेमो टेक में आपका स्वागत है।\n[00:03.45] Speaker 2 (Female): हमारी टीम 99% से अधिक सटीकता के साथ ट्रांसक्रिप्शन और डेटा एनोटेशन प्रदान करती है।\n[00:08.10] Speaker 1 (Male): DesiCrew Solutions के साथ 1.5 वर्षों से अधिक समय से पार्टनरशिप जारी है।`
+            ? `[00:00.00] Speaker 1 (Male): नमस्ते, ज़ेनेमो टेक में आपका स्वागत है。\n[00:03.45] Speaker 2 (Female): हमारी टीम 99% से अधिक सटीकता के साथ ट्रांसक्रिप्शन और डेटा एनोटेशन प्रदान करती है。\n[00:08.10] Speaker 1 (Male): 2023 से DesiCrew के साथ कार्य जारी है।`
             : language === 'Odia'
-            ? `[00:00.00] Speaker 1 (Male): ନମସ୍କାର, ଜେନେମୋ ଟେକ୍ କୁ ସ୍ୱାଗତ।\n[00:03.45] Speaker 2 (Female): ଆମର ଟିମ୍ ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପସନ୍ ଏବଂ ଡାଟା ଆନୋଟେସନ୍ ସଠିକ୍ ଭାବରେ ପ୍ରଦାନ କରେ।\n[00:08.10] Speaker 1 (Male): ଆମେ 2023 ରୁ DesiCrew Solutions ର ଭେଣ୍ଡର।`
-            : `[00:00.00] Speaker 1 (Male): Hello, welcome to Zenemo Tech.\n[00:03.45] Speaker 2 (Female): Our specialized team delivers 99%+ accuracy across transcription and data annotation.\n[00:08.10] Speaker 1 (Male): Certified DesiCrew Solutions vendor active since 2023.`,
+            ? `[00:00.00] Speaker 1 (Male): ନମସ୍କାର, ଜେନେମୋ ଟେକ୍ କୁ ସ୍ୱାଗତ।\n[00:03.45] Speaker 2 (Female): ଆମର ଟିମ୍ ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପସନ୍ ଏବଂ ଡାଟା ଆନୋଟେସନ୍ ସଠିକ୍ ଭାବରେ ପ୍ରଦାନ କରେ।\n[00:08.10] Speaker 1 (Male): ଆମେ 2023 ରୁ DesiCrew ସହିତ କାର୍ଯ୍ୟ କରୁଛୁ।`
+            : `[00:00.00] Speaker 1 (Male): Hello, welcome to Zenemo Tech.\n[00:03.45] Speaker 2 (Female): Our specialized team delivers 99%+ accuracy across transcription and data annotation.\n[00:08.10] Speaker 1 (Male): Working with DesiCrew since 2023.`,
         };
       case 'annotate':
         return {
@@ -199,8 +199,8 @@ export const AIPlayground: React.FC = () => {
                     <span className="text-emerald-400 font-semibold">99%+ Verified</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Vendor Client:</span>
-                    <span className="text-slate-200">DesiCrew Solutions</span>
+                    <span className="text-slate-500">Working Relationship:</span>
+                    <span className="text-slate-200">Working with DesiCrew since 2023</span>
                   </div>
                 </div>
               </div>

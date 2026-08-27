@@ -78,7 +78,7 @@ export const Footer: React.FC = () => {
               </div>
             </div>
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
-              Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets. Certified DesiCrew Solutions vendor since 2023.
+              Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets. Working with DesiCrew since 2023.
             </p>
 
             {/* MSME Government Credential Badge */}

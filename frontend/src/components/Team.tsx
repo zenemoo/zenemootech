@@ -62,7 +62,7 @@ export const Team: React.FC = () => {
             Meet Our Data Solutions Team
           </h2>
           <p className="text-slate-400 text-base sm:text-lg">
-            Our specialized team of transcribers, annotators, and quality control leads delivering enterprise accuracy for DesiCrew Solutions and AI tech companies.
+            Our specialized team of transcribers, annotators, and quality control leads delivering enterprise accuracy for data services and AI tech companies. Working with DesiCrew since 2023.
           </p>
         </div>
 

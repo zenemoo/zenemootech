@@ -119,7 +119,7 @@ export const DEFAULT_MESSAGE_HISTORY: MessageHistoryRecord[] = [
     sender: 'support@zenemoo.in',
     recipient: 'priya.sharma@techcorp.io',
     subject: 'Opportunity Application Status Update - AI Data Annotator',
-    snippet: 'Your application for AI Data Annotator at DesiCrew Solutions has been shortlisted...',
+    snippet: 'Your application for AI Data Annotator has been shortlisted...',
     body: 'Dear Priya,\n\nWe are pleased to inform you that your candidate application for the AI Data Annotator program has been shortlisted for the next evaluation round.\n\nRegards,\nZenemoo Recruitment Ops',
     sent_at: '2026-07-29T10:45:00Z',
     status: 'clicked',

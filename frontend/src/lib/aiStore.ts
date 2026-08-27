@@ -70,7 +70,7 @@ export const LANG_UI_MAP: Record<AiLanguage, {
       'Download Zenemoo Android App',
       'What audio transcription services do you offer?',
       'How do I apply for a job at Zenemoo?',
-      'What is the DesiCrew alliance?',
+      'Tell me about working with DesiCrew',
     ],
     searchPlaceholder: 'Search conversations...',
     noHistory: 'No conversations yet.',
@@ -96,7 +96,7 @@ export const LANG_UI_MAP: Record<AiLanguage, {
       'जेनेमू एंड्रॉइड ऐप कैसे डाउनलोड करें?',
       'ऑडियो ट्रांसक्रिप्शन सेवाएं क्या हैं?',
       'जेनेमू में नौकरी के लिए आवेदन कैसे करें?',
-      'DesiCrew गठबंधन क्या है?',
+      'DesiCrew के साथ कार्य के बारे में बताएं',
     ],
     searchPlaceholder: 'बातचीत खोजें...',
     noHistory: 'अभी तक कोई बातचीत नहीं।',
@@ -122,7 +122,7 @@ export const LANG_UI_MAP: Record<AiLanguage, {
       'ଜେନେମୁ ଆଣ୍ଡ୍ରଏଡ୍ ଆପ୍ କିପରି ଡାଉନଲୋଡ୍ କରିବି?',
       'ଅଡିଓ ଟ୍ରାନ୍ସକ୍ରିପସନ ସେବା କ\'ଣ?',
       'ଜେନେମୁରେ ଚାକିରି ପାଇଁ କିପରି ଆବେଦନ କରିବି?',
-      'DesiCrew ମୈତ୍ରୀ କ\'ଣ?',
+      'DesiCrew ସହିତ କାର୍ଯ୍ୟ ବିଷୟରେ କୁହନ୍ତୁ',
     ],
     searchPlaceholder: 'ବାର୍ତ୍ତାଳାପ ଖୋଜନ୍ତୁ...',
     noHistory: 'ଏ ପର୍ଯ୍ୟନ୍ତ କୌଣସି ବାର୍ତ୍ତାଳାପ ନାହିଁ।',
@@ -193,7 +193,7 @@ export const generateAutoTitle = (firstPrompt: string): string => {
   if (lower.includes('app') || lower.includes('apk') || lower.includes('android') || lower.includes('download') || lower.includes('ଆପ୍') || lower.includes('ऐप') || lower.includes('डाउनलोड')) return 'Zenemoo Android App';
   if (lower.includes('transcription') || lower.includes('audio') || lower.includes('ଅଡିଓ') || lower.includes('ऑडियो')) return 'Audio Transcription Inquiry';
   if (lower.includes('odia') || lower.includes('ଓଡ଼ିଆ') || lower.includes('odia')) return 'Odia Language Data';
-  if (lower.includes('desicrew') || lower.includes('partner') || lower.includes('ଅଂଶୀଦ') || lower.includes('साझेदारी')) return 'DesiCrew Partnership';
+  if (lower.includes('desicrew') || lower.includes('partner') || lower.includes('ଅଂଶୀଦ') || lower.includes('साझेदारी')) return 'Working with DesiCrew';
   if (lower.includes('price') || lower.includes('cost') || lower.includes('quote') || lower.includes('ମୂଲ୍ୟ') || lower.includes('कीमत')) return 'Pricing & Enterprise Quote';
   if (lower.includes('job') || lower.includes('career') || lower.includes('apply') || lower.includes('ଚାକିରି') || lower.includes('नौकरी')) return 'Career Opportunity Inquiry';
   if (lower.includes('service') || lower.includes('annotation') || lower.includes('ସେବା') || lower.includes('सेवा')) return 'AI Data Services';

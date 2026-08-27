@@ -219,7 +219,7 @@ export const ZenemooAiPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
       role: 'assistant',
       content: `Hello! I am **Zenemoo AI**, your intelligent assistant grounded in verified company operations.
 
-Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **DesiCrew Alliance**, **500+ Mins/Day Telemetry**, or **Open Opportunities**. How can I help you today?`,
+Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **Working with DesiCrew**, **500+ Mins/Day Telemetry**, or **Open Opportunities**. How can I help you today?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -1375,8 +1375,8 @@ Ask me about **Multilingual Transcription**, **Official Android Mobile App**, **
                     },
                     {
                       icon: <Globe className="w-4 h-4 text-blue-400" />,
-                      title: 'DesiCrew Alliance',
-                      prompt: 'How does Zenemoo partner with DesiCrew Solutions for enterprise speech data?',
+                      title: 'Working with DesiCrew',
+                      prompt: 'Tell me about Zenemoo working with DesiCrew since 2023.',
                     },
                     {
                       icon: <Briefcase className="w-4 h-4 text-amber-400" />,

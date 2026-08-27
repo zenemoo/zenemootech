@@ -44,7 +44,7 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({ onOpenAiDrawer }) =>
     { name: 'Home & Platform Overview', path: '/', category: 'Main Page', icon: Home, keyword: 'home main platform overview landing zenemoo' },
     { name: 'AI Data Portfolio & Public Datasets', path: '/ai-data', category: 'Datasets', icon: Database, keyword: 'ai data portfolio datasets audio video json csv speech samples dataset' },
     { name: 'Community & Client Reviews', path: '/review', category: 'Reviews', icon: Star, keyword: 'reviews review feedback ratings testimonials client community worker' },
-    { name: 'Career & Program Opportunities', path: '/opportunities', category: 'Careers', icon: Briefcase, keyword: 'opportunities careers jobs desicrew roles programs work remote wfh' },
+    { name: 'Career & Program Opportunities', path: '/opportunities', category: 'Careers', icon: Briefcase, keyword: 'opportunities careers jobs roles programs work remote wfh' },
     { name: 'AI Language Services', path: '/#languages', category: 'Solutions', icon: Languages, keyword: 'languages speech nlp translation indic global odia hindi' },
     { name: 'Audio & Speech Annotation', path: '/#services', category: 'Solutions', icon: Mic, keyword: 'services audio transcription annotation speech data segmentation' },
     { name: 'Data Annotation & Quality QA', path: '/#services', category: 'Solutions', icon: Database, keyword: 'data annotation quality validation datasets vision LLM tuning' },

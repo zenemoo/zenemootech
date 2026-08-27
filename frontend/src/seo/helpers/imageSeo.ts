@@ -45,8 +45,8 @@ export const generateContextualAlt = (options: AltContextOptions): string => {
 
     case 'partner':
       return cleanName
-        ? `${cleanName} Official Partner Logo — Zenemoo`
-        : `DesiCrew Solutions Enterprise Partner Logo — Zenemoo`;
+        ? `${cleanName} Logo — Zenemoo`
+        : `DesiCrew Solutions Logo — Zenemoo`;
 
     case 'logo':
       return `Zenemoo Official Logo — Enterprise AI Language & Data Solutions`;

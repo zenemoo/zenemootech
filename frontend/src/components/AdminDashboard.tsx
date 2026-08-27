@@ -1069,7 +1069,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       company_logo: '',
       poster_url: '',
       public_id: '',
-      features: ['1.5+ Years Verified Collaboration', 'Advanced Audio Transcription Tasks'],
+      features: ['Working with DesiCrew since 2023', 'Advanced Audio Transcription Tasks'],
       requirements: ['Windows 10/11 or Mac PC', 'Aegisub / Subtitle Edit'],
       language_skills: ['Odia (Native)', 'Indian English', 'Aegisub', 'Subtitle Edit'],
       eligibility_criteria: ['PC/Laptop Hardware Required', 'Fast Internet Connection', 'Native Listening & Typing Accuracy'],
@@ -1083,7 +1083,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       ],
       action_url: '#desicrew-contributors',
     });
-    setFeaturesInput('1.5+ Years Verified Collaboration\nAdvanced Audio Transcription Tasks\nEnterprise SLA Requirements');
+    setFeaturesInput('Working with DesiCrew since 2023\nAdvanced Audio Transcription Tasks\nEnterprise SLA Requirements');
     setRequirementsInput('Windows 10/11 or Mac PC\nAegisub / Subtitle Edit Software\nNative Odia Speaker Proficiency');
     setLanguageSkillsInput('Odia (Native)\nIndian English\nAegisub Tool\nSubtitle Edit');
     setEligibilityInput('PC/Laptop Hardware Required\nFast Internet Connection\nNative Listening & Typing Accuracy');
@@ -4263,7 +4263,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <input
                         type="text"
                         required
-                        placeholder="e.g., Certified Vendor Partner (1.5+ Yrs)"
+                        placeholder="e.g., Working with DesiCrew since 2023"
                         value={editingPartner.role || ''}
                         onChange={(e) => setEditingPartner({ ...editingPartner, role: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-emerald-400"
@@ -6108,7 +6108,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   {[
                     { topic: 'Audio Transcription & Diarization', count: 148, pct: '29%' },
                     { topic: 'Odia & Regional Speech Datasets', count: 112, pct: '22%' },
-                    { topic: 'DesiCrew Strategic Partnership', count: 89, pct: '17%' },
+                    { topic: 'Working with DesiCrew', count: 89, pct: '17%' },
                     { topic: 'AI Data Annotation & QC', count: 76, pct: '15%' },
                     { topic: 'Careers & Opportunities', count: 54, pct: '11%' },
                     { topic: 'Custom Enterprise Quotes', count: 33, pct: '6%' },
