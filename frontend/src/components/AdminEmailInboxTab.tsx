@@ -192,12 +192,19 @@ function escapeHtml(str: string): string {
 
 function sanitizeHtmlContent(html: string): string {
   if (!html) return '';
-  return html
+  let clean = html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
     .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
     .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
     .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+
+  // Neutralize dark text inline colors for dark theme inbox detail view
+  clean = clean
+    .replace(/color:\s*(#1e293b|#0f172a|#475569|#64748b|#000000|#000|#333333|#333|#111111|#111|#222222|#222|black|darkslate|darkgray)/gi, 'color: #f1f5f9')
+    .replace(/border-top:\s*1px\s+solid\s+#e2e8f0/gi, 'border-top: 1px solid rgba(255,255,255,0.15)');
+
+  return clean;
 }
 
 // ============================================================================

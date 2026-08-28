@@ -387,7 +387,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     const decodedOriginalSubject = decodeMimeHeader(originalEmail.subject);
     const cleanUserText = normalizeMojibake(messageText.trim());
     const escapedUserText = cleanUserText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const formattedUserMessage = `<div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b; white-space: pre-wrap;">${escapedUserText}</div>`;
+    const formattedUserMessage = `<div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #f1f5f9; white-space: pre-wrap;">${escapedUserText}</div>`;
 
     const formattedDate = new Date(originalEmail.received_at).toLocaleString('en-US', {
       dateStyle: 'medium',
@@ -397,16 +397,16 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     let fullHtml = '';
     if (mode === 'reply') {
       const origSnippet = normalizeMojibake(originalEmail.body_text || originalEmail.snippet || '');
-      const quotedBlock = `<br/><br/><div style="border-left: 2px solid #06b6d4; padding-left: 12px; margin-top: 16px; color: #64748b; font-family: system-ui, sans-serif; font-size: 13px;">
-        <div style="font-weight: 600; color: #475569; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
-        <blockquote style="margin: 0; padding: 0; color: #475569; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
+      const quotedBlock = `<br/><br/><div style="border-left: 2px solid #06b6d4; padding-left: 12px; margin-top: 16px; color: #94a3b8; font-family: system-ui, sans-serif; font-size: 13px;">
+        <div style="font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
+        <blockquote style="margin: 0; padding: 0; color: #94a3b8; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
       </div>`;
       fullHtml = `${formattedUserMessage}${quotedBlock}`;
     } else {
       // Forward mode
       const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap;">${escapeHtml(normalizeMojibake(originalEmail.body_text || originalEmail.snippet))}</div>`;
-      const fwdHeader = `<br/><br/><div style="border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 16px; font-family: system-ui, sans-serif; font-size: 13px; color: #475569;">
-        <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;">---------- Forwarded message ----------</div>
+      const fwdHeader = `<br/><br/><div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 12px; margin-top: 16px; font-family: system-ui, sans-serif; font-size: 13px; color: #94a3b8;">
+        <div style="font-weight: bold; color: #f8fafc; margin-bottom: 6px;">---------- Forwarded message ----------</div>
         <div><strong>From:</strong> ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
         <div><strong>Date:</strong> ${formattedDate}</div>
         <div><strong>Subject:</strong> ${escapeHtml(decodedOriginalSubject)}</div>
