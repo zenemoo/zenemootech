@@ -34,6 +34,7 @@ import {
 import { emailInboxApi } from '../services/api';
 import { AdminEmailSettingsModal } from './AdminEmailSettingsModal';
 import { EmailComposeModal } from './EmailComposeModal';
+import { decodeMimeHeader, normalizeMojibake } from '../utils/emailEncodingHelper';
 
 export interface EmailMessageRecord {
   id: string;
@@ -165,8 +166,8 @@ function extractHumanEmailBody(bodyText?: string, bodyHtml?: string): { cleanTex
     }
   }
 
-  let cleanHtml = rawHtml ? sanitizeHtmlContent(rawHtml) : '';
-  let cleanText = rawText || '';
+  let cleanHtml = rawHtml ? normalizeMojibake(sanitizeHtmlContent(rawHtml)) : '';
+  let cleanText = normalizeMojibake(rawText || '');
 
   if (!cleanHtml && cleanText) {
     const escaped = escapeHtml(cleanText);
@@ -1336,11 +1337,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     </div>
 
                     <div className={`text-xs font-semibold mt-1 truncate min-w-0 ${email.is_read ? 'text-slate-300' : 'text-cyan-300 font-bold'}`}>
-                      {email.subject}
+                      {decodeMimeHeader(email.subject)}
                     </div>
 
                     <div className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed break-words [word-break:break-word] [overflow-wrap:anywhere] min-w-0">
-                      {email.snippet}
+                      {normalizeMojibake(decodeMimeHeader(email.snippet))}
                     </div>
 
                     <div className="flex items-center justify-between mt-2 font-mono text-[10px] gap-2 min-w-0">
@@ -1510,19 +1511,19 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 <div className="p-4 sm:p-6 lg:p-8 space-y-6 flex-1 min-w-0 max-w-full overflow-y-auto">
                   {/* Subject Title */}
                   <h1 className="text-lg sm:text-xl lg:text-2xl font-bold font-display text-white leading-snug break-words [word-break:break-word] [overflow-wrap:anywhere] min-w-0 max-w-full">
-                    {selectedEmail.subject}
+                    {decodeMimeHeader(selectedEmail.subject)}
                   </h1>
 
                   {/* Sender & Recipient Metadata Box */}
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono text-xs min-w-0 max-w-full overflow-hidden">
                     <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
                       <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold flex items-center justify-center text-sm shrink-0">
-                        {(selectedEmail.sender_name || 'Z').substring(0, 2).toUpperCase()}
+                        {(decodeMimeHeader(selectedEmail.sender_name) || 'Z').substring(0, 2).toUpperCase()}
                       </div>
 
                       <div className="min-w-0 flex-1 overflow-hidden">
                         <div className="font-bold text-white text-sm flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                          <span className="truncate max-w-full">{selectedEmail.sender_name}</span>
+                          <span className="truncate max-w-full">{decodeMimeHeader(selectedEmail.sender_name)}</span>
                           <span className="text-slate-400 font-normal text-xs break-all">&lt;{selectedEmail.sender_email}&gt;</span>
                         </div>
                         <div className="text-slate-400 text-[11px] mt-0.5 truncate">

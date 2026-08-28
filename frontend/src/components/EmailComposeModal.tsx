@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Send,
@@ -8,9 +8,21 @@ import {
   Paperclip,
   Loader2,
   AlertCircle,
+  FileText,
+  Trash2,
+  Sliders
 } from 'lucide-react';
 import { emailApi, emailInboxApi } from '../services/api';
 import { EmailMessageRecord } from './AdminEmailInboxTab';
+import {
+  decodeMimeHeader,
+  normalizeMojibake,
+  formatReplySubject,
+  formatForwardSubject,
+  getSignatureForSender,
+  SIGNATURE_PRESETS,
+  EmailSignatureOption,
+} from '../utils/emailEncodingHelper';
 
 const VERIFIED_SENDERS = [
   { email: 'contact@zenemoo.in', label: 'Zenemoo Business Team (contact@zenemoo.in)' },
@@ -21,6 +33,32 @@ const VERIFIED_SENDERS = [
   { email: 'sangita@zenemoo.in', label: 'Sangita HR (sangita@zenemoo.in)' },
   { email: 'noreply@zenemoo.in', label: 'Zenemoo System (noreply@zenemoo.in)' },
 ];
+
+export interface AttachmentFileItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+}
+
+export interface ComposerDraft {
+  fromSender: string;
+  toRecipients: string;
+  showCc: boolean;
+  ccRecipients: string;
+  showBcc: boolean;
+  bccRecipients: string;
+  subject: string;
+  messageText: string;
+  selectedSignatureId: string; // 'auto' | 'none' | signatureId
+  appliedSignatureText: string;
+  attachments: AttachmentFileItem[];
+  errorMsg: string | null;
+}
+
+// Module-level persistent drafts store (Survives inbox polling & component re-renders)
+const composerDraftsStore: Record<string, ComposerDraft> = {};
 
 interface EmailComposeModalProps {
   isOpen: boolean;
@@ -39,55 +77,249 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
   onSendSuccess,
   addToast,
 }) => {
-  const [fromSender, setFromSender] = useState<string>('contact@zenemoo.in');
-  const [toRecipients, setToRecipients] = useState<string>('');
-  const [showCc, setShowCc] = useState<boolean>(false);
-  const [showBcc, setShowBcc] = useState<boolean>(false);
-  const [ccRecipients, setCcRecipients] = useState<string>('');
-  const [bccRecipients, setBccRecipients] = useState<string>('');
-  const [subject, setSubject] = useState<string>('');
-  const [messageText, setMessageText] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Stable draft key for current email + mode
+  const emailId = originalEmail ? originalEmail.id || originalEmail.message_id : '';
+  const draftKey = `${mode}_${emailId}`;
+
+  const [fromSender, setFromSenderState] = useState<string>('contact@zenemoo.in');
+  const [toRecipients, setToRecipientsState] = useState<string>('');
+  const [showCc, setShowCcState] = useState<boolean>(false);
+  const [showBcc, setShowBccState] = useState<boolean>(false);
+  const [ccRecipients, setCcRecipientsState] = useState<string>('');
+  const [bccRecipients, setBccRecipientsState] = useState<string>('');
+  const [subject, setSubjectState] = useState<string>('');
+  const [messageText, setMessageTextState] = useState<string>('');
+  const [selectedSignatureId, setSelectedSignatureIdState] = useState<string>('auto');
+  const [appliedSignatureText, setAppliedSignatureTextState] = useState<string>('');
+  const [attachments, setAttachmentsState] = useState<AttachmentFileItem[]>([]);
   const [isSending, setIsSending] = useState<boolean>(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsgState] = useState<string | null>(null);
 
-  // Pre-populate fields on modal open or when selected email changes
+  // Helper to sync local states into persistent draft store
+  const updateDraft = (updates: Partial<ComposerDraft>) => {
+    if (!draftKey) return;
+    const existing = composerDraftsStore[draftKey] || {
+      fromSender,
+      toRecipients,
+      showCc,
+      ccRecipients,
+      showBcc,
+      bccRecipients,
+      subject,
+      messageText,
+      selectedSignatureId,
+      appliedSignatureText,
+      attachments,
+      errorMsg,
+    };
+    composerDraftsStore[draftKey] = { ...existing, ...updates };
+  };
+
+  // State setters that automatically sync to persistent draft store
+  const setFromSender = (val: string) => {
+    setFromSenderState(val);
+    updateDraft({ fromSender: val });
+  };
+  const setToRecipients = (val: string) => {
+    setToRecipientsState(val);
+    updateDraft({ toRecipients: val });
+  };
+  const setShowCc = (val: boolean) => {
+    setShowCcState(val);
+    updateDraft({ showCc: val });
+  };
+  const setShowBcc = (val: boolean) => {
+    setShowBccState(val);
+    updateDraft({ showBcc: val });
+  };
+  const setCcRecipients = (val: string) => {
+    setCcRecipientsState(val);
+    updateDraft({ ccRecipients: val });
+  };
+  const setBccRecipients = (val: string) => {
+    setBccRecipientsState(val);
+    updateDraft({ bccRecipients: val });
+  };
+  const setSubject = (val: string) => {
+    setSubjectState(val);
+    updateDraft({ subject: val });
+  };
+  const setMessageText = (val: string) => {
+    setMessageTextState(val);
+    updateDraft({ messageText: val });
+  };
+  const setSelectedSignatureId = (val: string) => {
+    setSelectedSignatureIdState(val);
+    updateDraft({ selectedSignatureId: val });
+  };
+  const setAppliedSignatureText = (val: string) => {
+    setAppliedSignatureTextState(val);
+    updateDraft({ appliedSignatureText: val });
+  };
+  const setAttachments = (val: AttachmentFileItem[]) => {
+    setAttachmentsState(val);
+    updateDraft({ attachments: val });
+  };
+  const setErrorMsg = (val: string | null) => {
+    setErrorMsgState(val);
+    updateDraft({ errorMsg: val });
+  };
+
+  // Initialize or restore draft when modal opens or emailId/mode changes
   useEffect(() => {
-    if (!isOpen || !originalEmail) return;
+    if (!isOpen || !originalEmail || !draftKey) return;
 
-    // Determine From Sender: use matching mailbox_email if verified, else contact@zenemoo.in
-    const matchingSender = VERIFIED_SENDERS.find(
-      (s) => s.email.toLowerCase() === (originalEmail.mailbox_email || '').toLowerCase()
-    );
-    setFromSender(matchingSender ? matchingSender.email : 'contact@zenemoo.in');
+    // Check if a draft already exists for this emailId + mode
+    const existingDraft = composerDraftsStore[draftKey];
 
-    if (mode === 'reply') {
-      const replyTo = originalEmail.reply_to || originalEmail.sender_email;
-      setToRecipients(replyTo || '');
-
-      const rawSub = originalEmail.subject || '';
-      const formattedSubject = rawSub.toLowerCase().startsWith('re:') ? rawSub : `Re: ${rawSub}`;
-      setSubject(formattedSubject);
-      setMessageText('');
+    if (existingDraft) {
+      // Restore existing user draft without resetting typing!
+      setFromSenderState(existingDraft.fromSender);
+      setToRecipientsState(existingDraft.toRecipients);
+      setShowCcState(existingDraft.showCc);
+      setShowBccState(existingDraft.showBcc);
+      setCcRecipientsState(existingDraft.ccRecipients);
+      setBccRecipientsState(existingDraft.bccRecipients);
+      setSubjectState(existingDraft.subject);
+      setMessageTextState(existingDraft.messageText);
+      setSelectedSignatureIdState(existingDraft.selectedSignatureId);
+      setAppliedSignatureTextState(existingDraft.appliedSignatureText);
+      setAttachmentsState(existingDraft.attachments || []);
+      setErrorMsgState(existingDraft.errorMsg);
     } else {
-      // Forward Mode: To is empty
-      setToRecipients('');
+      // Initialize brand new draft once
+      const matchingSender = VERIFIED_SENDERS.find(
+        (s) => s.email.toLowerCase() === (originalEmail.mailbox_email || '').toLowerCase()
+      );
+      const initFrom = matchingSender ? matchingSender.email : 'contact@zenemoo.in';
+
+      let initTo = '';
+      if (mode === 'reply') {
+        initTo = originalEmail.reply_to || originalEmail.sender_email || '';
+      }
 
       const rawSub = originalEmail.subject || '';
-      const formattedSubject = rawSub.toLowerCase().startsWith('fwd:') || rawSub.toLowerCase().startsWith('fw:')
-        ? rawSub
-        : `Fwd: ${rawSub}`;
-      setSubject(formattedSubject);
-      setMessageText('');
-    }
+      const initSubject = mode === 'reply' ? formatReplySubject(rawSub) : formatForwardSubject(rawSub);
 
-    setShowCc(false);
-    setShowBcc(false);
-    setCcRecipients('');
-    setBccRecipients('');
-    setErrorMsg(null);
-  }, [isOpen, mode, originalEmail]);
+      // Smart Default Signature setup
+      const defaultSig = getSignatureForSender(initFrom);
+      const initSigText = defaultSig ? defaultSig.signatureText : '';
+      const initMessageText = initSigText ? `\n\n${initSigText}` : '';
+
+      const newDraft: ComposerDraft = {
+        fromSender: initFrom,
+        toRecipients: initTo,
+        showCc: false,
+        ccRecipients: '',
+        showBcc: false,
+        bccRecipients: '',
+        subject: initSubject,
+        messageText: initMessageText,
+        selectedSignatureId: 'auto',
+        appliedSignatureText: initSigText,
+        attachments: [],
+        errorMsg: null,
+      };
+
+      composerDraftsStore[draftKey] = newDraft;
+
+      setFromSenderState(newDraft.fromSender);
+      setToRecipientsState(newDraft.toRecipients);
+      setShowCcState(newDraft.showCc);
+      setShowBccState(newDraft.showBcc);
+      setCcRecipientsState(newDraft.ccRecipients);
+      setBccRecipientsState(newDraft.bccRecipients);
+      setSubjectState(newDraft.subject);
+      setMessageTextState(newDraft.messageText);
+      setSelectedSignatureIdState(newDraft.selectedSignatureId);
+      setAppliedSignatureTextState(newDraft.appliedSignatureText);
+      setAttachmentsState([]);
+      setErrorMsgState(null);
+    }
+  }, [isOpen, draftKey]);
 
   if (!isOpen || !originalEmail) return null;
+
+  // Handle changing signature selection (Signature ▾ dropdown)
+  const handleSignatureChange = (newSigId: string) => {
+    const targetSig = getSignatureForSender(fromSender, newSigId);
+    const newSigText = targetSig ? targetSig.signatureText : '';
+
+    let updatedMsg = messageText;
+
+    if (appliedSignatureText && updatedMsg.includes(appliedSignatureText)) {
+      // Replace existing signature block
+      if (newSigText) {
+        updatedMsg = updatedMsg.replace(appliedSignatureText, newSigText);
+      } else {
+        // Remove signature block
+        updatedMsg = updatedMsg.replace(appliedSignatureText, '').trimEnd();
+      }
+    } else {
+      // If signature text wasn't found (user edited it), append new signature at bottom
+      if (newSigText) {
+        updatedMsg = updatedMsg.trimEnd() + `\n\n${newSigText}`;
+      }
+    }
+
+    setMessageText(updatedMsg);
+    setSelectedSignatureId(newSigId);
+    setAppliedSignatureText(newSigText);
+  };
+
+  // Handle changing FROM sender (Auto-updates signature in smart mode)
+  const handleFromSenderChange = (newSender: string) => {
+    setFromSender(newSender);
+
+    if (selectedSignatureId === 'auto') {
+      const targetSig = getSignatureForSender(newSender);
+      const newSigText = targetSig ? targetSig.signatureText : '';
+
+      let updatedMsg = messageText;
+      if (appliedSignatureText && updatedMsg.includes(appliedSignatureText)) {
+        if (newSigText) {
+          updatedMsg = updatedMsg.replace(appliedSignatureText, newSigText);
+        } else {
+          updatedMsg = updatedMsg.replace(appliedSignatureText, '').trimEnd();
+        }
+      } else if (newSigText) {
+        updatedMsg = updatedMsg.trimEnd() + `\n\n${newSigText}`;
+      }
+
+      setMessageText(updatedMsg);
+      setAppliedSignatureText(newSigText);
+    }
+  };
+
+  // Attachment File Upload Handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const selectedFiles = Array.from(e.target.files);
+
+    const newAttachments: AttachmentFileItem[] = selectedFiles.map((file) => ({
+      id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+    }));
+
+    setAttachments([...attachments, ...newAttachments]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveAttachment = (attId: string) => {
+    setAttachments(attachments.filter((a) => a.id !== attId));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   // Validate email address array
   const parseAndValidateEmails = (input: string): { valid: string[]; invalid: string[] } => {
@@ -116,7 +348,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     // Validate To Recipients
     const { valid: validTo, invalid: invalidTo } = parseAndValidateEmails(toRecipients);
     if (invalidTo.length > 0) {
-      setErrorMsg(`Invalid email address: ${invalidTo.join(', ')}`);
+      setErrorMsg(`Invalid recipient email address: ${invalidTo.join(', ')}`);
       return;
     }
     if (validTo.length === 0) {
@@ -150,9 +382,10 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
     setIsSending(true);
 
-    // Construct Quoted / Forwarded Content
-    let fullHtml = '';
-    const cleanUserText = messageText.trim();
+    // Clean human-readable values for quote
+    const decodedOriginalSenderName = decodeMimeHeader(originalEmail.sender_name);
+    const decodedOriginalSubject = decodeMimeHeader(originalEmail.subject);
+    const cleanUserText = normalizeMojibake(messageText.trim());
     const escapedUserText = cleanUserText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const formattedUserMessage = `<div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b; white-space: pre-wrap;">${escapedUserText}</div>`;
 
@@ -161,21 +394,22 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       timeStyle: 'short',
     });
 
+    let fullHtml = '';
     if (mode === 'reply') {
-      const origSnippet = originalEmail.body_text || originalEmail.snippet || '';
+      const origSnippet = normalizeMojibake(originalEmail.body_text || originalEmail.snippet || '');
       const quotedBlock = `<br/><br/><div style="border-left: 2px solid #06b6d4; padding-left: 12px; margin-top: 16px; color: #64748b; font-family: system-ui, sans-serif; font-size: 13px;">
-        <div style="font-weight: 600; color: #475569; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(originalEmail.sender_name)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
+        <div style="font-weight: 600; color: #475569; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
         <blockquote style="margin: 0; padding: 0; color: #475569; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
       </div>`;
       fullHtml = `${formattedUserMessage}${quotedBlock}`;
     } else {
       // Forward mode
-      const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap;">${escapeHtml(originalEmail.body_text || originalEmail.snippet)}</div>`;
+      const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap;">${escapeHtml(normalizeMojibake(originalEmail.body_text || originalEmail.snippet))}</div>`;
       const fwdHeader = `<br/><br/><div style="border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 16px; font-family: system-ui, sans-serif; font-size: 13px; color: #475569;">
         <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;">---------- Forwarded message ----------</div>
-        <div><strong>From:</strong> ${escapeHtml(originalEmail.sender_name)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
+        <div><strong>From:</strong> ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
         <div><strong>Date:</strong> ${formattedDate}</div>
-        <div><strong>Subject:</strong> ${escapeHtml(originalEmail.subject)}</div>
+        <div><strong>Subject:</strong> ${escapeHtml(decodedOriginalSubject)}</div>
         <div><strong>To:</strong> ${escapeHtml(originalEmail.recipient_email)}</div>
         <br/>
         <div>${origBody}</div>
@@ -196,6 +430,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         text: cleanUserText,
         mode,
         originalEmailId: originalEmail.id || originalEmail.message_id,
+        attachmentCount: attachments.length,
       };
 
       let response: any;
@@ -236,8 +471,16 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           status: 'sent',
           sent_at: new Date().toISOString(),
           received_at: new Date().toISOString(),
-          attachments: [],
+          attachments: attachments.map((a) => ({
+            id: a.id,
+            filename: a.name,
+            contentType: a.type,
+            size: a.size,
+          })),
         };
+
+        // Clear sent draft from persistent store
+        delete composerDraftsStore[draftKey];
 
         onSendSuccess(createdRecord);
         onClose();
@@ -261,6 +504,8 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       .replace(/'/g, '&#039;');
   }
 
+  const decodedSenderName = decodeMimeHeader(originalEmail.sender_name);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto animate-fade-in">
       <div className="bg-[#0b0f19] border border-white/10 w-full sm:w-[680px] lg:w-[740px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[90vh] font-sans text-xs">
@@ -271,7 +516,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             {mode === 'reply' ? (
               <>
                 <CornerUpLeft className="w-4 h-4 text-cyan-400" />
-                <span>Reply to {originalEmail.sender_name}</span>
+                <span>Reply to {decodedSenderName}</span>
               </>
             ) : (
               <>
@@ -307,7 +552,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             <div className="flex-1 relative min-w-0">
               <select
                 value={fromSender}
-                onChange={(e) => setFromSender(e.target.value)}
+                onChange={(e) => handleFromSenderChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-cyan-300 font-bold text-xs focus:outline-none focus:border-cyan-400 cursor-pointer appearance-none pr-8"
               >
                 {VERIFIED_SENDERS.map((s) => (
@@ -394,9 +639,87 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             />
           </div>
 
+          {/* TOOLBAR FOR SIGNATURE & ATTACHMENTS */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5 text-xs font-mono">
+            {/* SIGNATURE SELECTOR DROPDOWN (Signature ▾) */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-bold flex items-center gap-1 text-[11px]">
+                <Sliders className="w-3.5 h-3.5 text-cyan-400" /> Signature:
+              </span>
+              <div className="relative">
+                <select
+                  value={selectedSignatureId}
+                  onChange={(e) => handleSignatureChange(e.target.value)}
+                  className="px-2.5 py-1 rounded-xl bg-white/[0.06] border border-white/10 text-cyan-300 font-bold text-xs focus:outline-none focus:border-cyan-400 cursor-pointer appearance-none pr-7"
+                >
+                  <option value="auto" className="bg-[#0b0f19] text-cyan-300">
+                    Auto (Sender Default)
+                  </option>
+                  <option value="none" className="bg-[#0b0f19] text-slate-400">
+                    None (No Signature)
+                  </option>
+                  {SIGNATURE_PRESETS.map((sig) => (
+                    <option key={sig.id} value={sig.id} className="bg-[#0b0f19] text-white">
+                      {sig.name}
+                    </option>
+                  ))}
+                  {typeof window !== 'undefined' && localStorage.getItem('zenemoo_admin_ai_signature') && (
+                    <option value="custom" className="bg-[#0b0f19] text-amber-300">
+                      Saved Custom Signature
+                    </option>
+                  )}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* ATTACH FILE BUTTON */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Attach Files</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ATTACHMENTS LIST CHIPS */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {attachments.map((att) => (
+                <div
+                  key={att.id}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-slate-200 text-[11px] font-mono flex items-center gap-2"
+                >
+                  <Paperclip className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span className="truncate max-w-[180px] font-bold">{att.name}</span>
+                  <span className="text-slate-400 text-[10px]">({formatFileSize(att.size)})</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(att.id)}
+                    className="p-0.5 hover:text-red-400 text-slate-400 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* MESSAGE EDITOR TEXTAREA */}
-          <div className="pt-2">
+          <div className="pt-1">
             <textarea
+              ref={textareaRef}
               rows={8}
               placeholder={mode === 'reply' ? 'Write your reply message here...' : 'Write an optional introductory message...'}
               value={messageText}
@@ -405,7 +728,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             />
           </div>
 
-          {/* QUOTED / FORWARDED MESSAGE COLLAPSIBLE PREVIEW */}
+          {/* QUOTED / FORWARDED MESSAGE PREVIEW */}
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2 text-[11px]">
             <div className="text-slate-400 font-bold uppercase tracking-wider flex items-center justify-between">
               <span>{mode === 'reply' ? 'Original Message Quote' : 'Forwarded Message Header'}</span>
@@ -414,9 +737,9 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
             <div className="text-slate-300 font-mono line-clamp-3 leading-relaxed opacity-80 break-words">
               {mode === 'reply' ? (
-                <>On {new Date(originalEmail.received_at).toLocaleString()}, {originalEmail.sender_name} wrote:<br />&gt; {originalEmail.snippet || originalEmail.body_text}</>
+                <>On {new Date(originalEmail.received_at).toLocaleString()}, {decodedSenderName} wrote:<br />&gt; {normalizeMojibake(originalEmail.snippet || originalEmail.body_text || '')}</>
               ) : (
-                <>---------- Forwarded message ----------<br />From: {originalEmail.sender_name} &lt;{originalEmail.sender_email}&gt;<br />Subject: {originalEmail.subject}</>
+                <>---------- Forwarded message ----------<br />From: {decodedSenderName} &lt;{originalEmail.sender_email}&gt;<br />Subject: {decodeMimeHeader(originalEmail.subject)}</>
               )}
             </div>
           </div>
