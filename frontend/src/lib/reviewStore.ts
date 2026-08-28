@@ -347,3 +347,57 @@ export const bulkDeleteReviews = async (ids: string[]): Promise<number> => {
 
   return data ? data.length : 0;
 };
+
+/**
+ * Admin API: Fully update a review item in Supabase (Name, Type, Rating, Message Text, Visibility).
+ */
+export const updateReviewInApi = async (
+  id: string,
+  updates: Partial<Pick<ReviewItem, 'name' | 'reviewer_type' | 'rating' | 'review_text' | 'is_visible'>>
+): Promise<ReviewItem> => {
+  const now = new Date().toISOString();
+  const payload: any = {
+    ...updates,
+    updated_at: now,
+  };
+
+  if (
+    updates.name !== undefined ||
+    updates.reviewer_type !== undefined ||
+    updates.rating !== undefined ||
+    updates.review_text !== undefined
+  ) {
+    const normName = updates.name !== undefined ? updates.name : '';
+    const normType = updates.reviewer_type !== undefined ? updates.reviewer_type : '';
+    const normRating = updates.rating !== undefined ? updates.rating : 5;
+    const normText = updates.review_text !== undefined ? updates.review_text : null;
+    payload.review_fingerprint = await computeReviewFingerprint(normName, normType, normRating, normText);
+  }
+
+  let { data, error } = await supabase
+    .from('reviews')
+    .update(payload)
+    .or(`id.eq.${id},review_id.eq.${id}`)
+    .select()
+    .single();
+
+  if (error && error.message?.includes('review_fingerprint')) {
+    delete payload.review_fingerprint;
+    const res = await supabase
+      .from('reviews')
+      .update(payload)
+      .or(`id.eq.${id},review_id.eq.${id}`)
+      .select()
+      .single();
+    data = res.data;
+    error = res.error;
+  }
+
+  if (error || !data) {
+    console.error('Supabase update review error:', error);
+    throw new Error(error?.message || 'Unable to update review details. Please try again.');
+  }
+
+  return data as ReviewItem;
+};
+

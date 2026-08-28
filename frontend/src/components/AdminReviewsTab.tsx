@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   X,
   Copy,
+  Check,
   Clock,
   Sparkles,
   ChevronLeft,
@@ -22,7 +23,11 @@ import {
   CheckSquare,
   Square,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Pencil,
+  FileText,
+  User,
+  Sliders
 } from 'lucide-react';
 import {
   ReviewItem,
@@ -32,6 +37,7 @@ import {
   publishAllPendingReviews,
   bulkPublishReviews,
   bulkDeleteReviews,
+  updateReviewInApi,
 } from '../lib/reviewStore';
 
 interface AdminReviewsTabProps {
@@ -59,7 +65,20 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
   const [isDeleting, setIsDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Scalability Pagination state (Matching screenshot 2)
+  // Full Review Message Viewer Modal State
+  const [viewTarget, setViewTarget] = useState<ReviewItem | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
+
+  // Review Edit Modal State
+  const [editTarget, setEditTarget] = useState<ReviewItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState<string>('contributor');
+  const [editRating, setEditRating] = useState<number>(5);
+  const [editText, setEditText] = useState('');
+  const [editIsVisible, setEditIsVisible] = useState(true);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Scalability Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
@@ -84,6 +103,53 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
   useEffect(() => {
     fetchReviews();
   }, []);
+
+  // Open Edit Modal with selected review details
+  const handleOpenEditModal = (review: ReviewItem) => {
+    setEditTarget(review);
+    setEditName(review.name || '');
+    setEditType((review.reviewer_type || '').toLowerCase().includes('client') ? 'client' : 'contributor');
+    setEditRating(review.rating || 5);
+    setEditText(review.review_text || '');
+    setEditIsVisible(Boolean(review.is_visible));
+  };
+
+  // Handle saving edit updates to Supabase
+  const handleSaveEdit = async () => {
+    if (!editTarget) return;
+
+    if (!editName.trim()) {
+      onAddToast('Validation Error', 'Reviewer Full Name cannot be empty.', 'error');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      await updateReviewInApi(editTarget.id, {
+        name: editName.trim(),
+        reviewer_type: editType,
+        rating: editRating,
+        review_text: editText.trim() ? editText.trim() : null,
+        is_visible: editIsVisible,
+      });
+
+      await fetchReviews();
+      onAddToast(
+        'Review Updated!',
+        `Successfully updated review details for ${editName.trim()}.`,
+        'success'
+      );
+      setEditTarget(null);
+      if (viewTarget && viewTarget.id === editTarget.id) {
+        setViewTarget(null);
+      }
+    } catch (err: any) {
+      console.error('Save edit review error:', err);
+      onAddToast('Update Error', err.message || 'Failed to update review details.', 'error');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Stats computation
   const stats = useMemo(() => {
@@ -269,7 +335,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
     }
   };
 
-  // Page numbers generator for UI pagination (Matching Image 2)
+  // Page numbers generator for UI pagination
   const renderPaginationButtons = () => {
     const pages: (number | string)[] = [];
     if (totalPages <= 7) {
@@ -312,7 +378,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/[0.02] p-5 rounded-2xl border border-white/10">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/[0.02] p-4 sm:p-5 rounded-2xl border border-white/10">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold mb-2">
             <Star className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400" />
@@ -320,17 +386,17 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
           </div>
           <h2 className="text-2xl font-bold font-display text-white">Review Management</h2>
           <p className="text-xs text-slate-400 font-mono mt-0.5">
-            Moderate community and client feedback. Control public visibility on <code className="text-cyan-300 font-bold">/review</code>.
+            Moderate community &amp; client feedback. View full messages, edit reviewer types, and control public visibility on <code className="text-cyan-300 font-bold">/review</code>.
           </p>
         </div>
 
         {/* Global Header Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* ACCEPT ALL PENDING REVIEWS BUTTON */}
           <button
             onClick={handlePublishAllPending}
             disabled={isPublishingAll || stats.hidden === 0}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold font-mono text-xs transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold font-mono text-xs transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
             title="Accept & publish all pending hidden reviews at once"
           >
             {isPublishingAll ? (
@@ -345,10 +411,10 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
           <button
             onClick={fetchReviews}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-mono font-bold transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-mono font-bold transition-all cursor-pointer disabled:opacity-50 shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh Database</span>
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -425,7 +491,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -440,11 +506,11 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
                 setStatusFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
+              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400 cursor-pointer"
             >
-              <option value="all" className="bg-slate-900 text-white">Status: All</option>
-              <option value="visible" className="bg-slate-900 text-emerald-400">Status: Visible</option>
-              <option value="hidden" className="bg-slate-900 text-amber-400">Status: Hidden</option>
+              <option value="all">Status: All</option>
+              <option value="visible">Status: Visible</option>
+              <option value="hidden">Status: Hidden</option>
             </select>
           </div>
 
@@ -456,17 +522,17 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
                 setTypeFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
+              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-400 cursor-pointer"
             >
-              <option value="all" className="bg-slate-900 text-white">Type: All</option>
-              <option value="contributor" className="bg-slate-900 text-purple-400">Contributor / Worker</option>
-              <option value="client" className="bg-slate-900 text-blue-400">Client / Project Provider</option>
+              <option value="all">Type: All</option>
+              <option value="contributor">Contributor / Worker</option>
+              <option value="client">Client / Project Provider</option>
             </select>
           </div>
         </div>
 
-        {/* Rating Filter Pills */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5 text-xs font-mono">
+        {/* Rating Filter Pills & Bulk Options */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/5 text-xs font-mono">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-slate-400 text-[11px] uppercase tracking-wider font-semibold mr-1">Rating Filter:</span>
             {(['all', '5', '4', '3', '2', '1'] as const).map((r) => (
@@ -489,7 +555,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
 
           {/* Bulk Selection Bar when 1 or more rows selected */}
           {selectedIds.length > 0 && (
-            <div className="flex items-center gap-2 bg-cyan-500/10 px-3 py-1 rounded-xl border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold animate-fade-in">
+            <div className="flex items-center gap-2 bg-cyan-500/10 px-3 py-1.5 rounded-xl border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold animate-fade-in self-start sm:self-auto">
               <span>{selectedIds.length} Selected</span>
               <button
                 onClick={handleBulkPublishSelected}
@@ -509,17 +575,17 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
         </div>
       </div>
 
-      {/* Reviews Table / Cards Container */}
+      {/* Reviews Content Container (Desktop Table + Mobile/Tablet Card View) */}
       <div className="bg-white/[0.02] rounded-2xl border border-white/10 overflow-hidden shadow-xl">
         {loading ? (
           <div className="p-12 text-center text-slate-400 font-mono text-sm space-y-3">
             <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
-            <div>Loading reviews from Supabase database...</div>
+            <div>Loading reviews from database...</div>
           </div>
         ) : filteredReviews.length === 0 ? (
           <div className="p-12 text-center text-slate-400 font-mono text-xs space-y-2">
             <MessageSquare className="w-8 h-8 text-slate-600 mx-auto" />
-            <div className="text-slate-200 font-bold text-sm">No reviews in database</div>
+            <div className="text-slate-200 font-bold text-sm">No reviews found</div>
             <p className="text-slate-500">
               {searchQuery || statusFilter !== 'all' || typeFilter !== 'all' || ratingFilter !== 'all'
                 ? 'No database reviews match your selected filters.'
@@ -528,7 +594,8 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* DESKTOP TABLE VIEW (md and up) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
                 <thead>
                   <tr className="bg-white/[0.04] border-b border-white/10 text-slate-400 uppercase tracking-wider">
@@ -545,7 +612,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
                     <th className="py-3.5 px-4 font-semibold">Reviewer</th>
                     <th className="py-3.5 px-4 font-semibold">Type</th>
                     <th className="py-3.5 px-4 font-semibold">Rating</th>
-                    <th className="py-3.5 px-4 font-semibold max-w-xs">Review Text</th>
+                    <th className="py-3.5 px-4 font-semibold max-w-xs">Review Message</th>
                     <th className="py-3.5 px-4 font-semibold">Status</th>
                     <th className="py-3.5 px-4 font-semibold">Date</th>
                     <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
@@ -613,14 +680,22 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
                           </div>
                         </td>
 
-                        {/* Review Text */}
+                        {/* Review Text Message */}
                         <td className="py-4 px-4 max-w-xs">
                           {review.review_text && review.review_text.trim() ? (
-                            <p className="line-clamp-2 text-slate-300 leading-normal italic text-[11px] whitespace-pre-line">
-                              "{review.review_text.trim()}"
-                            </p>
+                            <div className="space-y-1">
+                              <p className="line-clamp-2 text-slate-300 leading-normal italic text-[11px] whitespace-pre-line">
+                                "{review.review_text.trim()}"
+                              </p>
+                              <button
+                                onClick={() => setViewTarget(review)}
+                                className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <FileText className="w-3 h-3" /> View full message
+                              </button>
+                            </div>
                           ) : (
-                            <span className="text-slate-600 text-[10px] italic">(No written text provided)</span>
+                            <span className="text-slate-600 text-[10px] italic">(No written message provided)</span>
                           )}
                         </td>
 
@@ -651,7 +726,25 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
                         </td>
 
                         {/* Actions */}
-                        <td className="py-4 px-4 whitespace-nowrap text-right space-x-2">
+                        <td className="py-4 px-4 whitespace-nowrap text-right space-x-1.5">
+                          {/* View Full Details Button */}
+                          <button
+                            onClick={() => setViewTarget(review)}
+                            title="View complete review details & full message"
+                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 border border-white/10 transition-all cursor-pointer inline-flex items-center justify-center"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+
+                          {/* Edit Review Button */}
+                          <button
+                            onClick={() => handleOpenEditModal(review)}
+                            title="Edit review details (Name, Type, Rating, Text, Visibility)"
+                            className="p-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition-all cursor-pointer inline-flex items-center justify-center"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+
                           {/* Toggle Visibility Eye Button */}
                           <button
                             onClick={() => handleToggleVisibility(review)}
@@ -688,10 +781,147 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
               </table>
             </div>
 
-            {/* SCALABILITY PAGINATION FOOTER (Matching Image 2 Exactly) */}
-            <div className="px-6 py-4 bg-[#07090e] border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono">
+            {/* MOBILE & TABLET CARD VIEW (under md breakpoint) */}
+            <div className="block md:hidden p-3 space-y-3.5">
+              {paginatedReviews.map((review) => {
+                const isContributor = (review.reviewer_type || '').toLowerCase().includes('contributor');
+                const isSelected = selectedIds.includes(review.id);
+
+                return (
+                  <div
+                    key={review.id}
+                    className={`p-4 rounded-2xl border transition-all space-y-3 font-mono ${
+                      isSelected
+                        ? 'bg-cyan-500/[0.08] border-cyan-500/40'
+                        : 'bg-white/[0.03] border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {/* Top Row: Select, ID, Type */}
+                    <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectRow(review.id)}
+                          className="rounded border-white/20 bg-white/5 text-cyan-400 focus:ring-0 cursor-pointer"
+                        />
+                        <span className="font-bold text-cyan-300 text-xs">{review.review_id}</span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                          isContributor
+                            ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                            : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+                        }`}
+                      >
+                        {isContributor ? 'Worker / Contributor' : 'Client / Provider'}
+                      </span>
+                    </div>
+
+                    {/* Reviewer Info & Rating */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-bold text-white text-sm">{review.name}</div>
+                        <div className="text-[10px] text-slate-400">{formatDate(review.created_at)}</div>
+                      </div>
+                      <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
+                        <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                        <span className="text-xs font-bold text-amber-300">{review.rating}/5</span>
+                      </div>
+                    </div>
+
+                    {/* Review Text Message Box */}
+                    <div className="bg-black/30 p-3 rounded-xl border border-white/5 text-xs">
+                      {review.review_text && review.review_text.trim() ? (
+                        <div className="space-y-2">
+                          <p className="text-slate-300 leading-relaxed italic text-xs whitespace-pre-line line-clamp-3">
+                            "{review.review_text.trim()}"
+                          </p>
+                          <button
+                            onClick={() => setViewTarget(review)}
+                            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Read full message
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-600 text-[11px] italic">(No written message provided)</span>
+                      )}
+                    </div>
+
+                    {/* Status & Possible Duplicate Warnings */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        {review.is_visible ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                            <Eye className="w-3 h-3" /> VISIBLE
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
+                            <EyeOff className="w-3 h-3" /> HIDDEN
+                          </span>
+                        )}
+                      </div>
+
+                      {review.isPossibleDuplicate && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 text-red-300 text-[9px] font-mono font-bold">
+                          <AlertTriangle className="w-2.5 h-2.5 text-red-400" /> Possible Duplicate
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Card Actions Bar */}
+                    <div className="grid grid-cols-4 gap-2 pt-1 border-t border-white/5">
+                      <button
+                        onClick={() => setViewTarget(review)}
+                        className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 border border-white/10 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                        title="View Full Message"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span className="text-[10px]">View</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenEditModal(review)}
+                        className="py-2 px-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                        title="Edit Review"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span className="text-[10px]">Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleToggleVisibility(review)}
+                        disabled={togglingId === review.id}
+                        className={`py-2 px-2 rounded-xl border font-bold text-xs flex items-center justify-center gap-1 cursor-pointer ${
+                          review.is_visible
+                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                            : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                        }`}
+                        title="Toggle Visibility"
+                      >
+                        {review.is_visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        <span className="text-[10px]">{review.is_visible ? 'Hide' : 'Publish'}</span>
+                      </button>
+
+                      <button
+                        onClick={() => setDeleteTarget(review)}
+                        className="py-2 px-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                        title="Delete Review"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="text-[10px]">Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* SCALABILITY PAGINATION FOOTER */}
+            <div className="px-4 sm:px-6 py-4 bg-[#07090e] border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono">
               {/* Left Side: Showing X to Y of Z reviews */}
-              <div className="text-slate-400">
+              <div className="text-slate-400 text-center sm:text-left">
                 Showing{' '}
                 <span className="text-cyan-300 font-bold">
                   {filteredReviews.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
@@ -704,7 +934,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
               </div>
 
               {/* Right Side: Page Size Selector & Numbered Buttons */}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 sm:gap-4">
                 {/* Page Size Selector */}
                 <div className="flex items-center gap-2">
                   <span className="text-slate-400 font-semibold">Show:</span>
@@ -714,17 +944,17 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
                       setPageSize(Number(e.target.value));
                       setCurrentPage(1);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 text-xs"
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 text-xs cursor-pointer"
                   >
-                    <option value={5} className="bg-slate-900 text-white">5 / page</option>
-                    <option value={10} className="bg-slate-900 text-white">10 / page</option>
-                    <option value={20} className="bg-slate-900 text-white">20 / page</option>
-                    <option value={50} className="bg-slate-900 text-white">50 / page</option>
-                    <option value={100} className="bg-slate-900 text-white">100 / page</option>
+                    <option value={5}>5 / page</option>
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
                   </select>
                 </div>
 
-                {/* Page Navigation Buttons (< 1 2 ... N >) */}
+                {/* Page Navigation Buttons */}
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
@@ -752,6 +982,321 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
         )}
       </div>
 
+      {/* FULL REVIEW DETAILS & MESSAGE VIEWER MODAL */}
+      {viewTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-xl w-full relative space-y-5 text-left shadow-2xl shadow-cyan-950/50 max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => {
+                setViewTarget(null);
+                setCopiedText(false);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold">
+                <FileText className="w-3.5 h-3.5" />
+                <span>REVIEW DETAILS &amp; MESSAGE</span>
+              </div>
+              <h3 className="text-xl font-bold font-display text-white pt-1">
+                {viewTarget.review_id}
+              </h3>
+              <p className="text-xs font-mono text-slate-400">
+                Submitted on {formatDate(viewTarget.created_at)}
+              </p>
+            </div>
+
+            {/* Grid Stats of Reviewer */}
+            <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+              <div className="bg-white/[0.03] p-3 rounded-xl border border-white/5 space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Reviewer Name</span>
+                <div className="font-bold text-white text-sm">{viewTarget.name}</div>
+              </div>
+
+              <div className="bg-white/[0.03] p-3 rounded-xl border border-white/5 space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Reviewer Category</span>
+                <div>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                      (viewTarget.reviewer_type || '').toLowerCase().includes('contributor')
+                        ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                        : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+                    }`}
+                  >
+                    {(viewTarget.reviewer_type || '').toLowerCase().includes('contributor')
+                      ? 'Worker / Contributor'
+                      : 'Client / Provider'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white/[0.03] p-3 rounded-xl border border-white/5 space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Star Rating</span>
+                <div className="flex items-center gap-1 pt-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-4 h-4 ${
+                        star <= viewTarget.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-700'
+                      }`}
+                    />
+                  ))}
+                  <span className="ml-1 font-bold text-amber-300">{viewTarget.rating}/5</span>
+                </div>
+              </div>
+
+              <div className="bg-white/[0.03] p-3 rounded-xl border border-white/5 space-y-1">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Public Status</span>
+                <div>
+                  {viewTarget.is_visible ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                      <Eye className="w-3 h-3" /> VISIBLE PUBLICLY
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
+                      <EyeOff className="w-3 h-3" /> HIDDEN PENDING
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Complete Review Text Box */}
+            <div className="space-y-2 font-mono">
+              <div className="flex items-center justify-between text-xs text-slate-300 font-bold">
+                <span>Complete Review Message:</span>
+                {viewTarget.review_text && (
+                  <button
+                    onClick={() => {
+                      if (viewTarget.review_text) {
+                        navigator.clipboard.writeText(viewTarget.review_text);
+                        setCopiedText(true);
+                        setTimeout(() => setCopiedText(false), 2000);
+                      }
+                    }}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedText ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedText ? 'Copied Message!' : 'Copy Text'}</span>
+                  </button>
+                )}
+              </div>
+              <div className="bg-black/50 p-4 rounded-2xl border border-white/10 text-slate-200 text-xs leading-relaxed whitespace-pre-wrap font-sans italic max-h-60 overflow-y-auto">
+                {viewTarget.review_text && viewTarget.review_text.trim() ? (
+                  `"${viewTarget.review_text.trim()}"`
+                ) : (
+                  <span className="text-slate-500 not-italic font-mono">(No written text was included with this review)</span>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10 font-mono text-xs">
+              <button
+                onClick={() => {
+                  const target = viewTarget;
+                  setViewTarget(null);
+                  handleOpenEditModal(target);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold inline-flex items-center gap-2 cursor-pointer"
+              >
+                <Pencil className="w-4 h-4" /> Edit This Review
+              </button>
+
+              <button
+                onClick={() => setViewTarget(null)}
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT REVIEW MODAL */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/30 max-w-xl w-full relative space-y-5 text-left shadow-2xl shadow-cyan-950/50 max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setEditTarget(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Title */}
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold">
+                <Pencil className="w-3.5 h-3.5" />
+                <span>EDIT REVIEW DETAILS</span>
+              </div>
+              <h3 className="text-xl font-bold font-display text-white pt-1">
+                Edit {editTarget.review_id}
+              </h3>
+              <p className="text-xs font-mono text-slate-400">
+                Fix category tagging, reviewer name, star rating, message text, or visibility.
+              </p>
+            </div>
+
+            <div className="space-y-4 font-mono text-xs">
+              {/* Reviewer Name */}
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-cyan-400" /> Reviewer Full Name:
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Enter reviewer name"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              {/* Reviewer Type Selector (Fixes wrong tagging!) */}
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-cyan-400" /> Reviewer Category / Type:
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditType('contributor')}
+                    className={`p-3 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      editType === 'contributor'
+                        ? 'bg-purple-500/20 text-purple-200 border-purple-500/50 shadow-md shadow-purple-500/10'
+                        : 'bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 text-purple-400" />
+                    <div>
+                      <div className="font-bold text-xs">Worker / Contributor</div>
+                      <div className="text-[10px] text-slate-400">Task performer &amp; annotator</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditType('client')}
+                    className={`p-3 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      editType === 'client'
+                        ? 'bg-blue-500/20 text-blue-200 border-blue-500/50 shadow-md shadow-blue-500/10'
+                        : 'bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <Briefcase className="w-4 h-4 text-blue-400" />
+                    <div>
+                      <div className="font-bold text-xs">Client / Provider</div>
+                      <div className="text-[10px] text-slate-400">Project client &amp; enterprise owner</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Rating Selector */}
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-amber-400" /> Star Rating:
+                </label>
+                <div className="flex items-center gap-2 bg-white/[0.03] p-2.5 rounded-xl border border-white/10">
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setEditRating(star)}
+                        className="p-1 text-slate-600 hover:text-amber-400 transition-colors cursor-pointer"
+                      >
+                        <Star
+                          className={`w-6 h-6 ${
+                            star <= editRating ? 'text-amber-400 fill-amber-400' : 'text-slate-700'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <span className="ml-2 font-extrabold text-amber-300 text-sm">{editRating} / 5 Stars</span>
+                </div>
+              </div>
+
+              {/* Review Text Message */}
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-bold text-xs flex items-center gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-cyan-400" /> Review Message Text:
+                </label>
+                <textarea
+                  rows={4}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  placeholder="Enter review message content..."
+                  className="w-full p-3 rounded-xl bg-white/[0.04] border border-white/10 text-slate-200 placeholder-slate-500 font-sans text-xs focus:outline-none focus:border-cyan-400 leading-relaxed resize-y"
+                />
+              </div>
+
+              {/* Visibility Switch */}
+              <div className="flex items-center justify-between bg-white/[0.03] p-3 rounded-xl border border-white/10">
+                <div>
+                  <div className="font-bold text-white text-xs">Public Visibility</div>
+                  <div className="text-[10px] text-slate-400">Show this review on public website (/review)</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditIsVisible(!editIsVisible)}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    editIsVisible
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  }`}
+                >
+                  {editIsVisible ? (
+                    <>
+                      <Eye className="w-3.5 h-3.5" /> Visible
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" /> Hidden
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setEditTarget(null)}
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit}
+                className="px-5 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-extrabold shadow-lg shadow-cyan-500/20 cursor-pointer disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-black" /> Save Review Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Single Confirmation Modal */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
@@ -776,10 +1321,10 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
               <p className="text-[11px] font-mono text-red-400 font-semibold">This action will delete the database row permanently.</p>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex items-center gap-3 pt-2 font-mono text-xs">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="w-1/2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold font-mono text-xs transition-colors cursor-pointer"
+                className="w-1/2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -787,7 +1332,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
               <button
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="w-1/2 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-red-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="w-1/2 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-black font-bold transition-all shadow-lg shadow-red-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {isDeleting ? (
                   <>
@@ -823,15 +1368,15 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
             <div className="space-y-2">
               <h3 className="text-xl font-bold font-display text-white">Delete Selected Reviews?</h3>
               <p className="text-xs font-mono text-slate-300 leading-relaxed">
-                Are you sure you want to permanently delete <span className="text-cyan-300 font-bold">{selectedIds.length}</span> selected reviews from Supabase?
+                Are you sure you want to permanently delete <span className="text-cyan-300 font-bold">{selectedIds.length}</span> selected reviews from database?
               </p>
               <p className="text-[11px] font-mono text-red-400 font-semibold">This action cannot be undone.</p>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex items-center gap-3 pt-2 font-mono text-xs">
               <button
                 onClick={() => setIsBulkDeleteModalOpen(false)}
-                className="w-1/2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold font-mono text-xs transition-colors cursor-pointer"
+                className="w-1/2 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -839,7 +1384,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
               <button
                 onClick={handleConfirmBulkDelete}
                 disabled={isDeleting}
-                className="w-1/2 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-black font-bold font-mono text-xs transition-all shadow-lg shadow-red-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="w-1/2 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-black font-bold transition-all shadow-lg shadow-red-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {isDeleting ? (
                   <>
