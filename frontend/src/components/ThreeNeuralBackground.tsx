@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Globe3D } from '@/components/ui/3d-globe';
 
 /**
- * ThreeNeuralBackground — Enterprise 3D Earth Background
+ * ThreeNeuralBackground — Cinematic 3D Earth Background & Zenemoo Geographic Hub
  * Features:
- * - Realistic Natural Earth texture: /assets/earth-realistic.jpg
- * - Single Zenemoo / Odisha location marker: [20.2961, 85.8245] with "zenemoo.in"
- * - Responsive Earth visibility: 0.52 desktop, 0.46 tablet, 0.40 mobile
- * - Zero visual clutter: no extra cities, no arcs, no overlays
- * - Non-intrusive background layer (z-0, pointer-events-none, max-w-full overflow-hidden)
+ * - High-Resolution Realistic Earth texture with detailed continents & oceans
+ * - Odisha, India primary highlighted anchor: [20.9517, 85.0985]
+ * - Minimalist Zenemoo HUD callout with glowing connector line and auto-culling
+ * - Balanced responsive opacity: 0.85 desktop, 0.78 tablet, 0.70 mobile
+ * - Non-intrusive background layer with pointer-events-none on canvas and pointer-events-auto on interactive callout
  */
 export const ThreeNeuralBackground: React.FC = () => {
   const [deviceType, setDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
@@ -26,7 +26,7 @@ export const ThreeNeuralBackground: React.FC = () => {
   }, []);
 
   const opacity =
-    deviceType === 'mobile' ? 0.40 : deviceType === 'tablet' ? 0.46 : 0.52;
+    deviceType === 'mobile' ? 0.70 : deviceType === 'tablet' ? 0.78 : 0.85;
 
   return (
     <div
@@ -39,18 +39,19 @@ export const ThreeNeuralBackground: React.FC = () => {
     >
       <Globe3D
         textureUrl="/assets/earth-realistic.jpg"
-        atmosphereColor="#38bdf8"
-        atmosphereIntensity={0.30}
+        atmosphereColor="#00d9ff"
+        atmosphereIntensity={0.45}
         autoRotate={true}
-        autoRotateSpeed={0.0008}
+        autoRotateSpeed={0.0009}
         enableRotate={true}
+        showCallout={true}
         markers={[
           {
-            latitude: 20.2961,
-            longitude: 85.8245,
-            label: 'zenemoo.in',
+            latitude: 20.9517,
+            longitude: 85.0985,
+            label: 'ZENEMOO',
             color: '#00d9ff',
-            size: 1.6,
+            size: 1.8,
           },
         ]}
       />

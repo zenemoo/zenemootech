@@ -1,62 +1,105 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface GlobeMarker {
   latitude: number;
   longitude: number;
   label?: string;
+  sublabel?: string;
+  tag?: string;
   color?: string;
   size?: number;
 }
 
 export interface Globe3DProps {
   textureUrl?: string;
-  bumpScale?: number;
   atmosphereColor?: string;
   atmosphereIntensity?: number;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
-  enableZoom?: boolean;
-  enablePan?: boolean;
   enableRotate?: boolean;
   markers?: GlobeMarker[];
   className?: string;
   style?: React.CSSProperties;
+  showCallout?: boolean;
 }
 
 /**
- * Globe3D — Clean Minimal Aceternity UI 3D Globe Component (Enterprise Visual Scale)
+ * Globe3D — High-Resolution Cinematic 3D Earth with India/Odisha Geographic Focus
+ * 
  * Features:
- * - Real Earth texture (NASA Blue Marble / Natural Earth) with enhanced clarity & deep blue oceans
- * - Large-screen scale: 44-48vw on large desktop, 42-45vw on standard desktop, 65-75vw on mobile
- * - Single Zenemoo / Odisha location pin with "zenemoo.in" badge & back-side occlusion culling
- * - Clean natural blue atmospheric Fresnel rim glow
- * - Smooth continuous rotation & subtle mouse parallax
- * - Full memory/GPU disposal on unmount
+ * - Highly detailed, realistic Earth with crisp landmasses, mountain terrain, deep blue oceans, and cloud definitions
+ * - India and Asia prominently visible in prime center-stage view
+ * - High-precision geographic anchor for Odisha, India (Lat: 20.9517° N, Lon: 85.0985° E)
+ * - Dual-layer atmospheric Fresnel rim lighting (Cyan / Royal Blue halo with electric violet aura)
+ * - Responsive Brand Badge:
+ *   - Mobile (< 768px): Round logo ONLY
+ *   - Tablet / Desktop (>= 768px): Round logo + "ZENEMOO" text
+ * - Thin, elegant glowing cyan connector line anchored to Odisha
+ * - Smooth geometric occlusion culling (smoothly hides on the far side, reveals on the front)
  */
 export const Globe3D: React.FC<Globe3DProps> = ({
   textureUrl = '/assets/earth-realistic.jpg',
-  atmosphereColor = '#38bdf8',
-  atmosphereIntensity = 0.30,
+  atmosphereColor = '#00d9ff',
+  atmosphereIntensity = 0.45,
   autoRotate = true,
-  autoRotateSpeed = 0.0008,
+  autoRotateSpeed = 0.0009,
   enableRotate = true,
   markers = [
     {
-      latitude: 20.2961,
-      longitude: 85.8245,
-      label: 'zenemoo.in',
+      latitude: 20.9517,
+      longitude: 85.0985,
+      label: 'ZENEMOO',
       color: '#00d9ff',
-      size: 1.6,
+      size: 1.8,
     },
   ],
   className = '',
   style = {},
+  showCallout = true,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Screen-space 2D coordinates for the Odisha pin & floating popup
+  const [pinCoords, setPinCoords] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+    opacity: number;
+    isFrontFacing: boolean;
+  }>({
+    x: 0,
+    y: 0,
+    visible: false,
+    opacity: 0,
+    isFrontFacing: true,
+  });
+
+  const [windowDimensions, setWindowDimensions] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+  });
+
+  const activeMarker = markers[0] || {
+    latitude: 20.9517,
+    longitude: 85.0985,
+    label: 'ZENEMOO',
+  };
 
   useEffect(() => {
-    const container = mountRef.current;
-    if (!container) return;
+    const handleWindowResize = () => {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, []);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
 
     let isCancelled = false;
     let animationFrameId: number;
@@ -70,167 +113,109 @@ export const Globe3D: React.FC<Globe3DProps> = ({
       if (isCancelled || !mountRef.current) return;
 
       const w = window.innerWidth;
+      const h = window.innerHeight;
+      const isSmallMobile = w < 480;
       const isMobile = w < 768;
       const isTablet = w >= 768 && w < 1024;
-      const isLargeDesktop = w >= 1680;
+      const isLaptop = w >= 1024 && w < 1440;
+      const isLargeDesktop = w >= 1920;
 
       // ── 1. Scene, Camera, Renderer ─────────────────────────────────────────
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(
-        45,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-      );
-      camera.position.set(0, 0, 48);
+      const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+      
+      const cameraDistance = isSmallMobile ? 42 : isMobile ? 44 : isTablet ? 45 : isLaptop ? 46 : isLargeDesktop ? 48 : 46;
+      camera.position.set(0, 0, cameraDistance);
 
       const renderer = new THREE.WebGLRenderer({
         alpha: true,
         antialias: true,
         powerPreference: isMobile ? 'low-power' : 'high-performance',
       });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.0 : 1.5));
-      container.appendChild(renderer.domElement);
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 1.75));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+      mount.appendChild(renderer.domElement);
 
-      // ── 2. Sprite Texture Generators ───────────────────────────────────────
-      const createCircleTexture = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-          gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.85)');
-          gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.35)');
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(0, 0, 64, 64);
-        }
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.needsUpdate = true;
-        return texture;
-      };
+      // ── 2. Earth Globe Group & Geometry (Elevated Composition) ────────────
+      const globeRadius = isSmallMobile
+        ? 6.6
+        : isMobile
+        ? 7.2
+        : isTablet
+        ? 8.0
+        : isLaptop
+        ? 8.8
+        : isLargeDesktop
+        ? 10.2
+        : 9.4;
 
-      const circleTexture = createCircleTexture();
+      const globeGroup = new THREE.Group();
 
-      // 4K Ultra-High-DPI Marker Label Generator (Vector-Crisp on Retina/4K displays)
-      const createLabelTexture = (labelText: string) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 224;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
+      // Earth Axial Tilt (23.4°)
+      globeGroup.rotation.z = THREE.MathUtils.degToRad(23.4);
+      // Initial rotation aligned so India / Odisha starts facing the viewer directly
+      globeGroup.rotation.y = -2.85;
 
-          // Background Dark Capsule
-          ctx.fillStyle = 'rgba(3, 7, 18, 0.90)';
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-          ctx.lineWidth = 7;
+      const posY = isSmallMobile
+        ? -0.3
+        : isMobile
+        ? -0.6
+        : isTablet
+        ? -1.4
+        : isLaptop
+        ? -2.0
+        : isLargeDesktop
+        ? -2.4
+        : -2.2;
 
-          const x = 12;
-          const y = 12;
-          const w = canvas.width - 24;
-          const h = canvas.height - 24;
-          const r = 56;
+      globeGroup.position.set(0, posY, -4);
+      scene.add(globeGroup);
 
-          ctx.beginPath();
-          ctx.moveTo(x + r, y);
-          ctx.lineTo(x + w - r, y);
-          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-          ctx.lineTo(x + w, y + h - r);
-          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-          ctx.lineTo(x + r, y + h);
-          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-          ctx.lineTo(x, y + r);
-          ctx.quadraticCurveTo(x, y, x + r, y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
-          // Glowing Cyan Point Indicator
-          ctx.fillStyle = '#00d9ff';
-          ctx.beginPath();
-          ctx.arc(105, 112, 28, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-          ctx.lineWidth = 6;
-          ctx.beginPath();
-          ctx.arc(105, 112, 38, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Crisp Vector Typography
-          ctx.font = 'bold 94px "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-          ctx.fillStyle = '#ffffff';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(labelText, 175, 114);
-        }
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.generateMipmaps = true;
-        texture.minFilter = THREE.LinearMipmapLinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        texture.needsUpdate = true;
-        return texture;
-      };
-
-      // ── 3. Real Earth Equirectangular Texture Loader ───────────────────────
+      // ── 3. Texture Loader & Realistic Earth Material ────────────────────────
       const textureLoader = new THREE.TextureLoader();
       const earthTexture = textureLoader.load(textureUrl, () => {
         earthTexture.wrapS = THREE.RepeatWrapping;
         earthTexture.wrapT = THREE.ClampToEdgeWrapping;
+        earthTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
         renderer.render(scene, camera);
       });
 
-      // ── 4. Build 3D Earth Globe (Substantial Large-Screen Scale) ───────────
-      // Sizing: ~46vw on 1920px+, ~42vw on 1440px, ~52vw on tablet, ~72-76vw on mobile
-      const globeRadius = isMobile ? 7.4 : isTablet ? 8.0 : isLargeDesktop ? 9.8 : 9.0;
-      const globeGroup = new THREE.Group();
-
-      // Earth Axial Tilt (18 deg) + Initial view facing India & Indian Ocean
-      globeGroup.rotation.z = THREE.MathUtils.degToRad(18);
-      globeGroup.rotation.y = -2.85; // Starts facing India / Asia
-
-      // Vertically centered behind hero content on mobile, lower on desktop
-      const posY = isMobile ? -1.0 : isTablet ? -2.8 : isLargeDesktop ? -3.6 : -3.8;
-      globeGroup.position.set(0, posY, -6);
-      scene.add(globeGroup);
-
       const earthGeo = new THREE.SphereGeometry(
         globeRadius,
-        isMobile ? 36 : 64,
-        isMobile ? 36 : 64
+        isMobile ? 54 : 72,
+        isMobile ? 54 : 72
       );
+
       const earthMat = new THREE.MeshPhongMaterial({
         map: earthTexture,
-        color: new THREE.Color(0xf0f4f8), // Natural bright Earth clarity
-        emissive: new THREE.Color(0x0c1a32), // Rich deep navy ambient lighting
-        specular: new THREE.Color(0x60a5fa), // Crisp cyan/blue ocean specular sheen
-        shininess: 32,
+        color: new THREE.Color(0xf0f6fc),
+        emissive: new THREE.Color(0x061120),
+        specular: new THREE.Color(0x38bdf8),
+        shininess: 35,
         transparent: true,
-        opacity: isMobile ? 0.85 : 0.92,
+        opacity: isMobile ? 0.94 : 0.98,
       });
+
       const earthMesh = new THREE.Mesh(earthGeo, earthMat);
       globeGroup.add(earthMesh);
 
-      // Helper: Convert (lat, lon, r) to 3D Cartesian coordinates
-      const latLonToVector3 = (lat: number, lon: number, r: number) => {
+      // ── 4. Coordinate Conversion Helper ────────────────────────────────────
+      const latLonToVector3 = (lat: number, lon: number, radius: number) => {
         const phi = THREE.MathUtils.degToRad(90 - lat);
         const theta = THREE.MathUtils.degToRad(lon + 180);
         return new THREE.Vector3(
-          -r * Math.sin(phi) * Math.cos(theta),
-          r * Math.cos(phi),
-          r * Math.sin(phi) * Math.sin(theta)
+          -radius * Math.sin(phi) * Math.cos(theta),
+          radius * Math.cos(phi),
+          radius * Math.sin(phi) * Math.sin(theta)
         );
       };
 
-      // ── 5. Atmospheric Fresnel Rim Glow Sphere ─────────────────────────────
-      const atmosColorThree = new THREE.Color(atmosphereColor);
-      const atmosphereGeo = new THREE.SphereGeometry(globeRadius * 1.018, 48, 48);
-      const atmosphereMat = new THREE.ShaderMaterial({
+      // ── 5. Atmospheric Fresnel Rim Glow Shaders ────────────────────────────
+      // Inner Atmospheric Halo
+      const innerAtmosGeo = new THREE.SphereGeometry(globeRadius * 1.015, 48, 48);
+      const innerAtmosMat = new THREE.ShaderMaterial({
         vertexShader: `
           varying vec3 vNormal;
           varying vec3 vPosition;
@@ -248,12 +233,12 @@ export const Globe3D: React.FC<Globe3DProps> = ({
           void main() {
             vec3 viewDir = normalize(-vPosition);
             float rim = 1.0 - max(dot(vNormal, viewDir), 0.0);
-            float intensity = pow(rim, 2.8) * uIntensity;
-            gl_FragColor = vec4(uColor, intensity);
+            float alpha = pow(rim, 3.2) * uIntensity;
+            gl_FragColor = vec4(uColor, alpha);
           }
         `,
         uniforms: {
-          uColor: { value: atmosColorThree },
+          uColor: { value: new THREE.Color(atmosphereColor) },
           uIntensity: { value: atmosphereIntensity },
         },
         blending: THREE.AdditiveBlending,
@@ -261,109 +246,175 @@ export const Globe3D: React.FC<Globe3DProps> = ({
         transparent: true,
         depthWrite: false,
       });
-      const atmosphereMesh = new THREE.Mesh(atmosphereGeo, atmosphereMat);
-      globeGroup.add(atmosphereMesh);
+      const innerAtmosMesh = new THREE.Mesh(innerAtmosGeo, innerAtmosMat);
+      globeGroup.add(innerAtmosMesh);
 
-      // ── 6. Single Zenemoo / Odisha Location Pin with Occlusion Culling ─────
-      const markerMeshes: {
-        group: any;
-        beaconMat: any;
-        pinMat: any;
-        labelMat: any;
-        normalVec: any;
-      }[] = [];
+      // Outer Deep Blue/Ethereal Aura
+      const outerAtmosGeo = new THREE.SphereGeometry(globeRadius * 1.065, 48, 48);
+      const outerAtmosMat = new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec3 vPosition;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vNormal;
+          varying vec3 vPosition;
+          uniform vec3 uColor;
+          void main() {
+            vec3 viewDir = normalize(-vPosition);
+            float rim = 1.0 - max(dot(vNormal, viewDir), 0.0);
+            float alpha = pow(rim, 4.6) * 0.25;
+            gl_FragColor = vec4(uColor, alpha);
+          }
+        `,
+        uniforms: {
+          uColor: { value: new THREE.Color('#38bdf8') },
+        },
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+        transparent: true,
+        depthWrite: false,
+      });
+      const outerAtmosMesh = new THREE.Mesh(outerAtmosGeo, outerAtmosMat);
+      globeGroup.add(outerAtmosMesh);
 
-      const labelTextures: any[] = [];
+      // ── 6. Background Starfield & Subtle Cosmic Data Particles ────────────
+      const starCount = isMobile ? 140 : 280;
+      const starGeo = new THREE.BufferGeometry();
+      const starPositions = new Float32Array(starCount * 3);
+      const starColors = new Float32Array(starCount * 3);
 
-      markers.forEach((m) => {
-        const markerGroup = new THREE.Group();
-        globeGroup.add(markerGroup);
+      const colorPalette = [
+        new THREE.Color('#00d9ff'),
+        new THREE.Color('#38bdf8'),
+        new THREE.Color('#818cf8'),
+        new THREE.Color('#ffffff'),
+      ];
 
-        const surfacePos = latLonToVector3(m.latitude, m.longitude, globeRadius * 1.004);
-        const stemTopPos = latLonToVector3(m.latitude, m.longitude, globeRadius * 1.028);
-        const labelPos = latLonToVector3(m.latitude, m.longitude, globeRadius * 1.045);
+      for (let i = 0; i < starCount; i++) {
+        const radius = 35 + Math.random() * 45;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(Math.random() * 2 - 1);
 
-        // Surface Beacon Node
-        const beaconGeo = new THREE.BufferGeometry().setFromPoints([surfacePos]);
-        const beaconMat = new THREE.PointsMaterial({
-          size: isMobile ? 1.4 : isLargeDesktop ? 1.9 : 1.7,
-          map: circleTexture,
-          color: new THREE.Color(m.color || '#00d9ff'),
-          transparent: true,
-          opacity: 1.0,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        });
-        const beaconMesh = new THREE.Points(beaconGeo, beaconMat);
-        markerGroup.add(beaconMesh);
+        starPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+        starPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+        starPositions[i * 3 + 2] = radius * Math.cos(phi);
 
-        // Subtle Pin Stem
-        const stemGeo = new THREE.BufferGeometry().setFromPoints([surfacePos, stemTopPos]);
-        const stemMat = new THREE.LineBasicMaterial({
-          color: new THREE.Color(m.color || '#00d9ff'),
-          transparent: true,
-          opacity: 0.75,
-          blending: THREE.AdditiveBlending,
-        });
-        const stemMesh = new THREE.Line(stemGeo, stemMat);
-        markerGroup.add(stemMesh);
+        const col = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+        starColors[i * 3] = col.r;
+        starColors[i * 3 + 1] = col.g;
+        starColors[i * 3 + 2] = col.b;
+      }
 
-        // Pin Head Point
-        const pinHeadGeo = new THREE.BufferGeometry().setFromPoints([stemTopPos]);
-        const pinHeadMat = new THREE.PointsMaterial({
-          size: isMobile ? 1.0 : 1.3,
-          map: circleTexture,
-          color: new THREE.Color('#00d9ff'),
-          transparent: true,
-          opacity: 1.0,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        });
-        const pinHeadMesh = new THREE.Points(pinHeadGeo, pinHeadMat);
-        markerGroup.add(pinHeadMesh);
+      starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+      starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
 
-        // Compact High-DPI Label Sprite
-        let labelMat: any = null;
-        if (m.label) {
-          const lTex = createLabelTexture(m.label);
-          labelTextures.push(lTex);
-          labelMat = new THREE.SpriteMaterial({
-            map: lTex,
-            transparent: true,
-            opacity: 0.92,
-            depthWrite: false,
-          });
-          const labelSprite = new THREE.Sprite(labelMat);
-          labelSprite.position.copy(labelPos);
-
-          const scaleW = isMobile ? 2.8 : isLargeDesktop ? 3.8 : 3.4;
-          const scaleH = scaleW * (224 / 1024);
-          labelSprite.scale.set(scaleW, scaleH, 1.0);
-          markerGroup.add(labelSprite);
+      const createStarTexture = () => {
+        const c = document.createElement('canvas');
+        c.width = 32;
+        c.height = 32;
+        const ctx = c.getContext('2d');
+        if (ctx) {
+          const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+          grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+          grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.7)');
+          grad.addColorStop(0.7, 'rgba(255, 255, 255, 0.15)');
+          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, 32, 32);
         }
+        const tex = new THREE.CanvasTexture(c);
+        tex.needsUpdate = true;
+        return tex;
+      };
 
-        markerMeshes.push({
-          group: markerGroup,
-          beaconMat,
-          pinMat: stemMat,
-          labelMat,
-          normalVec: surfacePos.clone().normalize(),
-        });
+      const starTexture = createStarTexture();
+      const starMat = new THREE.PointsMaterial({
+        size: isMobile ? 0.70 : 0.85,
+        map: starTexture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       });
 
-      // ── 7. Lighting System (Enhanced Natural Brightness) ────────────────────
-      const ambientLight = new THREE.AmbientLight(0xffffff, 1.10);
+      const starPoints = new THREE.Points(starGeo, starMat);
+      scene.add(starPoints);
+
+      // ── 7. Geographic Beacon at Odisha, India ─────────────────────────────
+      const odishaLat = activeMarker.latitude;
+      const odishaLon = activeMarker.longitude;
+      const odishaSurfacePos = latLonToVector3(odishaLat, odishaLon, globeRadius * 1.002);
+      const odishaStemTopPos = latLonToVector3(odishaLat, odishaLon, globeRadius * 1.025);
+
+      const markerGroup = new THREE.Group();
+      globeGroup.add(markerGroup);
+
+      // Surface Glowing Dot
+      const beaconGeo = new THREE.BufferGeometry().setFromPoints([odishaSurfacePos]);
+      const beaconMat = new THREE.PointsMaterial({
+        size: isMobile ? 1.4 : 1.8,
+        map: starTexture,
+        color: new THREE.Color('#00d9ff'),
+        transparent: true,
+        opacity: 1.0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const beaconMesh = new THREE.Points(beaconGeo, beaconMat);
+      markerGroup.add(beaconMesh);
+
+      // Pin Stem Line
+      const stemGeo = new THREE.BufferGeometry().setFromPoints([
+        odishaSurfacePos,
+        odishaStemTopPos,
+      ]);
+      const stemMat = new THREE.LineBasicMaterial({
+        color: new THREE.Color('#00d9ff'),
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+      });
+      const stemMesh = new THREE.Line(stemGeo, stemMat);
+      markerGroup.add(stemMesh);
+
+      // Pin Head Point
+      const pinHeadGeo = new THREE.BufferGeometry().setFromPoints([odishaStemTopPos]);
+      const pinHeadMat = new THREE.PointsMaterial({
+        size: isMobile ? 1.1 : 1.4,
+        map: starTexture,
+        color: new THREE.Color('#ffffff'),
+        transparent: true,
+        opacity: 1.0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const pinHeadMesh = new THREE.Points(pinHeadGeo, pinHeadMat);
+      markerGroup.add(pinHeadMesh);
+
+      // ── 8. Cinematic Balanced Lighting Setup ───────────────────────────────
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
       scene.add(ambientLight);
 
-      const dirLight = new THREE.DirectionalLight(0xffffff, 1.45);
-      dirLight.position.set(40, 25, 45);
-      scene.add(dirLight);
+      const sunLight = new THREE.DirectionalLight(0xffffff, 1.35);
+      sunLight.position.set(40, 22, 48);
+      scene.add(sunLight);
 
-      const rimLight = new THREE.PointLight(0x38bdf8, 0.85, 120);
-      rimLight.position.set(-35, -20, 25);
-      scene.add(rimLight);
+      const cyanRimLight = new THREE.PointLight(0x00d9ff, 1.25, 130);
+      cyanRimLight.position.set(-36, -16, 28);
+      scene.add(cyanRimLight);
 
-      // ── 8. Smooth Parallax ─────────────────────────────────────────────────
+      const purpleAccentLight = new THREE.PointLight(0xa855f7, 0.80, 110);
+      purpleAccentLight.position.set(32, -26, 20);
+      scene.add(purpleAccentLight);
+
+      // ── 9. Mouse Parallax & Window Events ──────────────────────────────────
       let mouseX = 0;
       let mouseY = 0;
       let targetCameraX = 0;
@@ -371,8 +422,8 @@ export const Globe3D: React.FC<Globe3DProps> = ({
 
       const handleMouseMove = (e: MouseEvent) => {
         if (!enableRotate) return;
-        mouseX = (e.clientX - window.innerWidth / 2) * 0.0012;
-        mouseY = -(e.clientY - window.innerHeight / 2) * 0.0012;
+        mouseX = (e.clientX - window.innerWidth / 2) * 0.0008;
+        mouseY = -(e.clientY - window.innerHeight / 2) * 0.0008;
       };
 
       if (!isMobile && !prefersReducedMotion) {
@@ -391,47 +442,67 @@ export const Globe3D: React.FC<Globe3DProps> = ({
         camera.aspect = curW / curH;
         camera.updateProjectionMatrix();
         renderer.setSize(curW, curH);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, curW < 768 ? 1.0 : 1.5));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, curW < 768 ? 1.25 : 1.75));
       };
       window.addEventListener('resize', handleResize);
 
-      // ── 9. Main Render Loop with Back-Side Occlusion Culling ───────────────
+      // ── 10. Animation Loop & Screen Projection ─────────────────────────────
       let clock = 0;
-      const tempVec = new THREE.Vector3();
+      const odishaNormal = odishaSurfacePos.clone().normalize();
+      const worldNormal = new THREE.Vector3();
+      const worldPos = new THREE.Vector3();
       const camPosVec = new THREE.Vector3();
+      const projectedScreenVec = new THREE.Vector3();
 
       const animate = () => {
         animationFrameId = requestAnimationFrame(animate);
 
         if (!isTabActive) return;
 
+        clock += 0.016;
+
         if (!prefersReducedMotion && autoRotate) {
-          clock += 0.008;
-
-          // 1. Slow, continuous realistic Earth rotation
           globeGroup.rotation.y += autoRotateSpeed;
+        }
 
-          // 2. Marker Occlusion Culling
-          camPosVec.copy(camera.position).normalize();
+        starPoints.rotation.y = clock * 0.0002;
 
-          markerMeshes.forEach((mm) => {
-            tempVec.copy(mm.normalVec).applyQuaternion(globeGroup.quaternion);
-            const dot = tempVec.dot(camPosVec);
+        // Occlusion Calculation
+        camPosVec.copy(camera.position).normalize();
+        worldNormal.copy(odishaNormal).applyQuaternion(globeGroup.quaternion);
+        const dot = worldNormal.dot(camPosVec);
 
-            let visibilityFactor = 0;
-            if (dot > 0.15) {
-              visibilityFactor = Math.min((dot - 0.15) / 0.25, 1.0);
-            }
+        let visibilityFactor = 0;
+        const isFacing = dot > 0.05;
 
-            const pulse = (0.85 + Math.sin(clock * 3.0) * 0.15) * visibilityFactor;
-            mm.beaconMat.opacity = pulse;
-            mm.pinMat.opacity = 0.75 * visibilityFactor;
-            if (mm.labelMat) {
-              mm.labelMat.opacity = 0.92 * visibilityFactor;
-            }
-          });
+        if (dot > 0.05) {
+          visibilityFactor = Math.min(Math.max((dot - 0.05) / 0.20, 0.0), 1.0);
+        }
 
-          // 3. Smooth Camera Parallax Lerp
+        beaconMat.opacity = visibilityFactor * (0.85 + Math.sin(clock * 4.0) * 0.15);
+        stemMat.opacity = visibilityFactor * 0.75;
+        pinHeadMat.opacity = visibilityFactor;
+
+        // 3D world pos of the pinhead projected to 2D screen coordinates
+        worldPos.copy(odishaStemTopPos).applyMatrix4(globeGroup.matrixWorld);
+        projectedScreenVec.copy(worldPos).project(camera);
+
+        const currentW = window.innerWidth;
+        const currentH = window.innerHeight;
+
+        const screenX = (projectedScreenVec.x * 0.5 + 0.5) * currentW;
+        const screenY = (-(projectedScreenVec.y * 0.5) + 0.5) * currentH;
+
+        setPinCoords({
+          x: screenX,
+          y: screenY,
+          visible: visibilityFactor > 0.02,
+          opacity: visibilityFactor,
+          isFrontFacing: isFacing,
+        });
+
+        // Smooth Camera Parallax Lerp
+        if (!isMobile && !prefersReducedMotion) {
           targetCameraX += (mouseX - targetCameraX) * 0.035;
           targetCameraY += (mouseY - targetCameraY) * 0.035;
           camera.position.x = targetCameraX;
@@ -444,32 +515,33 @@ export const Globe3D: React.FC<Globe3DProps> = ({
 
       animate();
 
-      // ── 10. GPU & Memory Disposal on Unmount ──────────────────────────────
+      // ── 11. Cleanup & Disposal on Unmount ──────────────────────────────────
       cleanupFn = () => {
         window.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
         window.removeEventListener('resize', handleResize);
         cancelAnimationFrame(animationFrameId);
 
-        if (container.contains(renderer.domElement)) {
-          container.removeChild(renderer.domElement);
+        if (mount.contains(renderer.domElement)) {
+          mount.removeChild(renderer.domElement);
         }
 
-        circleTexture.dispose();
-        labelTextures.forEach((t) => t.dispose());
+        starTexture.dispose();
         earthTexture.dispose();
-
+        starGeo.dispose();
+        starMat.dispose();
         earthGeo.dispose();
         earthMat.dispose();
-        atmosphereGeo.dispose();
-        atmosphereMat.dispose();
-
-        markerMeshes.forEach((mm) => {
-          mm.group.children.forEach((c: any) => {
-            if (c.geometry) c.geometry.dispose();
-            if (c.material) c.material.dispose();
-          });
-        });
+        innerAtmosGeo.dispose();
+        innerAtmosMat.dispose();
+        outerAtmosGeo.dispose();
+        outerAtmosMat.dispose();
+        beaconGeo.dispose();
+        beaconMat.dispose();
+        stemGeo.dispose();
+        stemMat.dispose();
+        pinHeadGeo.dispose();
+        pinHeadMat.dispose();
 
         renderer.dispose();
       };
@@ -486,15 +558,130 @@ export const Globe3D: React.FC<Globe3DProps> = ({
     autoRotate,
     autoRotateSpeed,
     enableRotate,
-    markers,
+    activeMarker.latitude,
+    activeMarker.longitude,
   ]);
+
+  // Compute responsive badge sizing (Mobile: round icon only, Desktop: icon + text)
+  const isMobile = windowDimensions.width < 768;
+  const isSmallMobile = windowDimensions.width < 420;
+
+  // On mobile (< 768px), badge is a compact round circle. On desktop (>= 768px), it's the full pill.
+  const popupWidth = isMobile ? 36 : 148;
+  const popupHeight = isMobile ? 36 : 38;
+
+  // Floating offset: positioned above & slightly to the right of the pin point
+  const offsetX = isMobile ? 12 : 24;
+  const offsetY = isMobile ? -48 : -60;
+
+  // Clamping within screen viewport with safety margins
+  const targetCardX = Math.min(
+    Math.max(pinCoords.x + offsetX, 10),
+    windowDimensions.width - popupWidth - 10
+  );
+  const targetCardY = Math.min(
+    Math.max(pinCoords.y + offsetY, 10),
+    windowDimensions.height - popupHeight - 10
+  );
+
+  // Subtle connector line endpoints
+  const pinX = pinCoords.x;
+  const pinY = pinCoords.y;
+  
+  // Anchor cleanly to the bottom-center of the mobile circle or bottom-left of desktop pill
+  const cardAnchorX = isMobile
+    ? targetCardX + popupWidth / 2
+    : targetCardX + (targetCardX > pinX ? 22 : popupWidth - 22);
+  const cardAnchorY = targetCardY + popupHeight;
+
+  // Smooth slight curve midpoint for connector line
+  const midX = pinX + (cardAnchorX - pinX) * 0.35;
+  const midY = cardAnchorY + 4;
 
   return (
     <div
-      ref={mountRef}
-      className={`w-full h-full ${className}`}
+      ref={containerRef}
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
       style={style}
-      aria-hidden="true"
-    />
+    >
+      {/* 3D WebGL Canvas Layer */}
+      <div ref={mountRef} className="absolute inset-0 z-0 pointer-events-none" />
+
+      {/* Screen-Space HUD Overlay: Minimal Zenemoo Popup & Subtle Connector */}
+      {showCallout && pinCoords.visible && (
+        <div
+          className="absolute inset-0 z-10 pointer-events-none transition-opacity duration-300 ease-out"
+          style={{ opacity: pinCoords.opacity }}
+        >
+          {/* Subtle Thin Glowing SVG Connector Line */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ filter: 'drop-shadow(0 0 4px rgba(0, 217, 255, 0.45))' }}
+          >
+            <defs>
+              <linearGradient id="connectorGlowSubtle" x1="0%" y1="100%" x2="0%" y2="0%">
+                <stop offset="0%" stopColor="#00d9ff" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.6" />
+              </linearGradient>
+            </defs>
+
+            {/* Thin subtle angled connector line */}
+            <path
+              d={`M ${pinX} ${pinY} Q ${midX} ${midY} ${cardAnchorX} ${cardAnchorY}`}
+              fill="none"
+              stroke="url(#connectorGlowSubtle)"
+              strokeWidth={isMobile ? "1.2" : "1.5"}
+              strokeDasharray="3 2"
+              className="opacity-80"
+            />
+
+            {/* Odisha Location Dot on Globe Surface */}
+            <circle
+              cx={pinX}
+              cy={pinY}
+              r={isMobile ? "2.5" : "3.5"}
+              fill="#00d9ff"
+              stroke="#ffffff"
+              strokeWidth="1.2"
+            />
+
+            {/* Anchor point at bottom of badge */}
+            <circle
+              cx={cardAnchorX}
+              cy={cardAnchorY}
+              r={isMobile ? "1.8" : "2.2"}
+              fill="#00d9ff"
+            />
+          </svg>
+
+          {/* Responsive Zenemoo Brand Badge: Round Logo ONLY on mobile, Full Badge with ZENEMOO on desktop */}
+          <div
+            className="absolute pointer-events-auto transition-all duration-300 ease-out"
+            style={{
+              transform: `translate3d(${targetCardX}px, ${targetCardY}px, 0)`,
+            }}
+          >
+            <div className="inline-flex items-center gap-2 sm:gap-2.5 p-1.5 md:px-3.5 md:py-2 rounded-full bg-[#080d1a]/92 backdrop-blur-xl border border-cyan-500/35 shadow-lg shadow-cyan-500/20 whitespace-nowrap hover:border-cyan-400/60 hover:shadow-cyan-500/30 transition-all duration-200">
+              {/* Always Round Zenemoo Official Logo */}
+              <div className="w-5 h-5 sm:w-5 sm:h-5 rounded-full bg-[#050914] p-0.5 shadow-sm flex items-center justify-center shrink-0 border border-white/10 overflow-hidden">
+                <img
+                  src="/assets/logo.png"
+                  alt="Zenemoo"
+                  className="w-full h-full object-contain rounded-full"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
+
+              {/* Crisp Bold ZENEMOO Brand Text — Hidden on mobile (< 768px), Visible on tablet, laptop, desktop & 4K */}
+              <span className="hidden md:inline-block font-extrabold font-display text-white text-xs sm:text-sm tracking-wider leading-none pr-1">
+                {activeMarker.label || 'ZENEMOO'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

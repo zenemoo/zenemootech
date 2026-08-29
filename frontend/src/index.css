@@ -190,4 +190,14 @@
   }
 }
 
+/* Cinematic Hero Typography Gradient */
+.text-gradient-hero {
+  background: linear-gradient(135deg, #38bdf8 0%, #00d9ff 50%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  filter: drop-shadow(0 2px 12px rgba(0, 217, 255, 0.25));
+}
+
+
 
