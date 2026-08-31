@@ -386,8 +386,19 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     const decodedOriginalSenderName = decodeMimeHeader(originalEmail.sender_name);
     const decodedOriginalSubject = decodeMimeHeader(originalEmail.subject);
     const cleanUserText = normalizeMojibake(messageText.trim());
-    const escapedUserText = cleanUserText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const formattedUserMessage = `<div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; color: #f1f5f9; white-space: pre-wrap;">${escapedUserText}</div>`;
+
+    // Auto-link URLs and emails while escaping HTML for safety
+    const formattedBodyHtml = escapeHtml(cleanUserText)
+      .replace(
+        /(https?:\/\/[^\s<]+)/g,
+        '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: underline; word-break: break-all;">$1</a>'
+      )
+      .replace(
+        /(?<!mailto:)(?<!href=["'])\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/g,
+        '<a href="mailto:$1" style="color: #0284c7; text-decoration: underline;">$1</a>'
+      );
+
+    const formattedUserMessage = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; white-space: pre-wrap;">${formattedBodyHtml}</div>`;
 
     const formattedDate = new Date(originalEmail.received_at).toLocaleString('en-US', {
       dateStyle: 'medium',
@@ -397,24 +408,24 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     let fullHtml = '';
     if (mode === 'reply') {
       const origSnippet = normalizeMojibake(originalEmail.body_text || originalEmail.snippet || '');
-      const quotedBlock = `<br/><br/><div style="border-left: 2px solid #06b6d4; padding-left: 12px; margin-top: 16px; color: #94a3b8; font-family: system-ui, sans-serif; font-size: 13px;">
-        <div style="font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
-        <blockquote style="margin: 0; padding: 0; color: #94a3b8; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
+      const quotedBlock = `<br/><br/><div style="border-left: 3px solid #0891b2; padding-left: 14px; margin-top: 20px; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px;">
+        <div style="font-weight: 600; color: #334155; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
+        <blockquote style="margin: 0; padding: 0; color: #475569; line-height: 1.55; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
       </div>`;
-      fullHtml = `${formattedUserMessage}${quotedBlock}`;
+      fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${formattedUserMessage}${quotedBlock}</div>`;
     } else {
       // Forward mode
-      const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap;">${escapeHtml(normalizeMojibake(originalEmail.body_text || originalEmail.snippet))}</div>`;
-      const fwdHeader = `<br/><br/><div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 12px; margin-top: 16px; font-family: system-ui, sans-serif; font-size: 13px; color: #94a3b8;">
-        <div style="font-weight: bold; color: #f8fafc; margin-bottom: 6px;">---------- Forwarded message ----------</div>
+      const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap; color: #1e293b;">${escapeHtml(normalizeMojibake(originalEmail.body_text || originalEmail.snippet))}</div>`;
+      const fwdHeader = `<br/><br/><div style="border-top: 1px solid #cbd5e1; padding-top: 14px; margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #334155;">
+        <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;">---------- Forwarded message ----------</div>
         <div><strong>From:</strong> ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
         <div><strong>Date:</strong> ${formattedDate}</div>
         <div><strong>Subject:</strong> ${escapeHtml(decodedOriginalSubject)}</div>
         <div><strong>To:</strong> ${escapeHtml(originalEmail.recipient_email)}</div>
         <br/>
-        <div>${origBody}</div>
+        <div style="color: #1e293b;">${origBody}</div>
       </div>`;
-      fullHtml = `${formattedUserMessage}${fwdHeader}`;
+      fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${formattedUserMessage}${fwdHeader}</div>`;
     }
 
     try {

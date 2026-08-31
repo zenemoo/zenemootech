@@ -822,7 +822,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     const sig = getSignatureForSender(selectedSender);
     let fullHtml = template.body;
     if (sig) {
-      fullHtml += `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-family: sans-serif;"><p style="color:#06b6d4; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#06b6d4; text-decoration:none;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
+      fullHtml += `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"><p style="color:#0891b2; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#334155; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#0284c7; text-decoration:underline;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
     }
     setHtmlContent(fullHtml);
     setIsTemplateModalOpen(false);
@@ -832,7 +832,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const handleAppendSignature = () => {
     const sig = getSignatureForSender(selectedSender);
     if (!sig) return;
-    const sigHtml = `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-family: sans-serif;"><p style="color:#06b6d4; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#94a3b8; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#06b6d4; text-decoration:none;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
+    const sigHtml = `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"><p style="color:#0891b2; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#334155; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#0284c7; text-decoration:underline;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
     setHtmlContent((prev) => prev + sigHtml);
     showToast(`Signature for ${sig.name} (${sig.email}) appended!`, 'success');
   };

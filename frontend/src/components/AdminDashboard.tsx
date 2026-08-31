@@ -156,7 +156,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     }
     return content
       .split(/\n{2,}/)
-      .map((paragraph) => `<p style="margin-bottom: 12px; line-height: 1.6; color: #e2e8f0;">${paragraph.replace(/\n/g, '<br/>')}</p>`)
+      .map((paragraph) => `<p style="margin-bottom: 12px; line-height: 1.6; color: #1e293b;">${paragraph.replace(/\n/g, '<br/>')}</p>`)
       .join('');
   };
 

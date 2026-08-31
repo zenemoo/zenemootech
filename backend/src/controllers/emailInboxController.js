@@ -695,7 +695,7 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
 
   if (!isRawRfc) {
     cleanText = trimmedRaw;
-    cleanHtml = sanitizeEmailHtml(incomingHtml) || `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #e2e8f0;">${escapeHtml(cleanText)}</div>`;
+    cleanHtml = sanitizeEmailHtml(incomingHtml) || `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #1e293b;">${escapeHtml(cleanText)}</div>`;
     const snippetText = cleanText.replace(/\s+/g, ' ').trim().substring(0, 160);
     return {
       body_text: cleanText,
@@ -834,7 +834,7 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
   }
 
   if (!cleanHtml && cleanText) {
-    cleanHtml = `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #e2e8f0;">${escapeHtml(cleanText)}</div>`;
+    cleanHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #1e293b;">${escapeHtml(cleanText)}</div>`;
   }
 
   if (!cleanText && cleanHtml) {
@@ -1043,7 +1043,7 @@ export const sendInboxEmail = async (req, res, next) => {
     let safeHtml = html ? sanitizeHtml(html) : '';
     if (!safeHtml && text) {
       const escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      safeHtml = `<div style="font-family: system-ui, -apple-system, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #e2e8f0;">${escapedText}</div>`;
+      safeHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #1e293b;">${escapedText}</div>`;
     }
 
     let inReplyTo = undefined;
