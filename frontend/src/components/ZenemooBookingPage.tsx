@@ -511,6 +511,19 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [slotFetchError, setSlotFetchError] = useState<string>('');
 
+  // Filter available slots to genuinely bookable slots only (available, not past, and not within 2-hour buffer)
+  const bookableSlots = useMemo(() => {
+    const nowMs = now.getTime();
+    const thresholdMs = nowMs + 2 * 60 * 60 * 1000;
+
+    return availableSlots.filter((slotItem) => {
+      const slotTimeMs = new Date(slotItem.iso).getTime();
+      const isPast = slotTimeMs < nowMs;
+      const isTooSoon = !isPast && slotTimeMs < thresholdMs;
+      return slotItem.available && !isPast && !isTooSoon;
+    });
+  }, [availableSlots, now]);
+
   // Form Fields
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -1268,61 +1281,25 @@ END:VCALENDAR`;
                             <RefreshCw className="w-3.5 h-3.5" /> Retry
                           </button>
                         </div>
-                      ) : availableSlots.length === 0 ? (
+                      ) : bookableSlots.length === 0 ? (
                         <div className="p-6 text-center text-slate-400 font-mono text-xs">
                           No available slots on this date.
                         </div>
                       ) : (
                         <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
-                          {availableSlots.map((slotItem) => {
-                            const slotTimeMs = new Date(slotItem.iso).getTime();
-                            const nowMs = now.getTime();
-                            const thresholdMs = nowMs + 2 * 60 * 60 * 1000;
-
-                            const isPast = slotTimeMs < nowMs;
-                            const isTooSoon = !isPast && slotTimeMs < thresholdMs;
-                            const isBookable = slotItem.available && !isPast && !isTooSoon;
-
+                          {bookableSlots.map((slotItem) => {
                             const formattedTimeLabel = formatSlotLabel(slotItem.iso, timeFormat, timezone);
-
-                            let buttonClasses = '';
-                            let badgeText = '';
-
-                            if (isBookable) {
-                              buttonClasses =
-                                'bg-white/[0.04] border border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-500/10 text-cyan-300 cursor-pointer shadow-sm';
-                              badgeText = 'Book';
-                            } else if (isTooSoon) {
-                              buttonClasses =
-                                'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed select-none opacity-60';
-                              badgeText = 'Too Soon (<2h)';
-                            } else if (isPast) {
-                              buttonClasses =
-                                'bg-white/[0.01] border border-white/5 text-slate-700 cursor-not-allowed line-through opacity-40 select-none';
-                              badgeText = 'Past';
-                            } else {
-                              buttonClasses =
-                                'bg-white/[0.01] border border-white/5 text-slate-600 cursor-not-allowed line-through select-none';
-                              badgeText = 'Unavailable';
-                            }
 
                             return (
                               <button
                                 key={slotItem.iso}
-                                disabled={!isBookable}
                                 onClick={() => handleSelectSlot(slotItem.iso)}
-                                title={
-                                  isTooSoon
-                                    ? 'Minimum 2 hours lead time required for bookings.'
-                                    : !slotItem.available
-                                    ? 'This time slot is unavailable.'
-                                    : `Book slot for ${formattedTimeLabel}`
-                                }
-                                className={`w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-between ${buttonClasses}`}
+                                title={`Book slot for ${formattedTimeLabel}`}
+                                className="w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-xl font-mono text-xs font-bold transition-all flex items-center justify-between bg-white/[0.04] border border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-500/10 text-cyan-300 cursor-pointer shadow-sm"
                               >
                                 <span>{formattedTimeLabel}</span>
                                 <span className="text-[10px] uppercase font-semibold">
-                                  {badgeText}
+                                  Book
                                 </span>
                               </button>
                             );
