@@ -32,9 +32,25 @@ import {
   ChevronUp,
   Lock,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Smartphone,
+  Wifi,
+  Battery,
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  FileCheck2,
+  Cpu,
+  Mail,
+  Phone,
+  Award,
+  Download,
+  UserCheck,
+  LayoutGrid,
+  FileSpreadsheet,
+  Maximize2
 } from 'lucide-react';
-import { FaXTwitter } from 'react-icons/fa6';
+import { FaXTwitter, FaInstagram, FaYoutube, FaWhatsapp, FaTelegram, FaLinkedin } from 'react-icons/fa6';
 import { OpportunityProgram, CustomQuestion, isTempId } from '../lib/opportunityStore';
 
 export interface EnterpriseOpportunityEditorModalProps {
@@ -57,6 +73,8 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   // Active Form Section Tab
   const [activeTab, setActiveTab] = useState<'basic' | 'branding' | 'communication' | 'details' | 'benefits' | 'form' | 'ai'>('basic');
   const [showLivePreview, setShowLivePreview] = useState(true);
+  const [previewViewMode, setPreviewViewMode] = useState<'mobile' | 'card' | 'form'>('mobile');
+  const [previewFormStep, setPreviewFormStep] = useState<1 | 2 | 3>(1);
 
   // Core Form State
   const [title, setTitle] = useState('');
@@ -1434,72 +1452,521 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
         {/* RIGHT COLUMN: LIVE INTERACTIVE PREVIEW PANEL */}
         {showLivePreview && (
-          <div className="hidden lg:block w-96 xl:w-[440px] border-l border-white/10 bg-[#050811] p-6 overflow-y-auto shrink-0 space-y-6">
+          <div className="hidden lg:flex flex-col w-[390px] xl:w-[460px] 2xl:w-[500px] border-l border-white/10 bg-[#04060d] p-4 sm:p-5 overflow-hidden shrink-0 space-y-3">
+            {/* Header & View Mode Switcher */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="text-xs font-mono font-bold text-cyan-400 flex items-center gap-2">
-                <Eye className="w-4 h-4" /> Live Public Preview
-              </h3>
-              <span className="text-[10px] font-mono text-slate-400">WYSIWYG Mode</span>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <h3 className="text-xs font-mono font-bold text-cyan-400 flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4" /> Live Mobile Preview
+                </h3>
+              </div>
+
+              {/* View Switcher */}
+              <div className="flex items-center gap-1 bg-white/5 p-0.5 rounded-lg border border-white/10 text-[10px] font-mono">
+                <button
+                  type="button"
+                  onClick={() => setPreviewViewMode('mobile')}
+                  className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 font-bold ${
+                    previewViewMode === 'mobile' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Full Mobile Webpage View"
+                >
+                  <Smartphone className="w-3 h-3" /> Page
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewViewMode('card')}
+                  className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 font-bold ${
+                    previewViewMode === 'card' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Portal Card View"
+                >
+                  <LayoutGrid className="w-3 h-3" /> Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewViewMode('form')}
+                  className={`px-2 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 font-bold ${
+                    previewViewMode === 'form' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Application Form View"
+                >
+                  <FileSpreadsheet className="w-3 h-3" /> Form
+                </button>
+              </div>
             </div>
 
-            {/* Simulated Opportunity Public Card */}
-            <div className="rounded-2xl border border-white/10 bg-[#0d121f] p-5 space-y-4 shadow-xl">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  {companyLogo ? (
-                    <img src={companyLogo} alt="Logo" className="w-10 h-10 object-contain rounded-lg bg-white/5 p-1 border border-white/10" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold font-mono text-xs">
-                      {partnerName.substring(0, 2).toUpperCase() || 'ZM'}
-                    </div>
-                  )}
-                  <div>
-                    <h4 className="text-sm font-bold text-white line-clamp-1">{title || 'Untitled Opportunity'}</h4>
-                    <p className="text-xs font-mono text-cyan-300">{partnerName || 'Partner Brand'}</p>
-                  </div>
+            {/* REALISTIC SMARTPHONE MOCKUP FRAME */}
+            <div className="w-full max-w-[400px] mx-auto rounded-[36px] border-[5px] border-slate-800 bg-[#070b14] shadow-2xl shadow-cyan-500/5 overflow-hidden flex flex-col relative flex-1 min-h-0 border-t-[8px]">
+              {/* Phone Status Bar (Speaker, Notch & Icons) */}
+              <div className="px-5 pt-2 pb-1.5 flex items-center justify-between text-[10px] font-mono text-slate-400 bg-[#050810] border-b border-white/5 shrink-0 select-none">
+                <span className="font-bold text-slate-300">9:41</span>
+                <div className="w-20 h-3.5 bg-slate-900 rounded-full border border-white/10 flex items-center justify-center">
+                  <div className="w-2 h-2 rounded-full bg-slate-800 mr-1"></div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/40"></div>
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <Wifi className="w-3 h-3" />
+                  <Battery className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+              </div>
 
-                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
-                  status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                }`}>
-                  {badge || status}
+              {/* Mock Browser URL Bar */}
+              <div className="px-3 py-1.5 bg-[#090e1a] border-b border-white/5 flex items-center gap-2 text-[10px] font-mono text-slate-400 shrink-0">
+                <Lock className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                <span className="truncate text-slate-300">
+                  zenemoo.in/opportunities/{title ? title.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 24) : 'program'}
                 </span>
               </div>
 
-              {posterUrl && (
-                <img src={posterUrl} alt="Poster preview" className="w-full h-32 object-cover rounded-xl border border-white/10" />
-              )}
+              {/* SCROLLABLE PHONE SCREEN VIEWPORT */}
+              <div className="flex-1 overflow-y-auto p-3.5 space-y-4 text-slate-200 text-xs font-sans">
+                {/* 1. FULL MOBILE PAGE VIEW */}
+                {previewViewMode === 'mobile' && (
+                  <div className="space-y-4">
+                    {/* Top Breadcrumb & Share */}
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pb-1 border-b border-white/5">
+                      <span className="flex items-center gap-1 text-cyan-400 font-bold truncate">
+                        <ArrowLeft className="w-3 h-3 shrink-0" /> Portal / {partnerName || 'Partner'}
+                      </span>
+                      <span className="p-1 rounded-md bg-white/5 text-slate-300">
+                        <Share2 className="w-3 h-3" />
+                      </span>
+                    </div>
 
-              <p className="text-xs font-mono text-slate-300 line-clamp-3 leading-relaxed">
-                {description || 'No description entered yet. Fill in the description or use the AI generator.'}
-              </p>
+                    {/* Program Header Card */}
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3 shadow-lg">
+                      <div className="flex items-start gap-3">
+                        {companyLogo ? (
+                          <img
+                            src={companyLogo}
+                            alt="Logo"
+                            className="w-12 h-12 object-contain bg-white p-1 rounded-xl border border-white/10 shrink-0 shadow"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-300 flex items-center justify-center font-extrabold font-mono text-sm shrink-0">
+                            {(partnerName || 'ZM').slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
 
-              {/* Work mode & Payment tags */}
-              <div className="flex flex-wrap gap-2 text-[10px] font-mono">
-                <span className="px-2 py-1 rounded bg-white/5 text-cyan-300 border border-white/10 uppercase">
-                  ⚡ {workMode}
-                </span>
-                {paymentInfo && (
-                  <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    💳 {paymentInfo}
-                  </span>
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="text-[10px] font-mono text-cyan-400 font-bold uppercase tracking-wider truncate">
+                            {partnerName || 'Partner Organization'}
+                          </div>
+                          <h2 className="text-sm font-bold font-display text-white leading-snug">
+                            {title || 'Untitled Opportunity Program'}
+                          </h2>
+                        </div>
+                      </div>
+
+                      {/* Status & Work Mode Chips */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold uppercase flex items-center gap-1">
+                          <Globe className="w-2.5 h-2.5" /> {workMode.toUpperCase()}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                            status === 'active'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : status === 'stopped'
+                              ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          {status === 'active' ? badge || 'ACTIVE' : status === 'stopped' ? '🔴 CLOSED' : 'COMING SOON'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Poster Graphic Banner */}
+                    {posterUrl ? (
+                      <div className="rounded-2xl overflow-hidden border border-white/10 shadow-md">
+                        <img src={posterUrl} alt="Banner" className="w-full h-36 object-cover" />
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/20 via-cyan-900/20 to-slate-900 border border-white/5 text-center space-y-1">
+                        <Briefcase className="w-6 h-6 text-cyan-400/60 mx-auto" />
+                        <div className="text-[11px] font-mono font-bold text-slate-300">{title || 'Official Program Banner'}</div>
+                        <div className="text-[9px] font-mono text-slate-500">Poster graphic preview placeholder</div>
+                      </div>
+                    )}
+
+                    {/* Scope & Executive Overview */}
+                    <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                      <div className="text-[11px] font-mono font-bold text-cyan-300 uppercase flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-cyan-400" /> Program Scope & Overview
+                      </div>
+                      <p className="text-xs text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                        {description || 'No overview description added yet. Fill the Scope field or use AI Assistant.'}
+                      </p>
+                    </div>
+
+                    {/* Responsibilities & Daily Tasks */}
+                    {whatYouWillDoInput.trim() && (
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                        <div className="text-[11px] font-mono font-bold text-cyan-300 uppercase flex items-center gap-1.5">
+                          <Layers className="w-3 h-3 text-cyan-400" /> Responsibilities & Tasks
+                        </div>
+                        <div className="space-y-1.5">
+                          {whatYouWillDoInput.split('\n').map((s) => s.trim()).filter(Boolean).map((task, idx) => (
+                            <div key={idx} className="flex items-start gap-2 p-2 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] text-slate-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 mt-1.5"></span>
+                              <span>{task}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Language & Technical Skills */}
+                    {languageSkillsInput.trim() && (
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                        <div className="text-[11px] font-mono font-bold text-cyan-300 uppercase flex items-center gap-1.5">
+                          <Award className="w-3 h-3 text-cyan-400" /> Required Skills & Languages
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {languageSkillsInput.split('\n').map((s) => s.trim()).filter(Boolean).map((skill, idx) => (
+                            <span key={idx} className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Hardware & System Prerequisites */}
+                    {(equipmentRequirements || internetRequirements || experienceRequirements) && (
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                        <div className="text-[11px] font-mono font-bold text-cyan-300 uppercase flex items-center gap-1.5">
+                          <Cpu className="w-3 h-3 text-cyan-400" /> Hardware & Prerequisites
+                        </div>
+                        <div className="space-y-1.5 text-[11px]">
+                          {equipmentRequirements && (
+                            <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block">Equipment</span>
+                              <span className="text-slate-200">{equipmentRequirements}</span>
+                            </div>
+                          )}
+                          {internetRequirements && (
+                            <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block">Internet Speed</span>
+                              <span className="text-slate-200">{internetRequirements}</span>
+                            </div>
+                          )}
+                          {experienceRequirements && (
+                            <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block">Experience</span>
+                              <span className="text-slate-200">{experienceRequirements}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Compensation & Work Schedule */}
+                    {(paymentInfo || workingHours || projectDuration) && (
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                        <div className="text-[11px] font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5">
+                          <DollarSign className="w-3 h-3 text-emerald-400" /> Compensation & Schedule
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          {paymentInfo && (
+                            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 col-span-2 space-y-0.5">
+                              <span className="text-[9px] font-mono text-emerald-400 uppercase block">Remuneration</span>
+                              <span className="font-bold text-emerald-300 text-xs">{paymentInfo} ({paymentFrequency || 'Per Task'})</span>
+                            </div>
+                          )}
+                          {workingHours && (
+                            <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block">Working Hours</span>
+                              <span className="text-slate-200 font-bold">{workingHours}</span>
+                            </div>
+                          )}
+                          {projectDuration && (
+                            <div className="p-2 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block">Duration</span>
+                              <span className="text-slate-200 font-bold">{projectDuration}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Why Join & Benefits */}
+                    {(benefitsInput.trim() || whyJoin.trim()) && (
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                        <div className="text-[11px] font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5">
+                          <Sparkles className="w-3 h-3 text-purple-400" /> Why Join & Benefits
+                        </div>
+                        {whyJoin && <p className="text-xs text-slate-300 leading-relaxed">{whyJoin}</p>}
+                        {benefitsInput.trim() && (
+                          <div className="space-y-1 pt-1">
+                            {benefitsInput.split('\n').map((s) => s.trim()).filter(Boolean).map((benefit, idx) => (
+                              <div key={idx} className="flex items-start gap-2 text-[11px] text-purple-300">
+                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-purple-400" />
+                                <span>{benefit}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Important Notes Alert */}
+                    {importantNotes.trim() && (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] space-y-1">
+                        <div className="font-bold flex items-center gap-1.5 font-mono uppercase text-[10px]">
+                          <AlertCircle className="w-3.5 h-3.5" /> Important Guidelines
+                        </div>
+                        <p className="leading-relaxed opacity-90">{importantNotes}</p>
+                      </div>
+                    )}
+
+                    {/* Official Channels & Social Links */}
+                    {(whatsappGroupUrl || whatsappChannelUrl || telegramUrl || linkedinPostUrl || xPostUrl || pdfLink || contactSupportUrl) && (
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2">
+                        <div className="text-[11px] font-mono font-bold text-slate-400 uppercase flex items-center gap-1.5">
+                          <Globe className="w-3 h-3 text-cyan-400" /> Official Channels & Links
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {whatsappGroupUrl && (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] flex items-center gap-1 font-bold">
+                              <FaWhatsapp className="w-3 h-3" /> WhatsApp Group
+                            </span>
+                          )}
+                          {whatsappChannelUrl && (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] flex items-center gap-1 font-bold">
+                              <FaWhatsapp className="w-3 h-3" /> Channel
+                            </span>
+                          )}
+                          {telegramUrl && (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 font-mono text-[10px] flex items-center gap-1 font-bold">
+                              <FaTelegram className="w-3 h-3" /> Telegram
+                            </span>
+                          )}
+                          {linkedinPostUrl && (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono text-[10px] flex items-center gap-1 font-bold">
+                              <FaLinkedin className="w-3 h-3" /> LinkedIn
+                            </span>
+                          )}
+                          {xPostUrl && (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-white/10 text-white border border-white/20 font-mono text-[10px] flex items-center gap-1 font-bold">
+                              <FaXTwitter className="w-3 h-3" /> X / Twitter
+                            </span>
+                          )}
+                          {pdfLink && (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-[10px] flex items-center gap-1 font-bold">
+                              <FileText className="w-3 h-3" /> PDF Doc
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sticky Mobile Apply CTA Bar */}
+                    <div className="sticky bottom-0 pt-2 pb-1 bg-gradient-to-t from-[#070b14] via-[#070b14]/95 to-transparent">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewViewMode('form')}
+                        className={`w-full py-3 rounded-xl font-bold font-mono text-xs text-center flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer ${
+                          status === 'active'
+                            ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 shadow-cyan-500/20'
+                            : status === 'stopped'
+                            ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        }`}
+                      >
+                        {status === 'active' ? (
+                          <>
+                            Apply Now (Step 1 of 3) <ArrowRight className="w-3.5 h-3.5" />
+                          </>
+                        ) : status === 'stopped' ? (
+                          <>
+                            Applications Closed <Lock className="w-3.5 h-3.5" />
+                          </>
+                        ) : (
+                          <>
+                            Opening Soon <Clock className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </div>
 
-              {/* Action & Communication Links */}
-              <div className="pt-2 border-t border-white/10 flex flex-wrap items-center gap-2">
-                <button type="button" className="flex-1 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs font-mono text-center">
-                  Apply Now
-                </button>
-                {whatsappGroupUrl && (
-                  <a href={whatsappGroupUrl} target="_blank" rel="noreferrer" className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    <MessageCircle className="w-4 h-4" />
-                  </a>
+                {/* 2. OPPORTUNITIES PORTAL LISTING CARD VIEW */}
+                {previewViewMode === 'card' && (
+                  <div className="space-y-3 pt-2">
+                    <div className="text-[10px] font-mono text-slate-400 uppercase">Portal Listing Card:</div>
+                    <div className="rounded-2xl border border-white/10 bg-[#0d121f] p-4 space-y-3 shadow-xl">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          {companyLogo ? (
+                            <img src={companyLogo} alt="Logo" className="w-10 h-10 object-contain rounded-lg bg-white p-1 border border-white/10" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold font-mono text-xs">
+                              {(partnerName || 'ZM').slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold text-white truncate">{title || 'Untitled Opportunity'}</h4>
+                            <p className="text-[10px] font-mono text-cyan-400">{partnerName || 'Partner Brand'}</p>
+                          </div>
+                        </div>
+
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase shrink-0 ${
+                          status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        }`}>
+                          {badge || status}
+                        </span>
+                      </div>
+
+                      {posterUrl && (
+                        <img src={posterUrl} alt="Poster" className="w-full h-28 object-cover rounded-xl border border-white/10" />
+                      )}
+
+                      <p className="text-[11px] font-mono text-slate-300 line-clamp-3 leading-relaxed">
+                        {description || 'No overview description entered yet.'}
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div className="p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                          <span className="text-slate-400 block text-[8px] uppercase">Work Mode</span>
+                          <span className="text-cyan-300 font-bold uppercase">{workMode}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white/[0.03] border border-white/5">
+                          <span className="text-slate-400 block text-[8px] uppercase">Pay</span>
+                          <span className="text-emerald-300 font-bold truncate block">{paymentInfo || 'Competitive'}</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-white/10 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewViewMode('mobile')}
+                          className="flex-1 py-1.5 rounded-lg bg-white/5 text-slate-300 text-[10px] font-mono font-bold hover:bg-white/10"
+                        >
+                          View Details
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewViewMode('form')}
+                          className="flex-1 py-1.5 rounded-lg bg-cyan-500 text-slate-950 text-[10px] font-mono font-bold hover:bg-cyan-400"
+                        >
+                          Apply Now
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                {linkedinPostUrl && (
-                  <a href={linkedinPostUrl} target="_blank" rel="noreferrer" className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                    <Linkedin className="w-4 h-4" />
-                  </a>
+
+                {/* 3. CANDIDATE APPLICATION FORM VIEW */}
+                {previewViewMode === 'form' && (
+                  <div className="space-y-3 pt-1">
+                    {/* Step Tabs */}
+                    <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-center">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewFormStep(1)}
+                        className={`py-1 rounded border font-bold ${
+                          previewFormStep === 1 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        ① Personal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewFormStep(2)}
+                        className={`py-1 rounded border font-bold ${
+                          previewFormStep === 2 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        ② Questions ({customQuestions.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewFormStep(3)}
+                        className={`py-1 rounded border font-bold ${
+                          previewFormStep === 3 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-white/5 text-slate-400 border-white/5'
+                        }`}
+                      >
+                        ③ Terms
+                      </button>
+                    </div>
+
+                    {/* Step 1: Personal Details */}
+                    {previewFormStep === 1 && (
+                      <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2.5 text-xs">
+                        <div className="font-mono text-[10px] text-cyan-400 font-bold uppercase">Step 1: Contact Information</div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono text-slate-400">Full Name *</label>
+                          <input type="text" readOnly placeholder="e.g. John Doe" className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-xs text-slate-300" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono text-slate-400">Email Address *</label>
+                          <input type="email" readOnly placeholder="candidate@example.com" className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-xs text-slate-300" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono text-slate-400">Phone Number *</label>
+                          <input type="tel" readOnly placeholder="+91 9876543210" className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-xs text-slate-300" />
+                        </div>
+                        <button type="button" onClick={() => setPreviewFormStep(2)} className="w-full py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold font-mono text-xs flex items-center justify-center gap-1 mt-2">
+                          Next: Questions <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Step 2: Custom Application Questions */}
+                    {previewFormStep === 2 && (
+                      <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3 text-xs">
+                        <div className="font-mono text-[10px] text-cyan-400 font-bold uppercase">Step 2: Custom Questions ({customQuestions.length})</div>
+                        {customQuestions.length === 0 ? (
+                          <div className="p-3 text-center font-mono text-[11px] text-slate-400 bg-white/[0.01] rounded-xl border border-white/5">
+                            No custom questions configured yet. Add them in the "Form Builder" tab.
+                          </div>
+                        ) : (
+                          customQuestions.map((q, idx) => (
+                            <div key={q.id} className="space-y-1 p-2 rounded-xl bg-white/[0.02] border border-white/5">
+                              <label className="text-[11px] font-semibold text-slate-200 block">
+                                {idx + 1}. {q.label || 'Untitled Question'} {q.required && <span className="text-red-400">*</span>}
+                              </label>
+                              {q.type === 'textarea' ? (
+                                <textarea readOnly rows={2} placeholder="Candidate answer..." className="w-full px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-400" />
+                              ) : q.type === 'select' ? (
+                                <select disabled className="w-full px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-400">
+                                  <option>Select an option...</option>
+                                  {q.options?.map((opt, oIdx) => <option key={oIdx}>{opt}</option>)}
+                                </select>
+                              ) : (
+                                <input type="text" readOnly placeholder="Enter answer..." className="w-full px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-400" />
+                              )}
+                            </div>
+                          ))
+                        )}
+                        <button type="button" onClick={() => setPreviewFormStep(3)} className="w-full py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold font-mono text-xs flex items-center justify-center gap-1 mt-2">
+                          Next: Review & Terms <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Step 3: Terms & Final Submit */}
+                    {previewFormStep === 3 && (
+                      <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3 text-xs">
+                        <div className="font-mono text-[10px] text-cyan-400 font-bold uppercase">Step 3: Review & Terms</div>
+                        <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 text-[10px] text-slate-400 leading-relaxed">
+                          By applying, candidate agrees to Zenemoo Contributor Terms & Data Annotation Standards.
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                          <input type="checkbox" checked readOnly className="rounded text-cyan-500" />
+                          <span>I accept Zenemoo Terms & Conditions</span>
+                        </div>
+                        <button type="button" className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-extrabold font-mono text-xs shadow-lg flex items-center justify-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Submit Application
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

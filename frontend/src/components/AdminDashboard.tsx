@@ -1070,7 +1070,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const handleCreateOpportunity = () => {
     setEditingOpportunity({
       id: `temp_${Date.now()}`,
-      position: opportunitiesList.length + 1,
+      position: 1,
       title: '',
       partner_name: 'DesiCrew Solutions',
       badge: 'ACTIVE',
@@ -1180,6 +1180,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     const newPos = parseInt(newPosStr, 10);
     if (isNaN(newPos) || newPos < 1 || newPos > opportunitiesList.length) return;
     try {
+      // Optimistic instant reorder
+      const currentIdx = opportunitiesList.findIndex((p) => p.id === op.id);
+      if (currentIdx !== -1) {
+        const copy = [...opportunitiesList];
+        const [moved] = copy.splice(currentIdx, 1);
+        copy.splice(newPos - 1, 0, moved);
+        const reindexed = copy.map((item, idx) => ({ ...item, position: idx + 1 }));
+        setOpportunitiesList(reindexed);
+      }
       const updated = await reorderOpportunityInApi(op.id, newPos);
       setOpportunitiesList(updated);
       showStatus(`Reordered "${op.title}" to position #${newPos}`);
@@ -4545,9 +4554,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
               <div className="modern-dashboard-card p-6 flex items-center justify-between">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Next Position Assign</span>
-                  <span className="text-sm font-bold text-white block font-mono">#{opportunitiesList.length + 1}</span>
-                  <span className="text-[10px] font-mono text-purple-400 block">Sequential order auto-reordering</span>
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">New Program Position</span>
+                  <span className="text-sm font-bold text-white block font-mono">#1 (Top Priority)</span>
+                  <span className="text-[10px] font-mono text-purple-400 block">Existing programs auto-shift (+1)</span>
                 </div>
                 <button
                   onClick={handleCreateOpportunity}

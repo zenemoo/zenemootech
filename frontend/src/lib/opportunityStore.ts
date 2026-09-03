@@ -214,6 +214,27 @@ const saveLocalOpportunities = (list: OpportunityProgram[]): OpportunityProgram[
   return sorted;
 };
 
+// Helper to safely re-index positions in Supabase to avoid unique conflicts
+const reindexSupabaseOpportunities = async (orderedIds: string[]): Promise<void> => {
+  try {
+    // 2-Phase Offset Update: first move to temporary high positions, then final sequential 1..N
+    for (let i = 0; i < orderedIds.length; i++) {
+      const id = orderedIds[i];
+      if (id && id.includes('-')) {
+        await supabase.from('opportunities').update({ position: 10000 + i + 1 }).eq('id', id);
+      }
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      const id = orderedIds[i];
+      if (id && id.includes('-')) {
+        await supabase.from('opportunities').update({ position: i + 1 }).eq('id', id);
+      }
+    }
+  } catch (err: any) {
+    console.warn('reindexSupabaseOpportunities notice:', err.message);
+  }
+};
+
 // Fetch opportunities ordered by position ASC directly from Supabase (with fallback)
 export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> => {
   try {
@@ -223,7 +244,17 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
       .order('position', { ascending: true });
 
     if (!error && Array.isArray(data)) {
-      const formatted = data.map(normalizeOpportunity);
+      const formatted = data
+        .map(normalizeOpportunity)
+        .sort((a, b) => Number(a.position) - Number(b.position))
+        .map((item, idx) => ({ ...item, position: idx + 1 }));
+
+      // Check if DB positions had duplicates or out-of-order indexes; if so, heal DB in background
+      const needsHealing = data.some((d, idx) => Number(d.position) !== idx + 1);
+      if (needsHealing && formatted.length > 0) {
+        reindexSupabaseOpportunities(formatted.map((f) => f.id)).catch(() => {});
+      }
+
       saveLocalOpportunities(formatted);
       return formatted;
     } else if (error) {
@@ -238,7 +269,8 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
       const live = res.data.data
         .map(normalizeOpportunity)
-        .sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position));
+        .sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position))
+        .map((item: OpportunityProgram, idx: number) => ({ ...item, position: idx + 1 }));
       saveLocalOpportunities(live);
       return live;
     }
@@ -267,6 +299,7 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
   let localList = getLocalOpportunities();
 
   const isExistingRecord = Boolean(opportunity.id && !isTempId(opportunity.id));
+  const targetPosition = opportunity.position ? Number(opportunity.position) : 1;
 
   // Normalize questions & array fields before constructing payload
   const rawQuestions = Array.isArray(opportunity.custom_questions) ? opportunity.custom_questions : [];
@@ -290,7 +323,7 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     contact_details: opportunity.contact_details || {},
     custom_questions: normalizedQuestions,
     action_url: (opportunity.action_url || '#desicrew-contributors').trim(),
-    position: opportunity.position || localList.length + 1,
+    position: targetPosition,
     updated_at: new Date().toISOString(),
 
     // Extended fields
@@ -345,7 +378,27 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
         .eq('id', opportunity.id);
       resError = error;
     } else {
-      const insertPayload: Record<string, any> = { ...fullPayload, created_at: new Date().toISOString() };
+      // NEW OPPORTUNITY: Shift existing opportunities >= targetPosition by +1 so new record is #1
+      const { data: existingRows } = await supabase
+        .from('opportunities')
+        .select('id, position')
+        .order('position', { ascending: true });
+
+      if (Array.isArray(existingRows) && existingRows.length > 0) {
+        // Shift existing rows forward to make space for the new item
+        for (let i = 0; i < existingRows.length; i++) {
+          const row = existingRows[i];
+          const newPos = (i >= targetPosition - 1) ? (i + 2) : (i + 1);
+          await supabase.from('opportunities').update({ position: 10000 + newPos }).eq('id', row.id);
+        }
+        for (let i = 0; i < existingRows.length; i++) {
+          const row = existingRows[i];
+          const newPos = (i >= targetPosition - 1) ? (i + 2) : (i + 1);
+          await supabase.from('opportunities').update({ position: newPos }).eq('id', row.id);
+        }
+      }
+
+      const insertPayload: Record<string, any> = { ...fullPayload, position: targetPosition, created_at: new Date().toISOString() };
       delete insertPayload.id;
       const { error } = await supabase
         .from('opportunities')
@@ -369,13 +422,13 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
           await supabase.from('opportunities').update(corePayload).eq('id', opportunity.id);
         }
       } else {
-        const safeInsert: Record<string, any> = { ...schemaSafePayload, created_at: new Date().toISOString() };
+        const safeInsert: Record<string, any> = { ...schemaSafePayload, position: targetPosition, created_at: new Date().toISOString() };
         delete safeInsert.id;
         const { error: safeError } = await supabase
           .from('opportunities')
           .insert([safeInsert]);
         if (safeError) {
-          const coreInsertPayload: Record<string, any> = { ...corePayload, created_at: new Date().toISOString() };
+          const coreInsertPayload: Record<string, any> = { ...corePayload, position: targetPosition, created_at: new Date().toISOString() };
           delete coreInsertPayload.id;
           await supabase.from('opportunities').insert([coreInsertPayload]);
         }
@@ -395,9 +448,11 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     const newRecord: OpportunityProgram = normalizeOpportunity({
       id: `op_${Date.now()}`,
       ...fullPayload,
+      position: targetPosition,
       created_at: new Date().toISOString(),
     });
-    localList.push(newRecord);
+    const clampedPos = Math.max(1, Math.min(targetPosition, localList.length + 1));
+    localList.splice(clampedPos - 1, 0, newRecord);
   }
 
   return saveLocalOpportunities(localList);
@@ -405,16 +460,39 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
 
 // Reorder position directly in Supabase
 export const reorderOpportunityInApi = async (id: string, newPosition: number): Promise<OpportunityProgram[]> => {
+  const targetPos = Math.max(1, Number(newPosition) || 1);
+
   try {
-    if (id && id.includes('-')) {
-      await supabase.from('opportunities').update({ position: newPosition }).eq('id', id);
+    const { data: allOps, error } = await supabase
+      .from('opportunities')
+      .select('id, position')
+      .order('position', { ascending: true });
+
+    if (!error && Array.isArray(allOps) && allOps.length > 0) {
+      const currentIdx = allOps.findIndex((p) => p.id === id);
+      if (currentIdx !== -1) {
+        const clampedPos = Math.max(1, Math.min(targetPos, allOps.length));
+        const [moved] = allOps.splice(currentIdx, 1);
+        allOps.splice(clampedPos - 1, 0, moved);
+
+        await reindexSupabaseOpportunities(allOps.map((op) => op.id));
+      }
+    } else {
+      await opportunityApi.reorder(id, targetPos);
     }
-  } catch (e) {}
+  } catch (err: any) {
+    console.warn('Supabase reorder failed, trying API fallback:', err.message);
+    try {
+      await opportunityApi.reorder(id, targetPos);
+    } catch (apiErr: any) {
+      console.warn('API reorder fallback failed:', apiErr.message);
+    }
+  }
 
   let localList = getLocalOpportunities();
   const targetIndex = localList.findIndex((p) => p.id === id);
   if (targetIndex !== -1) {
-    const clampedPos = Math.max(1, Math.min(newPosition, localList.length));
+    const clampedPos = Math.max(1, Math.min(targetPos, localList.length));
     const [moved] = localList.splice(targetIndex, 1);
     localList.splice(clampedPos - 1, 0, moved);
     localList = saveLocalOpportunities(localList);
@@ -428,8 +506,20 @@ export const deleteOpportunityFromApi = async (id: string): Promise<OpportunityP
   try {
     if (id && id.includes('-')) {
       await supabase.from('opportunities').delete().eq('id', id);
+      const { data: remaining } = await supabase
+        .from('opportunities')
+        .select('id, position')
+        .order('position', { ascending: true });
+
+      if (Array.isArray(remaining) && remaining.length > 0) {
+        await reindexSupabaseOpportunities(remaining.map((r) => r.id));
+      }
     }
-  } catch (e) {}
+  } catch (e) {
+    try {
+      await opportunityApi.delete(id);
+    } catch (apiErr) {}
+  }
 
   let localList = getLocalOpportunities().filter((p) => p.id !== id);
   localList = saveLocalOpportunities(localList);

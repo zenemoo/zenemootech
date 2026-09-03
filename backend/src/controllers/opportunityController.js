@@ -44,11 +44,29 @@ export const createOpportunity = async (req, res) => {
     const opTitle = title || name || 'New Opportunity Program';
     const partnerName = partner_name || 'DesiCrew Solutions';
 
-    // Count existing records to set default position
+    // Count existing records to set default position (defaults to 1 = Top Priority)
     let finalPosition = Number(position);
-    if (!finalPosition || isNaN(finalPosition)) {
-      const { count } = await supabase.from('opportunities').select('*', { count: 'exact', head: true });
-      finalPosition = (count || 0) + 1;
+    if (!finalPosition || isNaN(finalPosition) || finalPosition < 1) {
+      finalPosition = 1;
+    }
+
+    // Shift existing records >= finalPosition by +1
+    const { data: existingRows } = await supabase
+      .from('opportunities')
+      .select('id, position')
+      .order('position', { ascending: true });
+
+    if (Array.isArray(existingRows) && existingRows.length > 0) {
+      for (let i = 0; i < existingRows.length; i++) {
+        const row = existingRows[i];
+        const newPos = (i >= finalPosition - 1) ? (i + 2) : (i + 1);
+        await supabase.from('opportunities').update({ position: 10000 + newPos }).eq('id', row.id);
+      }
+      for (let i = 0; i < existingRows.length; i++) {
+        const row = existingRows[i];
+        const newPos = (i >= finalPosition - 1) ? (i + 2) : (i + 1);
+        await supabase.from('opportunities').update({ position: newPos }).eq('id', row.id);
+      }
     }
 
     const newRecord = {
@@ -175,7 +193,7 @@ export const reorderOpportunity = async (req, res) => {
 
     // 2-Phase Offset Update
     for (let i = 0; i < allOps.length; i++) {
-      await supabase.from('opportunities').update({ position: 1000 + i + 1 }).eq('id', allOps[i].id);
+      await supabase.from('opportunities').update({ position: 10000 + i + 1 }).eq('id', allOps[i].id);
     }
     for (let i = 0; i < allOps.length; i++) {
       await supabase.from('opportunities').update({ position: i + 1 }).eq('id', allOps[i].id);
@@ -199,7 +217,10 @@ export const deleteOpportunity = async (req, res) => {
 
     // Re-index remaining positions
     const { data: remaining } = await supabase.from('opportunities').select('id').order('position', { ascending: true });
-    if (remaining) {
+    if (remaining && remaining.length > 0) {
+      for (let i = 0; i < remaining.length; i++) {
+        await supabase.from('opportunities').update({ position: 10000 + i + 1 }).eq('id', remaining[i].id);
+      }
       for (let i = 0; i < remaining.length; i++) {
         await supabase.from('opportunities').update({ position: i + 1 }).eq('id', remaining[i].id);
       }
