@@ -561,6 +561,48 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     });
   }, [programApps, statusFilter, deferredSearchQuery, dateFilter, startDate, endDate, selectedOpp]);
 
+  const exportDataset = useMemo(() => {
+    return programApps.map((app) => {
+      const flat: Record<string, any> = {
+        applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
+        applicant_name: app.applicant_name,
+        applicant_email: app.applicant_email,
+        applicant_phone: app.applicant_phone,
+        opportunity_title: app.opportunity_title,
+        status: app.status.toUpperCase(),
+        sync_status: app.sync_status || 'synced',
+        created_at: app.created_at || new Date().toISOString(),
+      };
+      if (app.answers && typeof app.answers === 'object') {
+        Object.entries(app.answers).forEach(([k, v]) => {
+          flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        });
+      }
+      return flat;
+    });
+  }, [programApps]);
+
+  const exportFilteredDataset = useMemo(() => {
+    return filteredApps.map((app) => {
+      const flat: Record<string, any> = {
+        applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
+        applicant_name: app.applicant_name,
+        applicant_email: app.applicant_email,
+        applicant_phone: app.applicant_phone,
+        opportunity_title: app.opportunity_title,
+        status: app.status.toUpperCase(),
+        sync_status: app.sync_status || 'synced',
+        created_at: app.created_at || new Date().toISOString(),
+      };
+      if (app.answers && typeof app.answers === 'object') {
+        Object.entries(app.answers).forEach(([k, v]) => {
+          flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        });
+      }
+      return flat;
+    });
+  }, [filteredApps]);
+
   // 4. ALL useCallback HOOKS (DECLARED UNCONDITIONALLY HERE BEFORE ANY RETURN)
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
@@ -760,42 +802,8 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
           <ExportButton
             sectionId="candidate-applications"
             sectionName={selectedOpp ? `Candidate Applications — ${selectedOpp.title}` : 'Candidate Applications'}
-            dataset={programApps.map((app) => {
-              const flat: Record<string, any> = {
-                applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
-                applicant_name: app.applicant_name,
-                applicant_email: app.applicant_email,
-                applicant_phone: app.applicant_phone,
-                opportunity_title: app.opportunity_title,
-                status: app.status.toUpperCase(),
-                sync_status: app.sync_status || 'synced',
-                created_at: app.created_at || new Date().toISOString(),
-              };
-              if (app.answers && typeof app.answers === 'object') {
-                Object.entries(app.answers).forEach(([k, v]) => {
-                  flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-                });
-              }
-              return flat;
-            })}
-            filteredDataset={filteredApps.map((app) => {
-              const flat: Record<string, any> = {
-                applicant_id: app.applicant_id || `APP-2026-${app.id.substring(0, 4)}`,
-                applicant_name: app.applicant_name,
-                applicant_email: app.applicant_email,
-                applicant_phone: app.applicant_phone,
-                opportunity_title: app.opportunity_title,
-                status: app.status.toUpperCase(),
-                sync_status: app.sync_status || 'synced',
-                created_at: app.created_at || new Date().toISOString(),
-              };
-              if (app.answers && typeof app.answers === 'object') {
-                Object.entries(app.answers).forEach(([k, v]) => {
-                  flat[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-                });
-              }
-              return flat;
-            })}
+            dataset={exportDataset}
+            filteredDataset={exportFilteredDataset}
             label="Export"
             className="px-3.5 py-2 text-xs"
             showToast={(msg) => showToast(msg, 'info')}
