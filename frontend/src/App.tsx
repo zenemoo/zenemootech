@@ -245,7 +245,13 @@ export function App() {
         path === '/talent-hub' ||
         path === '/talent-hub/' ||
         hash === '#talent-hub' ||
-        hash === '#/talent-hub'
+        hash === '#/talent-hub' ||
+        ((path === '/' || path === '') && (
+          window.location.search.includes('error=') ||
+          window.location.search.includes('code=') ||
+          window.location.hash.includes('access_token=') ||
+          window.location.hash.includes('error=')
+        ))
       ) {
         matchedRoute = 'talent-hub';
       } else if (

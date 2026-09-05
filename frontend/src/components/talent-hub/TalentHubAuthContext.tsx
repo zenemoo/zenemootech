@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { talentHubApi } from '../../services/talentHubApi';
 import type { Session, User } from '@supabase/supabase-js';
@@ -48,6 +48,13 @@ export interface TalentExperience {
   created_at: string;
 }
 
+export type TalentHubAuthState =
+  | 'checkingSession'
+  | 'unauthenticated'
+  | 'loadingProfile'
+  | 'profileLoaded'
+  | 'profileError';
+
 interface TalentHubAuthContextType {
   session: Session | null;
   user: User | null;
@@ -55,7 +62,8 @@ interface TalentHubAuthContextType {
   talentProfile: TalentProfile | null;
   languages: TalentLanguage[];
   experiences: TalentExperience[];
-  isRegistered: boolean | null; // null = checking, true = found in DB, false = not registered
+  isRegistered: boolean | null; // null = checking/unauthenticated, true = found in DB, false = not registered
+  authState: TalentHubAuthState;
   isLoading: boolean;
   isProfileLoading: boolean;
   authError: string | null;
@@ -73,13 +81,27 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [languages, setLanguages] = useState<TalentLanguage[]>([]);
   const [experiences, setExperiences] = useState<TalentExperience[]>([]);
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isProfileLoading, setIsProfileLoading] = useState<boolean>(false);
+  const [authState, setAuthState] = useState<TalentHubAuthState>('checkingSession');
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const inFlightTokenRef = useRef<string | null>(null);
+  const lastLoadedTokenRef = useRef<string | null>(null);
+
   const loadTalentProfile = useCallback(async (accessToken: string) => {
-    setIsProfileLoading(true);
+    if (!accessToken || typeof accessToken !== 'string' || !accessToken.trim()) {
+      setAuthState('unauthenticated');
+      return;
+    }
+
+    // Prevent racing / duplicate concurrent requests for the same token
+    if (inFlightTokenRef.current === accessToken) {
+      return;
+    }
+
+    inFlightTokenRef.current = accessToken;
+    setAuthState('loadingProfile');
     setAuthError(null);
+
     try {
       const res = await talentHubApi.getProfile(accessToken);
       if (res && res.success) {
@@ -88,72 +110,134 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
           setLanguages(res.languages || []);
           setExperiences(res.experiences || []);
           setIsRegistered(true);
+          setAuthState('profileLoaded');
         } else {
           setTalentProfile(null);
           setLanguages([]);
           setExperiences([]);
           setIsRegistered(false);
+          setAuthState('profileLoaded');
         }
+        lastLoadedTokenRef.current = accessToken;
       } else {
         setAuthError(res?.message || "We couldn't load your information right now. Please try again.");
         setIsRegistered(false);
+        setAuthState('profileError');
       }
     } catch (err: any) {
-      console.error('[TalentHub Profile Load Error]:', err?.response?.data || err.message);
-      // If endpoint returned 401/403 or network issue
-      if (err?.response?.data?.registered === false) {
+      const status = err?.response?.status;
+      const errData = err?.response?.data;
+      console.error('[TalentHub Profile Load Error]:', status || err.message, errData || '');
+
+      if (status === 401 || status === 403) {
+        // Expired or invalid session - treat cleanly as unauthenticated
+        setSession(null);
+        setUser(null);
+        setTalentProfile(null);
+        setLanguages([]);
+        setExperiences([]);
+        setIsRegistered(null);
+        setAuthState('unauthenticated');
+        setAuthError(null);
+        lastLoadedTokenRef.current = null;
+      } else if (errData?.registered === false) {
+        setTalentProfile(null);
+        setLanguages([]);
+        setExperiences([]);
         setIsRegistered(false);
+        setAuthState('profileLoaded');
       } else {
+        // Genuine 500 or network error after authenticated session
+        setAuthState('profileError');
         setAuthError("We couldn't load your information right now. Please try again.");
       }
     } finally {
-      setIsProfileLoading(false);
+      inFlightTokenRef.current = null;
     }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Check current Supabase Auth session on mount
-    supabase.auth.getSession().then(({ data: { session: currentSession }, error }) => {
-      if (!isMounted) return;
-      if (error) {
-        console.error('[Supabase getSession Error]:', error.message);
+    // 0. Detect OAuth errors in URL query/hash if redirected from Supabase
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashClean = (window.location.hash || '').replace(/^#/, '');
+      const hashParams = new URLSearchParams(hashClean);
+
+      const errCode =
+        searchParams.get('error_code') ||
+        hashParams.get('error_code') ||
+        searchParams.get('error') ||
+        hashParams.get('error');
+      const errDesc = searchParams.get('error_description') || hashParams.get('error_description');
+
+      if (errCode || errDesc) {
+        console.warn('[TalentHub OAuth Error Detected]:', errCode, errDesc);
         setAuthError("We couldn't sign you in with Google. Please try again.");
-        setIsLoading(false);
-        return;
       }
+    }
 
-      setSession(currentSession);
-      setUser(currentSession?.user || null);
+    // 1. Check current Supabase Auth session on mount
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: currentSession }, error }) => {
+        if (!isMounted) return;
+        if (error) {
+          console.error('[Supabase getSession Error]:', error.message);
+          setSession(null);
+          setUser(null);
+          setAuthState('unauthenticated');
+          return;
+        }
 
-      if (currentSession?.access_token) {
-        loadTalentProfile(currentSession.access_token).finally(() => {
-          if (isMounted) setIsLoading(false);
-        });
-      } else {
-        setIsLoading(false);
-        setIsRegistered(null);
-      }
-    });
+        if (currentSession && currentSession.access_token) {
+          setSession(currentSession);
+          setUser(currentSession.user || null);
+          loadTalentProfile(currentSession.access_token);
+        } else {
+          setSession(null);
+          setUser(null);
+          setTalentProfile(null);
+          setLanguages([]);
+          setExperiences([]);
+          setIsRegistered(null);
+          setAuthState('unauthenticated');
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error('[Supabase getSession Exception]:', err);
+        setSession(null);
+        setUser(null);
+        setAuthState('unauthenticated');
+      });
 
     // 2. Subscribe to auth state changes (OAuth redirect, sign-in, token refresh, sign-out)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
-      setSession(newSession);
-      setUser(newSession?.user || null);
 
-      if (newSession?.access_token) {
-        await loadTalentProfile(newSession.access_token);
-      } else {
+      if (event === 'SIGNED_OUT' || !newSession || !newSession.access_token) {
+        setSession(null);
+        setUser(null);
         setTalentProfile(null);
         setLanguages([]);
         setExperiences([]);
         setIsRegistered(null);
+        setAuthState('unauthenticated');
+        setAuthError(null);
+        lastLoadedTokenRef.current = null;
+        return;
       }
-      setIsLoading(false);
+
+      setSession(newSession);
+      setUser(newSession.user || null);
+
+      if (newSession.access_token !== lastLoadedTokenRef.current) {
+        await loadTalentProfile(newSession.access_token);
+      }
     });
 
     return () => {
@@ -185,10 +269,6 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          },
         },
       });
 
@@ -211,7 +291,9 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setLanguages([]);
       setExperiences([]);
       setIsRegistered(null);
+      setAuthState('unauthenticated');
       setAuthError(null);
+      lastLoadedTokenRef.current = null;
 
       // Redirect to /talent-hub
       if (typeof window !== 'undefined') {
@@ -225,11 +307,14 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const refreshProfile = async () => {
     if (session?.access_token) {
+      lastLoadedTokenRef.current = null;
       await loadTalentProfile(session.access_token);
     }
   };
 
   const token = session?.access_token || null;
+  const isLoading = authState === 'checkingSession';
+  const isProfileLoading = authState === 'loadingProfile';
 
   return (
     <TalentHubAuthContext.Provider
@@ -241,6 +326,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         languages,
         experiences,
         isRegistered,
+        authState,
         isLoading,
         isProfileLoading,
         authError,

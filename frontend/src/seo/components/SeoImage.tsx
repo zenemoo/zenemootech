@@ -77,8 +77,7 @@ export const SeoImage: React.FC<SeoImageProps> = ({
       height={height}
       loading={priority ? 'eager' : 'lazy'}
       decoding="async"
-      // @ts-ignore fetchpriority is supported in modern browsers
-      fetchpriority={priority ? 'high' : 'auto'}
+      fetchPriority={priority ? 'high' : 'auto'}
       aria-hidden={ariaHidden}
       role={role}
       onError={handleError}
