@@ -767,16 +767,17 @@ export async function generateClientPDF(
 
   const colCount = Math.max(1, columns.length);
 
-  // Dynamic Adaptive Page Sizing:
-  // - <= 7 columns: A4 Landscape (297mm)
-  // - 8 - 14 columns: A4 Landscape (297mm)
-  // - 15 - 22 columns: A3 Landscape (420mm) - 41% more horizontal space
-  // - > 22 columns: A2 Landscape (594mm) - Super wide canvas for unlimited custom fields
-  const pageSizeFormat =
-    colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4';
+  // Dynamic Adaptive Orientation & Page Sizing:
+  // - <= 5 columns: A4 Portrait (210 × 297 mm) — classic clean document format
+  // - 6 - 14 columns: A4 Landscape (297 × 210 mm) — standard wide table
+  // - 15 - 22 columns: A3 Landscape (420 × 297 mm) — +41% wide space for extensive questionnaire answers
+  // - > 22 columns: A2 Landscape (594 × 420 mm) — super wide canvas for unlimited custom fields
+  const isPortrait = colCount <= 5;
+  const orientation: 'portrait' | 'landscape' = isPortrait ? 'portrait' : 'landscape';
+  const pageSizeFormat = isPortrait ? 'a4' : (colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4');
 
   const doc = new jsPDF({
-    orientation: 'landscape',
+    orientation,
     unit: 'mm',
     format: pageSizeFormat,
   });
@@ -789,7 +790,7 @@ export async function generateClientPDF(
     year: 'numeric',
   });
 
-  const formatBadge = pageSizeFormat.toUpperCase();
+  const formatBadge = isPortrait ? 'A4 PORTRAIT' : `${pageSizeFormat.toUpperCase()} WIDE LANDSCAPE`;
   const scopeText = options.scopeLabel || (data.length > 0 ? `${data.length} Records` : 'All Records');
   const filterText = options.filterSummary ? ` • Filters: ${options.filterSummary}` : '';
 
@@ -816,7 +817,7 @@ export async function generateClientPDF(
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184); // Slate-400
   doc.setFont('helvetica', 'normal');
-  const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${colCount} | Layout: Landscape (${formatBadge} Wide)`;
+  const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${colCount} | Layout: ${formatBadge}`;
   const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 80 ? metaLine.slice(0, 160) + '...' : metaLine;
   doc.text(truncatedMeta, 12, 24);
 
@@ -826,21 +827,23 @@ export async function generateClientPDF(
   doc.text(`Generated: ${todayStr}`, pageWidth - 12, 11, { align: 'right' });
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(`CONFIDENTIAL ADMINISTRATIVE DOCUMENT • ${formatBadge} WIDE`, pageWidth - 12, 17, { align: 'right' });
+  doc.text(`CONFIDENTIAL ADMINISTRATIVE DOCUMENT • ${formatBadge}`, pageWidth - 12, 17, { align: 'right' });
 
-  // ── 2. Dynamic Table Sizing for Wide Column Sets ──
-  // Adaptive typography and padding to ensure no column gets cut off
+  // ── 2. Dynamic Table Sizing for Clean Alignment ──
   let dynamicFontSize = 7.5;
   let dynamicCellPadding = 2;
 
-  if (pageSizeFormat === 'a2') {
+  if (isPortrait) {
+    dynamicFontSize = colCount <= 3 ? 8.5 : 8;
+    dynamicCellPadding = 2.5;
+  } else if (pageSizeFormat === 'a2') {
     dynamicFontSize = 6.5;
     dynamicCellPadding = 1.2;
   } else if (pageSizeFormat === 'a3') {
     dynamicFontSize = colCount > 18 ? 6.5 : 7;
     dynamicCellPadding = 1.5;
   } else {
-    // A4
+    // A4 Landscape
     if (colCount > 10) {
       dynamicFontSize = 6;
       dynamicCellPadding = 1.2;

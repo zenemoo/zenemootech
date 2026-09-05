@@ -313,14 +313,17 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
   const cols = Array.isArray(selectedColumns) && selectedColumns.length > 0 ? selectedColumns : EXPORT_CONFIGS['contact-inquiries'].defaultColumns;
   const colCount = Math.max(1, cols.length);
 
-  // Dynamic Adaptive Page Sizing:
-  // - <= 14 columns: A4 Landscape
+  // Dynamic Adaptive Orientation & Page Sizing:
+  // - <= 5 columns: A4 Portrait
+  // - 6 - 14 columns: A4 Landscape
   // - 15 - 22 columns: A3 Landscape (420mm wide)
   // - > 22 columns: A2 Landscape (594mm super wide)
-  const pageSizeFormat = colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4';
+  const isPortrait = colCount <= 5;
+  const orientation = isPortrait ? 'portrait' : 'landscape';
+  const pageSizeFormat = isPortrait ? 'a4' : (colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4');
 
   const doc = new jsPDF({
-    orientation: 'landscape',
+    orientation,
     unit: 'pt',
     format: pageSizeFormat,
   });
@@ -330,7 +333,10 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
   let dynamicFontSize = 8;
   let dynamicCellPadding = 4;
 
-  if (pageSizeFormat === 'a2') {
+  if (isPortrait) {
+    dynamicFontSize = colCount <= 3 ? 9 : 8.5;
+    dynamicCellPadding = 5;
+  } else if (pageSizeFormat === 'a2') {
     dynamicFontSize = 6.5;
     dynamicCellPadding = 2.5;
   } else if (pageSizeFormat === 'a3') {
