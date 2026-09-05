@@ -5,7 +5,7 @@
   <!-- 1. Homepage & Primary Brand Hub -->
   <url>
     <loc>https://www.zenemoo.in/</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <image:image>
@@ -13,17 +13,12 @@
       <image:title>Zenemoo Official Logo — Enterprise AI Language &amp; Data Solutions</image:title>
       <image:caption>Zenemoo Enterprise AI Language Services Logo</image:caption>
     </image:image>
-    <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
-      <image:title>DesiCrew Logo</image:title>
-      <image:caption>Working with DesiCrew since 2023</image:caption>
-    </image:image>
   </url>
 
   <!-- 2. AI Data Talent & Partner Registration -->
   <url>
     <loc>https://www.zenemoo.in/talent-registration</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.98</priority>
   </url>
@@ -31,7 +26,7 @@
   <!-- 3. Program Opportunities & Careers Portal -->
   <url>
     <loc>https://www.zenemoo.in/opportunities</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
   </url>
@@ -39,7 +34,7 @@
   <!-- 4. Data Team Roster & Executive Directory -->
   <url>
     <loc>https://www.zenemoo.in/team-directory</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
@@ -47,7 +42,7 @@
   <!-- 5. Official Zenemoo AI Assistant -->
   <url>
     <loc>https://www.zenemoo.in/zenemooai</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
   </url>
@@ -55,7 +50,7 @@
   <!-- 6. Community & Client Reviews Page -->
   <url>
     <loc>https://www.zenemoo.in/review</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
     <image:image>
@@ -68,7 +63,7 @@
   <!-- 7. Standalone Privacy Policy Page -->
   <url>
     <loc>https://www.zenemoo.in/privacy</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -76,7 +71,7 @@
   <!-- 8. Standalone Terms & Conditions Page -->
   <url>
     <loc>https://www.zenemoo.in/terms</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -84,7 +79,7 @@
   <!-- 9. Official Application Center -->
   <url>
     <loc>https://www.zenemoo.in/app</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-09-05</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.92</priority>
   </url>
@@ -92,7 +87,11 @@
   <!-- 10. Official Android Application Download Page -->
   <url>
     <loc>https://www.zenemoo.in/app/android</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-09-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.90</priority>
+  </url>
+
   <!-- 11. Official Support Zenemoo Initiative & Founder Story -->
   <url>
     <loc>https://www.zenemoo.in/support-zenemooindia</loc>

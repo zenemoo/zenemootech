@@ -78,8 +78,8 @@ export const Footer: React.FC = () => {
               </div>
             </div>
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
-              Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets. <br className="hidden sm:inline" />
-              <span className="text-slate-300 font-medium">A Bright Tomorrow, Together.</span>
+              <span className="text-slate-300 font-medium">A Bright Tomorrow, Together.</span><br />
+              Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets.
             </p>
 
             {/* MSME Government Credential Badge */}

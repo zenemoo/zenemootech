@@ -11,11 +11,6 @@
       <image:caption>Official Brand Logo for Zenemoo (Formerly known as QuantumCoders Data Solution)</image:caption>
     </image:image>
     <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
-      <image:title>DesiCrew Logo</image:title>
-      <image:caption>Working with DesiCrew since 2023</image:caption>
-    </image:image>
-    <image:image>
       <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785185414/zenemoo/team/huq7bbgg3a5rcjpnah0h.jpg</image:loc>
       <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager at Zenemoo</image:title>
       <image:caption>Founder &amp; Operations Lead for Zenemoo Language &amp; AI Data Solutions</image:caption>
@@ -45,6 +40,8 @@
       <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager</image:title>
       <image:caption>Zenemoo Language Data Team Roster &amp; AI Annotators</image:caption>
     </image:image>
+  </url>
+
   <!-- 4. Support Zenemoo Initiative & Founder Story -->
   <url>
     <loc>https://www.zenemoo.in/support-zenemooindia</loc>
@@ -57,11 +54,6 @@
       <image:loc>https://www.zenemoo.in/assets/founder-prem.jpg</image:loc>
       <image:title>Prem Prasad Pradhan — Founder &amp; COO at Zenemoo</image:title>
       <image:caption>Building opportunities through technology. Zenemoo Founder Prem Prasad Pradhan.</image:caption>
-    </image:image>
-    <image:image>
-      <image:loc>https://www.zenemoo.in/assets/earth-realistic.jpg</image:loc>
-      <image:title>Zenemoo Global AI &amp; Speech Opportunity Network</image:title>
-      <image:caption>Over 1000+ People Reached Through Work Opportunities</image:caption>
     </image:image>
   </url>
 
