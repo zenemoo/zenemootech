@@ -78,7 +78,8 @@ export const Footer: React.FC = () => {
               </div>
             </div>
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
-              Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets. Working with DesiCrew since 2023.
+              Building language data solutions for the future. Specializing in audio transcription, data annotation, multilingual voice over, and AI training datasets. <br className="hidden sm:inline" />
+              <span className="text-slate-300 font-medium">A Bright Tomorrow, Together.</span>
             </p>
 
             {/* MSME Government Credential Badge */}
@@ -212,7 +213,7 @@ export const Footer: React.FC = () => {
           <div>
             Copyright &copy; 2026 <span className="text-slate-300 font-semibold">Zenemoo</span>. All Rights Reserved.
           </div>
-          <div className="flex items-center gap-3 text-slate-400 font-bold">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 text-slate-400 font-bold">
             <a
               href="/privacy"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
@@ -225,6 +226,13 @@ export const Footer: React.FC = () => {
               className="hover:text-cyan-400 transition-colors cursor-pointer"
             >
               Terms &amp; Conditions
+            </a>
+            <span>·</span>
+            <a
+              href="/support-zenemooindia"
+              className="hover:text-cyan-400 transition-colors cursor-pointer"
+            >
+              Support Zenemoo
             </a>
           </div>
         </div>

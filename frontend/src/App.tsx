@@ -48,10 +48,11 @@ import { ZenemooTeamPortalPage } from './components/ZenemooTeamPortalPage';
 import { ZenemooTeamAndroidAppPage } from './components/ZenemooTeamAndroidAppPage';
 import { ZenemooBookingPage } from './components/ZenemooBookingPage';
 import { ZenemooWebsiteDirectoryPage } from './components/ZenemooWebsiteDirectoryPage';
+import { SupportZenemooPage } from './components/SupportZenemooPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -119,6 +120,7 @@ export function App() {
         | 'team-portal'
         | 'book-a-call'
         | 'sitemap'
+        | 'support-zenemoo'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -287,6 +289,27 @@ export function App() {
       ) {
         matchedRoute = 'book-a-call';
       } else if (
+        path === '/support-zenemooindia' ||
+        path === '/support-zenemooindia/' ||
+        hash === '#support-zenemooindia' ||
+        hash === '#/support-zenemooindia' ||
+        path === '/support-zenemoo' ||
+        path === '/support-zenemoo/' ||
+        hash === '#support-zenemoo' ||
+        hash === '#/support-zenemoo'
+      ) {
+        if (
+          path === '/support-zenemoo' ||
+          path === '/support-zenemoo/' ||
+          hash === '#support-zenemoo' ||
+          hash === '#/support-zenemoo'
+        ) {
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            window.history.replaceState({}, '', '/support-zenemooindia');
+          }
+        }
+        matchedRoute = 'support-zenemoo';
+      } else if (
         path === '/sitemap' ||
         path === '/sitemap/' ||
         path === '/directory' ||
@@ -327,6 +350,10 @@ export function App() {
         pageTitle = '404 – Page Not Found | Zenemoo';
         canonicalUrl = `https://www.zenemoo.in${path}`;
         metaDescription = "The page you requested could not be found. Explore Zenemoo's AI language services, data annotation, transcription, and enterprise solutions.";
+      } else if (matchedRoute === 'support-zenemoo' || path.includes('support-zenemoo') || hash.includes('support-zenemoo')) {
+        pageTitle = 'Support Zenemoo | Build Opportunities Together';
+        canonicalUrl = 'https://www.zenemoo.in/support-zenemooindia';
+        metaDescription = 'Support Zenemoo’s growth as we build technology, AI data, speech and contributor-focused solutions that create more opportunities.';
       } else if (matchedRoute === 'ai-data' || path === '/ai-data' || hash.includes('#ai-data')) {
         pageTitle = 'AI Data Portfolio & Public Datasets — Zenemoo';
         canonicalUrl = 'https://www.zenemoo.in/ai-data';
@@ -654,6 +681,8 @@ export function App() {
         <ZenemooBookingPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'sitemap' ? (
         <ZenemooWebsiteDirectoryPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+      ) : currentRoute === 'support-zenemoo' ? (
+        <SupportZenemooPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

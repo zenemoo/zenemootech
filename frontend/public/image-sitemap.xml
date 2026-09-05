@@ -45,10 +45,23 @@
       <image:title>Prem Prasad Pradhan — Founder &amp; Vendor Manager</image:title>
       <image:caption>Zenemoo Language Data Team Roster &amp; AI Annotators</image:caption>
     </image:image>
+  <!-- 4. Support Zenemoo Initiative & Founder Story -->
+  <url>
+    <loc>https://www.zenemoo.in/support-zenemooindia</loc>
     <image:image>
-      <image:loc>https://res.cloudinary.com/rwoe0mm9/image/upload/f_auto,q_auto/v1785224476/zenemoo/team/bpdmgzavltahmfrmajbl.png</image:loc>
-      <image:title>Zenemoo Specialized Language Data Team Roster</image:title>
-      <image:caption>Certified Multilingual Audio &amp; Data Specialists</image:caption>
+      <image:loc>https://www.zenemoo.in/assets/founder-story-poster.png</image:loc>
+      <image:title>Prem Prasad Pradhan — Founder &amp; COO of Zenemoo — A Bright Tomorrow, Together</image:title>
+      <image:caption>Technology should create opportunities for everyone. Support Zenemoo growth and AI data initiatives.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/founder-prem.jpg</image:loc>
+      <image:title>Prem Prasad Pradhan — Founder &amp; COO at Zenemoo</image:title>
+      <image:caption>Building opportunities through technology. Zenemoo Founder Prem Prasad Pradhan.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/earth-realistic.jpg</image:loc>
+      <image:title>Zenemoo Global AI &amp; Speech Opportunity Network</image:title>
+      <image:caption>Over 1000+ People Reached Through Work Opportunities</image:caption>
     </image:image>
   </url>
 

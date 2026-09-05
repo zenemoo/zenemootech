@@ -93,8 +93,22 @@
   <url>
     <loc>https://www.zenemoo.in/app/android</loc>
     <lastmod>2026-08-21</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.90</priority>
+  <!-- 11. Official Support Zenemoo Initiative & Founder Story -->
+  <url>
+    <loc>https://www.zenemoo.in/support-zenemooindia</loc>
+    <lastmod>2026-09-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.96</priority>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/founder-story-poster.png</image:loc>
+      <image:title>Prem Prasad Pradhan — Founder &amp; COO of Zenemoo — A Bright Tomorrow, Together</image:title>
+      <image:caption>Technology should create opportunities for everyone.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/founder-prem.jpg</image:loc>
+      <image:title>Prem Prasad Pradhan — Founder &amp; COO at Zenemoo</image:title>
+      <image:caption>Building opportunities through technology.</image:caption>
+    </image:image>
   </url>
 
 </urlset>
