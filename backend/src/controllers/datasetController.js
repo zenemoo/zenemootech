@@ -155,7 +155,11 @@ export const getDatasetBySlugOrId = async (req, res) => {
         if (dsData) {
           dataset = dsData;
           const [filesRes, foldersRes] = await Promise.all([
-            supabase.from('dataset_files').select('*').eq('dataset_id', dataset.id).order('created_at', { ascending: false }),
+            supabase
+              .from('dataset_files')
+              .select('id, dataset_id, file_name, original_file_name, file_type, mime_type, file_size, drive_file_id, drive_folder_id, drive_url, thumbnail_url, status, created_at, updated_at')
+              .eq('dataset_id', dataset.id)
+              .order('created_at', { ascending: false }),
             supabase.from('dataset_folders').select('*').eq('dataset_id', dataset.id),
           ]);
           files = filesRes.data || [];

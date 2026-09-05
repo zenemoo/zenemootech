@@ -2,6 +2,17 @@ import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { generateTeamMemberSummary } from '../services/aiService.js';
 
+// In-memory cache for public team roster to eliminate repeated Supabase queries
+let teamRosterCache = {
+  data: null,
+  timestamp: 0,
+};
+const TEAM_ROSTER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export const invalidateTeamRosterCache = () => {
+  teamRosterCache = { data: null, timestamp: 0 };
+};
+
 // Helper: Normalize team positions in database cleanly using 2-phase offset update to avoid PostgreSQL UNIQUE constraint collision
 const normalizeAndSavePositions = async (customList = null) => {
   try {
@@ -44,6 +55,7 @@ const normalizeAndSavePositions = async (customList = null) => {
       }
     }
 
+    invalidateTeamRosterCache();
     return updatedList.sort((a, b) => Number(a.position) - Number(b.position));
   } catch (err) {
     console.warn('normalizeAndSavePositions warning:', err.message);
@@ -51,10 +63,21 @@ const normalizeAndSavePositions = async (customList = null) => {
   }
 };
 
-// GET /api/team - Return members ordered by position ASC
+// GET /api/team - Return members ordered by position ASC with 5-minute server cache
 export const getTeam = async (req, res, next) => {
   try {
+    const now = Date.now();
+    if (teamRosterCache.data && now - teamRosterCache.timestamp < TEAM_ROSTER_CACHE_TTL_MS) {
+      return res.json({
+        success: true,
+        count: teamRosterCache.data.length,
+        data: teamRosterCache.data,
+      });
+    }
+
     const data = await supabaseService.selectAll('team', 'position', true);
+    teamRosterCache = { data, timestamp: now };
+
     res.json({
       success: true,
       count: data.length,

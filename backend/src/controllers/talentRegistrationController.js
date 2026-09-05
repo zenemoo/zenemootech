@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { normalizeLanguageKey, formatLanguageDisplayName, isSameLanguage } from '../utils/languageUtils.js';
@@ -135,26 +136,30 @@ export const registerTalent = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // ── SECURITY CHECK: DUPLICATE EMAIL VERIFICATION ──
-    const existingCodes = new Set();
-    try {
-      const existingDbRecords = await supabaseService.selectAll('talent_registrations');
-      (existingDbRecords || []).forEach((r) => {
-        if (r.registration_code) existingCodes.add(r.registration_code);
-        if (r.id) existingCodes.add(r.id);
-      });
+    // ── SECURITY CHECK: DUPLICATE EMAIL VERIFICATION (Targeted Index Lookup - Zero full-table scan) ──
+    if (supabase) {
+      try {
+        const { data: duplicateDb } = await supabase
+          .from('talent_registrations')
+          .select('id, email')
+          .ilike('email', normalizedEmail)
+          .limit(1)
+          .maybeSingle();
 
-      const duplicateDb = (existingDbRecords || []).find((r) => (r.email || '').toLowerCase() === normalizedEmail);
-      if (duplicateDb) {
-        return res.status(400).json({
-          success: false,
-          isDuplicate: true,
-          message: `The email address "${normalizedEmail}" is already registered in our Zenemoo AI Data Talent & Partner Network. If you need to update your details or availability, please contact contact@zenemoo.in.`,
-        });
+        if (duplicateDb) {
+          return res.status(400).json({
+            success: false,
+            isDuplicate: true,
+            message: `The email address "${normalizedEmail}" is already registered in our Zenemoo AI Data Talent & Partner Network. If you need to update your details or availability, please contact contact@zenemoo.in.`,
+          });
+        }
+      } catch (err) {
+        console.warn('Targeted Supabase duplicate email check warn:', err.message);
       }
-    } catch (err) {}
+    }
 
     const diskList = loadDiskRegistrations();
+    const existingCodes = new Set();
     diskList.forEach((r) => {
       if (r.registration_code) existingCodes.add(r.registration_code);
       if (r.id) existingCodes.add(r.id);

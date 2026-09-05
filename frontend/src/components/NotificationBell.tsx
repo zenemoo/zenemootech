@@ -51,7 +51,7 @@ export const NotificationBell: React.FC = () => {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000); // Poll every 15s
+    const interval = setInterval(fetchNotifications, 90000); // Poll every 90s to reduce Supabase egress
     return () => clearInterval(interval);
   }, []);
 

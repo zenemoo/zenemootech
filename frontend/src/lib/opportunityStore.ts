@@ -235,12 +235,27 @@ const reindexSupabaseOpportunities = async (orderedIds: string[]): Promise<void>
   }
 };
 
-// Fetch opportunities ordered by position ASC directly from Supabase (with fallback)
-export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> => {
+let opportunitiesMemoryCache: { data: OpportunityProgram[] | null; timestamp: number } = {
+  data: null,
+  timestamp: 0,
+};
+const OPPORTUNITIES_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes client cache
+
+export const invalidateOpportunitiesCache = () => {
+  opportunitiesMemoryCache = { data: null, timestamp: 0 };
+};
+
+// Fetch opportunities ordered by position ASC directly from Supabase (with client-side in-memory caching)
+export const getStoredOpportunities = async (forceRefresh = false): Promise<OpportunityProgram[]> => {
+  const now = Date.now();
+  if (!forceRefresh && opportunitiesMemoryCache.data && now - opportunitiesMemoryCache.timestamp < OPPORTUNITIES_CACHE_TTL_MS) {
+    return opportunitiesMemoryCache.data;
+  }
+
   try {
     const { data, error } = await supabase
       .from('opportunities')
-      .select('*')
+      .select('id, position, title, partner_name, badge, status, description, company_logo, poster_url, public_id, features, requirements, language_skills, eligibility_criteria, whatsapp_group_url, whatsapp_channel_url, telegram_url, contact_support_url, linkedin_post_url, x_post_url, facebook_post_url, instagram_url, youtube_url, other_social_url, application_post_url, pdf_link, contact_details, custom_questions, action_url, about_project, what_you_will_do, experience_requirements, equipment_requirements, internet_requirements, working_hours, project_duration, payment_info, payment_frequency, work_mode, availability_requirement, project_highlights, benefits, why_join, important_notes, created_at, updated_at')
       .order('position', { ascending: true });
 
     if (!error && Array.isArray(data)) {
@@ -255,6 +270,7 @@ export const getStoredOpportunities = async (): Promise<OpportunityProgram[]> =>
         reindexSupabaseOpportunities(formatted.map((f) => f.id)).catch(() => {});
       }
 
+      opportunitiesMemoryCache = { data: formatted, timestamp: now };
       saveLocalOpportunities(formatted);
       return formatted;
     } else if (error) {
@@ -435,7 +451,8 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
       }
     }
 
-    const updatedList = await getStoredOpportunities();
+    invalidateOpportunitiesCache();
+    const updatedList = await getStoredOpportunities(true);
     if (updatedList.length > 0) return updatedList;
   } catch (err: any) {
     console.warn('Direct Supabase save error. Trying local fallback:', err.message);
@@ -455,6 +472,7 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     localList.splice(clampedPos - 1, 0, newRecord);
   }
 
+  invalidateOpportunitiesCache();
   return saveLocalOpportunities(localList);
 };
 
@@ -498,7 +516,8 @@ export const reorderOpportunityInApi = async (id: string, newPosition: number): 
     localList = saveLocalOpportunities(localList);
   }
 
-  return getStoredOpportunities();
+  invalidateOpportunitiesCache();
+  return getStoredOpportunities(true);
 };
 
 // Delete opportunity directly from Supabase
@@ -524,5 +543,6 @@ export const deleteOpportunityFromApi = async (id: string): Promise<OpportunityP
   let localList = getLocalOpportunities().filter((p) => p.id !== id);
   localList = saveLocalOpportunities(localList);
 
-  return getStoredOpportunities();
+  invalidateOpportunitiesCache();
+  return getStoredOpportunities(true);
 };

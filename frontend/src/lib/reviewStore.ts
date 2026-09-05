@@ -69,14 +69,29 @@ export const computeReviewFingerprint = async (
   return `fp_${Math.abs(hash)}_${rawString.length}`;
 };
 
+let publicReviewsMemoryCache: { data: ReviewItem[] | null; timestamp: number } = {
+  data: null,
+  timestamp: 0,
+};
+const PUBLIC_REVIEWS_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes client cache
+
+export const invalidatePublicReviewsCache = () => {
+  publicReviewsMemoryCache = { data: null, timestamp: 0 };
+};
+
 /**
  * Public API: Fetch published (visible) reviews directly from Supabase ordered newest first.
  * Database is the SINGLE SOURCE OF TRUTH. No fake/demo data or local storage fallbacks.
  */
-export const getPublicVisibleReviews = async (): Promise<ReviewItem[]> => {
+export const getPublicVisibleReviews = async (forceRefresh = false): Promise<ReviewItem[]> => {
+  const now = Date.now();
+  if (!forceRefresh && publicReviewsMemoryCache.data && now - publicReviewsMemoryCache.timestamp < PUBLIC_REVIEWS_CACHE_TTL_MS) {
+    return publicReviewsMemoryCache.data;
+  }
+
   const { data, error } = await supabase
     .from('reviews')
-    .select('*')
+    .select('id, review_id, review_slug, name, reviewer_type, rating, review_text, is_visible, created_at, updated_at')
     .eq('is_visible', true)
     .order('created_at', { ascending: false });
 
@@ -85,7 +100,9 @@ export const getPublicVisibleReviews = async (): Promise<ReviewItem[]> => {
     throw new Error(error.message || 'Unable to fetch reviews from database.');
   }
 
-  return (data as ReviewItem[]) || [];
+  const list = (data as ReviewItem[]) || [];
+  publicReviewsMemoryCache = { data: list, timestamp: now };
+  return list;
 };
 
 /**
@@ -230,6 +247,7 @@ export const submitPublicReview = async (reviewData: {
     }
 
     if (!error && data) {
+      invalidatePublicReviewsCache();
       return data as ReviewItem;
     }
 
@@ -272,6 +290,7 @@ export const toggleReviewVisibility = async (id: string, newVisibility: boolean)
     throw new Error(error?.message || 'Unable to update review visibility. Please try again.');
   }
 
+  invalidatePublicReviewsCache();
   return data as ReviewItem;
 };
 
@@ -288,6 +307,8 @@ export const deleteReviewFromApi = async (id: string): Promise<void> => {
     console.error('Supabase delete review error:', error);
     throw new Error(error.message || 'Unable to delete this review. Please try again.');
   }
+
+  invalidatePublicReviewsCache();
 };
 
 /**
@@ -306,6 +327,7 @@ export const publishAllPendingReviews = async (): Promise<number> => {
     throw new Error(error.message || 'Unable to publish pending reviews.');
   }
 
+  invalidatePublicReviewsCache();
   return data ? data.length : 0;
 };
 
@@ -326,6 +348,7 @@ export const bulkPublishReviews = async (ids: string[]): Promise<number> => {
     throw new Error(error.message || 'Unable to publish selected reviews.');
   }
 
+  invalidatePublicReviewsCache();
   return data ? data.length : 0;
 };
 
@@ -345,6 +368,7 @@ export const bulkDeleteReviews = async (ids: string[]): Promise<number> => {
     throw new Error(error.message || 'Unable to delete selected reviews.');
   }
 
+  invalidatePublicReviewsCache();
   return data ? data.length : 0;
 };
 
@@ -398,6 +422,7 @@ export const updateReviewInApi = async (
     throw new Error(error?.message || 'Unable to update review details. Please try again.');
   }
 
+  invalidatePublicReviewsCache();
   return data as ReviewItem;
 };
 

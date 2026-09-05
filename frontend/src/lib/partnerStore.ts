@@ -40,15 +40,31 @@ const saveLocalPartners = (list: PartnerCompany[]): PartnerCompany[] => {
   return sorted;
 };
 
+let partnersMemoryCache: { data: PartnerCompany[] | null; timestamp: number } = {
+  data: null,
+  timestamp: 0,
+};
+const PARTNERS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes client cache
+
+export const invalidatePartnersCache = () => {
+  partnersMemoryCache = { data: null, timestamp: 0 };
+};
+
 // Fetch partners ordered by position ASC directly from Supabase
-export const getStoredPartners = async (): Promise<PartnerCompany[]> => {
+export const getStoredPartners = async (forceRefresh = false): Promise<PartnerCompany[]> => {
+  const now = Date.now();
+  if (!forceRefresh && partnersMemoryCache.data && now - partnersMemoryCache.timestamp < PARTNERS_CACHE_TTL_MS) {
+    return partnersMemoryCache.data;
+  }
+
   try {
     const { data, error } = await supabase
       .from('partners')
-      .select('*')
+      .select('id, position, name, role, badge, image_url, public_id, website_url, status, created_at, updated_at')
       .order('position', { ascending: true });
 
     if (!error && Array.isArray(data)) {
+      partnersMemoryCache = { data: data as PartnerCompany[], timestamp: now };
       saveLocalPartners(data as PartnerCompany[]);
       return data as PartnerCompany[];
     }
@@ -60,6 +76,7 @@ export const getStoredPartners = async (): Promise<PartnerCompany[]> => {
     const res = await partnerApi.getAll();
     if (res.data && res.data.data && Array.isArray(res.data.data)) {
       const live = res.data.data.sort((a: PartnerCompany, b: PartnerCompany) => Number(a.position) - Number(b.position));
+      partnersMemoryCache = { data: live, timestamp: now };
       saveLocalPartners(live);
       return live;
     }
@@ -92,7 +109,8 @@ export const savePartnerToApi = async (partner: Partial<PartnerCompany>): Promis
     } else {
       await supabase.from('partners').insert([{ ...payloadToSave, created_at: new Date().toISOString() }]);
     }
-    return await getStoredPartners();
+    invalidatePartnersCache();
+    return await getStoredPartners(true);
   } catch (err: any) {
     console.warn('Direct Supabase save partner error:', err.message);
   }
@@ -116,6 +134,7 @@ export const savePartnerToApi = async (partner: Partial<PartnerCompany>): Promis
     localList.push(newPartner);
   }
 
+  invalidatePartnersCache();
   return saveLocalPartners(localList);
 };
 
@@ -136,7 +155,8 @@ export const reorderPartnerInApi = async (id: string, newPosition: number): Prom
     localList = saveLocalPartners(localList);
   }
 
-  return getStoredPartners();
+  invalidatePartnersCache();
+  return getStoredPartners(true);
 };
 
 // Delete partner company
@@ -150,5 +170,6 @@ export const deletePartnerFromApi = async (id: string): Promise<PartnerCompany[]
   let localList = getLocalPartners().filter((p) => p.id !== id);
   localList = saveLocalPartners(localList);
 
-  return getStoredPartners();
+  invalidatePartnersCache();
+  return getStoredPartners(true);
 };

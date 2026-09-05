@@ -120,12 +120,12 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     }
   }, []);
 
-  // Fetch on mount and poll periodically (every 45s)
+  // Fetch on mount and poll periodically (every 3 minutes / 180s to reduce Supabase egress)
   useEffect(() => {
     fetchNotifications(true);
     const interval = setInterval(() => {
       fetchNotifications(false);
-    }, 45000);
+    }, 180000);
 
     const handleRefresh = () => fetchNotifications(false);
     window.addEventListener('zenemoo:refresh-notifications', handleRefresh);

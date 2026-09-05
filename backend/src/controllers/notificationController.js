@@ -177,26 +177,42 @@ export const ADMIN_OPERATIONAL_TYPES = [
   'inquiry_received',
   'application_received',
   'security_alert',
-  'system_error',
 ];
+
+// In-memory cache for public broadcast notifications to prevent redundant Supabase egress
+let publicNotifsCache = {
+  data: null,
+  timestamp: 0,
+};
+const PUBLIC_NOTIFS_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+export const invalidatePublicNotifsCache = () => {
+  publicNotifsCache = { data: null, timestamp: 0 };
+};
 
 /**
  * 3. GET /api/notifications
  * Fetch notification history strictly scoped for public website / app visitors
  * Internal/admin operational notifications are filtered out at the data level.
+ * Employs a 60-second server cache for public broadcast records to eliminate egress.
  */
 export const getUserNotifications = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.query.installation_id || 'guest_user';
     const days = parseInt(req.query.days, 10) || 7;
     const sevenDaysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const now = Date.now();
 
     let allNotifs = [];
-    if (supabase) {
+
+    // Check if valid in-memory cache exists
+    if (publicNotifsCache.data && now - publicNotifsCache.timestamp < PUBLIC_NOTIFS_CACHE_TTL_MS) {
+      allNotifs = publicNotifsCache.data;
+    } else if (supabase) {
       try {
         const { data, error } = await supabase
           .from('zenemoo_notifications')
-          .select('*')
+          .select('id, record_type, title, message, notification_type, target_type, target_id, url, opportunity_id, created_at, is_read')
           .eq('record_type', 'notification')
           .neq('target_type', 'admin')
           .gte('created_at', sevenDaysAgo)
@@ -205,11 +221,13 @@ export const getUserNotifications = async (req, res, next) => {
 
         if (!error && Array.isArray(data)) {
           allNotifs = data;
+          publicNotifsCache = { data, timestamp: now };
         }
       } catch (e) {
         allNotifs = memoryNotifications.filter((n) => !n.created_at || new Date(n.created_at) >= new Date(sevenDaysAgo));
       }
     }
+
     if (!Array.isArray(allNotifs) || allNotifs.length === 0) {
       allNotifs = memoryNotifications.filter((n) => !n.created_at || new Date(n.created_at) >= new Date(sevenDaysAgo));
     }
@@ -520,6 +538,8 @@ export const createAdminNotification = async (req, res, next) => {
       sender_email: req.user?.email || 'admin@zenemoo.in',
     });
 
+    invalidatePublicNotifsCache();
+
     return res.status(201).json({
       success: true,
       message: dispatchResult.summary.formatted_summary,
@@ -550,6 +570,8 @@ export const deleteAdminNotification = async (req, res, next) => {
 
     const idx = memoryNotifications.findIndex((n) => n.id === id);
     if (idx !== -1) memoryNotifications.splice(idx, 1);
+
+    invalidatePublicNotifsCache();
 
     res.json({
       success: true,
