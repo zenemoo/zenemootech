@@ -65,7 +65,7 @@
     <loc>https://www.zenemoo.in/privacy</loc>
     <lastmod>2026-09-05</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.40</priority>
   </url>
 
   <!-- 8. Standalone Terms & Conditions Page -->
@@ -73,7 +73,7 @@
     <loc>https://www.zenemoo.in/terms</loc>
     <lastmod>2026-09-05</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.40</priority>
   </url>
 
   <!-- 9. Official Application Center -->
@@ -96,8 +96,8 @@
   <url>
     <loc>https://www.zenemoo.in/support-zenemooindia</loc>
     <lastmod>2026-09-05</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.96</priority>
+    <changefreq>monthly</changefreq>
+    <priority>0.70</priority>
     <image:image>
       <image:loc>https://www.zenemoo.in/assets/founder-story-poster.png</image:loc>
       <image:title>Prem Prasad Pradhan — Founder &amp; COO of Zenemoo — A Bright Tomorrow, Together</image:title>
