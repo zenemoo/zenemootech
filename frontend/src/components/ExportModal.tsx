@@ -400,8 +400,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   {exportFormat === 'pdf' && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-white">PDF</div>
-                  <div className="text-[10px] opacity-75 mt-0.5">Document format • Landscape print</div>
+                  <div className="font-bold text-sm text-white flex items-center gap-1.5">
+                    <span>PDF</span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] bg-purple-500/20 text-purple-300 font-normal">
+                      {selectedColumnKeys.length > 22 ? 'A2 Wide' : selectedColumnKeys.length > 14 ? 'A3 Wide' : 'Landscape'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] opacity-75 mt-0.5">
+                    {selectedColumnKeys.length > 14
+                      ? `Adaptive ${selectedColumnKeys.length > 22 ? 'A2' : 'A3'} Landscape • More space for ${selectedColumnKeys.length} cols`
+                      : 'Landscape document • No cut-offs'}
+                  </div>
                 </div>
               </button>
             </div>

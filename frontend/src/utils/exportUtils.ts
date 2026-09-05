@@ -765,8 +765,22 @@ export async function generateClientPDF(
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
 
-  // Orientation: Landscape A4 for wide table layouts
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const colCount = Math.max(1, columns.length);
+
+  // Dynamic Adaptive Page Sizing:
+  // - <= 7 columns: A4 Landscape (297mm)
+  // - 8 - 14 columns: A4 Landscape (297mm)
+  // - 15 - 22 columns: A3 Landscape (420mm) - 41% more horizontal space
+  // - > 22 columns: A2 Landscape (594mm) - Super wide canvas for unlimited custom fields
+  const pageSizeFormat =
+    colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4';
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: pageSizeFormat,
+  });
+
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const todayStr = new Date().toLocaleDateString('en-GB', {
@@ -775,12 +789,14 @@ export async function generateClientPDF(
     year: 'numeric',
   });
 
+  const formatBadge = pageSizeFormat.toUpperCase();
   const scopeText = options.scopeLabel || (data.length > 0 ? `${data.length} Records` : 'All Records');
   const filterText = options.filterSummary ? ` • Filters: ${options.filterSummary}` : '';
 
-  // ── 1. Page Header (First Page Top Banner) ──
+  // ── 1. Page Header (Top Banner) ──
+  const headerHeight = 28;
   doc.setFillColor(9, 13, 22); // Enterprise Dark Navy
-  doc.rect(0, 0, pageWidth, 28, 'F');
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
 
   // Top Accent Bar
   doc.setFillColor(6, 182, 212); // Cyan accent line
@@ -800,8 +816,8 @@ export async function generateClientPDF(
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184); // Slate-400
   doc.setFont('helvetica', 'normal');
-  const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${columns.length}`;
-  const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 24 ? metaLine.slice(0, 140) + '...' : metaLine;
+  const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${colCount} | Layout: Landscape (${formatBadge} Wide)`;
+  const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 80 ? metaLine.slice(0, 160) + '...' : metaLine;
   doc.text(truncatedMeta, 12, 24);
 
   // Right Date Stamp
@@ -810,12 +826,29 @@ export async function generateClientPDF(
   doc.text(`Generated: ${todayStr}`, pageWidth - 12, 11, { align: 'right' });
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('CONFIDENTIAL ADMINISTRATIVE DOCUMENT', pageWidth - 12, 17, { align: 'right' });
+  doc.text(`CONFIDENTIAL ADMINISTRATIVE DOCUMENT • ${formatBadge} WIDE`, pageWidth - 12, 17, { align: 'right' });
 
   // ── 2. Dynamic Table Sizing for Wide Column Sets ──
-  const colCount = Math.max(1, columns.length);
-  const dynamicFontSize = colCount > 20 ? 5 : colCount > 12 ? 6 : 7;
-  const dynamicCellPadding = colCount > 20 ? 1 : colCount > 12 ? 1.5 : 2;
+  // Adaptive typography and padding to ensure no column gets cut off
+  let dynamicFontSize = 7.5;
+  let dynamicCellPadding = 2;
+
+  if (pageSizeFormat === 'a2') {
+    dynamicFontSize = 6.5;
+    dynamicCellPadding = 1.2;
+  } else if (pageSizeFormat === 'a3') {
+    dynamicFontSize = colCount > 18 ? 6.5 : 7;
+    dynamicCellPadding = 1.5;
+  } else {
+    // A4
+    if (colCount > 10) {
+      dynamicFontSize = 6;
+      dynamicCellPadding = 1.2;
+    } else if (colCount > 7) {
+      dynamicFontSize = 6.8;
+      dynamicCellPadding = 1.6;
+    }
+  }
 
   const head = [columns.map((c) => c.label)];
   const body = data.map((row) =>
@@ -828,6 +861,7 @@ export async function generateClientPDF(
     startY: 32,
     margin: { left: 8, right: 8, top: 18, bottom: 16 },
     showHead: 'everyPage',
+    tableWidth: 'auto',
     styles: {
       fontSize: dynamicFontSize,
       cellPadding: dynamicCellPadding,
@@ -837,6 +871,7 @@ export async function generateClientPDF(
       lineColor: [226, 232, 240],
       lineWidth: 0.1,
       valign: 'middle',
+      minCellHeight: 5,
     },
     headStyles: {
       fillColor: [14, 116, 144], // Cyan-700
@@ -844,6 +879,7 @@ export async function generateClientPDF(
       fontStyle: 'bold',
       fontSize: dynamicFontSize + 0.5,
       halign: 'left',
+      cellPadding: dynamicCellPadding + 0.5,
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252], // Slate-50 alternating

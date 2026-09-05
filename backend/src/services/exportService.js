@@ -311,14 +311,40 @@ export const generateExcel = async (dataset, selectedColumns, sectionTitle = 'Da
  */
 export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Export') => {
   const cols = Array.isArray(selectedColumns) && selectedColumns.length > 0 ? selectedColumns : EXPORT_CONFIGS['contact-inquiries'].defaultColumns;
-  const isLandscape = cols.length > 5;
+  const colCount = Math.max(1, cols.length);
+
+  // Dynamic Adaptive Page Sizing:
+  // - <= 14 columns: A4 Landscape
+  // - 15 - 22 columns: A3 Landscape (420mm wide)
+  // - > 22 columns: A2 Landscape (594mm super wide)
+  const pageSizeFormat = colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4';
+
   const doc = new jsPDF({
-    orientation: isLandscape ? 'landscape' : 'portrait',
+    orientation: 'landscape',
     unit: 'pt',
-    format: 'a4',
+    format: pageSizeFormat,
   });
 
   const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
+
+  let dynamicFontSize = 8;
+  let dynamicCellPadding = 4;
+
+  if (pageSizeFormat === 'a2') {
+    dynamicFontSize = 6.5;
+    dynamicCellPadding = 2.5;
+  } else if (pageSizeFormat === 'a3') {
+    dynamicFontSize = colCount > 18 ? 6.5 : 7;
+    dynamicCellPadding = 3;
+  } else {
+    if (colCount > 10) {
+      dynamicFontSize = 6.5;
+      dynamicCellPadding = 2.5;
+    } else if (colCount > 7) {
+      dynamicFontSize = 7.5;
+      dynamicCellPadding = 3.5;
+    }
+  }
 
   const tableHeaders = [cols.map((col) => col.label || col.key)];
   const tableRows = (dataset || []).map((row) =>
@@ -329,18 +355,20 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
     head: tableHeaders,
     body: tableRows,
     startY: 75,
-    margin: { top: 75, right: 30, bottom: 40, left: 30 },
+    margin: { top: 75, right: 25, bottom: 40, left: 25 },
     theme: 'grid',
+    tableWidth: 'auto',
     headStyles: {
       fillColor: [9, 13, 22],
       textColor: [56, 189, 248],
-      fontSize: 9,
+      fontSize: dynamicFontSize + 0.5,
       fontStyle: 'bold',
       halign: 'left',
+      cellPadding: dynamicCellPadding + 1,
     },
     bodyStyles: {
       textColor: [30, 41, 59],
-      fontSize: 8,
+      fontSize: dynamicFontSize,
       valign: 'middle',
     },
     alternateRowStyles: {
@@ -348,27 +376,29 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
     },
     styles: {
       overflow: 'linebreak',
-      cellPadding: 6,
+      cellPadding: dynamicCellPadding,
+      minCellHeight: 14,
     },
     didDrawPage: (data) => {
+      const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(14);
       doc.setTextColor(6, 182, 212);
-      doc.text('ZENEMOO', 30, 30);
+      doc.text('ZENEMOO', 25, 30);
 
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(10);
       doc.setTextColor(51, 65, 85);
-      doc.text(`${sectionTitle.toUpperCase()} - DATA EXPORT`, 30, 45);
+      doc.text(`${sectionTitle.toUpperCase()} - DATA EXPORT (${pageSizeFormat.toUpperCase()} WIDE)`, 25, 45);
 
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Exported on: ${formattedDate}`, 30, 58);
+      doc.text(`Exported on: ${formattedDate} | Total: ${dataset.length} Records | Columns: ${colCount}`, 25, 58);
 
       const pageCount = typeof doc.getNumberOfPages === 'function' ? doc.getNumberOfPages() : (doc.internal.getNumberOfPages ? doc.internal.getNumberOfPages() : 1);
-      const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
 
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(8);
