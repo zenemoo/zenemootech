@@ -31,6 +31,7 @@ import datasetRoutes from './routes/datasetRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import scheduledEmailRoutes from './routes/scheduledEmailRoutes.js';
+import talentHubRoutes from './routes/talentHubRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -130,6 +131,7 @@ app.use('/api/emails/scheduled', scheduledEmailRoutes);
 app.use('/api/emails', emailInboxRoutes);
 app.use('/api/admin', exportRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/talent-hub', talentHubRoutes);
 
 // Root Fallback Aliases
 app.use('/datasets', datasetRoutes);

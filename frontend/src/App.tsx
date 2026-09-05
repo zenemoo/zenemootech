@@ -49,10 +49,11 @@ import { ZenemooTeamAndroidAppPage } from './components/ZenemooTeamAndroidAppPag
 import { ZenemooBookingPage } from './components/ZenemooBookingPage';
 import { ZenemooWebsiteDirectoryPage } from './components/ZenemooWebsiteDirectoryPage';
 import { SupportZenemooPage } from './components/SupportZenemooPage';
+import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -112,6 +113,11 @@ export function App() {
         | 'unsubscribe'
         | 'reviews'
         | 'talent-registration'
+        | 'talent-hub'
+        | 'talent-hub-dashboard'
+        | 'talent-hub-profile'
+        | 'talent-hub-opportunities'
+        | 'talent-hub-applications'
         | 'ai-data'
         | 'ai-data-detail'
         | 'app-hub'
@@ -207,6 +213,41 @@ export function App() {
         hash === '#/register-talent'
       ) {
         matchedRoute = 'talent-registration';
+      } else if (
+        path === '/talent-hub/dashboard' ||
+        path === '/talent-hub/dashboard/' ||
+        hash === '#talent-hub/dashboard' ||
+        hash === '#/talent-hub/dashboard'
+      ) {
+        matchedRoute = 'talent-hub-dashboard';
+      } else if (
+        path === '/talent-hub/profile' ||
+        path === '/talent-hub/profile/' ||
+        hash === '#talent-hub/profile' ||
+        hash === '#/talent-hub/profile'
+      ) {
+        matchedRoute = 'talent-hub-profile';
+      } else if (
+        path === '/talent-hub/opportunities' ||
+        path === '/talent-hub/opportunities/' ||
+        hash === '#talent-hub/opportunities' ||
+        hash === '#/talent-hub/opportunities'
+      ) {
+        matchedRoute = 'talent-hub-opportunities';
+      } else if (
+        path === '/talent-hub/applications' ||
+        path === '/talent-hub/applications/' ||
+        hash === '#talent-hub/applications' ||
+        hash === '#/talent-hub/applications'
+      ) {
+        matchedRoute = 'talent-hub-applications';
+      } else if (
+        path === '/talent-hub' ||
+        path === '/talent-hub/' ||
+        hash === '#talent-hub' ||
+        hash === '#/talent-hub'
+      ) {
+        matchedRoute = 'talent-hub';
       } else if (
         path === '/review' ||
         path === '/review/' ||
@@ -374,6 +415,17 @@ export function App() {
         pageTitle = 'AI Data Talent & Partner Registration — Zenemoo';
         canonicalUrl = 'https://www.zenemoo.in/talent-registration';
         metaDescription = 'Join Zenemoo AI Data Network. Register as a native speaker, coordinator, vocalist, recording team, or vendor agency for AI projects.';
+      } else if (
+        matchedRoute === 'talent-hub' ||
+        matchedRoute === 'talent-hub-dashboard' ||
+        matchedRoute === 'talent-hub-profile' ||
+        matchedRoute === 'talent-hub-opportunities' ||
+        matchedRoute === 'talent-hub-applications' ||
+        path.startsWith('/talent-hub')
+      ) {
+        pageTitle = 'Zenemoo Talent Hub — Contributor Portal';
+        canonicalUrl = `https://www.zenemoo.in${path}`;
+        metaDescription = 'Access your registered Zenemoo talent profile, explore active AI data collection and annotation opportunities, and track your applications.';
       } else if (path === '/terms' || hash.includes('#terms')) {
         pageTitle = 'Terms & Conditions — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/terms';
@@ -610,6 +662,56 @@ export function App() {
         <TermsConditionsPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'talent-registration' ? (
         <ZenemooTalentRegistrationPage onBack={handleBackToHome} />
+      ) : currentRoute === 'talent-hub' ? (
+        <ZenemooTalentHubPage
+          initialSubRoute="login"
+          onNavigateHome={handleBackToHome}
+          onNavigateRegister={() => {
+            window.history.pushState(null, '', '/talent-registration');
+            window.location.hash = 'talent-registration';
+            setCurrentRoute('talent-registration');
+          }}
+        />
+      ) : currentRoute === 'talent-hub-dashboard' ? (
+        <ZenemooTalentHubPage
+          initialSubRoute="dashboard"
+          onNavigateHome={handleBackToHome}
+          onNavigateRegister={() => {
+            window.history.pushState(null, '', '/talent-registration');
+            window.location.hash = 'talent-registration';
+            setCurrentRoute('talent-registration');
+          }}
+        />
+      ) : currentRoute === 'talent-hub-profile' ? (
+        <ZenemooTalentHubPage
+          initialSubRoute="profile"
+          onNavigateHome={handleBackToHome}
+          onNavigateRegister={() => {
+            window.history.pushState(null, '', '/talent-registration');
+            window.location.hash = 'talent-registration';
+            setCurrentRoute('talent-registration');
+          }}
+        />
+      ) : currentRoute === 'talent-hub-opportunities' ? (
+        <ZenemooTalentHubPage
+          initialSubRoute="opportunities"
+          onNavigateHome={handleBackToHome}
+          onNavigateRegister={() => {
+            window.history.pushState(null, '', '/talent-registration');
+            window.location.hash = 'talent-registration';
+            setCurrentRoute('talent-registration');
+          }}
+        />
+      ) : currentRoute === 'talent-hub-applications' ? (
+        <ZenemooTalentHubPage
+          initialSubRoute="applications"
+          onNavigateHome={handleBackToHome}
+          onNavigateRegister={() => {
+            window.history.pushState(null, '', '/talent-registration');
+            window.location.hash = 'talent-registration';
+            setCurrentRoute('talent-registration');
+          }}
+        />
       ) : currentRoute === 'opportunities' ? (
         <OpportunitiesPage
           onBack={handleBackToHome}
