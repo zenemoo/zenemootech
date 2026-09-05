@@ -162,14 +162,29 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [loadTalentProfile]);
 
+  /**
+   * Resolves the OAuth redirect URL dynamically based on the current browser origin.
+   * - Local development: http://localhost:3000/talent-hub (or current host/port)
+   * - Production: https://www.zenemoo.in/talent-hub
+   */
+  const getOAuthRedirectUrl = (): string => {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      const origin = window.location.origin.replace(/\/$/, '');
+      return `${origin}/talent-hub`;
+    }
+    return 'https://www.zenemoo.in/talent-hub';
+  };
+
   const signInWithGoogle = async () => {
     try {
       setAuthError(null);
-      const redirectOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://www.zenemoo.in';
+      const redirectUrl = getOAuthRedirectUrl();
+      console.log('[Google OAuth] Initiating signInWithOAuth with redirectTo:', redirectUrl);
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${redirectOrigin}/talent-hub`,
+          redirectTo: redirectUrl,
           queryParams: {
             access_type: 'offline',
             prompt: 'select_account',
