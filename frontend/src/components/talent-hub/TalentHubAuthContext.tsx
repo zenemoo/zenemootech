@@ -48,6 +48,41 @@ export interface TalentExperience {
   created_at: string;
 }
 
+export interface OpportunityItem {
+  id: string;
+  title: string;
+  partner_name?: string;
+  badge?: string;
+  status: string; // 'active' | 'open' | 'coming_soon' | 'closed'
+  description?: string;
+  features?: string[];
+  requirements?: string[];
+  language_skills?: string[];
+  action_url?: string;
+  poster_url?: string;
+  pdf_link?: string;
+  linkedin_post_url?: string;
+  applicant_count?: number;
+  custom_questions?: any[];
+  position?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApplicationItem {
+  id: string;
+  applicant_id: string;
+  opportunity_id: string;
+  opportunity_title: string;
+  applicant_name: string;
+  applicant_email: string;
+  applicant_phone?: string;
+  answers: Record<string, any>;
+  status: string; // 'pending' | 'shortlisted' | 'accepted' | 'rejected'
+  created_at: string;
+  updated_at?: string;
+}
+
 export type TalentHubAuthState =
   | 'checkingSession'
   | 'unauthenticated'
@@ -56,20 +91,38 @@ export type TalentHubAuthState =
   | 'profileError';
 
 interface TalentHubAuthContextType {
+  // Auth & Profile state
   session: Session | null;
   user: User | null;
   token: string | null;
   talentProfile: TalentProfile | null;
   languages: TalentLanguage[];
   experiences: TalentExperience[];
-  isRegistered: boolean | null; // null = checking/unauthenticated, true = found in DB, false = not registered
+  isRegistered: boolean | null; // null = checking, true = found, false = not registered
   authState: TalentHubAuthState;
   isLoading: boolean;
   isProfileLoading: boolean;
   authError: string | null;
+
+  // Cached Data State
+  opportunities: OpportunityItem[];
+  applications: ApplicationItem[];
+  isDataLoading: boolean;
+  isRefreshing: boolean;
+  lastRefreshedAt: Date | null;
+
+  // Real Dashboard Statistics
+  totalApplications: number;
+  pendingCount: number;
+  shortlistedCount: number;
+  acceptedCount: number;
+  activeOpportunitiesCount: number;
+
+  // Actions
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  refreshTalentHubData: (isManual?: boolean) => Promise<void>;
+  mutateApplications: (newOrUpdatedApp: ApplicationItem) => void;
 }
 
 const TalentHubAuthContext = createContext<TalentHubAuthContextType | undefined>(undefined);
@@ -84,82 +137,198 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [authState, setAuthState] = useState<TalentHubAuthState>('checkingSession');
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const inFlightTokenRef = useRef<string | null>(null);
+  // Cached Portal Data State
+  const [opportunities, setOpportunities] = useState<OpportunityItem[]>([]);
+  const [applications, setApplications] = useState<ApplicationItem[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+
+  const inFlightProfileTokenRef = useRef<string | null>(null);
   const lastLoadedTokenRef = useRef<string | null>(null);
+  const lastLoadedUserIdRef = useRef<string | null>(null);
+  const isRefreshingRef = useRef<boolean>(false);
 
-  const loadTalentProfile = useCallback(async (accessToken: string) => {
-    if (!accessToken || typeof accessToken !== 'string' || !accessToken.trim()) {
-      setAuthState('unauthenticated');
-      return;
-    }
-
-    // Prevent racing / duplicate concurrent requests for the same token
-    if (inFlightTokenRef.current === accessToken) {
-      return;
-    }
-
-    inFlightTokenRef.current = accessToken;
-    setAuthState('loadingProfile');
-    setAuthError(null);
-
+  /**
+   * Loads both opportunities and applications data for the authenticated session.
+   * Runs in parallel with error isolation.
+   */
+  const loadPortalData = useCallback(async (accessToken: string) => {
+    if (!accessToken) return;
+    setIsDataLoading(true);
     try {
-      const res = await talentHubApi.getProfile(accessToken);
-      if (res && res.success) {
-        if (res.registered) {
-          setTalentProfile(res.talent || null);
-          setLanguages(res.languages || []);
-          setExperiences(res.experiences || []);
-          setIsRegistered(true);
-          setAuthState('profileLoaded');
+      const [oppRes, appRes] = await Promise.allSettled([
+        talentHubApi.getOpportunities(accessToken),
+        talentHubApi.getApplications(accessToken),
+      ]);
+
+      if (oppRes.status === 'fulfilled' && oppRes.value?.success) {
+        setOpportunities(oppRes.value.data || []);
+      }
+      if (appRes.status === 'fulfilled' && appRes.value?.success) {
+        setApplications(appRes.value.data || []);
+      }
+      setLastRefreshedAt(new Date());
+    } catch (err: any) {
+      console.error('[TalentHub Portal Data Load Error]:', err.message);
+    } finally {
+      setIsDataLoading(false);
+    }
+  }, []);
+
+  /**
+   * Loads verified profile, languages, and experiences.
+   */
+  const loadTalentProfile = useCallback(
+    async (accessToken: string, skipDataLoad = false) => {
+      if (!accessToken || typeof accessToken !== 'string' || !accessToken.trim()) {
+        setAuthState('unauthenticated');
+        return;
+      }
+
+      // Prevent duplicate in-flight requests for the same token
+      if (inFlightProfileTokenRef.current === accessToken) {
+        return;
+      }
+
+      inFlightProfileTokenRef.current = accessToken;
+      setAuthState('loadingProfile');
+      setAuthError(null);
+
+      try {
+        const res = await talentHubApi.getProfile(accessToken);
+        if (res && res.success) {
+          if (res.registered) {
+            setTalentProfile(res.talent || null);
+            setLanguages(res.languages || []);
+            setExperiences(res.experiences || []);
+            setIsRegistered(true);
+            setAuthState('profileLoaded');
+
+            // Once profile is loaded for a registered user, populate opportunities & applications cache
+            if (!skipDataLoad) {
+              loadPortalData(accessToken);
+            }
+          } else {
+            setTalentProfile(null);
+            setLanguages([]);
+            setExperiences([]);
+            setIsRegistered(false);
+            setAuthState('profileLoaded');
+          }
+          lastLoadedTokenRef.current = accessToken;
         } else {
+          setAuthError(res?.message || "We couldn't load your information right now. Please try again.");
+          setIsRegistered(false);
+          setAuthState('profileError');
+        }
+      } catch (err: any) {
+        const status = err?.response?.status;
+        const errData = err?.response?.data;
+        console.error('[TalentHub Profile Load Error]:', status || err.message, errData || '');
+
+        if (status === 401 || status === 403) {
+          // Expired or invalid session - treat cleanly as unauthenticated
+          setSession(null);
+          setUser(null);
+          setTalentProfile(null);
+          setLanguages([]);
+          setExperiences([]);
+          setOpportunities([]);
+          setApplications([]);
+          setIsRegistered(null);
+          setAuthState('unauthenticated');
+          setAuthError(null);
+          lastLoadedTokenRef.current = null;
+          lastLoadedUserIdRef.current = null;
+        } else if (errData?.registered === false) {
           setTalentProfile(null);
           setLanguages([]);
           setExperiences([]);
           setIsRegistered(false);
           setAuthState('profileLoaded');
+        } else {
+          setAuthState('profileError');
+          setAuthError("We couldn't load your information right now. Please try again.");
         }
-        lastLoadedTokenRef.current = accessToken;
-      } else {
-        setAuthError(res?.message || "We couldn't load your information right now. Please try again.");
-        setIsRegistered(false);
-        setAuthState('profileError');
+      } finally {
+        inFlightProfileTokenRef.current = null;
       }
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const errData = err?.response?.data;
-      console.error('[TalentHub Profile Load Error]:', status || err.message, errData || '');
+    },
+    [loadPortalData]
+  );
 
-      if (status === 401 || status === 403) {
-        // Expired or invalid session - treat cleanly as unauthenticated
-        setSession(null);
-        setUser(null);
-        setTalentProfile(null);
-        setLanguages([]);
-        setExperiences([]);
-        setIsRegistered(null);
-        setAuthState('unauthenticated');
-        setAuthError(null);
-        lastLoadedTokenRef.current = null;
-      } else if (errData?.registered === false) {
-        setTalentProfile(null);
-        setLanguages([]);
-        setExperiences([]);
-        setIsRegistered(false);
-        setAuthState('profileLoaded');
-      } else {
-        // Genuine 500 or network error after authenticated session
-        setAuthState('profileError');
-        setAuthError("We couldn't load your information right now. Please try again.");
+  /**
+   * Manual or program-level full refresh.
+   * Fetches latest profile, opportunities, applications, and dashboard statistics in parallel.
+   */
+  const refreshTalentHubData = useCallback(
+    async (isManual = false) => {
+      const currentToken = session?.access_token;
+      if (!currentToken || isRefreshingRef.current) return;
+
+      isRefreshingRef.current = true;
+      if (isManual) setIsRefreshing(true);
+
+      try {
+        const [profileRes, oppRes, appRes] = await Promise.allSettled([
+          talentHubApi.getProfile(currentToken),
+          talentHubApi.getOpportunities(currentToken),
+          talentHubApi.getApplications(currentToken),
+        ]);
+
+        if (profileRes.status === 'fulfilled' && profileRes.value?.success) {
+          if (profileRes.value.registered) {
+            setTalentProfile(profileRes.value.talent || null);
+            setLanguages(profileRes.value.languages || []);
+            setExperiences(profileRes.value.experiences || []);
+            setIsRegistered(true);
+            setAuthState('profileLoaded');
+          }
+        }
+
+        if (oppRes.status === 'fulfilled' && oppRes.value?.success) {
+          setOpportunities(oppRes.value.data || []);
+        }
+
+        if (appRes.status === 'fulfilled' && appRes.value?.success) {
+          setApplications(appRes.value.data || []);
+        }
+
+        setLastRefreshedAt(new Date());
+      } catch (err: any) {
+        console.error('[TalentHub Manual Refresh Error]:', err.message);
+      } finally {
+        isRefreshingRef.current = false;
+        if (isManual) {
+          setTimeout(() => setIsRefreshing(false), 400);
+        }
       }
-    } finally {
-      inFlightTokenRef.current = null;
-    }
+    },
+    [session?.access_token]
+  );
+
+  /**
+   * Optimistically appends or updates an application locally in the cache.
+   */
+  const mutateApplications = useCallback((newOrUpdatedApp: ApplicationItem) => {
+    setApplications((prev) => {
+      const idx = prev.findIndex(
+        (a) => a.id === newOrUpdatedApp.id || (a.opportunity_id === newOrUpdatedApp.opportunity_id && a.opportunity_id)
+      );
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], ...newOrUpdatedApp };
+        return copy;
+      }
+      return [newOrUpdatedApp, ...prev];
+    });
   }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    // 0. Detect OAuth errors in URL query/hash if redirected from Supabase
+    // 0. Detect OAuth errors in URL query/hash
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
       const hashClean = (window.location.hash || '').replace(/^#/, '');
@@ -194,6 +363,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (currentSession && currentSession.access_token) {
           setSession(currentSession);
           setUser(currentSession.user || null);
+          lastLoadedUserIdRef.current = currentSession.user?.id || null;
           loadTalentProfile(currentSession.access_token);
         } else {
           setSession(null);
@@ -201,6 +371,8 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
           setTalentProfile(null);
           setLanguages([]);
           setExperiences([]);
+          setOpportunities([]);
+          setApplications([]);
           setIsRegistered(null);
           setAuthState('unauthenticated');
         }
@@ -213,7 +385,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setAuthState('unauthenticated');
       });
 
-    // 2. Subscribe to auth state changes (OAuth redirect, sign-in, token refresh, sign-out)
+    // 2. Subscribe to auth state changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -225,16 +397,29 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setTalentProfile(null);
         setLanguages([]);
         setExperiences([]);
+        setOpportunities([]);
+        setApplications([]);
         setIsRegistered(null);
         setAuthState('unauthenticated');
         setAuthError(null);
         lastLoadedTokenRef.current = null;
+        lastLoadedUserIdRef.current = null;
         return;
       }
 
+      const isSameUser = lastLoadedUserIdRef.current && lastLoadedUserIdRef.current === newSession.user?.id;
+
       setSession(newSession);
       setUser(newSession.user || null);
+      lastLoadedUserIdRef.current = newSession.user?.id || null;
 
+      // When tab focus triggers TOKEN_REFRESHED, do NOT wipe or reload data if already loaded!
+      if (event === 'TOKEN_REFRESHED' && isSameUser && lastLoadedTokenRef.current) {
+        lastLoadedTokenRef.current = newSession.access_token;
+        return;
+      }
+
+      // If new sign-in or different user, perform fresh load
       if (newSession.access_token !== lastLoadedTokenRef.current) {
         await loadTalentProfile(newSession.access_token);
       }
@@ -246,11 +431,6 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [loadTalentProfile]);
 
-  /**
-   * Resolves the OAuth redirect URL dynamically based on the current browser origin.
-   * - Local development: http://localhost:3000/talent-hub (or current host/port)
-   * - Production: https://www.zenemoo.in/talent-hub
-   */
   const getOAuthRedirectUrl = (): string => {
     if (typeof window !== 'undefined' && window.location && window.location.origin) {
       const origin = window.location.origin.replace(/\/$/, '');
@@ -290,12 +470,14 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setTalentProfile(null);
       setLanguages([]);
       setExperiences([]);
+      setOpportunities([]);
+      setApplications([]);
       setIsRegistered(null);
       setAuthState('unauthenticated');
       setAuthError(null);
       lastLoadedTokenRef.current = null;
+      lastLoadedUserIdRef.current = null;
 
-      // Redirect to /talent-hub
       if (typeof window !== 'undefined') {
         window.history.pushState(null, '', '/talent-hub');
         window.location.hash = 'talent-hub';
@@ -305,12 +487,15 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const refreshProfile = async () => {
-    if (session?.access_token) {
-      lastLoadedTokenRef.current = null;
-      await loadTalentProfile(session.access_token);
-    }
-  };
+  // Derived real dashboard statistics
+  const totalApplications = applications.length;
+  const pendingCount = applications.filter((a) => (a.status || '').toLowerCase() === 'pending').length;
+  const shortlistedCount = applications.filter((a) => (a.status || '').toLowerCase() === 'shortlisted').length;
+  const acceptedCount = applications.filter((a) => (a.status || '').toLowerCase() === 'accepted').length;
+  const activeOpportunitiesCount = opportunities.filter((o) => {
+    const s = (o.status || '').toLowerCase();
+    return s === 'active' || s === 'open';
+  }).length;
 
   const token = session?.access_token || null;
   const isLoading = authState === 'checkingSession';
@@ -330,9 +515,20 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         isLoading,
         isProfileLoading,
         authError,
+        opportunities,
+        applications,
+        isDataLoading,
+        isRefreshing,
+        lastRefreshedAt,
+        totalApplications,
+        pendingCount,
+        shortlistedCount,
+        acceptedCount,
+        activeOpportunitiesCount,
         signInWithGoogle,
         signOut,
-        refreshProfile,
+        refreshTalentHubData,
+        mutateApplications,
       }}
     >
       {children}

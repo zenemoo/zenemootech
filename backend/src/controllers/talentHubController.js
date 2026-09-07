@@ -95,7 +95,7 @@ export const getTalentProfile = async (req, res) => {
 
 /**
  * GET /api/talent-hub/opportunities
- * Retrieves all currently active opportunities for talents.
+ * Retrieves all opportunities (active, coming soon, closed) for talents with secure applicant counts.
  */
 export const getTalentOpportunities = async (req, res) => {
   try {
@@ -103,10 +103,9 @@ export const getTalentOpportunities = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    const { data, error } = await supabase
+    const { data: opps, error } = await supabase
       .from('opportunities')
       .select('*')
-      .eq('status', 'active')
       .order('position', { ascending: true });
 
     if (error) {
@@ -114,9 +113,27 @@ export const getTalentOpportunities = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to load opportunities' });
     }
 
+    // Securely calculate applicant count per opportunity without downloading applicant PII
+    const oppsWithCounts = await Promise.all(
+      (opps || []).map(async (opp) => {
+        try {
+          const { count, error: countErr } = await supabase
+            .from('opportunity_applications')
+            .select('id', { count: 'exact', head: true })
+            .eq('opportunity_id', opp.id);
+          return {
+            ...opp,
+            applicant_count: countErr ? 0 : (count || 0),
+          };
+        } catch (_) {
+          return { ...opp, applicant_count: 0 };
+        }
+      })
+    );
+
     return res.json({
       success: true,
-      data: data || [],
+      data: oppsWithCounts,
     });
   } catch (err) {
     console.error('[TalentHub getTalentOpportunities Exception]:', err.message);
@@ -126,7 +143,7 @@ export const getTalentOpportunities = async (req, res) => {
 
 /**
  * GET /api/talent-hub/opportunities/:id
- * Retrieves details of a specific active opportunity.
+ * Retrieves details of a specific opportunity with its secure applicant count.
  */
 export const getTalentOpportunityById = async (req, res) => {
   try {
@@ -143,7 +160,6 @@ export const getTalentOpportunityById = async (req, res) => {
       .from('opportunities')
       .select('*')
       .eq('id', id)
-      .eq('status', 'active')
       .maybeSingle();
 
     if (error) {
@@ -152,12 +168,25 @@ export const getTalentOpportunityById = async (req, res) => {
     }
 
     if (!data) {
-      return res.status(404).json({ success: false, message: 'Opportunity not found or no longer active' });
+      return res.status(404).json({ success: false, message: 'Opportunity not found' });
     }
+
+    // Calculate applicant count securely
+    let applicantCount = 0;
+    try {
+      const { count } = await supabase
+        .from('opportunity_applications')
+        .select('id', { count: 'exact', head: true })
+        .eq('opportunity_id', data.id);
+      applicantCount = count || 0;
+    } catch (_) {}
 
     return res.json({
       success: true,
-      data,
+      data: {
+        ...data,
+        applicant_count: applicantCount,
+      },
     });
   } catch (err) {
     console.error('[TalentHub getTalentOpportunityById Exception]:', err.message);

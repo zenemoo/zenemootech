@@ -668,49 +668,25 @@ export function App() {
         <TermsConditionsPage onBack={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'talent-registration' ? (
         <ZenemooTalentRegistrationPage onBack={handleBackToHome} />
-      ) : currentRoute === 'talent-hub' ? (
+      ) : (
+        currentRoute === 'talent-hub' ||
+        currentRoute === 'talent-hub-dashboard' ||
+        currentRoute === 'talent-hub-profile' ||
+        currentRoute === 'talent-hub-opportunities' ||
+        currentRoute === 'talent-hub-applications'
+      ) ? (
         <ZenemooTalentHubPage
-          initialSubRoute="login"
-          onNavigateHome={handleBackToHome}
-          onNavigateRegister={() => {
-            window.history.pushState(null, '', '/talent-registration');
-            window.location.hash = 'talent-registration';
-            setCurrentRoute('talent-registration');
-          }}
-        />
-      ) : currentRoute === 'talent-hub-dashboard' ? (
-        <ZenemooTalentHubPage
-          initialSubRoute="dashboard"
-          onNavigateHome={handleBackToHome}
-          onNavigateRegister={() => {
-            window.history.pushState(null, '', '/talent-registration');
-            window.location.hash = 'talent-registration';
-            setCurrentRoute('talent-registration');
-          }}
-        />
-      ) : currentRoute === 'talent-hub-profile' ? (
-        <ZenemooTalentHubPage
-          initialSubRoute="profile"
-          onNavigateHome={handleBackToHome}
-          onNavigateRegister={() => {
-            window.history.pushState(null, '', '/talent-registration');
-            window.location.hash = 'talent-registration';
-            setCurrentRoute('talent-registration');
-          }}
-        />
-      ) : currentRoute === 'talent-hub-opportunities' ? (
-        <ZenemooTalentHubPage
-          initialSubRoute="opportunities"
-          onNavigateHome={handleBackToHome}
-          onNavigateRegister={() => {
-            window.history.pushState(null, '', '/talent-registration');
-            window.location.hash = 'talent-registration';
-            setCurrentRoute('talent-registration');
-          }}
-        />
-      ) : currentRoute === 'talent-hub-applications' ? (
-        <ZenemooTalentHubPage
-          initialSubRoute="applications"
+          initialSubRoute={
+            currentRoute === 'talent-hub-dashboard'
+              ? 'dashboard'
+              : currentRoute === 'talent-hub-profile'
+              ? 'profile'
+              : currentRoute === 'talent-hub-opportunities'
+              ? 'opportunities'
+              : currentRoute === 'talent-hub-applications'
+              ? 'applications'
+              : 'login'
+          }
           onNavigateHome={handleBackToHome}
           onNavigateRegister={() => {
             window.history.pushState(null, '', '/talent-registration');
@@ -828,18 +804,36 @@ export function App() {
         <>
           {currentRoute !== 'zenemooai' && (
             <>
-              <ZenemooAiDrawer
-                isOpen={isAiDrawerOpen}
-                onClose={() => setIsAiDrawerOpen(false)}
-              />
+              {!(
+                currentRoute === 'talent-hub' ||
+                currentRoute === 'talent-hub-dashboard' ||
+                currentRoute === 'talent-hub-profile' ||
+                currentRoute === 'talent-hub-opportunities' ||
+                currentRoute === 'talent-hub-applications'
+              ) && (
+                <ZenemooAiDrawer
+                  isOpen={isAiDrawerOpen}
+                  onClose={() => setIsAiDrawerOpen(false)}
+                />
+              )}
               <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
             </>
           )}
-          <SubscribeModal />
-          <ZenemooNotificationPrompt />
+          {!(
+            currentRoute === 'talent-hub' ||
+            currentRoute === 'talent-hub-dashboard' ||
+            currentRoute === 'talent-hub-profile' ||
+            currentRoute === 'talent-hub-opportunities' ||
+            currentRoute === 'talent-hub-applications'
+          ) && (
+            <>
+              <SubscribeModal />
+              <ZenemooNotificationPrompt />
+              <ScrollProgressButton />
+            </>
+          )}
           <NotificationToast />
           <ZenemooAppUpdatePrompt />
-          <ScrollProgressButton />
         </>
       )}
     </>
