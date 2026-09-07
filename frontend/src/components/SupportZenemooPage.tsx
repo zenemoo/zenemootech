@@ -218,11 +218,13 @@ const SupportHeroGlobe: React.FC = () => {
 interface SupportZenemooPageProps {
   onBackToHome?: () => void;
   onOpenAiDrawer?: () => void;
+  inTalentHubShell?: boolean;
 }
 
 export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
   onBackToHome,
   onOpenAiDrawer,
+  inTalentHubShell = false,
 }) => {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
@@ -317,16 +319,16 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
       />
 
       {/* ========================================================= */}
-      {/* 1. REUSED EXISTING MAIN WEBSITE NAVBAR                    */}
+      {/* 1. REUSED EXISTING MAIN WEBSITE NAVBAR (Skip in Talent Hub)*/}
       {/* ========================================================= */}
-      <Navbar onOpenAiDrawer={onOpenAiDrawer} />
+      {!inTalentHubShell && <Navbar onOpenAiDrawer={onOpenAiDrawer} />}
 
       {/* Main Support Page Content */}
-      <main className="relative">
+      <main className="relative min-w-0 max-w-full overflow-hidden">
         {/* ========================================================= */}
         {/* 2. HERO SECTION (DARK LUXURY COSMIC / TECH LIGHTING)      */}
         {/* ========================================================= */}
-        <section className="relative bg-[#050811] text-white pt-24 sm:pt-28 lg:pt-36 pb-20 sm:pb-28 overflow-hidden border-b border-white/10">
+        <section className={`relative bg-[#050811] text-white ${inTalentHubShell ? 'pt-4 sm:pt-8' : 'pt-24 sm:pt-28 lg:pt-36'} pb-20 sm:pb-28 overflow-hidden border-b border-white/10`}>
           {/* Subtle Starry Mesh & Glowing Ambient Nebula */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
             <div className="absolute top-1/4 -left-20 w-[550px] h-[550px] bg-cyan-500/10 rounded-full blur-[130px]" />
@@ -870,9 +872,9 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 9. REUSED EXISTING MAIN WEBSITE FOOTER                    */}
+      {/* 9. REUSED EXISTING MAIN WEBSITE FOOTER (Skip in Talent Hub)*/}
       {/* ========================================================= */}
-      <Footer />
+      {!inTalentHubShell && <Footer />}
     </div>
   );
 };

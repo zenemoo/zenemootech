@@ -155,7 +155,7 @@ export const TalentHubOpportunities: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
       {/* ── Page Header & Controls ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div>

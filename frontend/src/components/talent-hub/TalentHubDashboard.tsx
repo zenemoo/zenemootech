@@ -39,7 +39,7 @@ export const TalentHubDashboard: React.FC<TalentHubDashboardProps> = ({ onNaviga
     : user?.user_metadata?.full_name?.split(' ')[0] || user?.user_metadata?.name?.split(' ')[0] || 'Contributor';
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
       {/* ── App Welcome Hero Banner ── */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#080d19] via-[#0f172a]/60 to-[#080d19] border border-cyan-500/20 p-6 sm:p-8 shadow-2xl">
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />

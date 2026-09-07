@@ -53,7 +53,7 @@ import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPa
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -118,6 +118,7 @@ export function App() {
         | 'talent-hub-profile'
         | 'talent-hub-opportunities'
         | 'talent-hub-applications'
+        | 'talent-hub-support'
         | 'ai-data'
         | 'ai-data-detail'
         | 'app-hub'
@@ -213,6 +214,17 @@ export function App() {
         hash === '#/register-talent'
       ) {
         matchedRoute = 'talent-registration';
+      } else if (
+        path === '/talent-hub/support-zenemooindia' ||
+        path === '/talent-hub/support-zenemooindia/' ||
+        path === '/talent-hub/support-zenemoo' ||
+        path === '/talent-hub/support-zenemoo/' ||
+        hash === '#talent-hub/support-zenemooindia' ||
+        hash === '#/talent-hub/support-zenemooindia' ||
+        hash === '#talent-hub/support-zenemoo' ||
+        hash === '#/talent-hub/support-zenemoo'
+      ) {
+        matchedRoute = 'talent-hub-support';
       } else if (
         path === '/talent-hub/dashboard' ||
         path === '/talent-hub/dashboard/' ||
@@ -673,7 +685,8 @@ export function App() {
         currentRoute === 'talent-hub-dashboard' ||
         currentRoute === 'talent-hub-profile' ||
         currentRoute === 'talent-hub-opportunities' ||
-        currentRoute === 'talent-hub-applications'
+        currentRoute === 'talent-hub-applications' ||
+        currentRoute === 'talent-hub-support'
       ) ? (
         <ZenemooTalentHubPage
           initialSubRoute={
@@ -685,6 +698,8 @@ export function App() {
               ? 'opportunities'
               : currentRoute === 'talent-hub-applications'
               ? 'applications'
+              : currentRoute === 'talent-hub-support'
+              ? 'support-zenemooindia'
               : 'login'
           }
           onNavigateHome={handleBackToHome}
@@ -809,14 +824,17 @@ export function App() {
                 currentRoute === 'talent-hub-dashboard' ||
                 currentRoute === 'talent-hub-profile' ||
                 currentRoute === 'talent-hub-opportunities' ||
-                currentRoute === 'talent-hub-applications'
+                currentRoute === 'talent-hub-applications' ||
+                currentRoute === 'talent-hub-support'
               ) && (
-                <ZenemooAiDrawer
-                  isOpen={isAiDrawerOpen}
-                  onClose={() => setIsAiDrawerOpen(false)}
-                />
+                <>
+                  <ZenemooAiDrawer
+                    isOpen={isAiDrawerOpen}
+                    onClose={() => setIsAiDrawerOpen(false)}
+                  />
+                  <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+                </>
               )}
-              <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
             </>
           )}
           {!(
@@ -824,7 +842,8 @@ export function App() {
             currentRoute === 'talent-hub-dashboard' ||
             currentRoute === 'talent-hub-profile' ||
             currentRoute === 'talent-hub-opportunities' ||
-            currentRoute === 'talent-hub-applications'
+            currentRoute === 'talent-hub-applications' ||
+            currentRoute === 'talent-hub-support'
           ) && (
             <>
               <SubscribeModal />

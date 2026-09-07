@@ -6,8 +6,9 @@ import { TalentHubDashboard } from './TalentHubDashboard';
 import { TalentHubProfile } from './TalentHubProfile';
 import { TalentHubOpportunities } from './TalentHubOpportunities';
 import { TalentHubApplications } from './TalentHubApplications';
+import { SupportZenemooPage } from '../SupportZenemooPage';
 
-export type TalentHubSubRoute = 'login' | 'dashboard' | 'profile' | 'opportunities' | 'applications';
+export type TalentHubSubRoute = 'login' | 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia';
 
 interface ZenemooTalentHubPageProps {
   initialSubRoute?: TalentHubSubRoute;
@@ -30,7 +31,7 @@ const TalentHubContent: React.FC<{
     }
   }, [session, isRegistered, isLoading, currentSubRoute, onChangeSubRoute]);
 
-  // If not authenticated or not registered, protect dashboard/profile/opps/applications routes
+  // If not authenticated or not registered, protect dashboard/profile/opps/applications/support routes
   if (!session || isRegistered !== true) {
     return (
       <TalentHubLoginPage
@@ -57,6 +58,9 @@ const TalentHubContent: React.FC<{
         <TalentHubApplications
           onNavigateOpportunities={() => onChangeSubRoute('opportunities')}
         />
+      )}
+      {activeTab === 'support-zenemooindia' && (
+        <SupportZenemooPage inTalentHubShell={true} onBackToHome={onNavigateHome} />
       )}
     </TalentHubLayout>
   );
