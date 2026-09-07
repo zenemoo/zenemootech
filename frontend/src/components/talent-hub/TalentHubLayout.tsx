@@ -15,6 +15,7 @@ import {
   ChevronDown,
   RefreshCw,
   CheckCircle2,
+  Heart,
 } from 'lucide-react';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import { NotificationCenter } from '../NotificationCenter';
@@ -48,10 +49,11 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/talent-hub/dashboard' },
-    { id: 'profile', label: 'My Profile', icon: User, path: '/talent-hub/profile' },
-    { id: 'opportunities', label: 'Opportunities', icon: Briefcase, path: '/talent-hub/opportunities' },
-    { id: 'applications', label: 'My Applications', icon: FileCheck, path: '/talent-hub/applications' },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'profile', label: 'My Profile', icon: User },
+    { id: 'opportunities', label: 'Opportunities', icon: Briefcase },
+    { id: 'applications', label: 'My Applications', icon: FileCheck },
+    { id: 'support', label: 'Support', icon: Heart, isExternal: true, href: '/support-zenemooindia' },
   ] as const;
 
   const handleManualRefresh = async () => {
@@ -62,7 +64,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative">
+    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative">
       {/* ── Top Navigation Header ── */}
       <header className="sticky top-0 z-40 bg-[#080912]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-6 lg:px-8 shadow-xl shadow-black/40">
         <div className="max-w-7xl mx-auto h-16 flex items-center justify-between gap-3">
@@ -107,11 +109,23 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
           <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md">
             {navItems.map((item) => {
               const Icon = item.icon;
+              if ('isExternal' in item && item.isExternal) {
+                return (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs text-pink-300 hover:text-white hover:bg-pink-500/15 font-medium border border-pink-500/20 hover:border-pink-500/40 transition-all duration-200"
+                  >
+                    <Icon className="w-3.5 h-3.5 text-pink-400" />
+                    <span>{item.label}</span>
+                  </a>
+                );
+              }
               const isActive = currentTab === item.id;
               return (
                 <button
                   key={item.id}
-                  onClick={() => onNavigate(item.id)}
+                  onClick={() => onNavigate(item.id as any)}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
                     isActive
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm shadow-cyan-500/20'
@@ -129,11 +143,23 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
           <nav className="hidden md:flex xl:hidden items-center gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
+              if ('isExternal' in item && item.isExternal) {
+                return (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-pink-300 hover:text-white hover:bg-pink-500/15 border border-pink-500/20 transition-all duration-200"
+                  >
+                    <Icon className="w-3.5 h-3.5 text-pink-400" />
+                    <span>{item.label}</span>
+                  </a>
+                );
+              }
               const isActive = currentTab === item.id;
               return (
                 <button
                   key={item.id}
-                  onClick={() => onNavigate(item.id)}
+                  onClick={() => onNavigate(item.id as any)}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
                     isActive
                       ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
@@ -147,7 +173,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             })}
           </nav>
 
-          {/* Right Action Bar: Refresh Button, Notification Center, AI Button, User Profile */}
+          {/* Right Action Bar: Refresh Button, Notification Center, User Profile (Ask AI removed from top navbar) */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             {/* 🔄 Manual Refresh Button */}
             <button
@@ -178,16 +204,6 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
             {/* Centralized Notification Center (Reused without duplicate polling) */}
             <NotificationCenter />
-
-            {/* Zenemoo AI Desktop Header Launcher */}
-            <button
-              onClick={() => setIsAiDrawerOpen(true)}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-indigo-500/10 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white transition-all text-xs font-mono font-bold cursor-pointer"
-              title="Ask Zenemoo AI"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Ask AI</span>
-            </button>
 
             {/* User Profile Pill & Dropdown Menu */}
             <div className="relative">
@@ -272,6 +288,14 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                           <Briefcase className="w-3.5 h-3.5 text-blue-400" />
                           Browse Opportunities
                         </button>
+                        <a
+                          href="/support-zenemooindia"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-pink-300 hover:text-white hover:bg-pink-500/10 transition-colors"
+                        >
+                          <Heart className="w-3.5 h-3.5 text-pink-400" />
+                          Support Zenemoo
+                        </a>
                       </div>
 
                       <div className="pt-1">
@@ -316,12 +340,25 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             >
               {navItems.map((item) => {
                 const Icon = item.icon;
+                if ('isExternal' in item && item.isExternal) {
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-pink-300 bg-pink-500/10 border border-pink-500/30 transition-all"
+                    >
+                      <Icon className="w-4 h-4 text-pink-400" />
+                      <span>{item.label}</span>
+                    </a>
+                  );
+                }
                 const isActive = currentTab === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => {
-                      onNavigate(item.id);
+                      onNavigate(item.id as any);
                       setMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -335,21 +372,6 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                   </button>
                 );
               })}
-
-              <div className="pt-2 border-t border-white/10 space-y-2">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    setIsAiDrawerOpen(true);
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/15 via-purple-500/15 to-indigo-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold"
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400" />
-                    <span>Ask Zenemoo AI Assistant</span>
-                  </div>
-                </button>
-              </div>
 
               <div className="pt-3 border-t border-white/10 px-4 flex items-center justify-between">
                 <div className="flex items-center gap-2.5 truncate max-w-[70%]">

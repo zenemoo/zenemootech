@@ -238,19 +238,20 @@ export const submitApplication = async (req, res) => {
         if (foundOpp.title) {
           cleanTitle = foundOpp.title.replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
         }
-        if (foundOpp.status === 'stopped') {
+        const oppStatus = (foundOpp.status || '').toLowerCase();
+        if (oppStatus === 'stopped' || oppStatus === 'closed' || oppStatus === 'completed' || oppStatus === 'archived') {
           return res.status(400).json({
             success: false,
             error: 'Applications for this opportunity are currently closed.',
           });
         }
-        if (foundOpp.status === 'coming_soon') {
+        if (oppStatus === 'coming_soon' || oppStatus === 'upcoming' || oppStatus === 'pending') {
           return res.status(400).json({
             success: false,
             error: 'Applications for this opportunity will open soon.',
           });
         }
-        if (foundOpp.status === 'draft') {
+        if (oppStatus !== 'active' && oppStatus !== 'open') {
           return res.status(400).json({
             success: false,
             error: 'This opportunity is not currently accepting public applications.',

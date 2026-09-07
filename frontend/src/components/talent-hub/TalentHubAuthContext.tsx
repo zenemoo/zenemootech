@@ -449,6 +449,10 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
+          queryParams: {
+            prompt: 'select_account',
+            access_type: 'offline',
+          },
         },
       });
 
@@ -481,6 +485,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (typeof window !== 'undefined') {
         window.history.pushState(null, '', '/talent-hub');
         window.location.hash = 'talent-hub';
+        window.dispatchEvent(new PopStateEvent('popstate'));
       }
     } catch (err: any) {
       console.error('[TalentHub SignOut Error]:', err.message);

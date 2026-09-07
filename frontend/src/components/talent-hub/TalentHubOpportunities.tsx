@@ -45,8 +45,8 @@ export const TalentHubOpportunities: React.FC = () => {
   // Classify opportunity status
   const getOpportunityStatus = (opp: OpportunityItem): 'open' | 'coming_soon' | 'closed' => {
     const s = (opp.status || 'active').toLowerCase();
-    if (s === 'closed' || s === 'completed' || s === 'archived') return 'closed';
-    if (s === 'coming_soon' || s === 'upcoming' || s === 'pending') return 'coming_soon';
+    if (s === 'closed' || s === 'completed' || s === 'archived' || s === 'stopped') return 'closed';
+    if (s === 'coming_soon' || s === 'upcoming' || s === 'pending' || s === 'draft') return 'coming_soon';
     return 'open';
   };
 
@@ -67,6 +67,10 @@ export const TalentHubOpportunities: React.FC = () => {
   });
 
   const handleOpenApply = (opp: OpportunityItem) => {
+    // Strictly prevent opening the apply modal if not open or already applied
+    if (getOpportunityStatus(opp) !== 'open' || isAlreadyApplied(opp.id)) {
+      return;
+    }
     setSelectedOppForDetail(null);
     setSelectedOppForApply(opp);
     setAnswers({});
@@ -82,6 +86,11 @@ export const TalentHubOpportunities: React.FC = () => {
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOppForApply || !token) return;
+
+    if (getOpportunityStatus(selectedOppForApply) !== 'open') {
+      setSubmitError('This opportunity is not currently accepting applications.');
+      return;
+    }
 
     if (isAlreadyApplied(selectedOppForApply.id)) {
       setSubmitError('You have already applied for this opportunity.');
@@ -247,12 +256,12 @@ export const TalentHubOpportunities: React.FC = () => {
                 className="rounded-3xl bg-[#080d19]/90 border border-white/10 hover:border-cyan-500/40 shadow-xl overflow-hidden flex flex-col justify-between transition-all duration-300 relative"
               >
                 {/* Poster / Header */}
-                <div className="relative h-44 bg-gradient-to-tr from-slate-950 via-[#0a0f1d] to-[#121b33] overflow-hidden">
+                <div className="relative h-48 bg-gradient-to-tr from-slate-950 via-[#0a0f1d] to-[#121b33] overflow-hidden">
                   {opp.poster_url ? (
                     <img
                       src={opp.poster_url}
                       alt={opp.title}
-                      className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-cover opacity-85 group-hover:scale-105 transition-transform duration-500"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-700">
@@ -262,31 +271,34 @@ export const TalentHubOpportunities: React.FC = () => {
 
                   <div className="absolute inset-0 bg-gradient-to-t from-[#080d19] via-[#080d19]/40 to-transparent" />
 
-                  {/* Status Badge */}
+                  {/* Status Badge (Top-Left) */}
                   <div className="absolute top-3 left-3 flex items-center gap-2">
                     <span
-                      className={`px-2.5 py-1 rounded-full backdrop-blur-md text-[10px] font-mono font-bold uppercase tracking-wider border shadow-md ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md text-[10px] font-mono font-bold uppercase tracking-wider border shadow-md ${
                         isClosed
-                          ? 'bg-slate-900/80 text-slate-300 border-slate-700'
+                          ? 'bg-slate-900/90 text-slate-300 border-slate-700'
                           : isComingSoon
                           ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                          : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       }`}
                     >
-                      {isClosed ? 'CLOSED' : isComingSoon ? 'COMING SOON' : opp.badge || 'OPEN'}
+                      {isOpen && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                      {isComingSoon && <Clock className="w-3 h-3 text-amber-400" />}
+                      {isClosed && <Ban className="w-3 h-3 text-slate-400" />}
+                      <span>{isClosed ? 'CLOSED' : isComingSoon ? 'COMING SOON' : opp.badge || 'OPEN'}</span>
                     </span>
                   </div>
 
-                  {/* Applicant Count Pill */}
-                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-slate-200 text-[10px] font-mono font-medium shadow-sm">
+                  {/* Applicant Count Pill (Top-Right) */}
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-slate-200 text-[10px] font-mono font-semibold shadow-sm">
                     <Users className="w-3 h-3 text-cyan-400" />
                     <span>{applicantCount} Applicants</span>
                   </div>
 
-                  {/* Already Applied Pill */}
+                  {/* Already Applied Pill (Bottom-Right) */}
                   {alreadyApplied && (
-                    <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold shadow-md">
-                      <CheckCircle2 className="w-3 h-3" />
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/80 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold shadow-md">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                       <span>Applied</span>
                     </div>
                   )}
@@ -328,7 +340,7 @@ export const TalentHubOpportunities: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Action Buttons with Status Enforcement */}
+                  {/* Action Buttons with Strict Status Enforcement */}
                   <div className="pt-4 border-t border-white/5 flex items-center gap-2">
                     <button
                       onClick={() => setSelectedOppForDetail(opp)}
@@ -355,7 +367,7 @@ export const TalentHubOpportunities: React.FC = () => {
                     ) : isComingSoon ? (
                       <button
                         disabled
-                        className="flex-1 py-2.5 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2.5 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300/90 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
                       >
                         <Clock className="w-3.5 h-3.5" />
                         <span>Coming Soon</span>
@@ -366,7 +378,7 @@ export const TalentHubOpportunities: React.FC = () => {
                         className="flex-1 py-2.5 px-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 text-slate-400 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
                       >
                         <Ban className="w-3.5 h-3.5" />
-                        <span>Closed</span>
+                        <span>Applications Closed</span>
                       </button>
                     )}
                   </div>

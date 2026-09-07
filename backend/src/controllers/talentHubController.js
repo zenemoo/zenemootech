@@ -320,7 +320,8 @@ export const submitTalentOpportunityApplication = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Opportunity not found' });
     }
 
-    if (oppRecord.status !== 'active') {
+    const oppStatus = (oppRecord.status || '').toLowerCase();
+    if (oppStatus !== 'active' && oppStatus !== 'open') {
       return res.status(400).json({
         success: false,
         message: `Applications for this opportunity are not currently open (Status: ${oppRecord.status}).`,
