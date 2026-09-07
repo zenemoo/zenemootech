@@ -82,7 +82,7 @@ export const ZenemooTalentHubPage: React.FC<ZenemooTalentHubPageProps> = ({
     const path = newRoute === 'login' ? '/talent-hub' : `/talent-hub/${newRoute}`;
     if (typeof window !== 'undefined') {
       window.history.pushState(null, '', path);
-      window.location.hash = path.replace(/^\//, '');
+      window.scrollTo({ top: 0, behavior: 'instant' });
     }
   };
 

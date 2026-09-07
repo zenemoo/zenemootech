@@ -46,16 +46,48 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
   // Close mobile drawer and social sheet on Escape key
   useEffect(() => {
-    if (!mobileMenuOpen && !isSocialSheetOpen) return;
+    if (!mobileMenuOpen && !isSocialSheetOpen && !userMenuOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMobileMenuOpen(false);
         setIsSocialSheetOpen(false);
+        setUserMenuOpen(false);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [mobileMenuOpen, isSocialSheetOpen]);
+  }, [mobileMenuOpen, isSocialSheetOpen, userMenuOpen]);
+
+  // Auto-close user profile dropdown when page scrolling occurs outside
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const handleScroll = () => {
+      setUserMenuOpen(false);
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      const el = document.getElementById('talent-hub-user-menu');
+      if (el && el.contains(e.target as Node)) return;
+      setUserMenuOpen(false);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const el = document.getElementById('talent-hub-user-menu');
+      if (el && el.contains(e.target as Node)) return;
+      setUserMenuOpen(false);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [userMenuOpen]);
 
   // Lock body scrolling when social sheet is open
   useEffect(() => {
@@ -99,9 +131,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden">
-      {/* ── Top Navigation Header (Locked, Stable, Zero Jumping) ── */}
-      <header className="sticky top-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
-        <div className="max-w-7xl mx-auto h-16 flex items-center justify-between gap-3 min-w-0">
+      {/* ── Fixed Top Navigation Header (100% Locked, Immovable, Zero Vertical/Horizontal Movement) ── */}
+      <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
+        <div className="max-w-7xl mx-auto h-full flex items-center justify-between gap-3 min-w-0">
           {/* Brand Logo & Portal Title */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 min-w-0">
             <a
@@ -272,17 +304,18 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                       onClick={() => setUserMenuOpen(false)}
                     />
                     <motion.div
+                      id="talent-hub-user-menu"
                       initial={{ opacity: 0, scale: 0.95, y: 5 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                      className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/30 shadow-2xl p-2 z-50 divide-y divide-white/10 text-xs"
+                      className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#0a0f1d] border border-cyan-500/40 shadow-[0_12px_45px_rgba(0,0,0,0.98)] p-2 z-50 divide-y divide-white/10 text-xs"
                     >
                       <div className="px-3 py-2.5">
                         <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider">Signed in as</p>
                         <p className="text-sm font-bold text-white truncate mt-0.5">{displayName}</p>
                         <p className="text-xs text-cyan-400 truncate mt-0.5 font-mono">{displayEmail}</p>
                         {talentProfile?.registration_code && (
-                          <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-[10px] font-mono text-slate-300">
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/10 text-[10px] font-mono text-slate-300">
                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                             <span>{talentProfile.registration_code}</span>
                           </div>
@@ -367,6 +400,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
           </div>
         </div>
       </header>
+
+      {/* ── Fixed Header Spacer (Prevents page content overlap, 100% stable) ── */}
+      <div className="h-16 w-full shrink-0" aria-hidden="true" />
 
       {/* ── MOBILE GLASS OVERLAY DRAWER (Sliding Overlay, Zero Page Push) ── */}
       <AnimatePresence>
