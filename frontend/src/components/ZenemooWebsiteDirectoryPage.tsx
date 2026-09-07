@@ -22,6 +22,8 @@ import {
   ChevronRight,
   MessageSquare,
   HelpCircle,
+  Lock,
+  Heart,
 } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { useActiveLogo } from '../lib/useActiveLogo';
@@ -121,6 +123,17 @@ const DIRECTORY_ITEMS: DirectoryItem[] = [
 
   // Careers & Opportunities
   {
+    id: 'talent-hub-login',
+    title: 'Login Zenemoo — Talent Hub Contributor Portal',
+    category: 'careers',
+    categoryLabel: 'Careers & Opportunities',
+    description: 'Sign in with your registered Google account to access your contributor profile, view audio & data tasks, track applications, and view earnings.',
+    url: '/talent-hub',
+    badge: 'Contributor Portal',
+    icon: Lock,
+    featured: true,
+  },
+  {
     id: 'opportunities',
     title: 'Program Opportunities & Contributor Jobs',
     category: 'careers',
@@ -183,6 +196,16 @@ const DIRECTORY_ITEMS: DirectoryItem[] = [
     description: 'Corporate homepage featuring interactive telemetry counters, technology stack, and client partner credentials.',
     url: '/',
     icon: Home,
+  },
+  {
+    id: 'support-zenemoo',
+    title: 'Support Zenemoo Initiative & Founder Story',
+    category: 'company',
+    categoryLabel: 'Company & Credentials',
+    description: 'Learn about our mission, founder story, and support Zenemoo as we build language AI technology and fair opportunities.',
+    url: '/support-zenemooindia',
+    badge: 'Support',
+    icon: Heart,
   },
   {
     id: 'partners',

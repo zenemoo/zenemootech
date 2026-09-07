@@ -60,6 +60,59 @@ export const TalentHubLoginPage: React.FC<TalentHubLoginPageProps> = ({
     }
   };
 
+  React.useEffect(() => {
+    document.title = 'Login Zenemoo — Talent Hub Contributor Portal';
+
+    // JSON-LD Structured Data for Google Search "Login Zenemoo"
+    const jsonLdScript = document.createElement('script');
+    jsonLdScript.type = 'application/ld+json';
+    jsonLdScript.id = 'zenemoo-talent-hub-login-schema';
+    jsonLdScript.text = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'WebPage',
+          '@id': 'https://www.zenemoo.in/talent-hub#webpage',
+          url: 'https://www.zenemoo.in/talent-hub',
+          name: 'Login Zenemoo — Talent Hub Contributor Portal',
+          description:
+            'Login to Zenemoo Talent Hub. Access your verified contributor profile, AI speech datasets, transcription tasks, project applications, and earnings.',
+          inLanguage: 'en',
+          isPartOf: {
+            '@type': 'WebSite',
+            '@id': 'https://www.zenemoo.in/#website',
+            name: 'Zenemoo',
+            url: 'https://www.zenemoo.in',
+          },
+        },
+        {
+          '@type': 'BreadcrumbList',
+          '@id': 'https://www.zenemoo.in/talent-hub#breadcrumb',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Home',
+              item: 'https://www.zenemoo.in/',
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Zenemoo Login',
+              item: 'https://www.zenemoo.in/talent-hub',
+            },
+          ],
+        },
+      ],
+    });
+    document.head.appendChild(jsonLdScript);
+
+    return () => {
+      const existing = document.getElementById('zenemoo-talent-hub-login-schema');
+      if (existing) existing.remove();
+    };
+  }, []);
+
   // ── State 1: Checking authentication or registration status ──
   if (isLoading || isProfileLoading) {
     return (

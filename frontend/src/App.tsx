@@ -441,9 +441,15 @@ export function App() {
         matchedRoute === 'talent-hub-applications' ||
         path.startsWith('/talent-hub')
       ) {
-        pageTitle = 'Zenemoo Talent Hub — Contributor Portal';
-        canonicalUrl = `https://www.zenemoo.in${path}`;
-        metaDescription = 'Access your registered Zenemoo talent profile, explore active AI data collection and annotation opportunities, and track your applications.';
+        if (matchedRoute === 'talent-hub' || path === '/talent-hub' || path === '/talent-hub/') {
+          pageTitle = 'Login Zenemoo — Talent Hub Contributor Portal';
+          canonicalUrl = 'https://www.zenemoo.in/talent-hub';
+          metaDescription = 'Login to Zenemoo Talent Hub. Access your verified contributor profile, AI speech datasets, transcription tasks, project applications, and earnings.';
+        } else {
+          pageTitle = 'Zenemoo Talent Hub — Contributor Portal';
+          canonicalUrl = `https://www.zenemoo.in${path}`;
+          metaDescription = 'Access your registered Zenemoo talent profile, explore active AI data collection and annotation opportunities, and track your applications.';
+        }
       } else if (path === '/terms' || hash.includes('#terms')) {
         pageTitle = 'Terms & Conditions — Zenemoo Enterprise AI';
         canonicalUrl = 'https://www.zenemoo.in/terms';

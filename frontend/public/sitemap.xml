@@ -15,42 +15,55 @@
     </image:image>
   </url>
 
-  <!-- 2. AI Data Talent & Partner Registration -->
+  <!-- 2. Login Zenemoo — Talent Hub Contributor Portal -->
+  <url>
+    <loc>https://www.zenemoo.in/talent-hub</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.98</priority>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>Login Zenemoo — Talent Hub Contributor Portal</image:title>
+      <image:caption>Zenemoo Contributor Login and AI Talent Hub Portal</image:caption>
+    </image:image>
+  </url>
+
+  <!-- 3. AI Data Talent & Partner Registration -->
   <url>
     <loc>https://www.zenemoo.in/talent-registration</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.98</priority>
   </url>
 
-  <!-- 3. Program Opportunities & Careers Portal -->
+  <!-- 4. Program Opportunities & Careers Portal -->
   <url>
     <loc>https://www.zenemoo.in/opportunities</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
   </url>
 
-  <!-- 4. Data Team Roster & Executive Directory -->
+  <!-- 5. Data Team Roster & Executive Directory -->
   <url>
     <loc>https://www.zenemoo.in/team-directory</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
   </url>
 
-  <!-- 5. Official Zenemoo AI Assistant -->
+  <!-- 6. Official Zenemoo AI Assistant -->
   <url>
     <loc>https://www.zenemoo.in/zenemooai</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
   </url>
 
-  <!-- 6. Community & Client Reviews Page -->
+  <!-- 7. Community & Client Reviews Page -->
   <url>
     <loc>https://www.zenemoo.in/review</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.95</priority>
     <image:image>
@@ -60,44 +73,44 @@
     </image:image>
   </url>
 
-  <!-- 7. Standalone Privacy Policy Page -->
+  <!-- 8. Standalone Privacy Policy Page -->
   <url>
     <loc>https://www.zenemoo.in/privacy</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.40</priority>
   </url>
 
-  <!-- 8. Standalone Terms & Conditions Page -->
+  <!-- 9. Standalone Terms & Conditions Page -->
   <url>
     <loc>https://www.zenemoo.in/terms</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.40</priority>
   </url>
 
-  <!-- 9. Official Application Center -->
+  <!-- 10. Official Application Center -->
   <url>
     <loc>https://www.zenemoo.in/app</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.92</priority>
   </url>
 
-  <!-- 10. Official Android Application Download Page -->
+  <!-- 11. Official Android Application Download Page -->
   <url>
     <loc>https://www.zenemoo.in/app/android</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.90</priority>
   </url>
 
-  <!-- 11. Official Support Zenemoo Initiative & Founder Story -->
+  <!-- 12. Official Support Zenemoo Initiative & Founder Story -->
   <url>
     <loc>https://www.zenemoo.in/support-zenemooindia</loc>
-    <lastmod>2026-09-05</lastmod>
+    <lastmod>2026-09-07</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.70</priority>
+    <priority>0.85</priority>
     <image:image>
       <image:loc>https://www.zenemoo.in/assets/founder-story-poster.png</image:loc>
       <image:title>Prem Prasad Pradhan — Founder &amp; COO of Zenemoo — A Bright Tomorrow, Together</image:title>
