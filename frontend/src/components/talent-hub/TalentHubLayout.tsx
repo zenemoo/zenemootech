@@ -22,6 +22,7 @@ import { useTalentHubAuth } from './TalentHubAuthContext';
 import { NotificationCenter } from '../NotificationCenter';
 import { ZenemooAiDrawer } from '../ZenemooAiDrawer';
 import { SeoImage } from '../../seo/components/SeoImage';
+import { ZENEMOO_SOCIAL_LINKS } from '../SocialData';
 
 export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia';
 
@@ -40,17 +41,33 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
+  const [isSocialSheetOpen, setIsSocialSheetOpen] = useState(false);
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
 
-  // Close mobile drawer on Escape key
+  // Close mobile drawer and social sheet on Escape key
   useEffect(() => {
-    if (!mobileMenuOpen) return;
+    if (!mobileMenuOpen && !isSocialSheetOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileMenuOpen(false);
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+        setIsSocialSheetOpen(false);
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [mobileMenuOpen]);
+  }, [mobileMenuOpen, isSocialSheetOpen]);
+
+  // Lock body scrolling when social sheet is open
+  useEffect(() => {
+    if (isSocialSheetOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isSocialSheetOpen]);
 
   const displayName =
     talentProfile?.full_name ||
@@ -82,8 +99,8 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden">
-      {/* ── Top Navigation Header ── */}
-      <header className="sticky top-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full">
+      {/* ── Top Navigation Header (Locked, Stable, Zero Jumping) ── */}
+      <header className="sticky top-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
         <div className="max-w-7xl mx-auto h-16 flex items-center justify-between gap-3 min-w-0">
           {/* Brand Logo & Portal Title */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 min-w-0">
@@ -188,7 +205,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             </button>
           </nav>
 
-          {/* Desktop & Tablet Action Bar (Hidden on Mobile) */}
+          {/* Desktop & Tablet Action Bar */}
           <div className="hidden md:flex items-center gap-2 sm:gap-2.5 shrink-0">
             {/* 🔄 Manual Refresh Button */}
             <button
@@ -334,8 +351,12 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             </div>
           </div>
 
-          {/* Mobile Right: Hamburger Button ONLY (Compact, Clean) */}
-          <div className="flex md:hidden items-center shrink-0">
+          {/* Mobile Right: Notification Bell Beside Hamburger Button [🔔] [☰] */}
+          <div className="flex md:hidden items-center gap-2 shrink-0">
+            {/* 🔔 Notification Center permanently visible beside hamburger */}
+            <NotificationCenter />
+
+            {/* ☰ Hamburger Button */}
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="p-2 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white hover:border-cyan-500/40 focus:outline-none cursor-pointer"
@@ -387,7 +408,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
-                  className="p-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white border border-white/10"
+                  className="p-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white border border-white/10 cursor-pointer"
                   aria-label="Close menu"
                 >
                   <X className="w-5 h-5" />
@@ -406,7 +427,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                     <button
                       key={item.id}
                       onClick={() => handleNavClick(item.id)}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                         isActive
                           ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm shadow-cyan-500/20'
                           : 'text-slate-300 hover:bg-white/5 border border-transparent'
@@ -429,7 +450,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 <button
                   onClick={handleManualRefresh}
                   disabled={isRefreshing}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border transition-colors ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border transition-colors cursor-pointer ${
                     showRefreshFeedback
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-white/[0.03] text-slate-200 hover:bg-white/[0.08] border-white/10'
@@ -442,15 +463,10 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                   {showRefreshFeedback && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                 </button>
 
-                {/* Centralized Notifications in Drawer */}
-                <div className="px-1 py-1">
-                  <NotificationCenter />
-                </div>
-
                 {/* Support Zenemoo Route */}
                 <button
                   onClick={() => handleNavClick('support-zenemooindia')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                     currentTab === 'support-zenemooindia'
                       ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
                       : 'bg-pink-500/10 text-pink-300 hover:bg-pink-500/20 border border-pink-500/30'
@@ -463,7 +479,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 {/* Back to Main Website */}
                 <a
                   href="/"
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-white/5 border border-transparent transition-colors"
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-white/5 border border-transparent transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2.5">
                     <Globe className="w-4 h-4 text-slate-500" />
@@ -507,7 +523,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                     setMobileMenuOpen(false);
                     signOut();
                   }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium hover:bg-rose-500/20 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium hover:bg-rose-500/20 transition-colors cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sign Out</span>
@@ -523,9 +539,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         {children}
       </main>
 
-      {/* ── Dedicated Mobile Bottom Navigation Bar (Fixed, 4 items only) ── */}
+      {/* ── Dedicated Mobile Bottom Navigation Bar (5 Items: Dashboard, Profile, Opportunities, Applications, Social) ── */}
       <div className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-[#070b14]/95 backdrop-blur-xl border-t border-white/10 shadow-[0_-8px_25px_rgba(0,0,0,0.8)]">
-        <div className="grid grid-cols-4 h-16 items-center px-1 max-w-md mx-auto">
+        <div className="grid grid-cols-5 h-16 items-center px-1 max-w-md mx-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -533,7 +549,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`flex flex-col items-center justify-center h-full py-1 transition-all ${
+                className={`flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${
                   isActive ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -543,14 +559,111 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                     <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
                   )}
                 </div>
-                <span className={`text-[10px] mt-1 font-medium truncate max-w-[70px] ${isActive ? 'font-bold text-white' : 'text-slate-400'}`}>
+                <span className={`text-[9px] mt-1 font-medium truncate max-w-[62px] ${isActive ? 'font-bold text-white' : 'text-slate-400'}`}>
                   {item.label === 'My Applications' ? 'Applications' : item.label === 'My Profile' ? 'Profile' : item.label}
                 </span>
               </button>
             );
           })}
+
+          {/* 5th Item: Social */}
+          <button
+            onClick={() => setIsSocialSheetOpen(true)}
+            className="flex flex-col items-center justify-center h-full py-1 text-slate-400 hover:text-cyan-300 transition-all cursor-pointer"
+            aria-label="Zenemoo Social Media Channels"
+          >
+            <Globe className="w-5 h-5 text-slate-400 hover:scale-105 transition-transform" />
+            <span className="text-[9px] mt-1 font-medium text-slate-400">Social</span>
+          </button>
         </div>
       </div>
+
+      {/* ── Social Media Bottom Sheet Modal (≤768px Only) ── */}
+      <AnimatePresence>
+        {isSocialSheetOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col justify-end md:hidden"
+            onClick={() => setIsSocialSheetOpen(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="w-full bg-[#080d19] border-t border-cyan-500/30 rounded-t-3xl p-5 pb-8 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Top Drag Pill Handle */}
+              <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto -mt-1 mb-2" />
+
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div>
+                  <h3 className="text-lg font-bold font-display text-white flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-cyan-400" />
+                    Connect with Zenemoo
+                  </h3>
+                  <p className="text-xs text-slate-400 font-mono">Official Social Media Channels</p>
+                </div>
+                <button
+                  onClick={() => setIsSocialSheetOpen(false)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  aria-label="Close social sheet"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Social Channels List */}
+              <div className="space-y-2.5 pt-1">
+                {ZENEMOO_SOCIAL_LINKS.map((item) => {
+                  const IconComponent = item.icon;
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={item.ariaLabel}
+                      className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-cyan-400/40 hover:bg-white/[0.07] transition-all cursor-pointer group shadow-sm active:scale-[0.99]"
+                    >
+                      <div className="flex items-center gap-3.5">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 shadow-md"
+                          style={{
+                            backgroundColor: `${item.color}20`,
+                            border: `1px solid ${item.color}40`,
+                          }}
+                        >
+                          <IconComponent className="w-5 h-5" style={{ color: item.color }} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
+                            {item.name}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-400">{item.handle}</div>
+                        </div>
+                      </div>
+
+                      <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 group-hover:text-cyan-300 group-hover:bg-cyan-500/20 transition-all">
+                        <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+
+              {/* Dismiss Footer */}
+              <button
+                onClick={() => setIsSocialSheetOpen(false)}
+                className="w-full py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono text-xs font-bold transition-all cursor-pointer pt-3 mt-2 border border-white/10"
+              >
+                Close
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ── Fixed Floating AI Assistant Button (Bottom Right, Safe on Mobile) ── */}
       <div className="fixed bottom-20 md:bottom-5 right-4 sm:right-6 z-30 print:hidden">

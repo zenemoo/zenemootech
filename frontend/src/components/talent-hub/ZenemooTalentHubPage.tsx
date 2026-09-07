@@ -6,7 +6,7 @@ import { TalentHubDashboard } from './TalentHubDashboard';
 import { TalentHubProfile } from './TalentHubProfile';
 import { TalentHubOpportunities } from './TalentHubOpportunities';
 import { TalentHubApplications } from './TalentHubApplications';
-import { SupportZenemooPage } from '../SupportZenemooPage';
+import { TalentHubSupport } from './TalentHubSupport';
 
 export type TalentHubSubRoute = 'login' | 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia';
 
@@ -60,7 +60,7 @@ const TalentHubContent: React.FC<{
         />
       )}
       {activeTab === 'support-zenemooindia' && (
-        <SupportZenemooPage inTalentHubShell={true} onBackToHome={onNavigateHome} />
+        <TalentHubSupport onNavigateBack={() => onChangeSubRoute('dashboard')} />
       )}
     </TalentHubLayout>
   );
