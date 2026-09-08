@@ -975,50 +975,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     loadData();
   }, [isAuthenticated]);
 
-  // Live Notification Auto-Detection (Supabase Realtime + Polling Fallback)
+  // Live Notification Auto-Detection (Debounced Supabase Realtime + Smart Visibility-Aware Background Refresh)
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Realtime channel for live notifications
-    const channel = supabase
-      .channel('live-dashboard-notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_inquiries' }, async () => {
-        const data = await getContactInquiries();
-        setInquiries(data);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'newsletter_subscribers' }, async () => {
-        await loadSubscribers();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_applications' }, async () => {
-        const apps = await getStoredCandidateApplications();
-        setAllCandidateApps(apps);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_companies' }, async () => {
-        await loadPartnersData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, async () => {
-        await loadSupportTickets();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_bookings' }, async () => {
-        try {
-          const resB = await bookingApi.getAdminBookings();
-          if (resB.data?.actionableCount !== undefined) {
-            setCallBookingsActionableCount(resB.data.actionableCount);
-          }
-        } catch (e) {}
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit_logs' }, async () => {
-        try {
-          const resLogs = await authApi.getAuditLogs();
-          if (resLogs.data && resLogs.data.success) {
-            setRecentLogs(resLogs.data.logs || []);
-          }
-        } catch (err) {}
-      })
-      .subscribe();
+    let isMounted = true;
+    let refreshTimer: any = null;
+    let lastPollTimestamp = Date.now();
 
-    // Polling interval every 15 seconds to ensure notifications update live
-    const pollInterval = setInterval(async () => {
+    // Centralized controlled refresh function
+    const executeControlledRefresh = async () => {
+      if (!isMounted || document.visibilityState !== 'visible') return;
+      lastPollTimestamp = Date.now();
       try {
         const [contactData, appsData, resLogs, resB] = await Promise.all([
           getContactInquiries(),
@@ -1026,6 +994,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           authApi.getAuditLogs().catch(() => null),
           bookingApi.getAdminBookings().catch(() => null),
         ]);
+        if (!isMounted) return;
         setInquiries(contactData);
         setAllCandidateApps(appsData);
         if (resLogs?.data?.success) {
@@ -1036,11 +1005,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         }
         await loadSupportTickets();
       } catch (err) {}
-    }, 15000);
+    };
+
+    // Realtime channel with debounced table-specific updates
+    const debounceTimers: Record<string, any> = {};
+    const debounceTrigger = (table: string, action: () => Promise<void>) => {
+      if (debounceTimers[table]) clearTimeout(debounceTimers[table]);
+      debounceTimers[table] = setTimeout(() => {
+        if (isMounted) action();
+      }, 800);
+    };
+
+    const channel = supabase
+      .channel('live-dashboard-notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_inquiries' }, () => {
+        debounceTrigger('contact_inquiries', async () => {
+          const data = await getContactInquiries();
+          if (isMounted) setInquiries(data);
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'newsletter_subscribers' }, () => {
+        debounceTrigger('newsletter_subscribers', async () => {
+          await loadSubscribers();
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_applications' }, () => {
+        debounceTrigger('candidate_applications', async () => {
+          const apps = await getStoredCandidateApplications();
+          if (isMounted) setAllCandidateApps(apps);
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_companies' }, () => {
+        debounceTrigger('partner_companies', async () => {
+          await loadPartnersData();
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
+        debounceTrigger('support_tickets', async () => {
+          await loadSupportTickets();
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_bookings' }, () => {
+        debounceTrigger('call_bookings', async () => {
+          try {
+            const resB = await bookingApi.getAdminBookings();
+            if (isMounted && resB.data?.actionableCount !== undefined) {
+              setCallBookingsActionableCount(resB.data.actionableCount);
+            }
+          } catch (e) {}
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit_logs' }, () => {
+        debounceTrigger('admin_audit_logs', async () => {
+          try {
+            const resLogs = await authApi.getAuditLogs();
+            if (isMounted && resLogs.data && resLogs.data.success) {
+              setRecentLogs(resLogs.data.logs || []);
+            }
+          } catch (err) {}
+        });
+      })
+      .subscribe();
+
+    // Start 90-second visibility-aware timer
+    const startPolling = () => {
+      stopPolling();
+      refreshTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          executeControlledRefresh();
+        }
+      }, 90000); // 90s safe background fallback
+    };
+
+    const stopPolling = () => {
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // If tab was away for > 45 seconds, trigger 1 controlled refresh on return
+        if (Date.now() - lastPollTimestamp > 45000) {
+          executeControlledRefresh();
+        }
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    startPolling();
 
     return () => {
+      isMounted = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopPolling();
+      Object.values(debounceTimers).forEach((t) => clearTimeout(t));
       supabase.removeChannel(channel);
-      clearInterval(pollInterval);
     };
   }, [isAuthenticated]);
 

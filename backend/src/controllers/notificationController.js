@@ -186,8 +186,16 @@ let publicNotifsCache = {
 };
 const PUBLIC_NOTIFS_CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
+// In-memory cache for admin operational notifications to prevent redundant Supabase egress during dashboard polling
+let adminNotifsCache = {
+  data: null,
+  timestamp: 0,
+};
+const ADMIN_NOTIFS_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
 export const invalidatePublicNotifsCache = () => {
   publicNotifsCache = { data: null, timestamp: 0 };
+  adminNotifsCache = { data: null, timestamp: 0 };
 };
 
 /**
@@ -290,13 +298,18 @@ export const getAdminNotifications = async (req, res, next) => {
   try {
     const { category, type, search, page = 1, limit = 100, days = 30 } = req.query;
     const sinceDate = new Date(Date.now() - parseInt(days, 10) * 24 * 60 * 60 * 1000).toISOString();
+    const now = Date.now();
 
     let allNotifs = [];
-    if (supabase) {
+
+    // Check if valid admin in-memory cache exists
+    if (adminNotifsCache.data && now - adminNotifsCache.timestamp < ADMIN_NOTIFS_CACHE_TTL_MS) {
+      allNotifs = adminNotifsCache.data;
+    } else if (supabase) {
       try {
         let query = supabase
           .from('zenemoo_notifications')
-          .select('*')
+          .select('id, record_type, title, message, notification_type, target_type, target_id, url, opportunity_id, created_at, is_read, metadata')
           .eq('record_type', 'notification')
           .gte('created_at', sinceDate)
           .order('created_at', { ascending: false })
@@ -309,6 +322,7 @@ export const getAdminNotifications = async (req, res, next) => {
         const { data, error } = await query;
         if (!error && Array.isArray(data)) {
           allNotifs = data;
+          adminNotifsCache = { data, timestamp: now };
         }
       } catch (e) {
         console.warn('[Admin Notifications Fetch Warning]:', e.message);

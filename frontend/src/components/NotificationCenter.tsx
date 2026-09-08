@@ -15,19 +15,9 @@ import {
 } from 'lucide-react';
 import { notificationApi } from '../services/api';
 import { getInstallationId, sanitizeZenemooUrl } from '../services/notificationService';
+import { notificationCoordinator, ZenemooNotificationItem as NotificationItemType } from '../services/notificationCoordinator';
 
-export interface ZenemooNotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  notification_type?: string;
-  target_type?: string;
-  url?: string;
-  opportunity_id?: string;
-  created_at: string;
-  is_read: boolean;
-}
+export type ZenemooNotificationItem = NotificationItemType;
 
 interface NotificationCenterProps {
   onNotificationOpen?: () => void;
@@ -74,67 +64,21 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedLongNotif]);
 
-  // Fetch notifications for the last 7 days using the centralized API
-  const fetchNotifications = useCallback(async (showLoading = false) => {
-    if (showLoading) setIsLoading(true);
-    setHasError(false);
-    try {
-      const installationId = getInstallationId();
-      const res = await notificationApi.getAll({ installation_id: installationId });
-      if (res.data && res.data.success) {
-        const rawList: ZenemooNotificationItem[] = res.data.data || [];
-        
-        // 7-day client-side safeguard filter
-        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const filtered = rawList.filter((item) => {
-          const itemTime = new Date(item.created_at).getTime();
-          return isNaN(itemTime) || itemTime >= sevenDaysAgo;
-        });
-
-        setNotifications(filtered);
-        const unread = filtered.filter((n) => !n.is_read).length;
-        setUnreadCount(unread);
-
-        // Check if there is a brand new notification to trigger a live toast
-        if (filtered.length > 0) {
-          const latest = filtered[0];
-          const latestTime = new Date(latest.created_at).getTime();
-          const seenKey = `zenemoo_toast_seen_${latest.id}`;
-          const isRecent = Date.now() - latestTime < 10 * 60 * 1000; // within 10 minutes
-          
-          if (!latest.is_read && isRecent && !sessionStorage.getItem(seenKey)) {
-            sessionStorage.setItem(seenKey, 'true');
-            window.dispatchEvent(
-              new CustomEvent('zenemoo:live-notification', {
-                detail: latest,
-              })
-            );
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[NotificationCenter Fetch Warn]:', err);
-      setHasError(true);
-    } finally {
-      setIsLoading(false);
-    }
+  // Connect to centralized notification coordinator with shared caching & visibility-aware polling
+  useEffect(() => {
+    const unsubscribe = notificationCoordinator.subscribe((state) => {
+      setNotifications(state.notifications as ZenemooNotificationItem[]);
+      setUnreadCount(state.unreadCount);
+      setIsLoading(state.isLoading);
+      setHasError(state.hasError);
+    });
+    return () => unsubscribe();
   }, []);
 
-  // Fetch on mount and poll periodically (every 3 minutes / 180s to reduce Supabase egress)
-  useEffect(() => {
-    fetchNotifications(true);
-    const interval = setInterval(() => {
-      fetchNotifications(false);
-    }, 180000);
-
-    const handleRefresh = () => fetchNotifications(false);
-    window.addEventListener('zenemoo:refresh-notifications', handleRefresh);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('zenemoo:refresh-notifications', handleRefresh);
-    };
-  }, [fetchNotifications]);
+  // Centralized fetch trigger for manual pull/refresh
+  const fetchNotifications = useCallback(async (_showLoading = false) => {
+    await notificationCoordinator.fetchNotifications(true);
+  }, []);
 
   // Requirement #1 & #3 & #4 & #8: Internal scrolling vs Outside scroll auto-close
   useEffect(() => {
@@ -225,27 +169,13 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
   const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const installationId = getInstallationId();
-    try {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-      await notificationApi.markRead(id, installationId);
-    } catch (err) {
-      console.warn('[Mark Read Error]:', err);
-    }
+    await notificationCoordinator.markAsRead(id, installationId);
   };
 
   // Mark all notifications as read
   const handleMarkAllAsRead = async () => {
     const installationId = getInstallationId();
-    try {
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
-      await notificationApi.markAllRead(installationId);
-    } catch (err) {
-      console.warn('[Mark All Read Error]:', err);
-    }
+    await notificationCoordinator.markAllRead(installationId);
   };
 
   // Click individual notification -> mark as read, close panel, navigate safely or open long message modal

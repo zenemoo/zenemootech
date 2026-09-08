@@ -46,6 +46,7 @@ import { OpportunityCenterView } from './OpportunityCenterView';
 import { ZenemooDocumentationModal, ZenemooSupportPortalModal } from './ZenemooFooterModals';
 import { portalAuthApi, uploadApi, selfProfileApi, notificationApi, privateProfileApi } from '../services/api';
 import { initFCMIfGranted, setupAppLifecycleNotificationListener } from '../services/notificationService';
+import { notificationCoordinator } from '../services/notificationCoordinator';
 
 interface TeamDashboardProps {
   initialUserData?: any;
@@ -242,16 +243,22 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
 
   useEffect(() => {
     fetchProfile();
-    fetchNotifications();
     
+    // Subscribe to centralized notification coordinator
+    const unsubscribeNotifs = notificationCoordinator.subscribe((state) => {
+      setNotifications(state.notifications as any);
+      setUnreadCount(state.unreadCount);
+    });
+
     // Team & HR FCM Token Registration and App Resume (State Change) listener
     const userId = profile?.id || initialUserData?.id;
     const userRole = profile?.role || initialUserData?.role || 'team_member';
     initFCMIfGranted('team_hr', userId, userRole);
     setupAppLifecycleNotificationListener('team_hr', userId, userRole);
 
-    const interval = setInterval(fetchNotifications, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribeNotifs();
+    };
   }, []);
 
   // Handle outside click to close profile popover
@@ -350,28 +357,16 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({ initialUserData, o
   };
 
   const handleMarkAsRead = async (id: string) => {
-    try {
-      await notificationApi.markRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (err) {}
+    await notificationCoordinator.markAsRead(id);
   };
 
   const handleMarkAllAsRead = async () => {
-    try {
-      await notificationApi.markAllRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
-      showToast('All notifications marked as read.', 'success');
-    } catch (err) {}
+    await notificationCoordinator.markAllRead();
+    showToast('All notifications marked as read.', 'success');
   };
 
   const handleDeleteNotif = async (id: string) => {
-    try {
-      await notificationApi.deleteNotification(id);
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (err) {}
+    await notificationCoordinator.deleteNotification(id);
   };
 
   const getNotificationIcon = (type: string) => {

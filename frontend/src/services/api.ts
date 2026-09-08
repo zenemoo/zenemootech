@@ -21,6 +21,25 @@ export const api = axios.create({
   timeout: 30000, // 30-second default timeout
 });
 
+// In-flight GET request deduplication cache to prevent duplicate concurrent network calls
+const inFlightGetRequests = new Map<string, Promise<any>>();
+
+export const deduplicatedGet = <T = any>(url: string, config?: any): Promise<T> => {
+  const key = `${url}::${JSON.stringify(config?.params || {})}`;
+  if (inFlightGetRequests.has(key)) {
+    return inFlightGetRequests.get(key)!;
+  }
+  const promise = api.get<T>(url, config)
+    .finally(() => {
+      // Clear from in-flight cache shortly after resolution
+      setTimeout(() => {
+        inFlightGetRequests.delete(key);
+      }, 500);
+    });
+  inFlightGetRequests.set(key, promise);
+  return promise as unknown as Promise<T>;
+};
+
 // Request interceptor for JWT authentication header
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('zenemoo_jwt_token');
@@ -69,7 +88,7 @@ export const authApi = {
   login: (passcode: string, email?: string) => api.post('/auth/login', { passcode, email }),
   logout: () => api.post('/auth/logout'),
   getProfile: () => api.get('/auth/profile'),
-  getAuditLogs: () => api.get('/auth/audit-logs'),
+  getAuditLogs: () => deduplicatedGet('/auth/audit-logs'),
 
   checkEmail: async (email: string) => {
     const cleanEmail = email.trim().toLowerCase();
@@ -166,7 +185,7 @@ export const opportunityApplicationApi = {
 
 // Contact APIs
 export const contactApi = {
-  getAll: () => api.get('/contact'),
+  getAll: () => deduplicatedGet('/contact'),
   submit: (data: any) => api.post('/contact', data),
   update: (id: string, data: any) => api.put(`/contact/${id}`, data),
   delete: (id: string) => api.delete(`/contact/${id}`),
@@ -174,7 +193,7 @@ export const contactApi = {
 
 // Newsletter Subscriber APIs
 export const subscriberApi = {
-  getAll: () => api.get('/subscribers'),
+  getAll: () => deduplicatedGet('/subscribers'),
   subscribe: (email: string | string[]) => api.post('/subscribers', { email }),
   subscribeBulk: (emails: string | string[]) => api.post('/subscribers/bulk', { emails }),
   unsubscribe: (email: string) => api.post('/subscribers/unsubscribe', { email }),
@@ -258,7 +277,7 @@ export const emailApi = {
 export const supportApi = {
   createTicket: (data: { category: string; subject: string; message: string; user_email?: string; user_name?: string }) =>
     api.post('/support/ticket', data),
-  getTickets: () => api.get('/support/tickets'),
+  getTickets: () => deduplicatedGet('/support/tickets'),
   updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
 };
 
@@ -322,9 +341,9 @@ export const notificationApi = {
     app_version?: string;
     permission_status?: string;
   }) => api.post('/notifications/subscribe', data),
-  getAll: (params?: { installation_id?: string; days?: number; scope?: string }) => api.get('/notifications', { params }),
+  getAll: (params?: { installation_id?: string; days?: number; scope?: string }) => deduplicatedGet('/notifications', { params }),
   getAdminNotifications: (params?: { category?: string; type?: string; search?: string; page?: number; limit?: number; days?: number }) =>
-    api.get('/notifications/admin', { params }),
+    deduplicatedGet('/notifications/admin', { params }),
   markRead: (id: string, installation_id?: string) => api.put(`/notifications/${id}/read`, { installation_id }),
   markAllRead: (installation_id?: string) => api.put('/notifications/read-all', { installation_id }),
   deleteNotification: (id: string) => api.delete(`/notifications/${id}`),
@@ -512,7 +531,7 @@ export const bookingApi = {
   getBookingById: (bookingId: string) =>
     api.get(`/bookings/${encodeURIComponent(bookingId)}`),
   getAdminBookings: (params?: { search?: string; status?: string; meetingStatus?: string; emailStatus?: string; timeframe?: string; date?: string }) =>
-    api.get('/bookings/admin/list', { params }),
+    deduplicatedGet('/bookings/admin/list', { params }),
   generateMeetingLink: (id: string) =>
     api.post(`/bookings/admin/${encodeURIComponent(id)}/generate-meeting`),
   resendEmail: (id: string, emailType: 'customer_confirmation' | 'admin_confirmation' | 'customer_reminder' | 'admin_reminder') =>

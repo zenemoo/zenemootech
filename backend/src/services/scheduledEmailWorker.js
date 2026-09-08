@@ -1,3 +1,4 @@
+import { supabase } from '../config/supabase.js';
 import { supabaseService } from './supabaseService.js';
 import { sendMailViaBrevo, parseRecipients } from './emailService.js';
 import { encrypt, decrypt } from './encryptionService.js';
@@ -166,14 +167,25 @@ export const runScheduledEmailProcessorTick = async () => {
       (item) => item.status === 'scheduled' && new Date(item.scheduled_at).getTime() <= now.getTime()
     );
 
-    // 2. Fetch from Supabase DB
+    // 2. Fetch from Supabase DB using targeted SQL filters (status = 'scheduled' AND scheduled_at <= now)
     let dueDbItems = [];
     try {
-      const allDb = await supabaseService.selectAll('scheduled_emails', 'scheduled_at', true);
-      dueDbItems = (allDb || []).filter(
-        (item) => item.status === 'scheduled' && new Date(item.scheduled_at).getTime() <= now.getTime()
-      );
-    } catch (_) {}
+      if (supabase) {
+        const { data: dbRecords, error: dbError } = await supabase
+          .from('scheduled_emails')
+          .select('id, user_id, user_email, from_email, sender, to_emails, recipients, cc_emails, cc, bcc_emails, bcc, subject, body_html, html, attachments, status, scheduled_at, retry_count, max_retries, created_at, updated_at')
+          .eq('status', 'scheduled')
+          .lte('scheduled_at', now.toISOString())
+          .order('scheduled_at', { ascending: true })
+          .limit(50);
+
+        if (!dbError && Array.isArray(dbRecords)) {
+          dueDbItems = dbRecords;
+        }
+      }
+    } catch (dbQueryErr) {
+      console.warn('[Scheduled Email Worker DB Fetch Warning]:', dbQueryErr.message);
+    }
 
     // Merge candidates
     const itemMap = new Map();

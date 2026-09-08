@@ -15,18 +15,9 @@ import {
   Server,
   X,
 } from 'lucide-react';
-import { notificationApi } from '../services/api';
+import { notificationCoordinator, ZenemooNotificationItem as NotificationItem } from '../services/notificationCoordinator';
 
-export interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'payment' | 'meeting' | 'project' | 'system';
-  target_type: 'broadcast' | 'individual' | 'role';
-  sender_email?: string;
-  created_at: string;
-  is_read: boolean;
-}
+export type { NotificationItem };
 
 export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -37,22 +28,15 @@ export const NotificationBell: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifications = async () => {
-    try {
-      const res = await notificationApi.getAll();
-      if (res.data && res.data.success) {
-        setNotifications(res.data.data || []);
-        setUnreadCount(res.data.unread_count || 0);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch notifications:', err);
-    }
-  };
-
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 90000); // Poll every 90s to reduce Supabase egress
-    return () => clearInterval(interval);
+    // Subscribe to centralized notification coordinator
+    const unsubscribe = notificationCoordinator.subscribe((state) => {
+      setNotifications(state.notifications as NotificationItem[]);
+      setUnreadCount(state.unreadCount);
+      setIsLoading(state.isLoading);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Close dropdown on click outside
@@ -68,34 +52,20 @@ export const NotificationBell: React.FC = () => {
 
   const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      await notificationApi.markRead(id);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (err) {}
+    await notificationCoordinator.markAsRead(id);
   };
 
   const handleMarkAllAsRead = async () => {
-    try {
-      await notificationApi.markAllRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
-    } catch (err) {}
+    await notificationCoordinator.markAllRead();
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      await notificationApi.deleteNotification(id);
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (err) {}
+    await notificationCoordinator.deleteNotification(id);
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type.toLowerCase()) {
+  const getNotificationIcon = (type?: string) => {
+    switch ((type || '').toLowerCase()) {
       case 'meeting':
         return <Video className="w-4 h-4 text-purple-400" />;
       case 'payment':
