@@ -6,12 +6,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  RotateCcw,
-  Sparkles,
   ArrowRight,
-  ExternalLink,
-  Info,
   Check,
+  X,
+  Users,
+  Settings,
+  Globe,
+  User,
+  Mail,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { launchCashfreeCheckout } from '../utils/cashfree';
@@ -26,18 +28,46 @@ export interface ReceiptInfo {
   customerName?: string;
   customerEmail?: string;
   paymentMethod?: string;
+  purpose?: string;
 }
 
+export type PurposeId = 'build' | 'empower' | 'expand' | 'innovate' | 'general';
+
+export interface PresetCard {
+  amount: number;
+  subtitle: string;
+}
+
+const PRESET_CARDS: PresetCard[] = [
+  { amount: 500, subtitle: 'Support our journey' },
+  { amount: 1000, subtitle: 'Help us scale impact' },
+  { amount: 2500, subtitle: 'Expand opportunities' },
+  { amount: 5000, subtitle: 'Build a brighter future' },
+];
+
+const CONTEXTUAL_MESSAGES: Record<PurposeId, string> = {
+  build:
+    'Your contribution helps us strengthen core technology, platform infrastructure, and compute resources for contributors across India.',
+  empower:
+    'Your contribution helps us provide training, tools, and fair compensation resources for freelance annotators and workers.',
+  expand:
+    'Your contribution helps us expand remote work opportunities into more Indian regional languages and rural communities.',
+  innovate:
+    'Your contribution helps us develop cutting-edge Indic AI benchmarks, speech data solutions, and community technologies.',
+  general:
+    'Your contribution helps us build better technology, empower contributors, expand opportunities and create a brighter future.',
+};
+
 interface SupportContributionSectionProps {
-  variant?: 'hero' | 'section' | 'modal';
+  initialPurpose?: PurposeId;
+  onClose?: () => void;
   onSuccess?: (receipt: ReceiptInfo) => void;
   className?: string;
 }
 
-const PRESET_AMOUNTS = [500, 1000, 2500, 5000];
-
 export const SupportContributionSection: React.FC<SupportContributionSectionProps> = ({
-  variant = 'section',
+  initialPurpose = 'general',
+  onClose,
   onSuccess,
   className = '',
 }) => {
@@ -46,6 +76,7 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
   const [customerName, setCustomerName] = useState<string>('');
   const [customerEmail, setCustomerEmail] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
 
   const [paymentState, setPaymentState] = useState<
     'idle' | 'processing' | 'checkout' | 'pending' | 'success' | 'failed' | 'cancelled'
@@ -53,7 +84,6 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
-  const [needsCredentialsNotice, setNeedsCredentialsNotice] = useState<boolean>(false);
 
   // Auto-fill logged-in user profile if available
   useEffect(() => {
@@ -79,6 +109,8 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
   }, []);
 
   const effectiveAmount = customAmount ? parseFloat(customAmount) : selectedPreset || 0;
+  const contextualMessage =
+    CONTEXTUAL_MESSAGES[initialPurpose] || CONTEXTUAL_MESSAGES.general;
 
   const handlePresetSelect = (amt: number) => {
     setSelectedPreset(amt);
@@ -110,6 +142,7 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
           amount: data.amount || effectiveAmount,
           currency: data.currency || 'INR',
           status: 'Successful',
+          purpose: data.purpose || 'Support Zenemoo',
           date: new Date(data.paymentTime || data.createdAt || Date.now()).toLocaleDateString('en-IN', {
             day: 'numeric',
             month: 'long',
@@ -124,11 +157,10 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
         if (onSuccess) onSuccess(receiptData);
       } else if (data.status === 'FAILED') {
         setPaymentState('failed');
-        setErrorMessage('The payment could not be processed by your bank or payment provider.');
+        setErrorMessage('The payment could not be completed by your bank or payment method.');
       } else if (data.status === 'CANCELLED') {
         setPaymentState('cancelled');
       } else {
-        // Still pending: Poll once or twice
         if (retryCount < 2) {
           setTimeout(() => {
             verifyPaymentStatus(orderId, retryCount + 1);
@@ -152,19 +184,23 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
     e.preventDefault();
     if (paymentState === 'processing') return;
 
+    if (!agreedToTerms) {
+      setErrorMessage('Please agree to the Support Terms and Privacy Policy to continue.');
+      return;
+    }
+
     if (!effectiveAmount || isNaN(effectiveAmount) || effectiveAmount < 10) {
-      setErrorMessage('Please select or enter a valid contribution amount (minimum ₹10).');
+      setErrorMessage('Please select or enter an amount of at least ₹10.');
       return;
     }
 
     if (effectiveAmount > 500000) {
-      setErrorMessage('Contribution amount cannot exceed ₹5,00,000.');
+      setErrorMessage('Amount cannot exceed ₹5,00,000.');
       return;
     }
 
     setPaymentState('processing');
     setErrorMessage(null);
-    setNeedsCredentialsNotice(false);
 
     try {
       const returnUrl = window.location.origin.startsWith('https://')
@@ -174,6 +210,7 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
       const res = await api.post('/support/create-payment', {
         amount: effectiveAmount,
         currency: 'INR',
+        purpose: 'Support Zenemoo',
         customer_name: customerName || 'Zenemoo Supporter',
         customer_email: customerEmail || 'supporter@zenemoo.in',
         customer_phone: customerPhone || '9999999999',
@@ -188,59 +225,27 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
       setActiveOrderId(orderId);
       setPaymentState('checkout');
 
-      // Launch official Cashfree Checkout
+      // Launch official Cashfree Checkout modal
       try {
         const checkoutResult = await launchCashfreeCheckout({
           paymentSessionId,
           mode: env === 'production' ? 'production' : 'sandbox',
         });
 
-        // After checkout modal resolves or closes, verify status from backend
         if (checkoutResult?.error) {
-          console.log('Cashfree checkout modal message:', checkoutResult.error);
+          console.log('Cashfree checkout modal result:', checkoutResult.error);
         }
         await verifyPaymentStatus(orderId);
       } catch (sdkErr: any) {
-        console.warn('Cashfree Checkout invocation issue:', sdkErr.message);
-        // Direct verification attempt in case user completed payment in another tab/modal
+        console.warn('Cashfree Checkout invocation callback:', sdkErr.message);
         await verifyPaymentStatus(orderId);
       }
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Payment initialization failed.';
       console.error('Payment initiation error:', err);
-
-      if (err.response?.status === 503 || msg.includes('CASHFREE_CLIENT_ID') || msg.includes('credentials not configured')) {
-        setNeedsCredentialsNotice(true);
-        setErrorMessage(msg);
-      } else {
-        setErrorMessage(msg);
-      }
+      setErrorMessage(msg);
       setPaymentState('idle');
     }
-  };
-
-  // Safe developer sandbox simulation for local preview before Cashfree credentials are set
-  const handleSimulateSandboxSuccess = () => {
-    const mockOrderId = `ZNM_SUP_${Date.now()}_DEMO`;
-    const mockReceipt: ReceiptInfo = {
-      orderId: mockOrderId,
-      paymentId: `cf_pay_demo_${Math.floor(100000 + Math.random() * 900000)}`,
-      amount: effectiveAmount || 1000,
-      currency: 'INR',
-      status: 'Successful',
-      date: new Date().toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }),
-      customerName: customerName || 'Zenemoo Supporter',
-      customerEmail: customerEmail || 'supporter@zenemoo.in',
-      paymentMethod: 'Cashfree Sandbox Demo',
-    };
-    setActiveOrderId(mockOrderId);
-    setReceipt(mockReceipt);
-    setPaymentState('success');
-    if (onSuccess) onSuccess(mockReceipt);
   };
 
   const resetForm = () => {
@@ -248,56 +253,59 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
     setErrorMessage(null);
     setReceipt(null);
     setActiveOrderId(null);
-    setNeedsCredentialsNotice(false);
   };
 
   // -------------------------------------------------------------
-  // RENDER: SUCCESS STATE (RECEIPT)
+  // RENDER: SUCCESS STATE (DIGITAL RECEIPT)
   // -------------------------------------------------------------
   if (paymentState === 'success' && receipt) {
     return (
-      <div className={`p-6 sm:p-8 rounded-3xl bg-[#090e1a]/95 border border-emerald-500/40 shadow-2xl shadow-emerald-500/10 text-white text-left relative overflow-hidden backdrop-blur-xl ${className}`}>
-        <div className="absolute -top-24 -right-24 w-60 h-60 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex items-center gap-3.5 mb-5 border-b border-white/10 pb-5">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/20">
-            <Check className="w-6 h-6 stroke-[3]" />
+      <div className={`p-5 sm:p-7 text-white text-left space-y-5 ${className}`}>
+        {/* Header with Close */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-3.5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/20">
+              <Check className="w-5 h-5 stroke-[3]" />
+            </div>
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 block">
+                Payment Successful
+              </span>
+              <h3 className="text-base sm:text-lg font-bold font-display text-white">
+                Thank You for Supporting Zenemoo
+              </h3>
+            </div>
           </div>
-          <div>
-            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400">
-              Contribution Received
-            </span>
-            <h3 className="text-xl sm:text-2xl font-bold font-display text-white">
-              Thank You for Supporting Zenemoo
-            </h3>
-          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-6">
-          Your support has been received successfully. Your contribution helps us build technology, resources, and more opportunities for people across India.
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Your support helps us build a stronger platform, empower contributors, and create more opportunities across India.
         </p>
 
         {/* Digital Receipt Card */}
-        <div className="rounded-2xl bg-white/[0.04] border border-white/15 p-5 space-y-3.5 mb-6 text-xs sm:text-sm">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-mono uppercase tracking-wider border-b border-white/10 pb-2.5">
+        <div className="rounded-2xl bg-white/[0.04] border border-white/15 p-4 sm:p-5 space-y-2.5 text-xs">
+          <div className="flex items-center justify-between text-slate-400 text-[10px] font-mono uppercase tracking-wider border-b border-white/10 pb-2">
             <span>Support Receipt</span>
             <span className="text-emerald-400 font-bold flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Verified & Complete
+              Verified by Cashfree
             </span>
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Amount:</span>
-            <span className="font-bold text-lg sm:text-xl text-cyan-300 font-display">
+            <span className="text-slate-400">Contribution Amount:</span>
+            <span className="font-bold text-lg text-cyan-300 font-display">
               ₹{receipt.amount.toLocaleString('en-IN')}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400">Status:</span>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold text-xs">
-              {receipt.status}
             </span>
           </div>
 
@@ -310,7 +318,7 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
 
           {receipt.paymentId && (
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Payment ID:</span>
+              <span className="text-slate-400">Payment Reference:</span>
               <span className="font-mono text-slate-300 text-xs select-all">
                 {receipt.paymentId}
               </span>
@@ -319,319 +327,398 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
 
           <div className="flex items-center justify-between">
             <span className="text-slate-400">Date:</span>
-            <span className="text-slate-200">
-              {receipt.date}
-            </span>
+            <span className="text-slate-200">{receipt.date}</span>
           </div>
 
           {receipt.customerName && (
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Supporter:</span>
-              <span className="text-white font-medium">
-                {receipt.customerName}
-              </span>
+              <span className="text-white font-medium">{receipt.customerName}</span>
+            </div>
+          )}
+
+          {receipt.customerEmail && (
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Receipt Sent To:</span>
+              <span className="text-slate-300">{receipt.customerEmail}</span>
             </div>
           )}
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
           <button
             type="button"
             onClick={resetForm}
-            className="flex-1 px-6 py-3 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] border border-white/15 text-white font-semibold text-xs sm:text-sm text-center transition-all cursor-pointer"
+            className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] border border-white/15 text-white font-semibold text-xs text-center transition-all cursor-pointer"
           >
             Support Again
           </button>
-          <a
-            href="/"
-            className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs sm:text-sm text-center shadow-lg shadow-cyan-500/25 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <span>Continue Exploring Zenemoo</span>
-            <ArrowRight className="w-4 h-4" />
-          </a>
+          {onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs text-center shadow-lg shadow-cyan-500/25 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <span>Done</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <a
+              href="/"
+              className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs text-center shadow-lg shadow-cyan-500/25 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <span>Return Home</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          )}
         </div>
       </div>
     );
   }
 
   // -------------------------------------------------------------
-  // RENDER: FAILED STATE
+  // RENDER: MAIN 2-COLUMN MODAL LAYOUT (FITS SINGLE VIEW ON ALL SCREENS)
   // -------------------------------------------------------------
-  if (paymentState === 'failed') {
-    return (
-      <div className={`p-6 sm:p-8 rounded-3xl bg-[#0a0f1d]/95 border border-red-500/30 text-white text-left space-y-5 backdrop-blur-xl ${className}`}>
-        <div className="w-12 h-12 rounded-2xl bg-red-500/15 border border-red-500/40 flex items-center justify-center text-red-400">
-          <AlertCircle className="w-6 h-6" />
-        </div>
-        <div className="space-y-1.5">
-          <h3 className="text-lg sm:text-xl font-bold font-display text-white">
-            Payment could not be completed
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            No worries — your support was not successfully processed. No amount was deducted from your account.
-          </p>
-        </div>
-        {errorMessage && (
-          <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300 font-mono">
-            {errorMessage}
+  return (
+    <div className={`text-white text-left ${className}`}>
+      {/* ========================================================= */}
+      {/* 1. MODAL TOP HEADER BAR                                   */}
+      {/* ========================================================= */}
+      <div className="px-5 py-3 sm:px-6 sm:py-3.5 border-b border-white/10 flex items-center justify-between gap-3">
+        {/* Left: Heart Icon Badge + Title & Subtitle */}
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-slate-950 shrink-0 shadow-md shadow-cyan-500/25">
+            <Heart className="w-4 h-4 sm:w-5 sm:h-5 fill-slate-950 text-slate-950" />
           </div>
-        )}
-        <div className="pt-2 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={resetForm}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-500 hover:from-sky-300 hover:to-cyan-400 text-slate-950 font-bold text-xs sm:text-sm transition-all cursor-pointer"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // -------------------------------------------------------------
-  // RENDER: CANCELLED STATE
-  // -------------------------------------------------------------
-  if (paymentState === 'cancelled') {
-    return (
-      <div className={`p-6 sm:p-8 rounded-3xl bg-[#0a0f1d]/95 border border-cyan-500/30 text-white text-left space-y-5 backdrop-blur-xl ${className}`}>
-        <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
-          <RotateCcw className="w-6 h-6" />
-        </div>
-        <div className="space-y-1.5">
-          <h3 className="text-lg sm:text-xl font-bold font-display text-white">
-            Payment Cancelled
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            You can support Zenemoo whenever you're ready. Thank you for your interest and goodwill.
-          </p>
-        </div>
-        <div className="pt-2 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={resetForm}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-500 hover:from-sky-300 hover:to-cyan-400 text-slate-950 font-bold text-xs sm:text-sm transition-all cursor-pointer"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // -------------------------------------------------------------
-  // RENDER: PENDING / VERIFYING STATE
-  // -------------------------------------------------------------
-  if (paymentState === 'pending') {
-    return (
-      <div className={`p-6 sm:p-8 rounded-3xl bg-[#0a0f1d]/95 border border-amber-500/30 text-white text-left space-y-5 backdrop-blur-xl ${className}`}>
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 animate-pulse">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="text-base sm:text-lg font-bold font-display text-white">
-              Payment verification in progress...
-            </h3>
-            <p className="text-xs text-amber-300">
-              Please wait while we confirm your payment with Cashfree.
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-xl font-black font-display text-white tracking-tight leading-tight">
+              Support Zenemoo
+            </h2>
+            <p className="text-[11px] sm:text-xs text-slate-400 font-normal truncate">
+              Your support helps us create more opportunities.
             </p>
           </div>
         </div>
 
-        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-          We are confirming the transaction with the payment gateway. This typically takes just a few seconds.
-        </p>
-
-        {activeOrderId && (
-          <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-mono text-slate-300">
-            Order Reference: <span className="text-cyan-300">{activeOrderId}</span>
+        {/* Right: Cashfree Pill Badge + Close Button */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/50 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono">
+            <Lock className="w-3 h-3 text-cyan-400" />
+            <span>Secure Payment by <strong className="font-bold text-white">Cashfree</strong></span>
           </div>
-        )}
-
-        <div className="pt-2 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => activeOrderId && verifyPaymentStatus(activeOrderId)}
-            className="px-5 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Refresh Verification</span>
-          </button>
-          <button
-            type="button"
-            onClick={resetForm}
-            className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 text-xs cursor-pointer"
-          >
-            Cancel
-          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              aria-label="Close modal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
-    );
-  }
 
-  // -------------------------------------------------------------
-  // RENDER: IDLE / FORM STATE (CHOOSE AMOUNT & SUPPORT)
-  // -------------------------------------------------------------
-  return (
-    <div
-      className={`rounded-3xl bg-[#0a0f1d]/90 border border-cyan-500/30 p-5 sm:p-7 text-white text-left space-y-5 shadow-2xl shadow-cyan-950/40 backdrop-blur-xl relative ${className}`}
-    >
-      {/* Header Eyebrow & Subtitle */}
-      <div className="space-y-1.5">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] sm:text-xs font-mono font-bold tracking-wider uppercase">
-          <Sparkles className="w-3 h-3 text-cyan-400" />
-          <span>HELP US BUILD MORE OPPORTUNITIES</span>
-        </div>
-        <h3 className="text-lg sm:text-xl font-bold font-display text-white tracking-tight">
-          Support Zenemoo
-        </h3>
-        <p className="text-xs text-slate-300 leading-relaxed">
-          Your support helps Zenemoo build technology, infrastructure, contributor resources and new opportunities.
-        </p>
-      </div>
+      {/* ========================================================= */}
+      {/* 2. TWO-COLUMN MAIN BODY                                    */}
+      {/* ========================================================= */}
+      <div className="px-5 py-4 sm:px-6 sm:py-4.5 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-stretch">
+        
+        {/* --------------------------------------------------------- */}
+        {/* LEFT COLUMN: BRAND MISSION & ZENEMOO LOGO VISUAL         */}
+        {/* --------------------------------------------------------- */}
+        <div className="lg:col-span-5 rounded-2xl bg-[#080e1d]/90 border border-white/10 p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-xl">
+          
+          <div className="space-y-3.5">
+            {/* Zenemoo Logo Presentation Visual (Real Logo on Dark Space) */}
+            <div className="relative h-24 sm:h-28 rounded-xl overflow-hidden bg-gradient-to-b from-[#0a1830] via-[#050c18] to-[#02050c] border border-cyan-500/30 flex items-center justify-center shadow-inner group">
+              {/* Glowing Nebula and Atmosphere */}
+              <div className="absolute w-32 h-32 bg-cyan-500/20 rounded-full blur-2xl pointer-events-none animate-pulse" />
+              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-600/20 rounded-full blur-xl pointer-events-none" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.15)_0%,transparent_75%)] pointer-events-none" />
 
-      <form onSubmit={handleSupportSubmit} className="space-y-5">
-        {/* 1. Choose Amount Presets */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
-            Choose an amount
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-            {PRESET_AMOUNTS.map((amt) => {
-              const isSelected = selectedPreset === amt && !customAmount;
-              return (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => handlePresetSelect(amt)}
-                  className={`py-3 px-3.5 rounded-2xl text-center font-bold text-sm sm:text-base font-display transition-all cursor-pointer border ${
-                    isSelected
-                      ? 'bg-gradient-to-b from-cyan-500/25 to-blue-600/25 border-cyan-400 text-cyan-200 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-400/80 scale-[1.02]'
-                      : 'bg-white/[0.04] border-white/10 hover:border-cyan-400/40 hover:bg-white/[0.08] text-slate-200'
-                  }`}
-                >
-                  ₹{amt.toLocaleString('en-IN')}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2. Custom Amount Input */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
-            <span>Or enter custom amount</span>
-            <span className="text-[10px] text-slate-400 font-mono">Min ₹10 &bull; Max ₹5,00,000</span>
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 font-bold text-base">
-              ₹
-            </div>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={customAmount}
-              onChange={handleCustomAmountChange}
-              placeholder="Enter custom amount (e.g. 1500)"
-              className="w-full pl-9 pr-4 py-3 rounded-2xl bg-white/[0.04] border border-white/15 focus:border-cyan-400 focus:bg-white/[0.07] text-white text-sm placeholder-slate-500 transition-all outline-none font-medium"
-            />
-          </div>
-        </div>
-
-        {/* 3. Optional Supporter Info (for official email receipt) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div>
-            <label className="text-[11px] font-medium text-slate-400 block mb-1">
-              Your Name (optional)
-            </label>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Name or Supporter"
-              maxLength={50}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 focus:border-cyan-400/60 text-white text-xs placeholder-slate-500 outline-none transition-all"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-slate-400 block mb-1">
-              Your Email (for receipt)
-            </label>
-            <input
-              type="email"
-              value={customerEmail}
-              onChange={(e) => setCustomerEmail(e.target.value)}
-              placeholder="name@example.com"
-              maxLength={80}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 focus:border-cyan-400/60 text-white text-xs placeholder-slate-500 outline-none transition-all"
-            />
-          </div>
-        </div>
-
-        {/* Error message banner */}
-        {errorMessage && (
-          <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-xs flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p>{errorMessage}</p>
-              {needsCredentialsNotice && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={handleSimulateSandboxSuccess}
-                    className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-[11px] font-mono cursor-pointer transition-all"
-                  >
-                    Simulate Sandbox Success Preview
-                  </button>
+              {/* Central Official Zenemoo Logo (Crisp & Transparent) */}
+              <div className="relative z-10 flex flex-col items-center justify-center p-2 text-center">
+                <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-cyan-400/25 rounded-full blur-lg" />
+                  <img
+                    src="/assets/logo.png"
+                    alt="Zenemoo Official Logo"
+                    className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.8)] select-none transition-transform duration-300 group-hover:scale-105 relative z-10"
+                    loading="eager"
+                  />
                 </div>
-              )}
+                <div className="mt-1 text-[9px] font-mono font-bold tracking-widest text-cyan-300 uppercase drop-shadow-md">
+                  ZENEMOO • A BRIGHT TOMORROW
+                </div>
+              </div>
+            </div>
+
+            {/* Mission Quote */}
+            <div className="space-y-1 text-left">
+              <h3 className="text-base sm:text-lg font-black font-display tracking-tight leading-snug">
+                <span className="text-white block">“Small support.</span>
+                <span className="bg-gradient-to-r from-cyan-300 via-sky-400 to-blue-400 bg-clip-text text-transparent block">
+                  A bigger tomorrow.”
+                </span>
+              </h3>
+              <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed font-normal">
+                {contextualMessage}
+              </p>
+            </div>
+
+            {/* 3 Clean Impact Rows */}
+            <div className="space-y-2 pt-1 border-t border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                  <Users className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[11px] sm:text-xs font-medium text-slate-200">
+                  More opportunities for people
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <Settings className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[11px] sm:text-xs font-medium text-slate-200">
+                  Stronger technology and infrastructure
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                  <Globe className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[11px] sm:text-xs font-medium text-slate-200">
+                  A more inclusive and brighter tomorrow
+                </span>
+              </div>
             </div>
           </div>
-        )}
 
-        {/* 4. Action Button */}
-        <div className="space-y-3 pt-1">
-          <button
-            type="submit"
-            disabled={paymentState === 'processing' || paymentState === 'checkout'}
-            className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-sky-400 via-cyan-500 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-slate-950 font-extrabold text-sm sm:text-base font-display shadow-xl shadow-cyan-500/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed group"
-          >
-            {paymentState === 'processing' || paymentState === 'checkout' ? (
-              <>
-                <div className="w-4 h-4 rounded-full border-2 border-slate-950 border-t-transparent animate-spin" />
-                <span>Preparing Secure Payment...</span>
-              </>
-            ) : (
-              <>
-                <Heart className="w-4 h-4 fill-slate-950 text-slate-950 group-hover:scale-110 transition-transform" />
-                <span>
-                  Support Zenemoo
-                  {effectiveAmount > 0 && ` &bull; ₹${effectiveAmount.toLocaleString('en-IN')}`}
-                </span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
-          </button>
-
-          {/* 5. Security & Trust Badges */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span>
-                Secure payment powered by{' '}
-                <span className="text-white font-semibold">Cashfree</span>
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-slate-400">
-              <Lock className="w-3 h-3 text-emerald-400" />
-              <span>256-Bit SSL Encrypted</span>
-            </div>
+          {/* Bottom Pillar Footnote */}
+          <div className="pt-2 border-t border-white/10 text-left">
+            <span className="text-[9px] font-mono tracking-widest text-slate-400 uppercase">
+              PEOPLE • OPPORTUNITIES • IMPACT
+            </span>
           </div>
         </div>
-      </form>
+
+        {/* --------------------------------------------------------- */}
+        {/* RIGHT COLUMN: CONTRIBUTION FORM & CASHFREE PAYMENT       */}
+        {/* --------------------------------------------------------- */}
+        <div className="lg:col-span-7 flex flex-col justify-between space-y-3.5 text-left">
+          
+          <form onSubmit={handleSupportSubmit} className="space-y-3.5">
+            {/* Heading */}
+            <div className="space-y-0.5">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-cyan-400 uppercase">
+                MAKE A DIFFERENCE
+              </span>
+              <h3 className="text-lg sm:text-2xl font-black font-display text-white tracking-tight">
+                Choose an amount to support
+              </h3>
+              <p className="text-[11px] sm:text-xs text-slate-400 leading-relaxed font-normal">
+                Every contribution helps us grow, create more opportunities and build a stronger Zenemoo.
+              </p>
+            </div>
+
+            {/* Error Message if any */}
+            {errorMessage && (
+              <div className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* 4 Amount Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {PRESET_CARDS.map((card) => {
+                const isSelected = selectedPreset === card.amount && !customAmount;
+                return (
+                  <button
+                    key={card.amount}
+                    type="button"
+                    onClick={() => handlePresetSelect(card.amount)}
+                    className={`relative p-2.5 sm:p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[68px] sm:min-h-[74px] ${
+                      isSelected
+                        ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_16px_rgba(6,182,212,0.35)] -translate-y-0.5'
+                        : 'bg-[#0b1020]/90 border-white/10 hover:border-cyan-500/40 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className="absolute top-1.5 right-1.5 w-3.5 h-3.5 rounded-full bg-cyan-400 text-slate-950 flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      </div>
+                    )}
+                    <div className="space-y-0.5">
+                      <div className={`text-sm sm:text-base font-black font-display ${isSelected ? 'text-cyan-300' : 'text-white'}`}>
+                        ₹{card.amount.toLocaleString('en-IN')}
+                      </div>
+                      <div className={`text-[9px] sm:text-[10px] leading-tight ${isSelected ? 'text-cyan-200 font-medium' : 'text-slate-400'}`}>
+                        {card.subtitle}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom Amount Field */}
+            <div className="relative">
+              <div className="flex items-center justify-between rounded-xl bg-[#0b1020]/90 border border-white/15 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-500/20 px-3 py-2 transition-all">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-slate-400 text-sm font-semibold">₹</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Enter custom amount"
+                    value={customAmount}
+                    onChange={handleCustomAmountChange}
+                    className="w-full bg-transparent text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none font-medium"
+                  />
+                </div>
+                <span className="text-[10px] font-mono text-slate-400 shrink-0 pl-2">
+                  Min ₹10 • Max ₹5,00,000
+                </span>
+              </div>
+            </div>
+
+            {/* User Details (Optional) */}
+            <div className="space-y-1.5 pt-0.5">
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-300">
+                <User className="w-3 h-3 text-cyan-400" />
+                <span>Your Details (Optional)</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {/* Name Input */}
+                <div className="flex items-center gap-2 rounded-xl bg-[#0b1020]/90 border border-white/15 focus-within:border-cyan-400 px-3 py-2 transition-all">
+                  <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Your name (Anonymous is fine)"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Email Input */}
+                <div className="flex items-center gap-2 rounded-2xl bg-[#0b1020]/90 border border-white/15 focus-within:border-cyan-400 px-3 py-2 transition-all">
+                  <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <input
+                    type="email"
+                    placeholder="Email address (for receipt)"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Terms & Privacy Checkbox */}
+            <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer select-none pt-0.5">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-900 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer accent-cyan-400 shrink-0"
+              />
+              <span>
+                I agree to the{' '}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+                >
+                  Support Terms
+                </a>{' '}
+                and{' '}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+                >
+                  Privacy Policy
+                </a>
+                .
+              </span>
+            </label>
+
+            {/* Primary Payment Action Button */}
+            <div>
+              <button
+                type="submit"
+                disabled={paymentState === 'processing' || !effectiveAmount}
+                className="w-full py-3.5 px-5 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-slate-950 font-black text-xs sm:text-sm font-display shadow-xl shadow-cyan-500/25 hover:shadow-cyan-400/40 flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
+              >
+                {paymentState === 'processing' ? (
+                  <>
+                    <Clock className="w-4 h-4 animate-spin text-slate-950" />
+                    <span>Preparing Secure Payment...</span>
+                  </>
+                ) : (
+                  <>
+                    <Heart className="w-4 h-4 fill-slate-950 text-slate-950" />
+                    <span>
+                      Continue to Secure Payment (₹{effectiveAmount.toLocaleString('en-IN')})
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-slate-950" />
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Payment Security Area */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-white/10">
+              <div className="flex items-center gap-2 text-left">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <div className="space-y-0.5">
+                  <div className="text-[11px] font-semibold text-white">
+                    Powered by <span className="font-bold text-cyan-300">Cashfree</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400">
+                    Trusted by millions across India
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-left">
+                <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <div className="space-y-0.5">
+                  <div className="text-[11px] font-semibold text-white">
+                    256-Bit SSL Encrypted
+                  </div>
+                  <div className="text-[9px] text-slate-400">
+                    Your information is always safe
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* 3. MODAL FOOTER                                           */}
+      {/* ========================================================= */}
+      <div className="px-5 pb-3.5 pt-1 sm:px-6">
+        <div className="flex items-center gap-3">
+          <span className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-cyan-500/30" />
+          <span className="text-[10px] font-sans text-slate-400 tracking-wide">
+            Thank you for being part of the Zenemoo journey.
+          </span>
+          <span className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-cyan-500/30" />
+        </div>
+      </div>
     </div>
   );
 };

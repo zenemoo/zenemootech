@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -27,10 +27,11 @@ import { AdminHrAiPage } from './AdminHrAiPage';
 import { AdminBookingsTab } from './AdminBookingsTab';
 import { AdminNotificationCenterTab } from './AdminNotificationCenterTab';
 import { AdminEmailInboxTab } from './AdminEmailInboxTab';
+import { AdminSupportContributionsPage } from './AdminSupportContributionsPage';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
   isStandaloneEmailView?: boolean;
 }
 
@@ -222,7 +223,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -368,12 +369,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   };
 
   const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [supportContributionsCount, setSupportContributionsCount] = useState<number>(0);
 
   const loadSupportTickets = async () => {
     try {
       const res = await supportApi.getTickets();
       if (res.data && res.data.success && Array.isArray(res.data.data)) {
         setSupportTickets(res.data.data);
+      }
+    } catch (err) {}
+  };
+
+  const loadSupportContributionsCount = async () => {
+    try {
+      const res = await supportApi.getContributions();
+      const data = res?.data || res;
+      if (data?.summary?.successfulCount !== undefined) {
+        setSupportContributionsCount(data.summary.successfulCount);
+      } else if (Array.isArray(data?.payments)) {
+        setSupportContributionsCount(data.payments.filter((p: any) => p.status === 'SUCCESS').length);
       }
     } catch (err) {}
   };
@@ -933,6 +947,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       await loadRbacUsers();
       await loadAdminNotifications();
       await loadSupportTickets();
+      await loadSupportContributionsCount();
 
       try {
         const revs = await getAllReviewsForAdmin();
@@ -2063,6 +2078,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'CUSTOMER & SUPPORT',
       items: [
+        { id: 'support-contributions', name: 'Support Contributions', icon: CreditCard, count: supportContributionsCount },
         { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.filter((t) => (t.status || 'Open').toLowerCase() !== 'resolved').length },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
         { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
@@ -5631,6 +5647,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB 3.55: REVIEWS MANAGEMENT */}
         {activeTab === 'reviews' && (
           <AdminReviewsTab onAddToast={addToast} onReviewsChange={setAdminReviews} />
+        )}
+
+        {/* TAB 3.58: SUPPORT CONTRIBUTIONS & PAYMENT COLLECTIONS */}
+        {activeTab === 'support-contributions' && (
+          <AdminSupportContributionsPage showToast={addToast} />
         )}
 
         {/* TAB 3.6: ENTERPRISE SUPPORT TICKETS MANAGEMENT */}

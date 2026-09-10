@@ -279,6 +279,7 @@ export const supportApi = {
     api.post('/support/ticket', data),
   getTickets: () => deduplicatedGet('/support/tickets'),
   updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
+  getContributions: () => deduplicatedGet('/support/contributions'),
 };
 
 // Data Export System APIs

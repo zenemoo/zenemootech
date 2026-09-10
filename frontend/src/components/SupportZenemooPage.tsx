@@ -18,6 +18,7 @@ import {
   Info,
   X,
   ArrowRight,
+  ArrowDown,
   Check,
   Copy,
   ExternalLink,
@@ -27,7 +28,7 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { SeoMeta } from '../seo/components/SeoMeta';
 import { SeoOpenGraph } from '../seo/components/SeoOpenGraph';
-import { SupportContributionSection } from './SupportContributionSection';
+import { SupportContributionSection, PurposeId } from './SupportContributionSection';
 
 /**
  * SupportHeroGlobe — Dedicated container-fitted 3D Realistic Earth Globe
@@ -229,13 +230,73 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
   inTalentHubShell = false,
 }) => {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [selectedPurpose, setSelectedPurpose] = useState<PurposeId>('build');
   const [copiedShare, setCopiedShare] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState('');
   const [notifySubmitted, setNotifySubmitted] = useState(false);
 
+  const handleOpenSupportModal = (purpose: PurposeId = 'build') => {
+    setSelectedPurpose(purpose);
+    setIsSupportModalOpen(true);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('action', 'support');
+      url.searchParams.set('purpose', purpose);
+      window.history.replaceState({}, '', url.toString());
+    } catch (_) {}
+  };
+
+  const handleCloseSupportModal = () => {
+    setIsSupportModalOpen(false);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('action');
+      url.searchParams.delete('support');
+      url.searchParams.delete('purpose');
+      url.searchParams.delete('contribute');
+      url.searchParams.delete('donate');
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+    } catch (_) {}
+  };
+
   useEffect(() => {
     window.scrollTo(0, 0);
+
+    // Check if directly loaded with URL query params (e.g. ?action=support, ?support=true, ?purpose=build)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const hasSupport = params.get('support') || params.get('action') || params.get('contribute') || params.get('donate');
+      const purposeParam = params.get('purpose') as PurposeId | null;
+      const orderIdParam = params.get('order_id') || params.get('cf_order_id');
+
+      if (orderIdParam) {
+        setIsSupportModalOpen(true);
+        return;
+      }
+
+      if (hasSupport || purposeParam) {
+        const validPurpose: PurposeId =
+          purposeParam && ['build', 'empower', 'expand', 'innovate', 'general'].includes(purposeParam)
+            ? purposeParam
+            : hasSupport && ['build', 'empower', 'expand', 'innovate', 'general'].includes(hasSupport)
+            ? (hasSupport as PurposeId)
+            : 'build';
+
+        setSelectedPurpose(validPurpose);
+        setIsSupportModalOpen(true);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSupportModalOpen) {
+        handleCloseSupportModal();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSupportModalOpen]);
 
   const handleShareClick = () => {
     const shareUrl = 'https://www.zenemoo.in/support-zenemooindia';
@@ -363,9 +424,40 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
                   Zenemoo connects people with opportunities in AI, data, speech and technology — while helping businesses access the human expertise they need.
                 </p>
 
-                {/* Live Support Contribution Area */}
-                <div className="pt-2 max-w-xl">
-                  <SupportContributionSection variant="hero" />
+                {/* Clean 2-Button Hero Action Group */}
+                <div className="pt-3 space-y-4 max-w-xl">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 sm:gap-4">
+                    {/* Button 1: Support Us */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSupportModal('build')}
+                      className="flex-1 py-4 px-7 rounded-2xl bg-gradient-to-r from-sky-400 via-cyan-500 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-slate-950 font-bold text-sm sm:text-base shadow-xl shadow-cyan-500/25 flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-95 group"
+                    >
+                      <Heart className="w-4 h-4 fill-slate-950 text-slate-950 group-hover:scale-110 transition-transform" />
+                      <span>Support Us</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+
+                    {/* Button 2: More Ways to Help */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = document.getElementById('more-ways-to-support');
+                        if (target) {
+                          target.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      }}
+                      className="flex-1 py-4 px-7 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/20 hover:border-cyan-400/50 text-white hover:text-cyan-300 font-semibold text-sm sm:text-base backdrop-blur-md flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-95 group"
+                    >
+                      <span>More Ways to Help</span>
+                      <ArrowDown className="w-4 h-4 text-cyan-400 group-hover:translate-y-0.5 transition-transform" />
+                    </button>
+                  </div>
+
+                  {/* Micro Subtitle */}
+                  <p className="text-xs text-slate-400 font-normal pt-1">
+                    Your support helps us grow, create more opportunities and build a stronger future.
+                  </p>
                 </div>
               </div>
 
@@ -495,63 +587,103 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               
               {/* Card 1: BUILD */}
-              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
-                  <Layers className="w-6 h-6" />
+              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between space-y-5 text-left">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+                    <Layers className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
+                      BUILD
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      Better technology, compute and platform infrastructure.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
-                    BUILD
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    Better technology and infrastructure.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenSupportModal('build')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-600 hover:text-white border border-blue-200 hover:border-blue-600 text-blue-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-sm"
+                >
+                  <span>Help Us Build</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </button>
               </div>
 
               {/* Card 2: EMPOWER */}
-              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-600">
-                  <Users className="w-6 h-6" />
+              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between space-y-5 text-left">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-600">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
+                      EMPOWER
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      Better tools, training and fair resources for contributors.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
-                    EMPOWER
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    Better tools, training and resources for contributors.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenSupportModal('empower')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-cyan-50 hover:bg-cyan-600 hover:text-white border border-cyan-200 hover:border-cyan-600 text-cyan-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-sm"
+                >
+                  <span>Help Us Empower</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </button>
               </div>
 
               {/* Card 3: EXPAND */}
-              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-600">
-                  <TrendingUp className="w-6 h-6" />
+              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between space-y-5 text-left">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-600">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
+                      EXPAND
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      More languages, regions and remote work opportunities.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
-                    EXPAND
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    More languages, regions and opportunities.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenSupportModal('expand')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-purple-50 hover:bg-purple-600 hover:text-white border border-purple-200 hover:border-purple-600 text-purple-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-sm"
+                >
+                  <span>Help Us Expand</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </button>
               </div>
 
               {/* Card 4: INNOVATE */}
-              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
-                  <Lightbulb className="w-6 h-6" />
+              <div className="p-7 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between space-y-5 text-left">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+                    <Lightbulb className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
+                      INNOVATE
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      New AI, speech and community data benchmark solutions.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-black font-display tracking-wider text-slate-900 uppercase">
-                    INNOVATE
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    New AI, data and technology solutions.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenSupportModal('innovate')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 text-amber-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer group shadow-sm"
+                >
+                  <span>Help Us Innovate</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </button>
               </div>
 
             </div>
@@ -561,7 +693,7 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
         {/* ========================================================= */}
         {/* 5. MORE WAYS TO SUPPORT (NON-FINANCIAL INVOLVEMENT)       */}
         {/* ========================================================= */}
-        <section className="py-20 sm:py-28 bg-[#f8fafc] text-slate-900 border-t border-slate-200">
+        <section id="more-ways-to-support" className="py-20 sm:py-28 bg-[#f8fafc] text-slate-900 border-t border-slate-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
               
@@ -644,16 +776,13 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
                     alt="Green Sprout Growing on Stone in Sunlight"
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    width={800}
+                    height={800}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent" />
-
-                  {/* Floating Quote Box */}
-                  <div className="absolute top-6 left-6 right-6 p-5 sm:p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-white space-y-2 max-w-xs">
-                    <div className="text-xl font-serif text-cyan-300">““</div>
-                    <p className="text-xs sm:text-sm font-medium leading-relaxed drop-shadow-sm">
-                      A stronger Zenemoo today means more opportunities tomorrow.
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent flex flex-col justify-end p-6 sm:p-8 text-white text-left">
+                    <p className="text-sm sm:text-base font-medium italic text-slate-100 leading-relaxed">
+                      “Small actions can create big momentum. Whether by sharing our story, joining a project, or supporting our work, you are helping build a brighter tomorrow.”
                     </p>
-                    <div className="w-6 h-0.5 bg-cyan-400" />
                   </div>
                 </div>
               </div>
@@ -663,119 +792,144 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
         </section>
 
         {/* ========================================================= */}
-        {/* 6. SUPPORT CONTRIBUTIONS (DARK MIDNIGHT PANORAMA BANNER)   */}
+        {/* 6. SUPPORT CONTRIBUTIONS (HIGH-IMPACT MISSION ACTION BANNER) */}
         {/* ========================================================= */}
-        <section id="support-contributions" className="py-16 sm:py-24 bg-[#050811] text-white relative overflow-hidden border-y border-white/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-              
-              {/* Left Side: Status & Impact Info */}
-              <div className="lg:col-span-6 space-y-4 text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold tracking-wider uppercase">
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>SUPPORT CONTRIBUTIONS</span>
+        <section id="support-zenemoo-section" className="py-20 sm:py-28 bg-[#030712] text-white relative overflow-hidden border-t border-white/10">
+          <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-cyan-500/10 rounded-full blur-[140px]" />
+            <div className="absolute bottom-0 right-10 w-[450px] h-[450px] bg-blue-600/10 rounded-full blur-[120px]" />
+          </div>
+
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center space-y-8">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold tracking-wider uppercase">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>SUPPORT ZENEMOO</span>
+              </div>
+              <h2 className="text-3xl sm:text-5xl font-black font-display text-white tracking-tight">
+                Help Us Build More Opportunities.
+              </h2>
+              <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+                Your support helps us build technology, resources, and a stronger future for contributors across India.
+              </p>
+            </div>
+
+            {/* 4 Category Quick-Action Pill Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl mx-auto">
+              <button
+                type="button"
+                onClick={() => handleOpenSupportModal('build')}
+                className="p-3.5 rounded-2xl bg-white/[0.05] hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-400 text-center transition-all cursor-pointer group active:scale-95 shadow-lg"
+              >
+                <div className="text-xs font-bold text-white group-hover:text-cyan-300 flex items-center justify-center gap-1">
+                  <span className="text-cyan-400">✦</span>
+                  <span>BUILD</span>
                 </div>
-                <h3 className="text-2xl sm:text-4xl font-extrabold font-display text-white tracking-tight leading-snug">
-                  Power More Opportunities <br className="hidden sm:inline" />
-                  With Direct Support.
+                <div className="text-[10px] text-slate-400 pt-0.5">Technology</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenSupportModal('empower')}
+                className="p-3.5 rounded-2xl bg-white/[0.05] hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-400 text-center transition-all cursor-pointer group active:scale-95 shadow-lg"
+              >
+                <div className="text-xs font-bold text-white group-hover:text-cyan-300 flex items-center justify-center gap-1">
+                  <span className="text-cyan-400">✦</span>
+                  <span>EMPOWER</span>
+                </div>
+                <div className="text-[10px] text-slate-400 pt-0.5">Contributors</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenSupportModal('expand')}
+                className="p-3.5 rounded-2xl bg-white/[0.05] hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-400 text-center transition-all cursor-pointer group active:scale-95 shadow-lg"
+              >
+                <div className="text-xs font-bold text-white group-hover:text-purple-300 flex items-center justify-center gap-1">
+                  <span className="text-purple-400">✦</span>
+                  <span>EXPAND</span>
+                </div>
+                <div className="text-[10px] text-slate-400 pt-0.5">Regions</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenSupportModal('innovate')}
+                className="p-3.5 rounded-2xl bg-white/[0.05] hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 text-center transition-all cursor-pointer group active:scale-95 shadow-lg"
+              >
+                <div className="text-xs font-bold text-white group-hover:text-amber-300 flex items-center justify-center gap-1">
+                  <span className="text-amber-400">✦</span>
+                  <span>INNOVATE</span>
+                </div>
+                <div className="text-[10px] text-slate-400 pt-0.5">AI & Speech</div>
+              </button>
+            </div>
+
+            {/* Main Modal Trigger Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => handleOpenSupportModal('build')}
+                className="inline-flex items-center gap-2.5 px-8 py-4 rounded-2xl bg-gradient-to-r from-sky-400 via-cyan-500 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-slate-950 font-black text-sm sm:text-base shadow-2xl shadow-cyan-500/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-95"
+              >
+                <Heart className="w-5 h-5 fill-slate-950 text-slate-950" />
+                <span>Support Zenemoo Now</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* 7. TRANSPARENCY & COMMUNITY (HONEST OPERATING MODEL)       */}
+        {/* ========================================================= */}
+        <section className="py-20 sm:py-28 bg-[#f8fafc] text-slate-900 border-t border-slate-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+            <div className="text-center space-y-3 max-w-3xl mx-auto">
+              <div className="text-xs font-mono font-bold tracking-widest text-cyan-700 uppercase">
+                TRANSPARENCY & TRUST
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-extrabold font-display text-slate-900 tracking-tight">
+                How Zenemoo Operates
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 space-y-4 text-left">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-700">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Registered MSME / Udyam Enterprise
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-                  Your contribution directly powers developer infrastructure, speech dataset creation, and new freelance and task opportunities for people across India.
+                <p className="text-sm text-slate-600 leading-relaxed font-normal">
+                  Zenemoo Data Solutions is an official micro-enterprise registered with the Ministry of Micro, Small and Medium Enterprises, Government of India.
                 </p>
-
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center gap-3 text-xs text-slate-300">
-                    <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>100% verified through official Cashfree payment gateway</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-300">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>Instant digital receipt generated with Order & Payment verification IDs</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-300">
-                    <Lock className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>Supports UPI, Debit/Credit Cards, Net Banking, and Wallets</span>
-                  </div>
+                <div className="inline-block px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-mono font-semibold text-slate-800">
+                  UDYAM‑OD‑11‑0124893
                 </div>
               </div>
 
-              {/* Right Side: Contribution Card */}
-              <div className="lg:col-span-6">
-                <SupportContributionSection variant="section" />
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================= */}
-        {/* 7. TRANSPARENCY, BUSINESS & CONTACT 3-COLUMN SUMMARY      */}
-        {/* ========================================================= */}
-        <section className="py-16 sm:py-24 bg-white text-slate-900">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-12 text-left">
-              
-              {/* Column 1: Our Commitment to Transparency */}
-              <div className="space-y-3">
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 font-display">
-                  <ShieldCheck className="w-4 h-4 text-cyan-700 shrink-0" />
-                  <span>Our Commitment to Transparency</span>
-                </h4>
-                <div className="space-y-2 text-xs text-slate-600 leading-relaxed">
-                  <p>
-                    Support received through this initiative is intended to help Zenemoo develop and operate its technology platform, programs, infrastructure, contributor resources, and related growth initiatives.
-                  </p>
-                  <p>
-                    Zenemoo is a technology and data-solutions business. Support provided through this page should not be represented as a charitable donation or tax-deductible contribution unless separately established under applicable law.
-                  </p>
+              <div className="p-8 rounded-3xl bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 space-y-4 text-left">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700">
+                  <Building2 className="w-6 h-6" />
                 </div>
-              </div>
-
-              {/* Column 2: Business & Udyam Details */}
-              <div className="space-y-3">
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 font-display">
-                  <Building2 className="w-4 h-4 text-cyan-700 shrink-0" />
-                  <span>Zenemoo Data Solutions</span>
-                </h4>
-                <div className="space-y-2.5 text-xs text-slate-600 font-mono">
-                  <div>
-                    <span className="text-slate-500 block">Udyam Registration No.</span>
-                    <span className="font-bold text-slate-900">UDYAM-OD-11-0124893</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-3.5 h-3.5 text-cyan-700" />
-                    <a href="mailto:info@zenemoo.in" className="hover:text-cyan-700 font-semibold text-slate-900">
-                      info@zenemoo.in
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-3.5 h-3.5 text-cyan-700" />
-                    <a href="https://www.zenemoo.in" className="hover:text-cyan-700 font-semibold text-slate-900">
-                      zenemoo.in
-                    </a>
-                  </div>
-                </div>
-              </div>
-
-              {/* Column 3: Contact & Collaboration CTA */}
-              <div className="space-y-3">
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 font-display">
-                  Have another way to support us?
-                </h4>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Whether you want to contribute, collaborate, bring a project, become a partner, or help spread the word — we'd love to hear from you.
+                <h3 className="text-lg font-bold text-slate-900">
+                  Direct Impact & Accountability
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed font-normal">
+                  Community contributions are allocated towards infrastructure costs, technical servers, contributor payout tooling, and dialect expansion across Indian languages.
                 </p>
-                <div className="pt-1">
+                <div className="pt-2">
                   <a
-                    href="mailto:info@zenemoo.in?subject=Collaboration%20%26%20Support%20Zenemoo"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold font-mono transition-all shadow-md shadow-cyan-600/20 cursor-pointer"
+                    href="mailto:contact@zenemoo.com"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-700 hover:text-cyan-800 transition-colors"
                   >
                     <span>Get in Touch</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </a>
                 </div>
               </div>
-
             </div>
           </div>
         </section>
@@ -785,35 +939,22 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
       {/* 8. SUPPORT MODAL (LIVE CASHFREE CHECKOUT)                  */}
       {/* ========================================================= */}
       {isSupportModalOpen && (
-        <div className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCloseSupportModal();
+          }}
+        >
           <div
-            className="w-full max-w-xl bg-[#0a0f1d] text-white border border-cyan-500/30 rounded-3xl p-5 sm:p-7 space-y-4 shadow-2xl shadow-cyan-500/10 relative my-auto max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-4xl lg:max-w-5xl bg-[#060a14] text-white border border-cyan-500/35 rounded-3xl sm:rounded-[2rem] shadow-[0_0_80px_rgba(6,182,212,0.25)] relative my-auto max-h-[94vh] overflow-y-auto"
             role="dialog"
             aria-modal="true"
           >
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                  <Heart className="w-4 h-4 fill-cyan-400" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white font-display">
-                    Support Zenemoo
-                  </h3>
-                  <p className="text-[11px] text-cyan-300 font-mono">Official Cashfree Gateway</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSupportModalOpen(false)}
-                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer transition-colors"
-                aria-label="Close modal"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <SupportContributionSection variant="modal" onSuccess={() => {}} />
+            <SupportContributionSection
+              initialPurpose={selectedPurpose}
+              onClose={handleCloseSupportModal}
+              onSuccess={() => {}}
+            />
           </div>
         </div>
       )}

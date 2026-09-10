@@ -78,7 +78,7 @@ async function findPaymentRecord(orderId) {
  */
 export const createPaymentOrder = async (req, res, next) => {
   try {
-    const { amount, currency = 'INR', customer_name, customer_email, customer_phone, return_url } = req.body;
+    const { amount, currency = 'INR', customer_name, customer_email, customer_phone, return_url, purpose } = req.body;
 
     // 1. Amount validation (strict server-side checks)
     const numericAmount = Number(amount);
@@ -118,6 +118,7 @@ export const createPaymentOrder = async (req, res, next) => {
     const userEmail = cleanStr(customer_email || req.user?.email || 'supporter@zenemoo.in', 120);
     const userName = cleanStr(customer_name || req.user?.name || 'Zenemoo Supporter', 80);
     const userPhone = cleanStr(customer_phone || req.user?.phone || '9999999999', 20).replace(/[^0-9]/g, '');
+    const cleanPurpose = cleanStr(purpose || 'HELP US BUILD', 60);
 
     // 3. Generate unique order ID
     // Format: ZNM_SUP_<timestamp>_<random>
@@ -136,6 +137,7 @@ export const createPaymentOrder = async (req, res, next) => {
       customer_name: userName,
       customer_email: userEmail,
       customer_phone: userPhone,
+      metadata: { purpose: cleanPurpose },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -166,7 +168,7 @@ export const createPaymentOrder = async (req, res, next) => {
         return_url && return_url.startsWith('https://')
           ? return_url
           : `https://www.zenemoo.in/support-zenemooindia?order_id=${orderId}`,
-      orderNote: `Zenemoo Support Contribution - ₹${numericAmount}`,
+      orderNote: `Zenemoo Support (${cleanPurpose}) - ₹${numericAmount}`,
     });
 
     // Update with payment session id and cf_order_id
@@ -185,6 +187,7 @@ export const createPaymentOrder = async (req, res, next) => {
       env: cfConfig.env,
       customerName: userName,
       customerEmail: userEmail,
+      purpose: cleanPurpose,
     });
   } catch (err) {
     console.error('createPaymentOrder error:', err);
@@ -287,6 +290,7 @@ export const verifyPaymentOrder = async (req, res, next) => {
       currency: 'INR',
       customerName: localRecord?.customer_name || 'Zenemoo Supporter',
       customerEmail: localRecord?.customer_email || '',
+      purpose: localRecord?.metadata?.purpose || localRecord?.purpose || 'HELP US BUILD',
       paymentMethod,
       paymentTime: paymentTime || localRecord?.created_at,
       createdAt: localRecord?.created_at,
@@ -406,6 +410,186 @@ export const getMyContributions = async (req, res) => {
 };
 
 /**
+ * GET /api/support/contributions
+ * Admin-protected API to retrieve all payment records, statistics, and date-wise collections
+ */
+export const getAdminContributions = async (req, res) => {
+  try {
+    let records = [];
+
+    // 1. Fetch from Supabase if available
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('support_payments')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          records = data;
+        }
+      } catch (err) {
+        console.warn('Supabase getAdminContributions fallback to memory:', err.message);
+      }
+    }
+
+    // 2. Merge with memory records to guarantee no data is dropped
+    const recordMap = new Map();
+    for (const r of records) {
+      if (r.order_id) recordMap.set(r.order_id, r);
+    }
+    for (const r of memorySupportPayments.values()) {
+      if (r.order_id && !recordMap.has(r.order_id)) {
+        recordMap.set(r.order_id, r);
+      }
+    }
+
+    const allPayments = Array.from(recordMap.values()).map((item) => {
+      const purpose =
+        item.metadata?.purpose ||
+        item.purpose ||
+        (typeof item.metadata === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(item.metadata)?.purpose;
+              } catch (_) {
+                return 'HELP US BUILD';
+              }
+            })()
+          : 'HELP US BUILD');
+
+      // Normalize status
+      let rawStatus = (item.status || 'PENDING').toUpperCase();
+      if (rawStatus === 'PAID') rawStatus = 'SUCCESS';
+      if (rawStatus === 'USER_DROPPED') rawStatus = 'CANCELLED';
+
+      return {
+        id: item.id || item.order_id,
+        order_id: item.order_id,
+        cf_order_id: item.cf_order_id || '',
+        payment_id: item.payment_id || '',
+        user_id: item.user_id || null,
+        amount: Number(item.amount) || 0,
+        currency: item.currency || 'INR',
+        provider: item.provider || 'cashfree',
+        status: rawStatus,
+        customer_name: item.customer_name || 'Anonymous Supporter',
+        customer_email: item.customer_email || '',
+        customer_phone: item.customer_phone || '',
+        purpose: purpose || 'HELP US BUILD',
+        payment_method: item.payment_method || 'UPI / Cashfree',
+        payment_time: item.payment_time || item.created_at || new Date().toISOString(),
+        created_at: item.created_at || new Date().toISOString(),
+        updated_at: item.updated_at || new Date().toISOString(),
+      };
+    });
+
+    // Sort newest to oldest
+    allPayments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    // 3. Compute Summary Metrics
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    let totalCollected = 0;
+    let successfulCount = 0;
+    let thisMonthCollected = 0;
+    let thisMonthCount = 0;
+
+    const statusCounts = {
+      SUCCESS: 0,
+      PENDING: 0,
+      FAILED: 0,
+      CANCELLED: 0,
+    };
+
+    const statusAmounts = {
+      SUCCESS: 0,
+      PENDING: 0,
+      FAILED: 0,
+      CANCELLED: 0,
+    };
+
+    // Grouping by Date for successful payments
+    const dateGroupsMap = new Map();
+
+    allPayments.forEach((p) => {
+      const statusKey = p.status in statusCounts ? p.status : 'PENDING';
+      statusCounts[statusKey] = (statusCounts[statusKey] || 0) + 1;
+      statusAmounts[statusKey] = (statusAmounts[statusKey] || 0) + p.amount;
+
+      const pDate = new Date(p.payment_time || p.created_at);
+
+      if (p.status === 'SUCCESS') {
+        totalCollected += p.amount;
+        successfulCount += 1;
+
+        if (pDate.getFullYear() === currentYear && pDate.getMonth() === currentMonth) {
+          thisMonthCollected += p.amount;
+          thisMonthCount += 1;
+        }
+
+        // Date string key YYYY-MM-DD
+        const dateKey = pDate.toISOString().split('T')[0];
+        if (!dateGroupsMap.has(dateKey)) {
+          dateGroupsMap.set(dateKey, {
+            date: dateKey,
+            rawDate: pDate,
+            count: 0,
+            amount: 0,
+            payments: [],
+          });
+        }
+        const grp = dateGroupsMap.get(dateKey);
+        grp.count += 1;
+        grp.amount += p.amount;
+        grp.payments.push(p);
+      }
+    });
+
+    const averageSupport = successfulCount > 0 ? Math.round(totalCollected / successfulCount) : 0;
+
+    // Convert date groups to sorted array
+    const collectionByDate = Array.from(dateGroupsMap.values())
+      .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime())
+      .map((g) => ({
+        date: g.date,
+        formattedDate: g.rawDate.toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        }),
+        count: g.count,
+        amount: g.amount,
+      }));
+
+    return res.json({
+      success: true,
+      summary: {
+        totalCollected,
+        successfulCount,
+        thisMonthCollected,
+        thisMonthCount,
+        averageSupport,
+        currentMonthLabel: now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+        statusCounts,
+        statusAmounts,
+      },
+      collectionByDate,
+      payments: allPayments,
+      totalCount: allPayments.length,
+    });
+  } catch (err) {
+    console.error('getAdminContributions error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load support contributions.',
+    });
+  }
+};
+
+/**
  * Dispatch thank you receipt email via Brevo
  */
 async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerName, customerEmail, paymentTime }) {
@@ -475,3 +659,4 @@ async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerNam
     html,
   });
 }
+

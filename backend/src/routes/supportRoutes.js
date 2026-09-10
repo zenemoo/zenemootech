@@ -6,6 +6,7 @@ import {
   verifyPaymentOrder,
   handleCashfreeWebhook,
   getMyContributions,
+  getAdminContributions,
 } from '../controllers/supportPaymentController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -36,6 +37,14 @@ router.post('/webhook', handleCashfreeWebhook);
 
 // 4. Supporter's contribution history (for authenticated users)
 router.get('/my-contributions', optionalAuth, getMyContributions);
+
+// 5. Admin-protected route: All contributions, summaries, and date-wise collections
+router.get(
+  '/contributions',
+  verifyToken,
+  requireRole(['admin', 'super_admin', 'administrator', 'hr']),
+  getAdminContributions
+);
 
 // --- SUPPORT TICKETING ROUTES ---
 // Public / Authenticated route to create a support ticket

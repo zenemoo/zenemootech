@@ -241,6 +241,24 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'created_at', label: 'Sent At' },
     ],
   },
+  'support-contributions': {
+    sectionId: 'support-contributions',
+    sectionName: 'Support Contributions',
+    defaultColumns: [
+      { key: 'payment_time', label: 'Date & Time' },
+      { key: 'customer_name', label: 'Supporter Name' },
+      { key: 'customer_email', label: 'Email' },
+      { key: 'amount', label: 'Amount' },
+      { key: 'currency', label: 'Currency' },
+      { key: 'payment_id', label: 'Payment ID' },
+      { key: 'order_id', label: 'Order ID' },
+      { key: 'payment_method', label: 'Payment Method' },
+      { key: 'status', label: 'Status' },
+      { key: 'purpose', label: 'Support Purpose' },
+      { key: 'customer_phone', label: 'Phone' },
+      { key: 'cf_order_id', label: 'Cashfree Order ID' },
+    ],
+  },
 };
 
 // ── Intelligent Value Extraction & Formatting ─────────────────────────────────
