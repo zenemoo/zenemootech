@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -87,14 +87,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   });
 
   // Toast Helper Function
-  const addToast = (title: string, message?: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
+  const addToast = useCallback((title: string, message?: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     setToasts((prev) => [...prev.slice(-4), { id, title, message, type, timestamp: Date.now() }]);
-  };
+  }, []);
 
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  }, []);
 
   // Confirmation Helper Function
   const showConfirm = (title: string, message: string, onConfirm: () => void, opts?: { confirmText?: string; cancelText?: string; intent?: 'danger' | 'warning' | 'info' }) => {

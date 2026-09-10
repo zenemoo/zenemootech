@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Link2,
   Plus,
@@ -24,6 +24,8 @@ import {
   Phone,
   ShieldCheck,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -66,18 +68,35 @@ interface AdminPaymentLinksPageProps {
   showToast?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
+// Client-side cache singleton to prevent refetching on re-renders, tab switches, or filter changes
+interface CachedPaymentLinks {
+  links: PaymentLinkRecord[];
+  summary: PaymentLinksSummary | null;
+  timestamp: number;
+}
+
+let globalPaymentLinksCache: CachedPaymentLinks | null = null;
+let activeFetchPromise: Promise<any> | null = null;
+
 export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
   showToast,
 }) => {
-  const [links, setLinks] = useState<PaymentLinkRecord[]>([]);
-  const [summary, setSummary] = useState<PaymentLinksSummary | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [links, setLinks] = useState<PaymentLinkRecord[]>(() => globalPaymentLinksCache?.links || []);
+  const [summary, setSummary] = useState<PaymentLinksSummary | null>(() => globalPaymentLinksCache?.summary || null);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !globalPaymentLinksCache);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Search & Filters
+  const showToastRef = useRef(showToast);
+  showToastRef.current = showToast;
+
+  // Search & Filters (100% Client-Side)
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  // Pagination State (Client-Side)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // Modal State for creating payment link
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -102,42 +121,74 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const fetchPaymentLinks = useCallback(async (isManual = false) => {
+    // 1. If not manual refresh and cache exists and is fresh (< 60s), avoid network call
+    if (!isManual && globalPaymentLinksCache && Date.now() - globalPaymentLinksCache.timestamp < 60000) {
+      setLinks(globalPaymentLinksCache.links);
+      setSummary(globalPaymentLinksCache.summary);
+      setIsLoading(false);
+      return;
+    }
+
+    // 2. Request deduplication: if a request is already in-flight, await it
+    if (activeFetchPromise) {
+      return activeFetchPromise;
+    }
+
     if (isManual) setIsRefreshing(true);
-    else setIsLoading(true);
+    else if (!globalPaymentLinksCache) setIsLoading(true);
     setErrorMessage(null);
 
-    try {
-      const res = await paymentLinksApi.getLinks();
-      const data = res?.data || res;
+    console.log('[PaymentLinks] request:', isManual ? 'manual-refresh' : 'initial-load');
 
-      if (data?.success) {
-        setLinks(data.links || []);
-        setSummary(data.summary || null);
-        if (isManual && showToast) {
-          showToast('Payment links refreshed successfully.', 'success');
+    activeFetchPromise = (async () => {
+      try {
+        const res = await paymentLinksApi.getLinks(isManual);
+        const data = res?.data || res;
+
+        if (data?.success) {
+          const freshLinks = data.links || [];
+          const freshSummary = data.summary || null;
+
+          setLinks(freshLinks);
+          setSummary(freshSummary);
+
+          // Update singleton cache
+          globalPaymentLinksCache = {
+            links: freshLinks,
+            summary: freshSummary,
+            timestamp: Date.now(),
+          };
+
+          if (isManual && showToastRef.current) {
+            showToastRef.current('Payment links refreshed successfully.', 'success');
+          }
+        } else {
+          throw new Error(data?.message || 'Failed to retrieve payment links.');
         }
-      } else {
-        throw new Error(data?.message || 'Failed to retrieve payment links.');
+      } catch (err: any) {
+        console.error('Failed to load payment links:', err);
+        setErrorMessage(err?.response?.data?.message || err?.message || 'Unable to load payment links.');
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        activeFetchPromise = null;
       }
-    } catch (err: any) {
-      console.error('Failed to load payment links:', err);
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Unable to load payment links.');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [showToast]);
+    })();
 
+    return activeFetchPromise;
+  }, []);
+
+  // Run exactly once on mount
   useEffect(() => {
-    fetchPaymentLinks();
-  }, [fetchPaymentLinks]);
+    fetchPaymentLinks(false);
+  }, []);
 
   const handleCopy = (text: string, label: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedField(label);
     setTimeout(() => setCopiedField(null), 2000);
-    if (showToast) showToast(`Copied ${label} to clipboard`, 'info');
+    if (showToastRef.current) showToastRef.current(`Copied ${label} to clipboard`, 'info');
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -172,9 +223,35 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
 
       const data = res?.data || res;
       if (data?.success && data?.link) {
-        setCreatedLinkResult(data.link);
-        fetchPaymentLinks();
-        if (showToast) showToast('Cashfree payment link generated successfully.', 'success');
+        const created = data.link as PaymentLinkRecord;
+        setCreatedLinkResult(created);
+
+        // Targeted local update (0 extra network requests)
+        console.log('[PaymentLinks] request: create-update (local state updated, 0 requests)');
+        setLinks((prev) => [created, ...prev]);
+        setSummary((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            totalLinks: prev.totalLinks + 1,
+            totalLinkAmount: prev.totalLinkAmount + (created.link_amount || 0),
+            statusCounts: {
+              ...prev.statusCounts,
+              ACTIVE: (prev.statusCounts.ACTIVE || 0) + 1,
+            },
+          };
+        });
+
+        if (globalPaymentLinksCache) {
+          globalPaymentLinksCache.links = [created, ...globalPaymentLinksCache.links];
+          if (globalPaymentLinksCache.summary) {
+            globalPaymentLinksCache.summary.totalLinks += 1;
+            globalPaymentLinksCache.summary.totalLinkAmount += (created.link_amount || 0);
+            globalPaymentLinksCache.summary.statusCounts.ACTIVE = (globalPaymentLinksCache.summary.statusCounts.ACTIVE || 0) + 1;
+          }
+        }
+
+        if (showToastRef.current) showToastRef.current('Cashfree payment link generated successfully.', 'success');
       } else {
         throw new Error(data?.message || 'Failed to create payment link.');
       }
@@ -193,14 +270,24 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
       const res = await paymentLinksApi.cancelLink(linkId);
       const data = res?.data || res;
       if (data?.success) {
-        if (showToast) showToast(`Payment link ${linkId} cancelled.`, 'info');
-        fetchPaymentLinks(true);
+        if (showToastRef.current) showToastRef.current(`Payment link ${linkId} cancelled.`, 'info');
+
+        // Targeted local state update (0 extra network requests)
+        setLinks((prev) =>
+          prev.map((l) => (l.link_id === linkId ? { ...l, link_status: 'CANCELLED' as const } : l))
+        );
+        if (globalPaymentLinksCache) {
+          globalPaymentLinksCache.links = globalPaymentLinksCache.links.map((l) =>
+            l.link_id === linkId ? { ...l, link_status: 'CANCELLED' as const } : l
+          );
+        }
+
         if (selectedLink && selectedLink.link_id === linkId) {
           setSelectedLink((prev) => (prev ? { ...prev, link_status: 'CANCELLED' } : null));
         }
       }
     } catch (err: any) {
-      if (showToast) showToast('Failed to cancel payment link.', 'error');
+      if (showToastRef.current) showToastRef.current('Failed to cancel payment link.', 'error');
     }
   };
 
@@ -219,7 +306,12 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
     setIsCreateModalOpen(false);
   };
 
-  // Filtered links list
+  // Reset pagination on filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
+
+  // Filtered links list (100% Client-Side, 0 Requests)
   const filteredLinks = useMemo(() => {
     return links.filter((link) => {
       if (searchQuery.trim()) {
@@ -242,6 +334,13 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
       return true;
     });
   }, [links, searchQuery, statusFilter]);
+
+  // Paginated records for table
+  const totalPages = Math.max(1, Math.ceil(filteredLinks.length / pageSize));
+  const paginatedLinks = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredLinks.slice(start, start + pageSize);
+  }, [filteredLinks, currentPage, pageSize]);
 
   const renderStatusBadge = (status: string) => {
     const st = (status || 'ACTIVE').toUpperCase();
@@ -441,7 +540,7 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredLinks.map((link) => (
+                {paginatedLinks.map((link) => (
                   <tr
                     key={link.link_id}
                     onClick={() => setSelectedLink(link)}
@@ -532,6 +631,51 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Table Pagination Footer */}
+        {filteredLinks.length > 0 && (
+          <div className="py-3 px-4 border-t border-white/10 bg-white/[0.01] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-slate-400">
+            <div className="flex items-center gap-2">
+              <span>Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredLinks.length)} of {filteredLinks.length} records</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="ml-2 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-white text-[11px] focus:outline-none focus:border-cyan-400 cursor-pointer"
+              >
+                <option value={10} className="bg-[#070b14] text-white">10 / page</option>
+                <option value={20} className="bg-[#070b14] text-white">20 / page</option>
+                <option value={50} className="bg-[#070b14] text-white">50 / page</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 transition-colors cursor-pointer"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="px-3 py-1 rounded-lg bg-white/[0.04] text-white font-bold text-[11px]">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed border border-white/10 transition-colors cursor-pointer"
+                title="Next Page"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>

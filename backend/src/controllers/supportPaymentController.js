@@ -626,6 +626,14 @@ export const getAdminContributions = async (req, res) => {
 // Resilient in-memory payment links cache
 const memoryPaymentLinks = new Map();
 
+// Selective columns projection for minimum Supabase egress
+const REQUIRED_PAYMENT_LINK_COLUMNS = 'id,link_id,cf_link_id,link_url,link_amount,link_currency,link_purpose,customer_phone,customer_email,customer_name,link_status,link_expiry_time,order_id,payment_id,created_by,source,created_at,updated_at';
+
+// Server-side cache for Payment Links
+let cachedPaymentLinksData = null;
+let lastPaymentLinksCacheTimestamp = 0;
+const PAYMENT_LINKS_CACHE_TTL_MS = 60 * 1000; // 60s TTL
+
 /**
  * Save or update payment link in Supabase or memory fallback
  */
@@ -665,6 +673,10 @@ async function savePaymentLinkRecord(linkId, linkData) {
     }
   }
 
+  // Invalidate server cache
+  cachedPaymentLinksData = null;
+  lastPaymentLinksCacheTimestamp = 0;
+
   return merged;
 }
 
@@ -676,7 +688,7 @@ async function findPaymentLinkRecord(linkId) {
     try {
       const { data } = await supabase
         .from('support_payment_links')
-        .select('*')
+        .select(REQUIRED_PAYMENT_LINK_COLUMNS)
         .eq('link_id', linkId)
         .maybeSingle();
       if (data) return data;
@@ -784,16 +796,24 @@ export const createAdminPaymentLink = async (req, res) => {
 /**
  * GET /api/support/payment-links
  * Admin endpoint: List all payment links with status aggregation
+ * Optimized for minimum Supabase egress with server-side TTL cache and column projection
  */
 export const getAdminPaymentLinks = async (req, res) => {
   try {
+    const isRefresh = req.query.refresh === 'true';
+
+    // 1. Check server-side memory cache
+    if (!isRefresh && cachedPaymentLinksData && (Date.now() - lastPaymentLinksCacheTimestamp < PAYMENT_LINKS_CACHE_TTL_MS)) {
+      return res.json(cachedPaymentLinksData);
+    }
+
     let records = [];
 
     if (supabase) {
       try {
         const { data, error } = await supabase
           .from('support_payment_links')
-          .select('*')
+          .select(REQUIRED_PAYMENT_LINK_COLUMNS)
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
@@ -843,7 +863,7 @@ export const getAdminPaymentLinks = async (req, res) => {
       }
     });
 
-    return res.json({
+    const responsePayload = {
       success: true,
       links: allLinks,
       summary: {
@@ -852,7 +872,14 @@ export const getAdminPaymentLinks = async (req, res) => {
         paidAmount,
         statusCounts,
       },
-    });
+      cachedAt: new Date().toISOString(),
+    };
+
+    // Store in server-side cache
+    cachedPaymentLinksData = responsePayload;
+    lastPaymentLinksCacheTimestamp = Date.now();
+
+    return res.json(responsePayload);
   } catch (err) {
     console.error('getAdminPaymentLinks error:', err);
     return res.status(500).json({

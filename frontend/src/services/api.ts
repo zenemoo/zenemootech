@@ -298,7 +298,8 @@ export const paymentLinksApi = {
     send_sms?: boolean;
     send_email?: boolean;
   }) => api.post('/support/payment-links', data),
-  getLinks: () => deduplicatedGet('/support/payment-links'),
+  getLinks: (refresh: boolean = false) =>
+    deduplicatedGet('/support/payment-links', { params: refresh ? { refresh: 'true' } : undefined }),
   cancelLink: (linkId: string) => api.post(`/support/payment-links/${encodeURIComponent(linkId)}/cancel`),
 };
 
