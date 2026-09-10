@@ -77,7 +77,7 @@ export const TalentHubSupportHistory: React.FC<TalentHubSupportHistoryProps> = (
     setError(null);
 
     try {
-      const res = await supportApi.getMyContributions();
+      const res = await supportApi.getMyContributions(userEmail, isManualRefresh);
       const data = res?.data || res;
 
       if (data?.success) {
@@ -109,7 +109,7 @@ export const TalentHubSupportHistory: React.FC<TalentHubSupportHistoryProps> = (
       // First try fetching authoritative receipt details from backend
       let receiptData: PaymentReceiptData;
       try {
-        const res = await supportApi.getMemberReceipt(item.orderId);
+        const res = await supportApi.getMemberReceipt(item.orderId, userEmail);
         const data = res?.data || res;
         if (data?.success && data?.receipt) {
           const r = data.receipt;

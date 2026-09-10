@@ -302,10 +302,21 @@ export const supportApi = {
   }) => api.post('/support/create-payment', data),
   verifyPayment: (orderId: string) =>
     api.get(`/support/verify-payment/${encodeURIComponent(orderId)}`),
-  getMyContributions: () =>
-    deduplicatedGet('/support/support-payments/me'),
-  getMemberReceipt: (orderId: string) =>
-    api.get(`/support/support-payments/${encodeURIComponent(orderId)}/receipt`),
+  getMyContributions: (email?: string, refresh?: boolean) =>
+    deduplicatedGet('/support/support-payments/me', {
+      params: {
+        ...(email ? { email } : {}),
+        ...(refresh ? { refresh: 'true', _t: Date.now() } : {}),
+      },
+      headers: {
+        ...(email ? { 'x-user-email': email } : {}),
+      },
+    }),
+  getMemberReceipt: (orderId: string, email?: string) =>
+    api.get(`/support/support-payments/${encodeURIComponent(orderId)}/receipt`, {
+      params: email ? { email } : undefined,
+      headers: email ? { 'x-user-email': email } : undefined,
+    }),
 };
 
 // Cashfree Payment Links APIs

@@ -29,6 +29,59 @@ export function invalidateContributionsCache() {
 // Helper to sanitize customer strings
 const cleanStr = (val, max = 100) => (val ? String(val).trim().slice(0, max) : '');
 
+// Exact columns present in Supabase support_payments table to prevent PGRST204 schema rejection
+const VALID_SUPPORT_PAYMENT_COLUMNS = new Set([
+  'id',
+  'order_id',
+  'user_id',
+  'amount',
+  'currency',
+  'provider',
+  'status',
+  'payment_id',
+  'cf_order_id',
+  'payment_session_id',
+  'customer_name',
+  'customer_email',
+  'customer_phone',
+  'payment_method',
+  'payment_time',
+  'metadata',
+  'created_at',
+  'updated_at',
+]);
+
+/**
+ * Filter payload so only valid database columns are passed to Supabase,
+ * with any extra attributes (purpose, source, etc.) safely preserved inside metadata JSONB.
+ */
+function sanitizeForSupabase(record) {
+  if (!record || typeof record !== 'object') return {};
+  const clean = {};
+  const extraMetadata = {};
+
+  for (const [key, val] of Object.entries(record)) {
+    if (VALID_SUPPORT_PAYMENT_COLUMNS.has(key)) {
+      clean[key] = val;
+    } else if (val !== undefined) {
+      extraMetadata[key] = val;
+    }
+  }
+
+  // Preserve extra fields inside metadata
+  const baseMetadata =
+    typeof record.metadata === 'object' && record.metadata !== null
+      ? record.metadata
+      : {};
+
+  clean.metadata = {
+    ...baseMetadata,
+    ...extraMetadata,
+  };
+
+  return clean;
+}
+
 /**
  * Save or update payment in Supabase or memory fallback
  */
@@ -56,19 +109,23 @@ async function savePaymentRecord(orderId, paymentData) {
         .eq('order_id', orderId)
         .maybeSingle();
 
+      const dbPayload = sanitizeForSupabase(merged);
+
       if (found?.id) {
+        const updatePayload = sanitizeForSupabase(paymentData);
+        delete updatePayload.id;
+        delete updatePayload.order_id;
         await supabase
           .from('support_payments')
-          .update(paymentData)
+          .update(updatePayload)
           .eq('order_id', orderId);
       } else {
         await supabase
           .from('support_payments')
-          .insert([merged]);
+          .insert([dbPayload]);
       }
     } catch (err) {
-      // Graceful fallback to memory store
-      console.warn('Supabase support_payments table not reachable or not yet created. Using memory store:', err.message);
+      console.warn('Supabase support_payments table not reachable or schema warning:', err.message);
     }
   }
 
@@ -426,40 +483,54 @@ export const handleCashfreeWebhook = async (req, res) => {
 export const getMyContributions = async (req, res) => {
   try {
     const userId = req.user?.id || req.user?.team_member_id || req.user?.sub;
-    const userEmail = req.user?.email;
+    const userEmail = cleanStr(req.query.email || req.headers['x-user-email'] || req.user?.email, 120).toLowerCase();
 
     if (!userId && !userEmail) {
       return res.status(401).json({ success: false, message: 'Authentication required.' });
     }
 
-    let records = [];
+    const recordMap = new Map();
+
+    // 1. Fetch from Supabase with case-insensitive email query
     if (supabase) {
       try {
         let query = supabase
           .from('support_payments')
           .select(REQUIRED_CONTRIBUTION_COLUMNS)
           .order('created_at', { ascending: false });
+
         if (userId && userEmail) {
-          query = query.or(`user_id.eq.${userId},customer_email.eq.${userEmail}`);
+          query = query.or(`user_id.eq.${userId},customer_email.ilike.${userEmail}`);
         } else if (userId) {
           query = query.eq('user_id', userId);
         } else {
-          query = query.eq('customer_email', userEmail);
+          query = query.ilike('customer_email', userEmail);
         }
-        const { data } = await query;
-        if (Array.isArray(data)) records = data;
+
+        const { data, error } = await query;
+        if (!error && Array.isArray(data)) {
+          for (const r of data) {
+            if (r.order_id) recordMap.set(r.order_id, r);
+          }
+        }
       } catch (e) {
         console.warn('Supabase fetch my-contributions fallback:', e.message);
       }
     }
 
-    if (records.length === 0) {
-      for (const record of memorySupportPayments.values()) {
-        if ((userId && record.user_id === userId) || (userEmail && record.customer_email === userEmail)) {
-          records.push(record);
-        }
+    // 2. Merge with memory records to ensure no recent in-flight or newly verified payment is dropped
+    for (const record of memorySupportPayments.values()) {
+      const recEmail = cleanStr(record.customer_email, 120).toLowerCase();
+      const matchesUser = userId && record.user_id === userId;
+      const matchesEmail = userEmail && recEmail === userEmail;
+
+      if ((matchesUser || matchesEmail) && record.order_id && !recordMap.has(record.order_id)) {
+        recordMap.set(record.order_id, record);
       }
     }
+
+    const records = Array.from(recordMap.values());
+    records.sort((a, b) => new Date(b.created_at || b.payment_time).getTime() - new Date(a.created_at || a.payment_time).getTime());
 
     const formattedContributions = records.map((r) => {
       const receiptNo = generateDeterministicReceiptNo(r.order_id, r.payment_time || r.created_at);
@@ -504,7 +575,12 @@ export const getMyContributions = async (req, res) => {
 export const getMemberPaymentReceipt = async (req, res) => {
   try {
     const userId = req.user?.id || req.user?.team_member_id || req.user?.sub;
-    const userEmail = req.user?.email;
+    const userEmail = (
+      req.query.email ||
+      req.headers['x-user-email'] ||
+      req.user?.email ||
+      ''
+    ).trim().toLowerCase();
     const { orderId } = req.params;
 
     if (!userId && !userEmail) {
@@ -534,7 +610,8 @@ export const getMemberPaymentReceipt = async (req, res) => {
     }
 
     // Check ownership: Must belong to authenticated user
-    const isOwner = (userId && record.user_id === userId) || (userEmail && record.customer_email === userEmail);
+    const recordEmail = (record.customer_email || '').trim().toLowerCase();
+    const isOwner = (userId && record.user_id === userId) || (userEmail && recordEmail === userEmail);
     const isAdmin = ['admin', 'super_admin', 'administrator', 'hr'].includes(req.user?.role?.toLowerCase());
 
     if (!isOwner && !isAdmin) {
