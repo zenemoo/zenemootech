@@ -62,6 +62,9 @@ const CONTEXTUAL_MESSAGES: Record<PurposeId, string> = {
 interface SupportContributionSectionProps {
   initialPurpose?: PurposeId;
   directLinkId?: string | null;
+  initialCustomerName?: string;
+  initialCustomerEmail?: string;
+  initialCustomerPhone?: string;
   onClose?: () => void;
   onSuccess?: (receipt: ReceiptInfo) => void;
   className?: string;
@@ -70,15 +73,18 @@ interface SupportContributionSectionProps {
 export const SupportContributionSection: React.FC<SupportContributionSectionProps> = ({
   initialPurpose = 'general',
   directLinkId = null,
+  initialCustomerName,
+  initialCustomerEmail,
+  initialCustomerPhone,
   onClose,
   onSuccess,
   className = '',
 }) => {
   const [selectedPreset, setSelectedPreset] = useState<number | null>(1000);
   const [customAmount, setCustomAmount] = useState<string>('');
-  const [customerName, setCustomerName] = useState<string>('');
-  const [customerEmail, setCustomerEmail] = useState<string>('');
-  const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [customerName, setCustomerName] = useState<string>(initialCustomerName || '');
+  const [customerEmail, setCustomerEmail] = useState<string>(initialCustomerEmail || '');
+  const [customerPhone, setCustomerPhone] = useState<string>(initialCustomerPhone || '');
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
 
   // Secure Server-side Link Resolution State
@@ -145,18 +151,22 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
     }
   }, [directLinkId]);
 
-  // Auto-fill logged-in user profile if available
+  // Auto-fill logged-in user profile if available or passed via props
   useEffect(() => {
+    if (initialCustomerName) setCustomerName(initialCustomerName);
+    if (initialCustomerEmail) setCustomerEmail(initialCustomerEmail);
+    if (initialCustomerPhone) setCustomerPhone(initialCustomerPhone);
+
     try {
       const portalUserStr = localStorage.getItem('zenemoo_portal_user');
       if (portalUserStr) {
         const parsed = JSON.parse(portalUserStr);
-        if (parsed.name && !customerName) setCustomerName(parsed.name);
-        if (parsed.email && !customerEmail) setCustomerEmail(parsed.email);
-        if (parsed.phone && !customerPhone) setCustomerPhone(parsed.phone);
+        if (parsed.name && !customerName && !initialCustomerName) setCustomerName(parsed.name);
+        if (parsed.email && !customerEmail && !initialCustomerEmail) setCustomerEmail(parsed.email);
+        if (parsed.phone && !customerPhone && !initialCustomerPhone) setCustomerPhone(parsed.phone);
       }
     } catch (_) {}
-  }, []);
+  }, [initialCustomerName, initialCustomerEmail, initialCustomerPhone]);
 
   // Check URL parameters for return from Cashfree
   useEffect(() => {

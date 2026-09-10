@@ -40,9 +40,17 @@ export const deduplicatedGet = <T = any>(url: string, config?: any): Promise<T> 
   return promise as unknown as Promise<T>;
 };
 
-// Request interceptor for JWT authentication header
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('zenemoo_jwt_token');
+// Request interceptor for JWT authentication header (supports Zenemoo JWT and Supabase Auth session)
+api.interceptors.request.use(async (config) => {
+  let token = localStorage.getItem('zenemoo_jwt_token');
+  if (!token) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) {
+        token = data.session.access_token;
+      }
+    } catch (_) {}
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -294,6 +302,10 @@ export const supportApi = {
   }) => api.post('/support/create-payment', data),
   verifyPayment: (orderId: string) =>
     api.get(`/support/verify-payment/${encodeURIComponent(orderId)}`),
+  getMyContributions: () =>
+    deduplicatedGet('/support/support-payments/me'),
+  getMemberReceipt: (orderId: string) =>
+    api.get(`/support/support-payments/${encodeURIComponent(orderId)}/receipt`),
 };
 
 // Cashfree Payment Links APIs

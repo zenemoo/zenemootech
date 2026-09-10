@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Heart,
   Globe,
+  Receipt,
 } from 'lucide-react';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import { NotificationCenter } from '../NotificationCenter';
@@ -24,7 +25,7 @@ import { ZenemooAiDrawer } from '../ZenemooAiDrawer';
 import { SeoImage } from '../../seo/components/SeoImage';
 import { ZENEMOO_SOCIAL_LINKS } from '../SocialData';
 
-export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia';
+export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia' | 'support-history';
 
 interface TalentHubLayoutProps {
   currentTab: TalentHubTab;
@@ -363,6 +364,16 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                           <Heart className="w-3.5 h-3.5 text-pink-400" />
                           Support Zenemoo
                         </button>
+                        <button
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            handleNavClick('support-history');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-cyan-300 hover:text-white hover:bg-cyan-500/10 transition-colors cursor-pointer"
+                        >
+                          <Receipt className="w-3.5 h-3.5 text-cyan-400" />
+                          My Support Payments
+                        </button>
                       </div>
 
                       <div className="pt-1">
@@ -510,6 +521,19 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 >
                   <Heart className="w-4 h-4 text-pink-400" />
                   <span>Support Zenemoo</span>
+                </button>
+
+                {/* My Support Payments Route */}
+                <button
+                  onClick={() => handleNavClick('support-history')}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                    currentTab === 'support-history'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                      : 'bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30'
+                  }`}
+                >
+                  <Receipt className="w-4 h-4 text-cyan-400" />
+                  <span>My Support Payments</span>
                 </button>
 
                 {/* Back to Main Website */}

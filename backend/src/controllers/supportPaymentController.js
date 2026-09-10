@@ -420,12 +420,12 @@ export const handleCashfreeWebhook = async (req, res) => {
 };
 
 /**
- * GET /api/support/my-contributions
- * Fetch past contributions for authenticated user
+ * GET /api/support/my-contributions or /api/support/support-payments/me
+ * Fetch past contributions for authenticated user / Talent Hub member
  */
 export const getMyContributions = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.team_member_id;
+    const userId = req.user?.id || req.user?.team_member_id || req.user?.sub;
     const userEmail = req.user?.email;
 
     if (!userId && !userEmail) {
@@ -439,8 +439,10 @@ export const getMyContributions = async (req, res) => {
           .from('support_payments')
           .select(REQUIRED_CONTRIBUTION_COLUMNS)
           .order('created_at', { ascending: false });
-        if (userId) {
+        if (userId && userEmail) {
           query = query.or(`user_id.eq.${userId},customer_email.eq.${userEmail}`);
+        } else if (userId) {
+          query = query.eq('user_id', userId);
         } else {
           query = query.eq('customer_email', userEmail);
         }
@@ -459,14 +461,111 @@ export const getMyContributions = async (req, res) => {
       }
     }
 
-    const totalSupported = records
-      .filter((r) => r.status === 'SUCCESS')
-      .reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const formattedContributions = records.map((r) => {
+      const receiptNo = generateDeterministicReceiptNo(r.order_id, r.payment_time || r.created_at);
+      return {
+        id: r.id,
+        orderId: r.order_id,
+        receiptNo,
+        paymentId: r.payment_id || null,
+        amount: Number(r.amount || 0),
+        currency: r.currency || 'INR',
+        purpose: r.purpose || r.metadata?.purpose || 'Support Zenemoo — Platform & Technology',
+        status: (r.status || 'PENDING').toUpperCase(),
+        customerName: r.customer_name || 'Zenemoo Supporter',
+        customerEmail: r.customer_email || '',
+        customerPhone: r.customer_phone || '',
+        paymentMethod: r.payment_method || 'Online / UPI',
+        paymentTime: r.payment_time || r.created_at,
+        createdAt: r.created_at,
+      };
+    });
+
+    const successfulRecords = formattedContributions.filter((r) => r.status === 'SUCCESS' || r.status === 'PAID');
+    const totalSupported = successfulRecords.reduce((sum, r) => sum + r.amount, 0);
+    const successfulCount = successfulRecords.length;
 
     return res.json({
       success: true,
       totalSupported,
-      contributions: records,
+      successfulCount,
+      totalCount: formattedContributions.length,
+      contributions: formattedContributions,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * GET /api/support/support-payments/:orderId/receipt
+ * Authenticated member receipt retrieval with strict ownership verification
+ */
+export const getMemberPaymentReceipt = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?.team_member_id || req.user?.sub;
+    const userEmail = req.user?.email;
+    const { orderId } = req.params;
+
+    if (!userId && !userEmail) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: 'Payment Order ID is required.' });
+    }
+
+    const cleanParam = decodeURIComponent(orderId).trim();
+    let record = await findPaymentRecord(cleanParam);
+
+    if (!record && supabase) {
+      try {
+        const { data } = await supabase
+          .from('support_payments')
+          .select('*')
+          .eq('order_id', cleanParam)
+          .maybeSingle();
+        if (data) record = data;
+      } catch (_) {}
+    }
+
+    if (!record) {
+      return res.status(404).json({ success: false, message: 'Payment record not found.' });
+    }
+
+    // Check ownership: Must belong to authenticated user
+    const isOwner = (userId && record.user_id === userId) || (userEmail && record.customer_email === userEmail);
+    const isAdmin = ['admin', 'super_admin', 'administrator', 'hr'].includes(req.user?.role?.toLowerCase());
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    // Must be successful
+    const isSuccess = (record.status || '').toUpperCase() === 'SUCCESS' || (record.status || '').toUpperCase() === 'PAID';
+    if (!isSuccess) {
+      return res.status(400).json({ success: false, message: 'Receipt is available only for successful payments.' });
+    }
+
+    const receiptNo = generateDeterministicReceiptNo(record.order_id, record.payment_time || record.created_at);
+
+    return res.json({
+      success: true,
+      receipt: {
+        receiptNo,
+        orderId: record.order_id,
+        paymentId: record.payment_id || record.cf_payment_id || null,
+        transactionId: record.payment_id || record.cf_payment_id || null,
+        amount: Number(record.amount || 0),
+        currency: record.currency || 'INR',
+        customerName: record.customer_name || 'Zenemoo Supporter',
+        customerEmail: record.customer_email || '',
+        customerPhone: record.customer_phone || '',
+        purpose: record.purpose || record.metadata?.purpose || 'Support Zenemoo — Platform & Technology',
+        status: 'SUCCESS',
+        paymentMethod: record.payment_method || 'Online / UPI',
+        paymentDate: record.payment_time || record.created_at || new Date().toISOString(),
+      },
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

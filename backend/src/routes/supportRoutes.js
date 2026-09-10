@@ -6,6 +6,7 @@ import {
   verifyPaymentOrder,
   handleCashfreeWebhook,
   getMyContributions,
+  getMemberPaymentReceipt,
   getAdminContributions,
   createAdminPaymentLink,
   getAdminPaymentLinks,
@@ -19,14 +20,27 @@ import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
 
-// Optional token extraction middleware (allows both guest and authenticated support)
+// Optional token extraction middleware (supports both Zenemoo JWT and Supabase Auth tokens)
 const optionalAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     try {
       req.user = jwt.verify(token, JWT_SECRET);
-    } catch (_) {}
+    } catch (_) {
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded && (decoded.sub || decoded.email || decoded.id)) {
+          req.user = {
+            id: decoded.sub || decoded.id,
+            email: decoded.email,
+            role: decoded.role || decoded.user_metadata?.role || 'user',
+            name: decoded.user_metadata?.full_name || decoded.name,
+            ...decoded,
+          };
+        }
+      } catch (__) {}
+    }
   }
   next();
 };
@@ -41,8 +55,10 @@ router.get('/verify-payment/:orderId', verifyPaymentOrder);
 // 3. Webhook listener for Cashfree events
 router.post('/webhook', handleCashfreeWebhook);
 
-// 4. Supporter's contribution history (for authenticated users)
+// 4. Supporter's contribution history (for authenticated Talent Hub members & users)
 router.get('/my-contributions', optionalAuth, getMyContributions);
+router.get('/support-payments/me', optionalAuth, getMyContributions);
+router.get('/support-payments/:orderId/receipt', optionalAuth, getMemberPaymentReceipt);
 
 // 5. Public route: Retrieve verified payment link details by ID (No PII in URL)
 router.get('/public-link/:linkId', getPublicPaymentLink);

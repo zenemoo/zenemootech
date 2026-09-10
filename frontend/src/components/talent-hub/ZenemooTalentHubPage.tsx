@@ -7,8 +7,17 @@ import { TalentHubProfile } from './TalentHubProfile';
 import { TalentHubOpportunities } from './TalentHubOpportunities';
 import { TalentHubApplications } from './TalentHubApplications';
 import { TalentHubSupport } from './TalentHubSupport';
+import { TalentHubSupportHistory } from './TalentHubSupportHistory';
 
-export type TalentHubSubRoute = 'login' | 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia';
+export type TalentHubSubRoute =
+  | 'login'
+  | 'dashboard'
+  | 'profile'
+  | 'opportunities'
+  | 'applications'
+  | 'support-zenemooindia'
+  | 'support-history'
+  | 'support-zenemoo/history';
 
 interface ZenemooTalentHubPageProps {
   initialSubRoute?: TalentHubSubRoute;
@@ -41,8 +50,12 @@ const TalentHubContent: React.FC<{
     );
   }
 
+  // Normalize subroute alias
+  const normalizedRoute =
+    currentSubRoute === 'support-zenemoo/history' ? 'support-history' : currentSubRoute;
+
   // Authenticated + Registered: Render Talent Hub Portal within Layout
-  const activeTab = currentSubRoute === 'login' ? 'dashboard' : currentSubRoute;
+  const activeTab = normalizedRoute === 'login' ? 'dashboard' : normalizedRoute;
 
   return (
     <TalentHubLayout
@@ -60,7 +73,15 @@ const TalentHubContent: React.FC<{
         />
       )}
       {activeTab === 'support-zenemooindia' && (
-        <TalentHubSupport onNavigateBack={() => onChangeSubRoute('dashboard')} />
+        <TalentHubSupport
+          onNavigateBack={() => onChangeSubRoute('dashboard')}
+          onNavigateToHistory={() => onChangeSubRoute('support-history')}
+        />
+      )}
+      {activeTab === 'support-history' && (
+        <TalentHubSupportHistory
+          onNavigateBack={() => onChangeSubRoute('support-zenemooindia')}
+        />
       )}
     </TalentHubLayout>
   );
