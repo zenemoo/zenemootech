@@ -244,8 +244,8 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
       </div>
 
       {/* 1. TOP NAVBAR HEADER — Fixed at top with glass backdrop & Official Logo */}
-      <header className="fixed top-0 left-0 right-0 z-50 w-full bg-[#030712]/95 backdrop-blur-xl border-b border-white/10 py-3.5 px-6 sm:px-12 transition-all shadow-lg shadow-black/40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 z-50 w-full bg-[#030712]/95 backdrop-blur-xl border-b border-white/10 py-2.5 sm:py-3.5 px-3.5 sm:px-12 transition-all shadow-lg shadow-black/40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
           <a
             href="/"
             onClick={(e) => {
@@ -254,10 +254,10 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
                 onBackToHome();
               }
             }}
-            className="flex items-center gap-3 group cursor-pointer"
+            className="flex items-center gap-2 sm:gap-3 group cursor-pointer min-w-0"
           >
             {/* Official Logo.png Container */}
-            <div className="w-10 h-10 rounded-xl bg-white p-1 shadow-md shadow-cyan-500/20 group-hover:scale-105 transition-transform flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white p-0.5 sm:p-1 shadow-md shadow-cyan-500/20 group-hover:scale-105 transition-transform flex items-center justify-center shrink-0">
               <img
                 src="/assets/logo.png"
                 alt="Zenemoo"
@@ -270,18 +270,18 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
                 }}
               />
             </div>
-            <div>
-              <div className="font-display font-extrabold text-white text-base tracking-wider group-hover:text-cyan-400 transition-colors">
+            <div className="min-w-0">
+              <div className="font-display font-extrabold text-white text-sm sm:text-base tracking-wider group-hover:text-cyan-400 transition-colors truncate">
                 ZENEMOO
               </div>
-              <div className="text-[10px] text-slate-400 font-sans tracking-tight">
+              <div className="text-[9px] sm:text-[10px] text-slate-400 font-sans tracking-tight truncate hidden xs:block">
                 People &bull; Opportunities &bull; Impact
               </div>
             </div>
           </a>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-medium shadow-sm shadow-cyan-500/10">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-medium shadow-sm shadow-cyan-500/10">
               <ShieldCheck className="w-4 h-4 text-cyan-400" />
               <span>256-Bit SSL Encrypted</span>
             </div>
@@ -293,17 +293,18 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
                   onBackToHome();
                 }
               }}
-              className="px-4 py-2 rounded-full bg-[#0a1020] hover:bg-[#101b33] text-slate-300 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+              className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#0a1020] hover:bg-[#101b33] text-slate-300 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1 sm:gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer whitespace-nowrap"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Back to Home</span>
+              <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">Back to Home</span>
+              <span className="xs:hidden">Home</span>
             </a>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="relative z-10 max-w-xl mx-auto w-full px-4 pt-28 pb-12 sm:pt-32 sm:pb-16 flex-1 flex flex-col justify-center">
+      <main className="relative z-10 max-w-xl mx-auto w-full px-3.5 sm:px-4 pt-20 sm:pt-28 pb-8 sm:pb-16 flex-1 flex flex-col justify-center">
         {/* PAYMENT RESULT / RECEIPT VIEW */}
         {paymentState === 'result' && activeOrderId ? (
           <div className="space-y-6">
@@ -322,7 +323,7 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
           </div>
         ) : loading ? (
           /* SKELETON LOADING STATE */
-          <div className="p-8 sm:p-10 rounded-[32px] border border-cyan-500/20 bg-[#070e1c]/90 backdrop-blur-2xl shadow-2xl space-y-6 text-center">
+          <div className="p-6 sm:p-10 rounded-[28px] sm:rounded-[32px] border border-cyan-500/20 bg-[#070e1c]/90 backdrop-blur-2xl shadow-2xl space-y-6 text-center">
             <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto">
               <RefreshCw className="w-7 h-7 animate-spin" />
             </div>
@@ -338,7 +339,7 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
           </div>
         ) : errorStatus || !linkData ? (
           /* ERROR / EXPIRED / INVALID LINK STATE */
-          <div className="p-8 sm:p-10 rounded-[32px] border border-amber-500/30 bg-[#070e1c]/90 backdrop-blur-2xl shadow-2xl space-y-6 text-center">
+          <div className="p-6 sm:p-10 rounded-[28px] sm:rounded-[32px] border border-amber-500/30 bg-[#070e1c]/90 backdrop-blur-2xl shadow-2xl space-y-6 text-center">
             <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto shadow-lg shadow-amber-500/20">
               <AlertCircle className="w-7 h-7" />
             </div>
@@ -388,22 +389,24 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-[32px] border border-cyan-500/25 bg-[#070e1c]/95 backdrop-blur-2xl shadow-[0_0_60px_rgba(6,182,212,0.12)] p-6 sm:p-9 space-y-6"
+            className="rounded-[28px] sm:rounded-[32px] border border-cyan-500/25 bg-[#070e1c]/95 backdrop-blur-2xl shadow-[0_0_60px_rgba(6,182,212,0.12)] p-4 sm:p-9 space-y-5 sm:space-y-6"
           >
-            {/* 1. TOP STATUS & LINK ID BAR */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-xs font-semibold">
-                <Lock className="w-3.5 h-3.5 text-cyan-400" />
+            {/* 1. TOP STATUS & LINK ID BAR — Responsive & Overflow-Safe */}
+            <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-2.5 sm:gap-3">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-[11px] sm:text-xs font-semibold w-fit shrink-0">
+                <Lock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span>Verified Payment Link</span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
-                <span className="text-slate-500">ID:</span>
-                <span className="text-slate-300 font-semibold">{linkData.link_id}</span>
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-mono text-slate-400 bg-white/[0.03] sm:bg-transparent px-2.5 py-1 sm:p-0 rounded-lg sm:rounded-none border border-white/5 sm:border-0 max-w-full overflow-hidden">
+                <span className="text-slate-500 shrink-0">ID:</span>
+                <span className="text-slate-300 font-semibold truncate" title={linkData.link_id}>
+                  {linkData.link_id}
+                </span>
                 <button
                   type="button"
                   onClick={() => handleCopy(linkData.link_id, 'Link ID')}
-                  className="p-1 text-slate-400 hover:text-cyan-300 transition-colors"
+                  className="p-1 text-slate-400 hover:text-cyan-300 transition-colors shrink-0"
                   title="Copy ID"
                 >
                   {copiedField === 'Link ID' ? (
@@ -416,17 +419,17 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
             </div>
 
             {/* 2. CARD HEADER: PAYMENT REQUEST + REASON */}
-            <div className="space-y-2">
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-white font-display tracking-tight">
+            <div className="space-y-1.5 sm:space-y-2">
+              <h1 className="text-2xl sm:text-4xl font-extrabold text-white font-display tracking-tight">
                 Payment <span className="text-cyan-400">Request</span>
               </h1>
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-normal leading-snug">
+              <h2 className="text-sm sm:text-lg font-bold text-white tracking-normal leading-snug break-words">
                 {linkData.purpose || 'Support Zenemoo — Platform & Technology'}
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed font-sans">
                 This is a secure payment link created by Zenemoo.
-                <br />
-                Please review the details below and proceed to complete your payment.
+                <br className="hidden sm:inline" />
+                {' '}Please review the details below and proceed to complete your payment.
               </p>
             </div>
 
@@ -440,15 +443,15 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
               )}
 
               {/* 3. AMOUNT DUE & VALIDITY CARD */}
-              <div className="p-5 rounded-2xl bg-[#060c18] border border-cyan-500/20 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
-                    <Wallet className="w-6 h-6" />
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#060c18] border border-cyan-500/20 flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner shrink-0">
+                    <Wallet className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-400 font-sans font-medium">Amount Due</div>
+                    <div className="text-[11px] sm:text-xs text-slate-400 font-sans font-medium">Amount Due</div>
                     <div className="flex items-baseline gap-1.5 mt-0.5">
-                      <span className="text-3xl sm:text-4xl font-extrabold text-white font-display tracking-tight">
+                      <span className="text-2xl sm:text-4xl font-extrabold text-white font-display tracking-tight">
                         ₹{Number(linkData.amount).toLocaleString('en-IN')}
                       </span>
                       <span className="text-xs font-mono uppercase text-cyan-400 font-bold">
@@ -458,25 +461,25 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
+                <div className="text-left xs:text-right w-full xs:w-auto pt-2 xs:pt-0 border-t border-white/5 xs:border-0 flex xs:flex-col items-center xs:items-end justify-between">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] sm:text-[11px] font-semibold">
                     <Calendar className="w-3 h-3 text-emerald-400" />
                     <span>Valid until</span>
                   </div>
-                  <div className="text-emerald-400 font-bold text-sm sm:text-base font-mono mt-1.5">
+                  <div className="text-emerald-400 font-bold text-xs sm:text-base font-mono mt-0 xs:mt-1.5">
                     {formattedExpiry}
                   </div>
                 </div>
               </div>
 
               {/* 4. PAYER INFORMATION CARD */}
-              <div className="p-5 rounded-2xl bg-[#060c18] border border-white/5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-bold text-white flex items-center gap-2">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#060c18] border border-white/5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
                     <User className="w-4 h-4 text-cyan-400" />
                     <span>Payer Information</span>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-sans">
+                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-sans text-right truncate">
                     Receipt will be emailed here
                   </span>
                 </div>

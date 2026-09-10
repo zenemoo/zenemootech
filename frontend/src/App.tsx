@@ -834,8 +834,8 @@ export function App() {
         </div>
       )}
 
-      {/* Global Right-Side AI Drawer Panel (Active on all non-admin pages) */}
-      {currentRoute !== 'admin' && (
+      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay pages) */}
+      {currentRoute !== 'admin' && currentRoute !== 'pay' && (
         <>
           {currentRoute !== 'zenemooai' && (
             <>
