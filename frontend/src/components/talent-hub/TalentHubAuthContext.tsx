@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../../lib/supabaseClient';
 import { talentHubApi } from '../../services/talentHubApi';
 import type { Session, User } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 
 export interface TalentProfile {
   id: string;
@@ -148,6 +151,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const lastLoadedTokenRef = useRef<string | null>(null);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const isRefreshingRef = useRef<boolean>(false);
+  const processedCallbackUrlRef = useRef<string | null>(null);
 
   /**
    * Loads both opportunities and applications data for the authenticated session.
@@ -425,9 +429,140 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     });
 
+    // 3. Listen for Capacitor deep-link OAuth callbacks on native platform
+    let appUrlListenerHandle: any = null;
+    if (Capacitor.isNativePlatform()) {
+      const handleMobileAuthCallback = async (rawUrl: string) => {
+        if (!rawUrl || (!rawUrl.startsWith('zenemoo://auth/callback') && !rawUrl.includes('auth/callback'))) {
+          return;
+        }
+
+        if (processedCallbackUrlRef.current === rawUrl) {
+          console.log('[TalentHub Auth Mobile] Callback already processed, skipping duplicate.');
+          return;
+        }
+        processedCallbackUrlRef.current = rawUrl;
+
+        console.log('[TalentHub Auth Mobile] Processing OAuth callback...');
+
+        // Always close external browser/Custom Tab
+        try {
+          await Browser.close();
+        } catch (_) {}
+
+        setAuthState('loadingProfile');
+        setAuthError(null);
+
+        try {
+          let code: string | null = null;
+          let accessToken: string | null = null;
+          let refreshToken: string | null = null;
+          let errorDesc: string | null = null;
+
+          try {
+            const urlObj = new URL(rawUrl);
+            code = urlObj.searchParams.get('code');
+            errorDesc = urlObj.searchParams.get('error_description') || urlObj.searchParams.get('error');
+
+            if (urlObj.hash) {
+              const hashClean = urlObj.hash.replace(/^#/, '');
+              const hashParams = new URLSearchParams(hashClean);
+              if (!code) code = hashParams.get('code');
+              if (!accessToken) accessToken = hashParams.get('access_token');
+              if (!refreshToken) refreshToken = hashParams.get('refresh_token');
+              if (!errorDesc) errorDesc = hashParams.get('error_description') || hashParams.get('error');
+            }
+            if (!accessToken) accessToken = urlObj.searchParams.get('access_token');
+            if (!refreshToken) refreshToken = urlObj.searchParams.get('refresh_token');
+          } catch (_) {
+            const codeMatch = rawUrl.match(/[?&]code=([^&#]+)/);
+            if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+            const tokenMatch = rawUrl.match(/[?&#]access_token=([^&#]+)/);
+            if (tokenMatch) accessToken = decodeURIComponent(tokenMatch[1]);
+            const refreshMatch = rawUrl.match(/[?&#]refresh_token=([^&#]+)/);
+            if (refreshMatch) refreshToken = decodeURIComponent(refreshMatch[1]);
+            const errMatch = rawUrl.match(/[?&#](?:error_description|error)=([^&#]+)/);
+            if (errMatch) errorDesc = decodeURIComponent(errMatch[1]);
+          }
+
+          if (errorDesc) {
+            console.warn('[TalentHub Auth Mobile] OAuth error in callback:', errorDesc);
+            setAuthError('Google sign-in could not be completed. Please try again.');
+            setAuthState('unauthenticated');
+            return;
+          }
+
+          if (code) {
+            console.log('[TalentHub Auth Mobile] Exchanging code for session with PKCE...');
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) {
+              console.error('[TalentHub Auth Mobile] exchangeCodeForSession error:', error.message);
+              setAuthError('Google sign-in could not be completed. Please try again.');
+              setAuthState('unauthenticated');
+              return;
+            }
+            if (data?.session) {
+              setSession(data.session);
+              setUser(data.session.user || null);
+              lastLoadedUserIdRef.current = data.session.user?.id || null;
+              await loadTalentProfile(data.session.access_token);
+            }
+          } else if (accessToken) {
+            console.log('[TalentHub Auth Mobile] Setting session from access token...');
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            });
+            if (error) {
+              console.error('[TalentHub Auth Mobile] setSession error:', error.message);
+              setAuthError('Google sign-in could not be completed. Please try again.');
+              setAuthState('unauthenticated');
+              return;
+            }
+            if (data?.session) {
+              setSession(data.session);
+              setUser(data.session.user || null);
+              lastLoadedUserIdRef.current = data.session.user?.id || null;
+              await loadTalentProfile(data.session.access_token);
+            }
+          } else {
+            const { data: { session: existingSession } } = await supabase.auth.getSession();
+            if (existingSession?.access_token) {
+              setSession(existingSession);
+              setUser(existingSession.user || null);
+              lastLoadedUserIdRef.current = existingSession.user?.id || null;
+              await loadTalentProfile(existingSession.access_token);
+            } else {
+              setAuthError('Google sign-in could not be completed. Please try again.');
+              setAuthState('unauthenticated');
+            }
+          }
+        } catch (err: any) {
+          console.error('[TalentHub Auth Mobile] Callback handler exception:', err.message);
+          setAuthError('Google sign-in could not be completed. Please try again.');
+          setAuthState('unauthenticated');
+        }
+      };
+
+      CapApp.addListener('appUrlOpen', ({ url }) => {
+        handleMobileAuthCallback(url);
+      }).then((handle) => {
+        appUrlListenerHandle = handle;
+      });
+
+      CapApp.getLaunchUrl().then((launch) => {
+        if (launch?.url) {
+          handleMobileAuthCallback(launch.url);
+        }
+      });
+    }
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      if (appUrlListenerHandle && typeof appUrlListenerHandle.remove === 'function') {
+        appUrlListenerHandle.remove();
+      }
     };
   }, [loadTalentProfile]);
 
@@ -442,23 +577,53 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signInWithGoogle = async () => {
     try {
       setAuthError(null);
-      const redirectUrl = getOAuthRedirectUrl();
-      console.log('[Google OAuth] Initiating signInWithOAuth with redirectTo:', redirectUrl);
+      const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            prompt: 'select_account',
-            access_type: 'offline',
+      if (isAndroid) {
+        console.log('[Google OAuth Mobile] Opening Chrome / system browser with redirect to zenemoo://auth/callback');
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: 'zenemoo://auth/callback',
+            skipBrowserRedirect: true,
+            queryParams: {
+              prompt: 'select_account',
+              access_type: 'offline',
+            },
           },
-        },
-      });
+        });
 
-      if (error) {
-        console.error('[Google OAuth signIn Error]:', error.message);
-        setAuthError("We couldn't sign you in with Google. Please try again.");
+        if (error) {
+          console.error('[Google OAuth Mobile Error]:', error.message);
+          setAuthError('Google sign-in could not be completed. Please try again.');
+          return;
+        }
+
+        if (data?.url) {
+          await Browser.open({ url: data.url, windowName: '_system' });
+        } else {
+          setAuthError('Unable to open Google sign-in. Please try again.');
+        }
+      } else {
+        // Website browser flow remains 100% untouched
+        const redirectUrl = getOAuthRedirectUrl();
+        console.log('[Google OAuth Web] Initiating web signInWithOAuth with redirectTo:', redirectUrl);
+
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            queryParams: {
+              prompt: 'select_account',
+              access_type: 'offline',
+            },
+          },
+        });
+
+        if (error) {
+          console.error('[Google OAuth signIn Error]:', error.message);
+          setAuthError("We couldn't sign you in with Google. Please try again.");
+        }
       }
     } catch (err: any) {
       console.error('[Google OAuth Trigger Error]:', err.message);
@@ -482,9 +647,16 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       lastLoadedTokenRef.current = null;
       lastLoadedUserIdRef.current = null;
 
+      const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
       if (typeof window !== 'undefined') {
-        window.history.pushState(null, '', '/talent-hub');
-        window.location.hash = 'talent-hub';
+        if (isAndroid) {
+          // Inside Android app, logout directs cleanly to Home
+          window.history.replaceState(null, '', '/');
+          window.location.hash = '';
+        } else {
+          window.history.pushState(null, '', '/talent-hub');
+          window.location.hash = 'talent-hub';
+        }
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
     } catch (err: any) {

@@ -30,12 +30,14 @@ export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applicat
 interface TalentHubLayoutProps {
   currentTab: TalentHubTab;
   onNavigate: (tab: TalentHubTab) => void;
+  onNavigateHome?: () => void;
   children: React.ReactNode;
 }
 
 export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   currentTab,
   onNavigate,
+  onNavigateHome,
   children,
 }) => {
   const { user, talentProfile, signOut, refreshTalentHubData, isRefreshing } = useTalentHubAuth();
@@ -131,9 +133,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden">
+    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden pt-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))]">
       {/* ── Fixed Top Navigation Header (100% Locked, Immovable, Zero Vertical/Horizontal Movement) ── */}
-      <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
+      <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))] pt-[var(--sat,env(safe-area-inset-top,0px))] bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
         <div className="max-w-7xl mx-auto h-full flex items-center justify-between gap-3 min-w-0">
           {/* Brand Logo & Portal Title */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 min-w-0">
@@ -374,6 +376,23 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                           <Receipt className="w-3.5 h-3.5 text-cyan-400" />
                           My Support Payments
                         </button>
+                        <a
+                          href="/"
+                          onClick={(e) => {
+                            if (onNavigateHome) {
+                              e.preventDefault();
+                              setUserMenuOpen(false);
+                              onNavigateHome();
+                            }
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Globe className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Back to Website</span>
+                          </div>
+                          <ExternalLink className="w-3 h-3 text-slate-500" />
+                        </a>
                       </div>
 
                       <div className="pt-1">
@@ -539,6 +558,13 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 {/* Back to Main Website */}
                 <a
                   href="/"
+                  onClick={(e) => {
+                    if (onNavigateHome) {
+                      e.preventDefault();
+                      setMobileMenuOpen(false);
+                      onNavigateHome();
+                    }
+                  }}
                   className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-white/5 border border-transparent transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2.5">

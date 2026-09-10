@@ -61,6 +61,7 @@ const TalentHubContent: React.FC<{
     <TalentHubLayout
       currentTab={activeTab}
       onNavigate={(tab) => onChangeSubRoute(tab)}
+      onNavigateHome={onNavigateHome}
     >
       {activeTab === 'dashboard' && (
         <TalentHubDashboard onNavigate={(tab) => onChangeSubRoute(tab)} />

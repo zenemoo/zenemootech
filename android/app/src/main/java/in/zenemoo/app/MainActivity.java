@@ -190,6 +190,7 @@ public class MainActivity extends BridgeActivity {
                         url.contains("supabase.co") ||
                         url.contains("cloudinary.com") ||
                         url.startsWith("capacitor://") ||
+                        url.startsWith("zenemoo://") ||
                         url.startsWith("http://localhost")) {
                         return false; // Load inside WebView
                     }

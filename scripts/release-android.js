@@ -114,11 +114,12 @@ const releaseMetadata = {
   isOfficial: true,
   forceUpdate: false,
   releaseNotes: [
-    '🎙️ Native Android microphone runtime permission prompt & app settings integration.',
-    '🔔 Official Android runtime POST_NOTIFICATIONS permission prompt flow.',
-    '⚡ Enhanced R8/ProGuard byte-code optimization producing compact 8.3 MB APK footprint.',
-    '📱 Improved mobile layout clearance, universal APK download, and smooth scroll interactions.',
-    '🛡️ Hardened security standards, updated telemetry safeguards, and high-DPI graphics.',
+    '🔐 Chrome/System Browser Google OAuth with automatic return via zenemoo://auth/callback.',
+    '⚡ Talent Hub persistent authentication session across app cold starts without flashing Home.',
+    '📱 Status-bar and notch safe-area offset eliminating header overlap on native Android displays.',
+    '🔙 Native hardware Back button navigation (Talent Hub Detail → Dashboard → Home → Minimize).',
+    '🚪 Discrete Home navigation vs. Sign Out (Home preserves session; Sign Out resets cleanly).',
+    '🛡️ Hardened Supabase PKCE session exchange and automated token deduplication.',
   ],
 };
 

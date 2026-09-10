@@ -14,11 +14,26 @@
   }
 
   :root {
+    --sat: env(safe-area-inset-top, 0px);
     --bg-space: #050505;
     --bg-graphite: #0c0d12;
     --accent-blue: #3b82f6;
     --accent-purple: #a855f7;
     --accent-cyan: #06b6d4;
+  }
+
+  /* Android Capacitor Native App Layout & Safe-Area Adjustments (App-Only) */
+  .is-android-app {
+    --sat: 36px;
+  }
+
+  .is-android-app #home {
+    padding-top: calc(6.25rem + var(--sat, 36px)) !important;
+  }
+
+  .is-android-app header.fixed,
+  .is-android-app header.sticky {
+    padding-top: var(--sat, 36px);
   }
 
   body {

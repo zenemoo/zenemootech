@@ -32,7 +32,15 @@
                 <data android:scheme="https" android:host="zenemoo.in" />
             </intent-filter>
 
-            <!-- Deep Link Intent Filter for Custom Scheme -->
+            <!-- Deep Link Intent Filter for Custom Scheme & OAuth Callback -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="zenemoo" android:host="auth" android:pathPrefix="/callback" />
+            </intent-filter>
+
+            <!-- General Deep Link Intent Filter for Custom Scheme -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

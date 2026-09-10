@@ -52,6 +52,10 @@ import { SupportZenemooPage } from './components/SupportZenemooPage';
 import { ZenemooPayPage } from './components/ZenemooPayPage';
 import { ZenemooReceiptVerifyPage } from './components/ZenemooReceiptVerifyPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { supabase } from './lib/supabaseClient';
+import { talentHubApi } from './services/talentHubApi';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
@@ -72,6 +76,148 @@ export function App() {
       return null;
     }
   });
+
+  const isAndroidApp = typeof window !== 'undefined' && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  const [isAppInitializing, setIsAppInitializing] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+    const isRootPath = (window.location.pathname === '/' || window.location.pathname === '') && !window.location.hash;
+    return isAndroid && isRootPath;
+  });
+
+  // Set is-android-app class on html root for Android specific styling / safe-area insets
+  useEffect(() => {
+    if (isAndroidApp) {
+      document.documentElement.classList.add('is-android-app');
+    } else {
+      document.documentElement.classList.remove('is-android-app');
+    }
+  }, [isAndroidApp]);
+
+  // Native Android startup session check: avoid flash of Home if authenticated user opens app
+  useEffect(() => {
+    if (!isAppInitializing) return;
+
+    let isMounted = true;
+    const fallbackTimer = setTimeout(() => {
+      if (isMounted) setIsAppInitializing(false);
+    }, 2200);
+
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session }, error }) => {
+        if (!isMounted) return;
+        if (error || !session?.access_token) {
+          setCurrentRoute('home');
+          setIsAppInitializing(false);
+          return;
+        }
+
+        try {
+          const profileRes = await talentHubApi.getProfile(session.access_token);
+          if (!isMounted) return;
+          if (profileRes?.success && profileRes?.registered) {
+            window.history.replaceState(null, '', '/talent-hub/dashboard');
+            setCurrentRoute('talent-hub-dashboard');
+          } else {
+            window.history.replaceState(null, '', '/talent-hub');
+            setCurrentRoute('talent-hub');
+          }
+        } catch (_) {
+          if (!isMounted) return;
+          window.history.replaceState(null, '', '/talent-hub');
+          setCurrentRoute('talent-hub');
+        } finally {
+          if (isMounted) setIsAppInitializing(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCurrentRoute('home');
+          setIsAppInitializing(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimer);
+    };
+  }, [isAppInitializing]);
+
+  // Native Android deep link route listener
+  useEffect(() => {
+    if (!isAndroidApp) return;
+
+    const handleIncomingDeepLink = (url: string) => {
+      if (!url) return;
+      if (url.startsWith('zenemoo://auth/callback') || url.includes('auth/callback')) {
+        setIsAppInitializing(false);
+        window.history.replaceState(null, '', '/talent-hub');
+        setCurrentRoute('talent-hub');
+      }
+    };
+
+    let appUrlHandle: any = null;
+    CapApp.addListener('appUrlOpen', ({ url }) => {
+      handleIncomingDeepLink(url);
+    }).then((handle) => {
+      appUrlHandle = handle;
+    });
+
+    CapApp.getLaunchUrl().then((launch) => {
+      if (launch?.url) {
+        handleIncomingDeepLink(launch.url);
+      }
+    });
+
+    return () => {
+      if (appUrlHandle?.remove) appUrlHandle.remove();
+    };
+  }, [isAndroidApp]);
+
+  // Native Android hardware back button handler
+  useEffect(() => {
+    if (!isAndroidApp) return;
+
+    let backHandle: any = null;
+    CapApp.addListener('backButton', () => {
+      if (
+        currentRoute === 'talent-hub-profile' ||
+        currentRoute === 'talent-hub-opportunities' ||
+        currentRoute === 'talent-hub-applications' ||
+        currentRoute === 'talent-hub-support' ||
+        currentRoute === 'talent-hub-support-history'
+      ) {
+        window.history.pushState(null, '', '/talent-hub/dashboard');
+        setCurrentRoute('talent-hub-dashboard');
+      } else if (
+        currentRoute === 'talent-hub-dashboard' ||
+        currentRoute === 'talent-hub'
+      ) {
+        window.history.pushState(null, '', '/');
+        window.location.hash = '';
+        setCurrentRoute('home');
+      } else if (currentRoute === 'opportunity-detail') {
+        window.history.pushState(null, '', '/opportunities');
+        setCurrentRoute('opportunities');
+      } else if (currentRoute === 'ai-data-detail') {
+        window.history.pushState(null, '', '/ai-data');
+        setCurrentRoute('ai-data');
+      } else if (currentRoute !== 'home') {
+        window.history.pushState(null, '', '/');
+        window.location.hash = '';
+        setCurrentRoute('home');
+      } else {
+        CapApp.minimizeApp();
+      }
+    }).then((handle) => {
+      backHandle = handle;
+    });
+
+    return () => {
+      if (backHandle?.remove) backHandle.remove();
+    };
+  }, [currentRoute, isAndroidApp]);
 
   useEffect(() => {
     const checkRoute = () => {
@@ -654,6 +800,35 @@ export function App() {
     window.history.pushState(null, '', `/opportunity/${id}`);
     setCurrentRoute('opportunity-detail');
   };
+
+  if (isAppInitializing) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#050508] text-slate-100 flex flex-col items-center justify-center p-6 font-sans select-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] h-[320px] bg-cyan-500/15 rounded-full blur-[100px] pointer-events-none" />
+        <div className="relative z-10 flex flex-col items-center gap-4 text-center">
+          <div className="relative h-16 w-16 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-2xl shadow-cyan-500/40 animate-pulse">
+            <img
+              src="/assets/logo.png"
+              alt="Zenemoo"
+              className="w-full h-full object-contain rounded-full bg-white p-0.5"
+            />
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold tracking-wider font-display text-white">
+              ZENEMOO
+            </h1>
+            <p className="text-[11px] font-mono text-cyan-400 uppercase tracking-widest mt-1">
+              Checking your session...
+            </p>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span className="text-xs text-slate-400 font-mono">Securing workspace</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

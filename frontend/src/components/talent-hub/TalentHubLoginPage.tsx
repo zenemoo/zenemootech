@@ -150,7 +150,7 @@ export const TalentHubLoginPage: React.FC<TalentHubLoginPageProps> = ({
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-[140px] pointer-events-none" />
 
         {/* Top bar */}
-        <header className="max-w-7xl mx-auto w-full flex items-center justify-between z-10">
+        <header className="max-w-7xl mx-auto w-full flex items-center justify-between z-10 pt-[var(--sat,0px)]">
           <button
             onClick={handleBackHome}
             className="text-xs font-mono text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 focus:outline-none cursor-pointer"
@@ -243,7 +243,7 @@ export const TalentHubLoginPage: React.FC<TalentHubLoginPageProps> = ({
       </div>
 
       {/* ── Sticky Top Header Navigation Bar ── */}
-      <header className="sticky top-0 z-30 bg-[#050508]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-6 lg:px-8 py-3 sm:py-3.5 shadow-lg shadow-black/40">
+      <header className="sticky top-0 z-30 bg-[#050508]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-6 lg:px-8 pt-[calc(var(--sat,0px)+0.75rem)] pb-3 sm:pb-3.5 shadow-lg shadow-black/40">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-3">
           {/* Top-Left Official Zenemoo Brand */}
           <a

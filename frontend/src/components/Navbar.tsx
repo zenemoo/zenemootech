@@ -239,8 +239,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButt
         aria-label="Main Navigation"
         className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
           scrolled
-            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 shadow-2xl shadow-cyan-950/30'
-            : 'bg-transparent pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-4 sm:pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] sm:pb-5'
+            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 pt-[calc(var(--sat,env(safe-area-inset-top,0px))+0.75rem)] pb-3 shadow-2xl shadow-cyan-950/30'
+            : 'bg-transparent pt-[calc(var(--sat,env(safe-area-inset-top,0px))+1rem)] pb-4 sm:pt-[calc(var(--sat,env(safe-area-inset-top,0px))+1.25rem)] sm:pb-5'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
