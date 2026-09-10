@@ -49,11 +49,12 @@ import { ZenemooTeamAndroidAppPage } from './components/ZenemooTeamAndroidAppPag
 import { ZenemooBookingPage } from './components/ZenemooBookingPage';
 import { ZenemooWebsiteDirectoryPage } from './components/ZenemooWebsiteDirectoryPage';
 import { SupportZenemooPage } from './components/SupportZenemooPage';
+import { ZenemooPayPage } from './components/ZenemooPayPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | '404'
   >('home');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
@@ -128,6 +129,7 @@ export function App() {
         | 'book-a-call'
         | 'sitemap'
         | 'support-zenemoo'
+        | 'pay'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -348,6 +350,16 @@ export function App() {
       ) {
         matchedRoute = 'book-a-call';
       } else if (
+        path === '/pay' ||
+        path === '/pay/' ||
+        path.startsWith('/pay/') ||
+        hash === '#pay' ||
+        hash === '#/pay' ||
+        hash.startsWith('#pay/') ||
+        hash.startsWith('#/pay/')
+      ) {
+        matchedRoute = 'pay';
+      } else if (
         path === '/support-zenemooindia' ||
         path === '/support-zenemooindia/' ||
         hash === '#support-zenemooindia' ||
@@ -355,11 +367,7 @@ export function App() {
         path === '/support-zenemoo' ||
         path === '/support-zenemoo/' ||
         hash === '#support-zenemoo' ||
-        hash === '#/support-zenemoo' ||
-        path === '/pay' ||
-        path.startsWith('/pay/') ||
-        hash.startsWith('#pay/') ||
-        hash.startsWith('#/pay/')
+        hash === '#/support-zenemoo'
       ) {
         if (
           path === '/support-zenemoo' ||
@@ -792,6 +800,8 @@ export function App() {
         <ZenemooWebsiteDirectoryPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'support-zenemoo' ? (
         <SupportZenemooPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+      ) : currentRoute === 'pay' ? (
+        <ZenemooPayPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

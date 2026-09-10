@@ -281,6 +281,17 @@ export const supportApi = {
   updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
   getContributions: (refresh?: boolean) =>
     deduplicatedGet('/support/contributions', refresh ? { params: { refresh: 'true' } } : undefined),
+  createPayment: (data: {
+    amount: number;
+    currency?: string;
+    purpose?: string;
+    customer_name?: string;
+    customer_email?: string;
+    customer_phone?: string;
+    return_url?: string;
+    link_id?: string;
+    source?: string;
+  }) => api.post('/support/create-payment', data),
   verifyPayment: (orderId: string) =>
     api.get(`/support/verify-payment/${encodeURIComponent(orderId)}`),
 };
