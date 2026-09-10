@@ -1,6 +1,5 @@
-// exportUtils.ts — Zenemoo multi-format data export engine
-// Heavy libraries (exceljs, jspdf, jspdf-autotable) are dynamically imported
-// so they are excluded from the main bundle and only loaded on-demand.
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -809,9 +808,6 @@ export async function exportPDF(
   sectionName: string = 'Data Export',
   options: ExportPDFOptions = {}
 ): Promise<ArrayBuffer> {
-  const { default: jsPDF } = await import('jspdf');
-  const autoTable = (await import('jspdf-autotable')).default;
-
   const cols = normalizeColumns(columns);
   if (cols.length === 0) {
     throw new Error('No columns selected for PDF export');

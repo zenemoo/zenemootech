@@ -32,9 +32,15 @@ import {
   Lock,
   FileText,
   ArrowRight,
+  Download,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { paymentLinksApi } from '../services/api';
+import {
+  downloadPaymentReceiptPdf,
+  generateDeterministicReceiptNo,
+  PaymentReceiptData,
+} from '../services/receiptService';
 
 export interface PaymentLinkRecord {
   id?: string;
@@ -229,6 +235,44 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
       });
     } finally {
       setIsSendingEmail(false);
+    }
+  };
+
+  const [isDownloadingAdminReceipt, setIsDownloadingAdminReceipt] = useState<boolean>(false);
+
+  const handleDownloadAdminReceipt = async (link: PaymentLinkRecord) => {
+    if (isDownloadingAdminReceipt) return;
+    setIsDownloadingAdminReceipt(true);
+    try {
+      const receiptNo = generateDeterministicReceiptNo(link.order_id || link.link_id, link.created_at);
+      const receiptData: PaymentReceiptData = {
+        receiptNo,
+        paymentDate: link.updated_at || link.created_at,
+        receiptGeneratedDate: new Date(),
+        linkId: link.link_id,
+        orderId: link.order_id || link.link_id,
+        transactionId: link.payment_id || null,
+        customerName: link.customer_name || 'Zenemoo Supporter',
+        customerEmail: link.customer_email || '',
+        customerPhone: link.customer_phone || null,
+        purpose: link.link_purpose || 'Support Zenemoo — Platform & Technology',
+        paymentType: link.link_purpose?.toLowerCase().includes('support') ? 'Support Payment' : 'Client Payment',
+        gateway: 'Cashfree Payments',
+        paymentMethod: 'UPI / Cashfree',
+        amount: Number(link.link_amount || 0),
+        currency: link.link_currency || 'INR',
+        bankReferenceNo: link.payment_id || null,
+        gatewayResponse: 'Payment completed successfully',
+        status: 'SUCCESS',
+      };
+
+      await downloadPaymentReceiptPdf(receiptData);
+      if (showToastRef.current) showToastRef.current('Payment receipt downloaded successfully.', 'success');
+    } catch (err: any) {
+      console.error('Download admin receipt error:', err);
+      if (showToastRef.current) showToastRef.current(err?.message || 'Unable to generate receipt. Please try again.', 'error');
+    } finally {
+      setIsDownloadingAdminReceipt(false);
     }
   };
 
@@ -1287,6 +1331,37 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Download Receipt for Paid Links */}
+                {(selectedLink.link_status === 'PAID' || selectedLink.order_id || selectedLink.payment_id) && (
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Payment Verified</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-mono">PAID</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isDownloadingAdminReceipt}
+                      onClick={() => handleDownloadAdminReceipt(selectedLink)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isDownloadingAdminReceipt ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                          <span>Generating Receipt...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          <span>Download Receipt</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 {/* Share Actions */}
                 <div className="space-y-2 text-xs">

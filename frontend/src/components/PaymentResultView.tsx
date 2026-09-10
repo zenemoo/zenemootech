@@ -18,6 +18,12 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supportApi } from '../services/api';
+import {
+  downloadPaymentReceiptPdf,
+  printPaymentReceipt,
+  generateDeterministicReceiptNo,
+  PaymentReceiptData,
+} from '../services/receiptService';
 
 export interface VerifiedReceipt {
   orderId: string;
@@ -131,114 +137,35 @@ export const PaymentResultView: React.FC<PaymentResultViewProps> = ({
     setTimeout(() => setCopiedOrderId(false), 2000);
   };
 
-  // Generate and download verified PDF receipt using jsPDF
+  // Generate and download verified PDF receipt matching Image 2
   const handleDownloadReceiptPdf = async () => {
     if (!receipt || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
 
     try {
-      const { jsPDF } = await import('jspdf');
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-
-      const primaryColor = [6, 182, 212]; // #06b6d4 Cyan
-      const darkBg = [7, 11, 20]; // #070b14
-      const cardBg = [15, 23, 42]; // #0f172a
-      const textColor = [255, 255, 255];
-      const textMuted = [148, 163, 184];
-
-      // Draw background
-      doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
-      doc.rect(0, 0, 210, 297, 'F');
-
-      // Top Accent Line
-      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.rect(0, 0, 210, 4, 'F');
-
-      // Header Brand
-      doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
-      doc.text('ZENEMOO', 20, 24);
-
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.text('DATA SOLUTIONS &bull; UDYAM-OD-11-0124893', 20, 30);
-
-      // Receipt Title
-      doc.setTextColor(textColor[0], textColor[1], textColor[2]);
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('SUPPORT CONTRIBUTION RECEIPT', 20, 44);
-
-      doc.setDrawColor(255, 255, 255);
-      doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.setLineWidth(0.3);
-      doc.line(20, 48, 190, 48);
-
-      // Main Receipt Card Box
-      doc.setFillColor(cardBg[0], cardBg[1], cardBg[2]);
-      doc.roundedRect(20, 56, 170, 110, 4, 4, 'F');
-
-      // Receipt Key-Values
-      let y = 68;
-      const addRow = (label: string, value: string, isHighlight = false) => {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-        doc.text(label, 28, y);
-
-        doc.setFont('helvetica', isHighlight ? 'bold' : 'normal');
-        doc.setFontSize(isHighlight ? 12 : 10);
-        doc.setTextColor(isHighlight ? primaryColor[0] : textColor[0], isHighlight ? primaryColor[1] : textColor[1], isHighlight ? primaryColor[2] : textColor[2]);
-        doc.text(value, 182, y, { align: 'right' });
-
-        doc.setDrawColor(255, 255, 255);
-        doc.setDrawColor(30, 41, 59);
-        doc.line(28, y + 3, 182, y + 3);
-        y += 12;
+      const receiptNo = generateDeterministicReceiptNo(receipt.orderId, receipt.paymentTime);
+      const receiptData: PaymentReceiptData = {
+        receiptNo,
+        paymentDate: receipt.paymentTime,
+        receiptGeneratedDate: new Date(),
+        linkId: (receipt as any).linkId || null,
+        orderId: receipt.orderId,
+        transactionId: receipt.paymentId || null,
+        customerName: receipt.customerName || 'Zenemoo Supporter',
+        customerEmail: receipt.customerEmail || '',
+        customerPhone: receipt.customerPhone || null,
+        purpose: receipt.purpose || 'Support Zenemoo — Platform & Technology',
+        paymentType: receipt.purpose?.toLowerCase().includes('support') ? 'Support Payment' : 'Client Payment',
+        gateway: 'Cashfree Payments',
+        paymentMethod: receipt.paymentMethod || 'UPI / Cashfree',
+        amount: Number(receipt.amount),
+        currency: receipt.currency || 'INR',
+        bankReferenceNo: receipt.paymentId || null,
+        gatewayResponse: 'Payment completed successfully',
+        status: 'SUCCESS',
       };
 
-      addRow('Payment Status', 'SUCCESSFUL (PAID)', true);
-      addRow('Amount Received', `INR ${receipt.amount.toLocaleString('en-IN')}`, true);
-      addRow('Supporter Name', receipt.customerName || 'Zenemoo Supporter');
-      if (receipt.customerEmail) addRow('Email Address', receipt.customerEmail);
-      addRow('Order ID', receipt.orderId);
-      if (receipt.paymentId) addRow('Payment Reference', receipt.paymentId);
-      addRow('Payment Method', receipt.paymentMethod || 'UPI / Cashfree');
-      addRow('Support Purpose', receipt.purpose || 'Support Zenemoo');
-      addRow(
-        'Transaction Date',
-        new Date(receipt.paymentTime).toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      );
-
-      // Transparency Note Box
-      doc.setFillColor(10, 25, 47);
-      doc.roundedRect(20, 176, 170, 36, 3, 3, 'F');
-      doc.setFontSize(8);
-      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-      const note =
-        'Transparency Note: Support contributions received through this initiative are intended to help Zenemoo develop and operate its technology platform, programs, infrastructure, contributor resources, and related growth initiatives. Zenemoo Data Solutions is a registered technology enterprise.';
-      const splitNote = doc.splitTextToSize(note, 160);
-      doc.text(splitNote, 25, 184);
-
-      // Footer
-      doc.setFontSize(8);
-      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-      doc.text('People • Opportunities • A Brighter Tomorrow', 105, 260, { align: 'center' });
-      doc.text('www.zenemoo.in  •  support@zenemoo.in', 105, 265, { align: 'center' });
-
-      doc.save(`Zenemoo_Receipt_${receipt.orderId}.pdf`);
+      await downloadPaymentReceiptPdf(receiptData);
     } catch (err) {
       console.error('Failed to generate receipt PDF:', err);
     } finally {
@@ -246,8 +173,36 @@ export const PaymentResultView: React.FC<PaymentResultViewProps> = ({
     }
   };
 
-  const handlePrintReceipt = () => {
-    window.print();
+  const handlePrintReceipt = async () => {
+    if (!receipt) return;
+    try {
+      const receiptNo = generateDeterministicReceiptNo(receipt.orderId, receipt.paymentTime);
+      const receiptData: PaymentReceiptData = {
+        receiptNo,
+        paymentDate: receipt.paymentTime,
+        receiptGeneratedDate: new Date(),
+        linkId: (receipt as any).linkId || null,
+        orderId: receipt.orderId,
+        transactionId: receipt.paymentId || null,
+        customerName: receipt.customerName || 'Zenemoo Supporter',
+        customerEmail: receipt.customerEmail || '',
+        customerPhone: receipt.customerPhone || null,
+        purpose: receipt.purpose || 'Support Zenemoo — Platform & Technology',
+        paymentType: receipt.purpose?.toLowerCase().includes('support') ? 'Support Payment' : 'Client Payment',
+        gateway: 'Cashfree Payments',
+        paymentMethod: receipt.paymentMethod || 'UPI / Cashfree',
+        amount: Number(receipt.amount),
+        currency: receipt.currency || 'INR',
+        bankReferenceNo: receipt.paymentId || null,
+        gatewayResponse: 'Payment completed successfully',
+        status: 'SUCCESS',
+      };
+
+      await printPaymentReceipt(receiptData);
+    } catch (err) {
+      console.error('Failed to print receipt:', err);
+      window.print();
+    }
   };
 
   return (
