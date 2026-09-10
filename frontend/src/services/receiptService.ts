@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import QRCode from 'qrcode';
 
 export interface PaymentReceiptData {
   receiptNo: string;
@@ -286,84 +287,23 @@ function drawVectorGlobeIcon(doc: jsPDF, x: number, y: number, size: number, col
 }
 
 /**
- * Generate a clean standalone QR code data URL (with Zenemoo center emblem)
+ * Generate a certified ISO/IEC 18004 QR code data URL (100% scannable by mobile cameras)
  */
-function createReceiptQrDataUrl(verifyUrl: string): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = 180;
-  canvas.height = 180;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 180, 180);
-
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(4, 4, 172, 172);
-
-  let hash = 0;
-  for (let i = 0; i < verifyUrl.length; i++) {
-    hash = (hash << 5) - hash + verifyUrl.charCodeAt(i);
-    hash |= 0;
+async function createReceiptQrDataUrl(verifyUrl: string): Promise<string> {
+  try {
+    return await QRCode.toDataURL(verifyUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 256,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    });
+  } catch (err) {
+    console.error('QR generation error:', err);
+    return '';
   }
-
-  const gridSize = 21;
-  const cellSize = 6.8;
-  const offsetX = 18;
-  const offsetY = 18;
-
-  const drawFinder = (x: number, y: number) => {
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(x, y, cellSize * 7, cellSize * 7);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x + cellSize, y + cellSize, cellSize * 5, cellSize * 5);
-    ctx.fillStyle = '#0284c7';
-    ctx.fillRect(x + cellSize * 2, y + cellSize * 2, cellSize * 3, cellSize * 3);
-  };
-
-  drawFinder(offsetX, offsetY);
-  drawFinder(offsetX + cellSize * 14, offsetY);
-  drawFinder(offsetX, offsetY + cellSize * 14);
-
-  ctx.fillStyle = '#0f172a';
-  for (let r = 0; r < gridSize; r++) {
-    for (let c = 0; c < gridSize; c++) {
-      if (
-        (r < 8 && c < 8) ||
-        (r < 8 && c >= 13) ||
-        (r >= 13 && c < 8) ||
-        (r >= 8 && r <= 12 && c >= 8 && c <= 12)
-      ) {
-        continue;
-      }
-
-      const bit = ((hash ^ (r * 31 + c * 17)) & (1 << ((r + c) % 16))) !== 0;
-      if (bit) {
-        ctx.fillRect(offsetX + c * cellSize, offsetY + r * cellSize, cellSize - 0.5, cellSize - 0.5);
-      }
-    }
-  }
-
-  const centerSize = cellSize * 5;
-  const centerX = offsetX + cellSize * 8;
-  const centerY = offsetY + cellSize * 8;
-
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.roundRect(centerX, centerY, centerSize, centerSize, 4);
-  ctx.fill();
-  ctx.strokeStyle = '#0284c7';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  ctx.fillStyle = '#0284c7';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Z', centerX + centerSize / 2, centerY + centerSize / 2 + 1);
-
-  return canvas.toDataURL('image/png');
 }
 
 /**
@@ -755,7 +695,7 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.roundedRect(rightCardX, qrCardY, cardW, qrCardH, 3, 3, 'FD');
 
   const verifyUrl = `https://www.zenemoo.in/receipt/verify/${encodeURIComponent(data.receiptNo)}`;
-  const qrDataUrl = createReceiptQrDataUrl(verifyUrl);
+  const qrDataUrl = await createReceiptQrDataUrl(verifyUrl);
   if (qrDataUrl) {
     try {
       doc.addImage(qrDataUrl, 'PNG', rightCardX + 5, qrCardY + 6, 31, 31, undefined, 'FAST');

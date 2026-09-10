@@ -29,10 +29,26 @@ import {
   Tag,
   Hash,
   FileSpreadsheet,
+  Download,
+  Printer,
+  Loader2,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supportApi } from '../services/api';
 import { ExportButton } from './ExportButton';
+import {
+  exportXLSX,
+  triggerFileDownload,
+  EXPORT_SECTION_METADATA,
+  getAvailableNonEmptyColumns,
+} from '../utils/exportUtils';
+import {
+  downloadPaymentReceiptPdf,
+  printPaymentReceipt,
+  generateDeterministicReceiptNo,
+  PaymentReceiptData,
+} from '../services/receiptService';
 
 export interface SupportContributionRecord {
   id: string;
@@ -136,6 +152,122 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
   // --- Detail Drawer State ---
   const [selectedPayment, setSelectedPayment] = useState<SupportContributionRecord | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isDownloadingReport, setIsDownloadingReport] = useState<boolean>(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState<boolean>(false);
+
+  // Quick 1-Click Download Collection Report (XLSX)
+  const handleQuickDownloadReport = async () => {
+    try {
+      setIsDownloadingReport(true);
+      const datasetToExport = filteredPayments.length > 0 ? filteredPayments : payments;
+      if (!datasetToExport || datasetToExport.length === 0) {
+        if (showToast) showToast('No payment records available to download.', 'warning');
+        return;
+      }
+
+      const meta = EXPORT_SECTION_METADATA['support-contributions'];
+      const columns = getAvailableNonEmptyColumns(datasetToExport, meta?.defaultColumns || []);
+
+      const xlsxBuffer = await exportXLSX(
+        datasetToExport,
+        columns,
+        'Support Contributions Report'
+      );
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const filename = `Zenemoo-Support-Contributions-Report-${todayStr}.xlsx`;
+      triggerFileDownload(
+        xlsxBuffer,
+        filename,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+
+      if (showToast) {
+        showToast(`Report downloaded successfully (${datasetToExport.length} records)`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Error downloading report:', err);
+      if (showToast) {
+        showToast(err?.message || 'Failed to generate report download.', 'error');
+      }
+    } finally {
+      setIsDownloadingReport(false);
+    }
+  };
+
+  // Download PDF Receipt for an individual payment
+  const handleDownloadPaymentReceipt = async (payment: SupportContributionRecord) => {
+    try {
+      setIsDownloadingReceipt(true);
+      const receiptData: PaymentReceiptData = {
+        receiptNo: generateDeterministicReceiptNo(payment.order_id, payment.payment_time || payment.created_at),
+        paymentDate: payment.payment_time || payment.created_at,
+        receiptGeneratedDate: new Date(),
+        linkId: payment.order_id?.startsWith('PL_') ? payment.order_id : null,
+        orderId: payment.order_id,
+        paymentId: payment.payment_id || null,
+        transactionId: payment.payment_id || payment.cf_order_id || null,
+        customerName: payment.customer_name || 'Zenemoo Supporter',
+        customerEmail: payment.customer_email || '—',
+        customerPhone: payment.customer_phone || null,
+        purpose: payment.purpose || 'Support Zenemoo — Platform & Technology',
+        paymentType: (payment.source === 'Admin Payment Link' || payment.order_id?.startsWith('PL_')) ? 'Payment Link' : 'Support Payment',
+        gateway: 'Cashfree Payments',
+        paymentMethod: payment.payment_method || 'UPI / Cashfree',
+        amount: Number(payment.amount),
+        currency: payment.currency || 'INR',
+        bankReferenceNo: payment.payment_id || payment.cf_order_id || null,
+        gatewayResponse: 'Payment completed successfully',
+        status: 'SUCCESS',
+      };
+
+      await downloadPaymentReceiptPdf(receiptData);
+      if (showToast) {
+        showToast(`Receipt ${receiptData.receiptNo} downloaded successfully.`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Failed to download receipt:', err);
+      if (showToast) {
+        showToast('Failed to generate payment receipt.', 'error');
+      }
+    } finally {
+      setIsDownloadingReceipt(false);
+    }
+  };
+
+  // Print / Preview PDF Receipt
+  const handlePrintPaymentReceipt = async (payment: SupportContributionRecord) => {
+    try {
+      const receiptData: PaymentReceiptData = {
+        receiptNo: generateDeterministicReceiptNo(payment.order_id, payment.payment_time || payment.created_at),
+        paymentDate: payment.payment_time || payment.created_at,
+        receiptGeneratedDate: new Date(),
+        linkId: payment.order_id?.startsWith('PL_') ? payment.order_id : null,
+        orderId: payment.order_id,
+        paymentId: payment.payment_id || null,
+        transactionId: payment.payment_id || payment.cf_order_id || null,
+        customerName: payment.customer_name || 'Zenemoo Supporter',
+        customerEmail: payment.customer_email || '—',
+        customerPhone: payment.customer_phone || null,
+        purpose: payment.purpose || 'Support Zenemoo — Platform & Technology',
+        paymentType: (payment.source === 'Admin Payment Link' || payment.order_id?.startsWith('PL_')) ? 'Payment Link' : 'Support Payment',
+        gateway: 'Cashfree Payments',
+        paymentMethod: payment.payment_method || 'UPI / Cashfree',
+        amount: Number(payment.amount),
+        currency: payment.currency || 'INR',
+        bankReferenceNo: payment.payment_id || payment.cf_order_id || null,
+        gatewayResponse: 'Payment completed successfully',
+        status: 'SUCCESS',
+      };
+
+      await printPaymentReceipt(receiptData);
+    } catch (err: any) {
+      console.error('Failed to print receipt:', err);
+      if (showToast) {
+        showToast('Failed to open receipt print preview.', 'error');
+      }
+    }
+  };
 
   // --- Fetch Data with Zero-Egress Caching & In-Flight Deduplication ---
   const fetchData = useCallback(async (isManualRefresh = false) => {
@@ -489,6 +621,22 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
             <span>Refresh</span>
+          </button>
+
+          {/* Download Report Button */}
+          <button
+            type="button"
+            onClick={handleQuickDownloadReport}
+            disabled={isDownloadingReport || isLoading || payments.length === 0}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/40 text-xs font-mono font-semibold flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-emerald-500/10"
+            title="Download formatted collection report as Excel spreadsheet"
+          >
+            {isDownloadingReport ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-300" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-emerald-300" />
+            )}
+            <span>{isDownloadingReport ? 'Generating...' : 'Download Report'}</span>
           </button>
 
           {/* Export Button -> Enterprise Modal */}
@@ -1456,7 +1604,7 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
                   </div>
                 </div>
 
-                {/* Timeline Section */}
+                {/* Timestamp Section */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-cyan-400" /> Timestamp
@@ -1476,6 +1624,39 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
                     </div>
                   </div>
                 </div>
+
+                {/* Receipt Actions Section */}
+                {selectedPayment.status === 'SUCCESS' && (
+                  <div className="space-y-2 pt-2 border-t border-white/10">
+                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-400" /> Payment Receipt
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadPaymentReceipt(selectedPayment)}
+                        disabled={isDownloadingReceipt}
+                        className="p-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-500/10 disabled:opacity-50"
+                      >
+                        {isDownloadingReceipt ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
+                        <span>{isDownloadingReceipt ? 'Generating...' : 'Download Receipt'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePrintPaymentReceipt(selectedPayment)}
+                        className="p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Print / View</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Drawer Footer */}
