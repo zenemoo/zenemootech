@@ -123,6 +123,168 @@ export function generateDeterministicReceiptNo(orderId: string, paymentDate?: st
   return `RCPT-ZNM-${yyyy}${mm}${dd}-${suffix}`;
 }
 
+// ─── HIGH-PRECISION VECTOR DRAWING HELPERS (0 Encoding Errors) ──────────────────
+
+/**
+ * Draw crisp Indian Rupee symbol (₹) using pure vector lines
+ */
+function drawVectorRupee(doc: jsPDF, x: number, y: number, size: number, color: number[] = [2, 132, 199]): number {
+  doc.saveGraphicsState();
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setFillColor(color[0], color[1], color[2]);
+  const lw = size * 0.12;
+  doc.setLineWidth(lw);
+
+  // Top Bar
+  doc.line(x, y - size * 0.75, x + size * 0.65, y - size * 0.75);
+  // Second Bar
+  doc.line(x, y - size * 0.45, x + size * 0.6, y - size * 0.45);
+  // Vertical stem
+  doc.line(x + size * 0.15, y - size * 0.75, x + size * 0.15, y - size * 0.15);
+  // Upper curve (half loop)
+  doc.line(x + size * 0.15, y - size * 0.75, x + size * 0.55, y - size * 0.75);
+  doc.line(x + size * 0.55, y - size * 0.75, x + size * 0.55, y - size * 0.45);
+  doc.line(x + size * 0.55, y - size * 0.45, x + size * 0.15, y - size * 0.45);
+  // Diagonal leg
+  doc.line(x + size * 0.25, y - size * 0.45, x + size * 0.65, y);
+
+  doc.restoreGraphicsState();
+  return x + size * 0.75;
+}
+
+/**
+ * Draw a clean vector checkmark inside a circular badge
+ */
+function drawVectorCheckmarkBadge(doc: jsPDF, cx: number, cy: number, radius: number, circleColor = [34, 197, 94], checkColor = [255, 255, 255]) {
+  doc.saveGraphicsState();
+  doc.setFillColor(circleColor[0], circleColor[1], circleColor[2]);
+  doc.circle(cx, cy, radius, 'F');
+
+  doc.setDrawColor(checkColor[0], checkColor[1], checkColor[2]);
+  doc.setLineWidth(radius * 0.35);
+  doc.setLineCap(1); // round cap
+
+  // Checkmark 2 segments
+  const x1 = cx - radius * 0.45;
+  const y1 = cy;
+  const x2 = cx - radius * 0.1;
+  const y2 = cy + radius * 0.4;
+  const x3 = cx + radius * 0.5;
+  const y3 = cy - radius * 0.4;
+
+  doc.line(x1, y1, x2, y2);
+  doc.line(x2, y2, x3, y3);
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector User icon
+ */
+function drawVectorUserIcon(doc: jsPDF, cx: number, cy: number, size: number, color = [2, 132, 199]) {
+  doc.saveGraphicsState();
+  doc.setFillColor(224, 242, 254);
+  doc.circle(cx, cy, size * 0.9, 'F');
+
+  doc.setFillColor(color[0], color[1], color[2]);
+  // Head
+  doc.circle(cx, cy - size * 0.25, size * 0.26, 'F');
+  // Body Arc
+  doc.roundedRect(cx - size * 0.42, cy + size * 0.1, size * 0.84, size * 0.45, 1, 1, 'F');
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector Document icon
+ */
+function drawVectorDocIcon(doc: jsPDF, cx: number, cy: number, size: number, color = [2, 132, 199]) {
+  doc.saveGraphicsState();
+  doc.setFillColor(224, 242, 254);
+  doc.circle(cx, cy, size * 0.9, 'F');
+
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setFillColor(color[0], color[1], color[2]);
+  doc.setLineWidth(0.4);
+
+  // Document Outline
+  doc.roundedRect(cx - size * 0.3, cy - size * 0.45, size * 0.6, size * 0.9, 0.5, 0.5, 'S');
+  // Lines
+  doc.line(cx - size * 0.18, cy - size * 0.15, cx + size * 0.18, cy - size * 0.15);
+  doc.line(cx - size * 0.18, cy + size * 0.05, cx + size * 0.18, cy + size * 0.05);
+  doc.line(cx - size * 0.18, cy + size * 0.25, cx + size * 0.08, cy + size * 0.25);
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector Additional Info / List icon
+ */
+function drawVectorInfoIcon(doc: jsPDF, cx: number, cy: number, size: number, color = [2, 132, 199]) {
+  doc.saveGraphicsState();
+  doc.setFillColor(224, 242, 254);
+  doc.circle(cx, cy, size * 0.9, 'F');
+
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setLineWidth(0.5);
+  doc.line(cx - size * 0.35, cy - size * 0.25, cx + size * 0.35, cy - size * 0.25);
+  doc.line(cx - size * 0.35, cy, cx + size * 0.35, cy);
+  doc.line(cx - size * 0.35, cy + size * 0.25, cx + size * 0.35, cy + size * 0.25);
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector Shield icon
+ */
+function drawVectorShieldIcon(doc: jsPDF, cx: number, cy: number, size: number, color = [2, 132, 199]) {
+  doc.saveGraphicsState();
+  doc.setFillColor(color[0], color[1], color[2]);
+  doc.circle(cx, cy, size * 0.9, 'F');
+
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.5);
+  doc.setLineCap(1);
+  doc.line(cx - size * 0.3, cy - size * 0.05, cx - size * 0.05, cy + size * 0.25);
+  doc.line(cx - size * 0.05, cy + size * 0.25, cx + size * 0.35, cy - size * 0.25);
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector Location Pin icon
+ */
+function drawVectorPinIcon(doc: jsPDF, x: number, y: number, size: number, color = [100, 116, 139]) {
+  doc.saveGraphicsState();
+  doc.setFillColor(color[0], color[1], color[2]);
+  doc.circle(x, y - size * 0.2, size * 0.35, 'F');
+  doc.triangle(x - size * 0.3, y - size * 0.1, x + size * 0.3, y - size * 0.1, x, y + size * 0.4, 'F');
+  doc.setFillColor(255, 255, 255);
+  doc.circle(x, y - size * 0.2, size * 0.12, 'F');
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector Mail icon
+ */
+function drawVectorMailIcon(doc: jsPDF, x: number, y: number, size: number, color = [100, 116, 139]) {
+  doc.saveGraphicsState();
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(x - size * 0.45, y - size * 0.3, size * 0.9, size * 0.6, 0.4, 0.4, 'S');
+  doc.line(x - size * 0.45, y - size * 0.3, x, y + size * 0.05);
+  doc.line(x + size * 0.45, y - size * 0.3, x, y + size * 0.05);
+  doc.restoreGraphicsState();
+}
+
+/**
+ * Draw vector Globe / Web icon
+ */
+function drawVectorGlobeIcon(doc: jsPDF, x: number, y: number, size: number, color = [100, 116, 139]) {
+  doc.saveGraphicsState();
+  doc.setDrawColor(color[0], color[1], color[2]);
+  doc.setLineWidth(0.35);
+  doc.circle(x, y, size * 0.35, 'S');
+  doc.line(x - size * 0.35, y, x + size * 0.35, y);
+  doc.line(x, y - size * 0.35, x, y + size * 0.35);
+  doc.restoreGraphicsState();
+}
+
 /**
  * Generate a clean standalone QR code data URL (with Zenemoo center emblem)
  */
@@ -133,16 +295,13 @@ function createReceiptQrDataUrl(verifyUrl: string): string {
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
 
-  // Background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 180, 180);
 
-  // Outer border
   ctx.strokeStyle = '#e2e8f0';
   ctx.lineWidth = 2;
   ctx.strokeRect(4, 4, 172, 172);
 
-  // Generate pseudorandom deterministic QR matrix pattern based on verifyUrl string
   let hash = 0;
   for (let i = 0; i < verifyUrl.length; i++) {
     hash = (hash << 5) - hash + verifyUrl.charCodeAt(i);
@@ -154,9 +313,6 @@ function createReceiptQrDataUrl(verifyUrl: string): string {
   const offsetX = 18;
   const offsetY = 18;
 
-  ctx.fillStyle = '#0f172a';
-
-  // Draw 3 standard Finder Patterns at corners (top-left, top-right, bottom-left)
   const drawFinder = (x: number, y: number) => {
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(x, y, cellSize * 7, cellSize * 7);
@@ -170,11 +326,9 @@ function createReceiptQrDataUrl(verifyUrl: string): string {
   drawFinder(offsetX + cellSize * 14, offsetY);
   drawFinder(offsetX, offsetY + cellSize * 14);
 
-  // Draw data modules
   ctx.fillStyle = '#0f172a';
   for (let r = 0; r < gridSize; r++) {
     for (let c = 0; c < gridSize; c++) {
-      // Skip finder areas
       if (
         (r < 8 && c < 8) ||
         (r < 8 && c >= 13) ||
@@ -191,7 +345,6 @@ function createReceiptQrDataUrl(verifyUrl: string): string {
     }
   }
 
-  // Draw center Zenemoo emblem
   const centerSize = cellSize * 5;
   const centerX = offsetX + cellSize * 8;
   const centerY = offsetY + cellSize * 8;
@@ -204,7 +357,6 @@ function createReceiptQrDataUrl(verifyUrl: string): string {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Draw 'Z' icon in center
   ctx.fillStyle = '#0284c7';
   ctx.font = 'bold 16px sans-serif';
   ctx.textAlign = 'center';
@@ -224,8 +376,8 @@ async function loadOfficialZenemooLogo(): Promise<string | null> {
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = img.width || 120;
-        canvas.height = img.height || 120;
+        canvas.width = img.naturalWidth || 120;
+        canvas.height = img.naturalHeight || 120;
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve(null);
         ctx.drawImage(img, 0, 0);
@@ -260,7 +412,7 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
 
   // --- 0. BACKGROUND WATERMARK (Subtle diagonal "ZENEMOO" across page) ---
   doc.saveGraphicsState();
-  doc.setTextColor(240, 246, 252); // Very soft faint blue-gray
+  doc.setTextColor(243, 246, 250); // Ultra soft faint blue-gray
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(80);
   doc.text('ZENEMOO', 25, 175, {
@@ -277,46 +429,45 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   const logoBase64 = await loadOfficialZenemooLogo();
   if (logoBase64) {
     try {
-      doc.addImage(logoBase64, 'PNG', marginX, 17, 13, 13, undefined, 'FAST');
+      doc.addImage(logoBase64, 'PNG', marginX, 16.5, 13, 13, undefined, 'FAST');
     } catch (_) {
-      // Fallback vector box
       doc.setFillColor(2, 132, 199);
-      doc.roundedRect(marginX, 17, 13, 13, 2, 2, 'F');
+      doc.roundedRect(marginX, 16.5, 13, 13, 2, 2, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
-      doc.text('Z', marginX + 4.5, 25.5);
+      doc.text('Z', marginX + 4.5, 25);
     }
   } else {
     doc.setFillColor(2, 132, 199);
-    doc.roundedRect(marginX, 17, 13, 13, 2, 2, 'F');
+    doc.roundedRect(marginX, 16.5, 13, 13, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('Z', marginX + 4.5, 25.5);
+    doc.text('Z', marginX + 4.5, 25);
   }
 
   // Company Name & Subtitle
   doc.setTextColor(15, 23, 42); // Navy #0f172a
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.text('ZENEMOO', marginX + 16, 23);
+  doc.setFontSize(16);
+  doc.text('ZENEMOO', marginX + 16, 22.5);
 
   doc.setTextColor(100, 116, 139); // Slate-500
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text('People \u2022 Opportunities \u2022 Impact', marginX + 16, 28);
+  doc.text('People \u2022 Opportunities \u2022 Impact', marginX + 16, 27.5);
 
   // Right Header Tagline
   doc.setDrawColor(226, 232, 240);
-  doc.line(152, 18, 152, 29);
+  doc.line(152, 17.5, 152, 28.5);
 
   doc.setTextColor(71, 85, 105);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text('Building', 156, 20.5);
-  doc.text('A Brighter Tomorrow,', 156, 24.5);
-  doc.text('Together.', 156, 28.5);
+  doc.text('Building', 156, 20);
+  doc.text('A Brighter Tomorrow,', 156, 24);
+  doc.text('Together.', 156, 28);
 
   // --- 3. TITLE & PAID STATUS BADGE (y: 35) ---
   const headerY = 35;
@@ -344,13 +495,8 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.setDrawColor(187, 247, 208); // Green border #bbf7d0
   doc.roundedRect(statusBoxX, statusBoxY, statusBoxW, statusBoxH, 3, 3, 'FD');
 
-  // Green Circle with Checkmark
-  doc.setFillColor(34, 197, 94); // #22c55e
-  doc.circle(statusBoxX + 9, statusBoxY + 9.5, 4.5, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('\u2713', statusBoxX + 7.5, statusBoxY + 12);
+  // Vector Checkmark Badge
+  drawVectorCheckmarkBadge(doc, statusBoxX + 9, statusBoxY + 9.5, 4.5, [34, 197, 94], [255, 255, 255]);
 
   // PAID Text
   doc.setTextColor(22, 101, 52); // Dark Green #166534
@@ -413,7 +559,7 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   // --- 5. TWO-COLUMN DETAILS CARDS (y: 79) ---
   const cardY = 79;
   const cardW = (contentWidth - 6) / 2; // 88mm
-  const cardH = 38;
+  const cardH = 41;
 
   // 5A. Left Card: Payer Information
   doc.setFillColor(248, 250, 252);
@@ -421,36 +567,30 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.roundedRect(marginX, cardY, cardW, cardH, 3, 3, 'FD');
 
   // Payer Header
-  doc.setFillColor(224, 242, 254);
-  doc.circle(marginX + 6, cardY + 7, 3, 'F');
-  doc.setTextColor(2, 132, 199);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.text('\u2605', marginX + 4.8, cardY + 8.8);
-
+  drawVectorUserIcon(doc, marginX + 7, cardY + 7, 3.5, [2, 132, 199]);
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('Payer Information', marginX + 12, cardY + 8);
+  doc.text('Payer Information', marginX + 13, cardY + 8);
 
   // Payer Rows
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.setFont('helvetica', 'normal');
   doc.text('Name', marginX + 5, cardY + 16);
-  doc.text('Email', marginX + 5, cardY + 23);
-  doc.text('Phone', marginX + 5, cardY + 30);
+  doc.text('Email', marginX + 5, cardY + 24);
+  doc.text('Phone', marginX + 5, cardY + 32);
 
   doc.text(':', marginX + 18, cardY + 16);
-  doc.text(':', marginX + 18, cardY + 23);
-  doc.text(':', marginX + 18, cardY + 30);
+  doc.text(':', marginX + 18, cardY + 24);
+  doc.text(':', marginX + 18, cardY + 32);
 
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.text(data.customerName || 'Zenemoo Supporter', marginX + 21, cardY + 16);
   doc.setFont('helvetica', 'normal');
-  doc.text(data.customerEmail || '-', marginX + 21, cardY + 23);
-  doc.text(data.customerPhone ? `+91 ${data.customerPhone}` : '-', marginX + 21, cardY + 30);
+  doc.text(data.customerEmail || '-', marginX + 21, cardY + 24);
+  doc.text(data.customerPhone ? `+91 ${data.customerPhone}` : '-', marginX + 21, cardY + 32);
 
   // 5B. Right Card: Payment Details
   const rightCardX = marginX + cardW + 6;
@@ -459,47 +599,41 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.roundedRect(rightCardX, cardY, cardW, cardH, 3, 3, 'FD');
 
   // Payment Details Header
-  doc.setFillColor(224, 242, 254);
-  doc.circle(rightCardX + 6, cardY + 7, 3, 'F');
-  doc.setTextColor(2, 132, 199);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.text('\u25A4', rightCardX + 4.8, cardY + 8.8);
-
+  drawVectorDocIcon(doc, rightCardX + 7, cardY + 7, 3.5, [2, 132, 199]);
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('Payment Details', rightCardX + 12, cardY + 8);
+  doc.text('Payment Details', rightCardX + 13, cardY + 8);
 
   // Payment Rows
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.setFont('helvetica', 'normal');
   doc.text('Purpose', rightCardX + 5, cardY + 16);
-  doc.text('Payment Type', rightCardX + 5, cardY + 23);
-  doc.text('Gateway', rightCardX + 5, cardY + 30);
-  doc.text('Payment Method', rightCardX + 5, cardY + 35);
+  doc.text('Payment Type', rightCardX + 5, cardY + 24);
+  doc.text('Gateway', rightCardX + 5, cardY + 31);
+  doc.text('Payment Method', rightCardX + 5, cardY + 37);
 
   doc.text(':', rightCardX + 27, cardY + 16);
-  doc.text(':', rightCardX + 27, cardY + 23);
-  doc.text(':', rightCardX + 27, cardY + 30);
-  doc.text(':', rightCardX + 27, cardY + 35);
+  doc.text(':', rightCardX + 27, cardY + 24);
+  doc.text(':', rightCardX + 27, cardY + 31);
+  doc.text(':', rightCardX + 27, cardY + 37);
 
   const paymentTypeLabel = data.paymentType || (data.purpose?.toLowerCase().includes('support') ? 'Support Payment' : 'Client Payment');
-  const paymentMethodLabel = data.paymentMethod || 'UPI / Online';
+  const paymentMethodLabel = data.paymentMethod || 'UPI / Cashfree';
 
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
-  const cleanPurposeTruncated = doc.splitTextToSize(data.purpose || 'Support Zenemoo — Platform & Technology', 55);
-  doc.text(cleanPurposeTruncated[0] || '', rightCardX + 30, cardY + 16);
+  const cleanPurposeLines = doc.splitTextToSize(data.purpose || 'Support Zenemoo — Platform & Technology', 56);
+  doc.text(cleanPurposeLines[0] || '', rightCardX + 30, cardY + 16);
 
   doc.setFont('helvetica', 'normal');
-  doc.text(paymentTypeLabel, rightCardX + 30, cardY + 23);
-  doc.text(data.gateway || 'Cashfree Payments', rightCardX + 30, cardY + 30);
-  doc.text(paymentMethodLabel, rightCardX + 30, cardY + 35);
+  doc.text(paymentTypeLabel, rightCardX + 30, cardY + 24);
+  doc.text(data.gateway || 'Cashfree Payments', rightCardX + 30, cardY + 31);
+  doc.text(paymentMethodLabel, rightCardX + 30, cardY + 37);
 
-  // --- 6. ITEMIZED PAYMENT TABLE (y: 121) ---
-  const tableY = 121;
+  // --- 6. ITEMIZED PAYMENT TABLE (y: 124) ---
+  const tableY = 124;
 
   // Table Header
   doc.setFillColor(241, 245, 249); // #f1f5f9
@@ -525,11 +659,16 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.setFont('helvetica', 'normal');
   doc.text(data.purpose || 'Support Zenemoo — Platform & Technology', marginX + 16, rowY + 6.5);
 
+  // Draw formatted currency amount
+  const formattedAmtStr = Number(data.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
   doc.setFont('helvetica', 'bold');
-  doc.text(`\u20B9${Number(data.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, marginX + contentWidth - 4, rowY + 6.5, { align: 'right' });
+  doc.setFontSize(9);
+  doc.text(formattedAmtStr, marginX + contentWidth - 4, rowY + 6.5, { align: 'right' });
+  const textWidth = doc.getTextWidth(formattedAmtStr);
+  drawVectorRupee(doc, marginX + contentWidth - 4 - textWidth - 4, rowY + 6.5, 3.5, [15, 23, 42]);
 
-  // --- 7. TOTAL PAID CARD & WORDS (y: 142) ---
-  const totalY = 142;
+  // --- 7. TOTAL PAID CARD & WORDS (y: 145) ---
+  const totalY = 145;
   const totalH = 15;
   doc.setFillColor(240, 249, 255); // #f0f9ff
   doc.setDrawColor(186, 230, 253); // #bae6fd
@@ -543,7 +682,9 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   // Large cyan amount
   doc.setTextColor(2, 132, 199);
   doc.setFontSize(16);
-  doc.text(`\u20B9${Number(data.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, marginX + contentWidth - 6, totalY + 7.5, { align: 'right' });
+  doc.text(formattedAmtStr, marginX + contentWidth - 6, totalY + 7.5, { align: 'right' });
+  const largeTextWidth = doc.getTextWidth(formattedAmtStr);
+  drawVectorRupee(doc, marginX + contentWidth - 6 - largeTextWidth - 5.5, totalY + 7.5, 5.5, [2, 132, 199]);
 
   // Amount in words
   const amountWords = numberToWordsIndian(Number(data.amount));
@@ -552,8 +693,8 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.setFontSize(7.5);
   doc.text(amountWords, marginX + contentWidth - 6, totalY + 12.5, { align: 'right' });
 
-  // --- 8. BOTTOM TWO-COLUMN BLOCK (y: 161) ---
-  const bottomY = 161;
+  // --- 8. BOTTOM TWO-COLUMN BLOCK (y: 164) ---
+  const bottomY = 164;
   const bottomH = 75;
 
   // 8A. Left Card: Additional Information
@@ -562,23 +703,17 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.roundedRect(marginX, bottomY, cardW, bottomH, 3, 3, 'FD');
 
   // Header
-  doc.setFillColor(224, 242, 254);
-  doc.circle(marginX + 6, bottomY + 7, 3, 'F');
-  doc.setTextColor(2, 132, 199);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.text('\u2261', marginX + 4.8, bottomY + 8.8);
-
+  drawVectorInfoIcon(doc, marginX + 7, bottomY + 7, 3.5, [2, 132, 199]);
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('Additional Information', marginX + 12, bottomY + 8);
+  doc.text('Additional Information', marginX + 13, bottomY + 8);
 
   // Rows
   const infoRows = [
     { label: 'Payment Status', value: 'SUCCESS', isPill: true },
     { label: 'Bank Reference No.', value: data.bankReferenceNo || data.transactionId || data.paymentId || '-' },
-    { label: 'Gateway Response', value: data.gatewayResponse || 'Payment successful' },
+    { label: 'Gateway Response', value: data.gatewayResponse || 'Payment completed successfully' },
     { label: 'Payment Link ID', value: data.linkId || '-' },
     { label: 'Order ID', value: data.orderId || '-' },
   ];
@@ -595,12 +730,13 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
       // Draw green SUCCESS pill
       doc.setFillColor(220, 252, 231); // #dcfce7
       doc.setDrawColor(134, 239, 172); // #86efac
-      doc.roundedRect(marginX + 37, currentInfoY - 3.5, 24, 5, 2, 2, 'FD');
+      doc.roundedRect(marginX + 37, currentInfoY - 3.5, 26, 5, 2, 2, 'FD');
 
+      drawVectorCheckmarkBadge(doc, marginX + 40, currentInfoY - 1, 1.6, [34, 197, 94], [255, 255, 255]);
       doc.setTextColor(22, 101, 52);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      doc.text('\u2713 SUCCESS', marginX + 39, currentInfoY);
+      doc.text('SUCCESS', marginX + 43.5, currentInfoY);
     } else {
       doc.setTextColor(15, 23, 42);
       doc.setFont('helvetica', 'normal');
@@ -644,13 +780,8 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.setDrawColor(186, 230, 253);
   doc.roundedRect(rightCardX, secCardY, cardW, secCardH, 3, 3, 'FD');
 
-  // Shield Icon
-  doc.setFillColor(2, 132, 199);
-  doc.circle(rightCardX + 7, secCardY + 10, 3.5, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.text('\u2714', rightCardX + 5.7, secCardY + 12);
+  // Vector Shield
+  drawVectorShieldIcon(doc, rightCardX + 7, secCardY + 9, 3.5, [2, 132, 199]);
 
   doc.setTextColor(3, 105, 161);
   doc.setFont('helvetica', 'bold');
@@ -668,22 +799,28 @@ export async function generatePaymentReceiptPdf(data: PaymentReceiptData): Promi
   doc.setDrawColor(226, 232, 240);
   doc.line(marginX, footerY, marginX + contentWidth, footerY);
 
-  // Left Footer Info
+  // Left Footer Info with Vector Icons
+  doc.setFillColor(2, 132, 199);
+  doc.circle(marginX + 1.5, footerY + 5.5, 1.2, 'F');
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
-  doc.text('\u25CF Zenemoo Data Solutions', marginX, footerY + 6);
+  doc.text('Zenemoo Data Solutions', marginX + 4.5, footerY + 6);
 
+  drawVectorPinIcon(doc, marginX + 1.5, footerY + 11.5, 2.5, [100, 116, 139]);
   doc.setTextColor(100, 116, 139);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text('\u2316 761031, Ganjam, Odisha, India', marginX, footerY + 11.5);
+  doc.text('761031, Ganjam, Odisha, India', marginX + 4.5, footerY + 12);
 
-  // Right Footer Info
+  // Right Footer Info with Vector Icons
+  drawVectorMailIcon(doc, marginX + contentWidth - 45, footerY + 5.5, 2.5, [100, 116, 139]);
   doc.setTextColor(71, 85, 105);
   doc.setFontSize(7.5);
-  doc.text('\u2709 contact@zenemoo.in', marginX + contentWidth, footerY + 6, { align: 'right' });
-  doc.text('\u2295 www.zenemoo.in', marginX + contentWidth, footerY + 11.5, { align: 'right' });
+  doc.text('contact@zenemoo.in', marginX + contentWidth - 40, footerY + 6);
+
+  drawVectorGlobeIcon(doc, marginX + contentWidth - 45, footerY + 11.5, 2.5, [100, 116, 139]);
+  doc.text('www.zenemoo.in', marginX + contentWidth - 40, footerY + 12);
 
   // Center Footer Tagline
   doc.setTextColor(100, 116, 139);
@@ -715,7 +852,6 @@ export async function printPaymentReceipt(data: PaymentReceiptData): Promise<voi
   if (printWindow) {
     printWindow.focus();
   } else {
-    // Fallback: create hidden iframe
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
