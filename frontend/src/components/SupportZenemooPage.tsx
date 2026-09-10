@@ -274,7 +274,7 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
     // Check if directly loaded with URL query params (e.g. ?action=support, ?support=true, ?purpose=build)
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const hasSupport = params.get('support') || params.get('action') || params.get('contribute') || params.get('donate');
+      const hasSupport = params.get('support') || params.get('action') || params.get('contribute') || params.get('donate') || params.get('link_id');
       const purposeParam = params.get('purpose') as PurposeId | null;
       const orderIdParam = params.get('order_id') || params.get('cf_order_id');
 

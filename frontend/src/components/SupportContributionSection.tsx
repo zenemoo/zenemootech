@@ -85,9 +85,31 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
 
-  // Auto-fill logged-in user profile if available
+  // Auto-fill logged-in user profile or URL parameters
   useEffect(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlAmt = searchParams.get('amount');
+        const urlName = searchParams.get('name') || searchParams.get('customer_name');
+        const urlEmail = searchParams.get('email') || searchParams.get('customer_email');
+        const urlPhone = searchParams.get('phone') || searchParams.get('customer_phone');
+
+        if (urlAmt && !isNaN(Number(urlAmt))) {
+          const num = Number(urlAmt);
+          if ([500, 1000, 2500, 5000].includes(num)) {
+            setSelectedPreset(num);
+            setCustomAmount('');
+          } else {
+            setSelectedPreset(null);
+            setCustomAmount(String(num));
+          }
+        }
+        if (urlName) setCustomerName(urlName);
+        if (urlEmail) setCustomerEmail(urlEmail);
+        if (urlPhone) setCustomerPhone(urlPhone);
+      }
+
       const portalUserStr = localStorage.getItem('zenemoo_portal_user');
       if (portalUserStr) {
         const parsed = JSON.parse(portalUserStr);
@@ -207,6 +229,9 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
         ? `${window.location.origin}/support-zenemooindia?order_id={order_id}`
         : 'https://www.zenemoo.in/support-zenemooindia?order_id={order_id}';
 
+      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const linkId = urlParams?.get('link_id');
+
       const res = await api.post('/support/create-payment', {
         amount: effectiveAmount,
         currency: 'INR',
@@ -215,6 +240,8 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
         customer_email: customerEmail || 'supporter@zenemoo.in',
         customer_phone: customerPhone || '9999999999',
         return_url: returnUrl,
+        link_id: linkId || undefined,
+        source: linkId ? 'Admin Payment Link' : 'Direct Support Page',
       });
 
       if (!res.data || !res.data.success) {

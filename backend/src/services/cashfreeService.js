@@ -260,7 +260,43 @@ class CashfreeService {
         env,
       };
     } catch (error) {
-      const errMsg = error.response?.data?.message || error.message || 'Failed to create Cashfree payment link';
+      const responseData = error.response?.data;
+      const errMsg = responseData?.message || error.message || 'Failed to create Cashfree payment link';
+      const isNotApproved =
+        errMsg.includes('link_creation_api is not enabled') ||
+        responseData?.code === 'link_creation_api_not_approved' ||
+        responseData?.type === 'link_creation_api_not_approved';
+
+      if (isNotApproved) {
+        console.warn('[Cashfree] link_creation_api not active on account. Generating direct Zenemoo Support PG link fallback.');
+        const queryParams = new URLSearchParams({
+          link_id: linkId,
+          amount: String(amount),
+          purpose: purpose || 'Support Zenemoo — Platform & Technology',
+          action: 'support',
+        });
+        if (customer.customerName) queryParams.set('name', customer.customerName);
+        if (customer.customerEmail) queryParams.set('email', customer.customerEmail);
+        if (customer.customerPhone) queryParams.set('phone', customer.customerPhone);
+
+        const directLinkUrl = `https://www.zenemoo.in/support-zenemooindia?${queryParams.toString()}`;
+
+        return {
+          success: true,
+          linkId,
+          cfLinkId: `ZNM_PG_${linkId}`,
+          linkUrl: directLinkUrl,
+          linkStatus: 'ACTIVE',
+          linkAmount: amount,
+          linkCurrency: currency,
+          linkPurpose: purpose,
+          linkExpiryTime: expiryTime || null,
+          linkCreatedAt: new Date().toISOString(),
+          isDirectPGLink: true,
+          env,
+        };
+      }
+
       console.error('Cashfree createPaymentLink error:', error.response?.data || error.message);
       throw new Error(`Cashfree Payment Link Error: ${errMsg}`);
     }

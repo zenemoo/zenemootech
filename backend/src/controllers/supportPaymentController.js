@@ -94,7 +94,7 @@ async function findPaymentRecord(orderId) {
  */
 export const createPaymentOrder = async (req, res, next) => {
   try {
-    const { amount, currency = 'INR', customer_name, customer_email, customer_phone, return_url, purpose } = req.body;
+    const { amount, currency = 'INR', customer_name, customer_email, customer_phone, return_url, purpose, link_id, source } = req.body;
 
     // 1. Amount validation (strict server-side checks)
     const numericAmount = Number(amount);
@@ -153,12 +153,20 @@ export const createPaymentOrder = async (req, res, next) => {
       customer_name: userName,
       customer_email: userEmail,
       customer_phone: userPhone,
-      metadata: { purpose: cleanPurpose },
+      purpose: cleanPurpose,
+      source: source || (link_id ? 'Admin Payment Link' : 'Direct Support Page'),
+      metadata: { purpose: cleanPurpose, link_id: link_id || undefined },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
     await savePaymentRecord(orderId, initialRecord);
+
+    if (link_id) {
+      try {
+        await savePaymentLinkRecord(link_id, { order_id: orderId });
+      } catch (_) {}
+    }
 
     // 5. Call Cashfree to generate payment session
     const cfConfig = cashfreeService.getConfig();
