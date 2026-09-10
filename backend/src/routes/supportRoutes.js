@@ -7,6 +7,9 @@ import {
   handleCashfreeWebhook,
   getMyContributions,
   getAdminContributions,
+  createAdminPaymentLink,
+  getAdminPaymentLinks,
+  cancelAdminPaymentLink,
 } from '../controllers/supportPaymentController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -44,6 +47,26 @@ router.get(
   verifyToken,
   requireRole(['admin', 'super_admin', 'administrator', 'hr']),
   getAdminContributions
+);
+
+// 6. Admin-protected routes: Cashfree Payment Links
+router.post(
+  '/payment-links',
+  verifyToken,
+  requireRole(['admin', 'super_admin', 'administrator', 'hr']),
+  createAdminPaymentLink
+);
+router.get(
+  '/payment-links',
+  verifyToken,
+  requireRole(['admin', 'super_admin', 'administrator', 'hr']),
+  getAdminPaymentLinks
+);
+router.post(
+  '/payment-links/:linkId/cancel',
+  verifyToken,
+  requireRole(['admin', 'super_admin', 'administrator', 'hr']),
+  cancelAdminPaymentLink
 );
 
 // --- SUPPORT TICKETING ROUTES ---

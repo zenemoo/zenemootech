@@ -48,6 +48,7 @@ export interface SupportContributionRecord {
   customer_email: string;
   customer_phone?: string;
   purpose: string;
+  source?: string;
   payment_method: string;
   payment_time: string;
   created_at: string;
@@ -1024,11 +1025,22 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
                               <div className="font-medium text-white truncate max-w-[140px]">
                                 {p.customer_name || 'Anonymous Supporter'}
                               </div>
-                              {p.purpose && (
-                                <div className="text-[9px] text-cyan-400 truncate max-w-[140px]">
-                                  {p.purpose}
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {p.purpose && (
+                                  <span className="text-[9px] text-cyan-400 truncate max-w-[100px]">
+                                    {p.purpose}
+                                  </span>
+                                )}
+                                {(p.source === 'Admin Payment Link' || p.order_id?.startsWith('PL_')) ? (
+                                  <span className="px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[8px] font-semibold">
+                                    🔗 Link
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.2 rounded bg-slate-500/15 text-slate-400 border border-slate-500/20 text-[8px]">
+                                    Web
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -1425,6 +1437,20 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
                       <span className="text-slate-400">Support Purpose:</span>
                       <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-semibold">
                         {selectedPayment.purpose || 'HELP US BUILD'}
+                      </span>
+                    </div>
+
+                    {/* Source */}
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Origin / Source:</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                        (selectedPayment.source === 'Admin Payment Link' || selectedPayment.order_id?.startsWith('PL_'))
+                          ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                          : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20'
+                      }`}>
+                        {(selectedPayment.source === 'Admin Payment Link' || selectedPayment.order_id?.startsWith('PL_'))
+                          ? 'Admin Payment Link'
+                          : 'Direct Support Page'}
                       </span>
                     </div>
                   </div>

@@ -623,10 +623,281 @@ export const getAdminContributions = async (req, res) => {
   }
 };
 
+// Resilient in-memory payment links cache
+const memoryPaymentLinks = new Map();
+
+/**
+ * Save or update payment link in Supabase or memory fallback
+ */
+async function savePaymentLinkRecord(linkId, linkData) {
+  const existing = memoryPaymentLinks.get(linkId) || {};
+  const merged = {
+    ...existing,
+    ...linkData,
+    link_id: linkId,
+    updated_at: new Date().toISOString(),
+  };
+  if (!merged.created_at) {
+    merged.created_at = new Date().toISOString();
+  }
+  memoryPaymentLinks.set(linkId, merged);
+
+  if (supabase) {
+    try {
+      const { data: found } = await supabase
+        .from('support_payment_links')
+        .select('id')
+        .eq('link_id', linkId)
+        .maybeSingle();
+
+      if (found?.id) {
+        await supabase
+          .from('support_payment_links')
+          .update(linkData)
+          .eq('link_id', linkId);
+      } else {
+        await supabase
+          .from('support_payment_links')
+          .insert([merged]);
+      }
+    } catch (err) {
+      console.warn('Supabase support_payment_links fallback to memory:', err.message);
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Find payment link by linkId
+ */
+async function findPaymentLinkRecord(linkId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from('support_payment_links')
+        .select('*')
+        .eq('link_id', linkId)
+        .maybeSingle();
+      if (data) return data;
+    } catch (err) {
+      console.warn('Supabase findPaymentLinkRecord fallback to memory:', err.message);
+    }
+  }
+
+  return memoryPaymentLinks.get(linkId) || null;
+}
+
+/**
+ * POST /api/support/payment-links
+ * Admin endpoint: Create a Cashfree Payment Link
+ */
+export const createAdminPaymentLink = async (req, res) => {
+  try {
+    const { amount, purpose, customer_phone, customer_email, customer_name, expiry_days, return_url, send_sms, send_email } = req.body;
+
+    const numericAmount = Number(amount);
+    if (!numericAmount || isNaN(numericAmount) || numericAmount < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid amount of at least ₹10 is required.',
+      });
+    }
+
+    if (numericAmount > 500000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount cannot exceed ₹5,00,000.',
+      });
+    }
+
+    const cleanPurpose = cleanStr(purpose || 'Support Zenemoo — Platform & Technology', 500);
+    const cleanPhone = cleanStr(customer_phone || '', 15).replace(/[^0-9]/g, '');
+    const cleanEmail = cleanStr(customer_email || '', 120);
+    const cleanName = cleanStr(customer_name || 'Zenemoo Supporter', 80);
+
+    // Generate unique link ID: PL_ZNM_<timestamp>_<rand>
+    const timestamp = Date.now();
+    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const linkId = `PL_ZNM_${timestamp}_${rand}`;
+
+    // Compute expiry time if specified (default 30 days)
+    let expiryTime = null;
+    if (expiry_days && Number(expiry_days) > 0) {
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + Number(expiry_days));
+      expiryTime = expDate.toISOString();
+    }
+
+    const cfLink = await cashfreeService.createPaymentLink({
+      linkId,
+      amount: numericAmount,
+      currency: 'INR',
+      purpose: cleanPurpose,
+      customer: {
+        customerPhone: cleanPhone || '9999999999',
+        customerEmail: cleanEmail || 'support@zenemoo.in',
+        customerName: cleanName,
+      },
+      expiryTime,
+      returnUrl: return_url,
+      notify: {
+        sendSms: Boolean(send_sms && cleanPhone),
+        sendEmail: Boolean(send_email && cleanEmail),
+      },
+    });
+
+    const linkRecord = {
+      link_id: linkId,
+      cf_link_id: String(cfLink.cfLinkId || ''),
+      link_url: cfLink.linkUrl,
+      link_amount: numericAmount,
+      link_currency: 'INR',
+      link_purpose: cleanPurpose,
+      customer_phone: cleanPhone,
+      customer_email: cleanEmail,
+      customer_name: cleanName,
+      link_status: cfLink.linkStatus || 'ACTIVE',
+      link_expiry_time: expiryTime || cfLink.linkExpiryTime || null,
+      created_by: req.user?.email || 'admin@zenemoo.in',
+      source: 'Admin Payment Link',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    await savePaymentLinkRecord(linkId, linkRecord);
+
+    return res.status(201).json({
+      success: true,
+      link: linkRecord,
+      message: 'Payment link created successfully.',
+    });
+  } catch (err) {
+    console.error('createAdminPaymentLink error:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to create payment link.',
+    });
+  }
+};
+
+/**
+ * GET /api/support/payment-links
+ * Admin endpoint: List all payment links with status aggregation
+ */
+export const getAdminPaymentLinks = async (req, res) => {
+  try {
+    let records = [];
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('support_payment_links')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          records = data;
+        }
+      } catch (err) {
+        console.warn('Supabase getAdminPaymentLinks fallback:', err.message);
+      }
+    }
+
+    const recordMap = new Map();
+    for (const r of records) {
+      if (r.link_id) recordMap.set(r.link_id, r);
+    }
+    for (const r of memoryPaymentLinks.values()) {
+      if (r.link_id && !recordMap.has(r.link_id)) {
+        recordMap.set(r.link_id, r);
+      }
+    }
+
+    const allLinks = Array.from(recordMap.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    // Aggregate link metrics
+    let totalLinkAmount = 0;
+    let paidAmount = 0;
+    const statusCounts = {
+      ACTIVE: 0,
+      PAID: 0,
+      EXPIRED: 0,
+      CANCELLED: 0,
+    };
+
+    allLinks.forEach((l) => {
+      totalLinkAmount += Number(l.link_amount || 0);
+      const st = (l.link_status || 'ACTIVE').toUpperCase();
+      if (st === 'PAID') {
+        paidAmount += Number(l.link_amount || 0);
+        statusCounts.PAID = (statusCounts.PAID || 0) + 1;
+      } else if (st === 'CANCELLED' || st === 'TERMINATED') {
+        statusCounts.CANCELLED = (statusCounts.CANCELLED || 0) + 1;
+      } else if (st === 'EXPIRED') {
+        statusCounts.EXPIRED = (statusCounts.EXPIRED || 0) + 1;
+      } else {
+        statusCounts.ACTIVE = (statusCounts.ACTIVE || 0) + 1;
+      }
+    });
+
+    return res.json({
+      success: true,
+      links: allLinks,
+      summary: {
+        totalLinks: allLinks.length,
+        totalLinkAmount,
+        paidAmount,
+        statusCounts,
+      },
+    });
+  } catch (err) {
+    console.error('getAdminPaymentLinks error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to retrieve payment links.',
+    });
+  }
+};
+
+/**
+ * POST /api/support/payment-links/:linkId/cancel
+ * Admin endpoint: Cancel / Disable an active payment link
+ */
+export const cancelAdminPaymentLink = async (req, res) => {
+  try {
+    const { linkId } = req.params;
+    if (!linkId) {
+      return res.status(400).json({ success: false, message: 'Link ID is required.' });
+    }
+
+    try {
+      await cashfreeService.cancelPaymentLink(linkId);
+    } catch (cfErr) {
+      console.warn(`Cashfree cancel link warning (${linkId}):`, cfErr.message);
+    }
+
+    await savePaymentLinkRecord(linkId, {
+      link_status: 'CANCELLED',
+      cancelled_at: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      message: `Payment link ${linkId} cancelled successfully.`,
+    });
+  } catch (err) {
+    console.error('cancelAdminPaymentLink error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 /**
  * Dispatch thank you receipt email via Brevo
  */
-async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerName, customerEmail, paymentTime }) {
+async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerName, customerEmail, paymentTime, purpose }) {
   if (!customerEmail || !customerEmail.includes('@')) return;
 
   const formattedDate = new Date(paymentTime || Date.now()).toLocaleDateString('en-IN', {
@@ -636,11 +907,11 @@ async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerNam
   });
 
   const html = `
-    <div style="font-family: Arial, sans-serif; background-color: #050811; color: #ffffff; padding: 30px 20px; border-radius: 16px; max-width: 600px; margin: 0 auto;">
+    <div style="font-family: Arial, sans-serif; background-color: #050811; color: #ffffff; padding: 30px 20px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid rgba(56, 189, 248, 0.2);">
       <div style="text-align: center; margin-bottom: 24px;">
         <span style="font-size: 32px;">❤️</span>
         <h1 style="color: #ffffff; font-size: 24px; margin: 8px 0;">Thank You for Supporting Zenemoo</h1>
-        <p style="color: #38bdf8; font-size: 14px; margin: 0;">Your contribution helps us build technology, resources, and more opportunities.</p>
+        <p style="color: #38bdf8; font-size: 14px; margin: 0;">Your contribution has been successfully received.</p>
       </div>
 
       <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
@@ -669,6 +940,10 @@ async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerNam
           </tr>
           ` : ''}
           <tr>
+            <td style="padding: 8px 0; color: #94a3b8;">Purpose:</td>
+            <td style="padding: 8px 0; text-align: right; color: #38bdf8;">${purpose || 'Support Zenemoo'}</td>
+          </tr>
+          <tr>
             <td style="padding: 8px 0; color: #94a3b8;">Date:</td>
             <td style="padding: 8px 0; text-align: right; color: #cbd5e1;">${formattedDate}</td>
           </tr>
@@ -676,12 +951,13 @@ async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerNam
       </div>
 
       <div style="background: rgba(6, 182, 212, 0.1); border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 12px; color: #94a3b8; line-height: 1.6;">
-        <p style="margin: 0;"><strong>Transparency Note:</strong> Support received through this initiative is intended to help Zenemoo develop and operate its technology platform, programs, infrastructure, contributor resources, and related growth initiatives. Zenemoo is a data-solutions and technology business.</p>
+        <p style="margin: 0;"><strong>Transparency Note:</strong> Support received through this initiative helps Zenemoo build technology, contributor resources and more opportunities. Zenemoo Data Solutions is a registered data-solutions and technology business (UDYAM-OD-11-0124893).</p>
       </div>
 
       <div style="text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px;">
+        <p style="margin: 0 0 4px 0; font-weight: bold; color: #94a3b8;">People &bull; Opportunities &bull; A Brighter Tomorrow</p>
         <p style="margin: 0 0 4px 0;">Zenemoo Data Solutions &bull; UDYAM-OD-11-0124893</p>
-        <p style="margin: 0;"><a href="https://www.zenemoo.in" style="color: #38bdf8; text-decoration: none;">www.zenemoo.in</a> &bull; <a href="mailto:info@zenemoo.in" style="color: #38bdf8; text-decoration: none;">info@zenemoo.in</a></p>
+        <p style="margin: 0;"><a href="https://www.zenemoo.in" style="color: #38bdf8; text-decoration: none;">www.zenemoo.in</a> &bull; <a href="mailto:support@zenemoo.in" style="color: #38bdf8; text-decoration: none;">support@zenemoo.in</a></p>
       </div>
     </div>
   `;
@@ -689,7 +965,7 @@ async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerNam
   await sendMailViaBrevo({
     sender: 'support@zenemoo.in',
     recipients: customerEmail,
-    subject: `Support Received: Thank You for Supporting Zenemoo (Order #${orderId})`,
+    subject: `Thank you for supporting Zenemoo (Order #${orderId})`,
     html,
   });
 }

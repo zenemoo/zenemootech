@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -28,10 +28,11 @@ import { AdminBookingsTab } from './AdminBookingsTab';
 import { AdminNotificationCenterTab } from './AdminNotificationCenterTab';
 import { AdminEmailInboxTab } from './AdminEmailInboxTab';
 import { AdminSupportContributionsPage } from './AdminSupportContributionsPage';
+import { AdminPaymentLinksPage } from './AdminPaymentLinksPage';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
   isStandaloneEmailView?: boolean;
 }
 
@@ -223,7 +224,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2079,6 +2080,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       group: 'CUSTOMER & SUPPORT',
       items: [
         { id: 'support-contributions', name: 'Support Contributions', icon: CreditCard, count: supportContributionsCount },
+        { id: 'payment-links', name: 'Payment Links', icon: Link2 },
         { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.filter((t) => (t.status || 'Open').toLowerCase() !== 'resolved').length },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
         { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
@@ -5652,6 +5654,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB 3.58: SUPPORT CONTRIBUTIONS & PAYMENT COLLECTIONS */}
         {activeTab === 'support-contributions' && (
           <AdminSupportContributionsPage showToast={addToast} />
+        )}
+
+        {/* TAB 3.59: CASHFREE PAYMENT LINKS MANAGEMENT */}
+        {activeTab === 'payment-links' && (
+          <AdminPaymentLinksPage showToast={addToast} />
         )}
 
         {/* TAB 3.6: ENTERPRISE SUPPORT TICKETS MANAGEMENT */}

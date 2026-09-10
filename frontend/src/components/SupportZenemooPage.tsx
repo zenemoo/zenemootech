@@ -29,6 +29,7 @@ import { Footer } from './Footer';
 import { SeoMeta } from '../seo/components/SeoMeta';
 import { SeoOpenGraph } from '../seo/components/SeoOpenGraph';
 import { SupportContributionSection, PurposeId } from './SupportContributionSection';
+import { PaymentResultView } from './PaymentResultView';
 
 /**
  * SupportHeroGlobe — Dedicated container-fitted 3D Realistic Earth Globe
@@ -235,6 +236,14 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
   const [notifyEmail, setNotifyEmail] = useState('');
   const [notifySubmitted, setNotifySubmitted] = useState(false);
 
+  const [activeResultOrderId, setActiveResultOrderId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('order_id') || params.get('cf_order_id') || null;
+    }
+    return null;
+  });
+
   const handleOpenSupportModal = (purpose: PurposeId = 'build') => {
     setSelectedPurpose(purpose);
     setIsSupportModalOpen(true);
@@ -270,7 +279,7 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
       const orderIdParam = params.get('order_id') || params.get('cf_order_id');
 
       if (orderIdParam) {
-        setIsSupportModalOpen(true);
+        setActiveResultOrderId(orderIdParam);
         return;
       }
 
@@ -953,7 +962,45 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
             <SupportContributionSection
               initialPurpose={selectedPurpose}
               onClose={handleCloseSupportModal}
-              onSuccess={() => {}}
+              onSuccess={(receipt) => {
+                setIsSupportModalOpen(false);
+                if (receipt?.orderId) {
+                  setActiveResultOrderId(receipt.orderId);
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 8.5 PAYMENT RESULT & RECEIPT MODAL                         */}
+      {/* ========================================================= */}
+      {activeResultOrderId && (
+        <div
+          className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150 overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-xl relative my-auto">
+            <PaymentResultView
+              orderId={activeResultOrderId}
+              onClose={() => {
+                setActiveResultOrderId(null);
+                try {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('order_id');
+                  url.searchParams.delete('cf_order_id');
+                  url.searchParams.delete('link_id');
+                  window.history.replaceState({}, '', url.toString());
+                } catch {
+                  // ignore
+                }
+              }}
+              onRetry={() => {
+                setActiveResultOrderId(null);
+                setIsSupportModalOpen(true);
+              }}
             />
           </div>
         </div>

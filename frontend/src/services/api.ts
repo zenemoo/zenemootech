@@ -281,6 +281,25 @@ export const supportApi = {
   updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
   getContributions: (refresh?: boolean) =>
     deduplicatedGet('/support/contributions', refresh ? { params: { refresh: 'true' } } : undefined),
+  verifyPayment: (orderId: string) =>
+    api.get(`/support/verify-payment/${encodeURIComponent(orderId)}`),
+};
+
+// Cashfree Payment Links APIs
+export const paymentLinksApi = {
+  createLink: (data: {
+    amount: number;
+    purpose: string;
+    customer_phone?: string;
+    customer_email?: string;
+    customer_name?: string;
+    expiry_days?: number;
+    return_url?: string;
+    send_sms?: boolean;
+    send_email?: boolean;
+  }) => api.post('/support/payment-links', data),
+  getLinks: () => deduplicatedGet('/support/payment-links'),
+  cancelLink: (linkId: string) => api.post(`/support/payment-links/${encodeURIComponent(linkId)}/cancel`),
 };
 
 // Data Export System APIs
