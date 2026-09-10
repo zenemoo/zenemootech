@@ -1712,56 +1712,31 @@ export const getReceiptVerificationData = async (req, res) => {
       }
     }
 
-    if (!record) {
-      return res.status(404).json({
-        success: false,
-        message: 'No verified payment record was found for this receipt number or order reference.',
+    // 4. Verify that the payment was successful/paid
+    const isSuccess =
+      (record.status || '').toUpperCase() === 'SUCCESS' ||
+      (record.status || '').toUpperCase() === 'PAID';
+
+    if (!isSuccess) {
+      return res.json({
+        verified: false,
       });
     }
 
-    // Verify status with Cashfree if needed
-    const cfConfig = cashfreeService.getConfig();
-    if (cfConfig.isConfigured && record.order_id && (!record.status || record.status === 'PENDING')) {
-      try {
-        const cfOrder = await cashfreeService.getOrder(record.order_id);
-        const cfPayments = await cashfreeService.getOrderPayments(record.order_id);
-        if (cfOrder) {
-          const successfulPayment = cfPayments.find((p) => p.payment_status === 'SUCCESS');
-          if (cfOrder.order_status === 'PAID' || successfulPayment) {
-            record.status = 'SUCCESS';
-            record.payment_id = successfulPayment?.cf_payment_id ? String(successfulPayment.cf_payment_id) : record.payment_id;
-            record.payment_time = successfulPayment?.payment_time || record.payment_time;
-          }
-        }
-      } catch (_) {}
-    }
+    const calculatedReceiptNo = generateDeterministicReceiptNo(
+      record.order_id,
+      record.payment_time || record.created_at
+    );
 
-    const calculatedReceiptNo = generateDeterministicReceiptNo(record.order_id, record.payment_time || record.created_at);
-
+    // Return strictly privacy-safe verification confirmation
     return res.json({
-      success: true,
-      receipt: {
-        receiptNo: calculatedReceiptNo,
-        orderId: record.order_id,
-        paymentId: record.payment_id || record.cf_payment_id || null,
-        transactionId: record.payment_id || record.cf_payment_id || null,
-        amount: Number(record.amount || 0),
-        currency: record.currency || 'INR',
-        customerName: record.customer_name || 'Zenemoo Supporter',
-        customerEmail: record.customer_email || '',
-        customerPhone: record.customer_phone || '',
-        purpose: record.purpose || record.metadata?.purpose || 'Support Zenemoo — Platform & Technology',
-        status: (record.status || 'SUCCESS').toUpperCase(),
-        paymentMethod: record.payment_method || 'Online / UPI',
-        paymentDate: record.payment_time || record.created_at || new Date().toISOString(),
-        verified: true,
-      },
+      verified: true,
+      receiptId: calculatedReceiptNo,
     });
   } catch (err) {
     console.error('getReceiptVerificationData error:', err);
     return res.status(500).json({
-      success: false,
-      message: 'Failed to verify payment receipt.',
+      verified: false,
     });
   }
 };
