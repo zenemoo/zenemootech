@@ -239,8 +239,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButt
         aria-label="Main Navigation"
         className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
           scrolled
-            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3 shadow-2xl shadow-cyan-950/30'
-            : 'bg-transparent py-4 sm:py-5'
+            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 shadow-2xl shadow-cyan-950/30'
+            : 'bg-transparent pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-4 sm:pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] sm:pb-5'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -360,7 +360,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButt
           {/* Floating Glassmorphic Slide-in Drawer Card (1-View Fit - No Internal Scrollbar) */}
           <div
             id="mobile-navigation-drawer"
-            className="absolute top-3 right-3 bottom-3 w-[calc(100%-24px)] max-w-sm sm:max-w-md h-[calc(100dvh-24px)] max-h-[calc(100dvh-24px)] bg-[#080912]/95 border border-cyan-500/25 backdrop-blur-2xl rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col justify-between overflow-hidden z-50 text-slate-100"
+            className="absolute right-3 w-[calc(100%-24px)] max-w-sm sm:max-w-md bg-[#080912]/95 border border-cyan-500/25 backdrop-blur-2xl rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col justify-between overflow-hidden z-50 text-slate-100"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)',
+              height: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem)',
+              maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem)',
+            }}
           >
             {/* Top Container: Header + Return Button + Navigation Links */}
             <div className="flex-1 flex flex-col justify-between min-h-0">

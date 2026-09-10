@@ -628,54 +628,83 @@ export function triggerFileDownload(
     URL.revokeObjectURL(url);
   }, 300);
 }
+// ── Column Normalization ───────────────────────────────────────────────────
+
+export function normalizeColumns(
+  columns: (ColumnOption | string)[],
+  candidateColumns: ColumnOption[] = []
+): ColumnOption[] {
+  const map = new Map<string, string>();
+  candidateColumns.forEach((c) => map.set(c.key, c.label));
+
+  return (columns || []).map((col) => {
+    if (typeof col === 'string') {
+      return {
+        key: col,
+        label:
+          map.get(col) ||
+          col
+            .replace(/_/g, ' ')
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/\b\w/g, (char) => char.toUpperCase()),
+      };
+    }
+    return col;
+  });
+}
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 
-export function generateClientCSV(
+export function exportCSV(
   data: Record<string, any>[],
-  columns: ColumnOption[],
-  _sectionName: string = 'Export'
+  columns: (ColumnOption | string)[],
+  _sectionName: string = 'Data Export'
 ): string {
   const BOM = '\uFEFF'; // UTF-8 BOM for Microsoft Excel & Google Sheets compatibility
+  const cols = normalizeColumns(columns);
 
-  // RFC-4180 Escaping: quotes enclosed, internal quotes doubled
-  const escapeCsvCell = (val: string): string => {
-    if (val === null || val === undefined) return '""';
+  if (cols.length === 0) return '';
+
+  // RFC-4180 Escaping: quotes enclosed, internal quotes doubled, handles newlines & commas
+  const escapeCsvCell = (val: any): string => {
+    if (val === null || val === undefined) return '';
     const str = String(val);
     if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
-    return `"${str}"`;
+    return str;
   };
 
-  const headerRow = columns.map((c) => escapeCsvCell(c.label)).join(',');
+  const headerRow = cols.map((c) => escapeCsvCell(c.label)).join(',');
 
-  const rows = data
-    .map((row) =>
-      columns
-        .map((col) => {
-          const val = formatFieldValue(row, col.key);
-          return escapeCsvCell(val);
-        })
-        .join(',')
-    )
-    .join('\r\n');
+  const rows = (data || []).map((row) =>
+    cols
+      .map((col) => {
+        const val = formatFieldValue(row, col.key);
+        return escapeCsvCell(val);
+      })
+      .join(',')
+  ).join('\r\n');
 
   return BOM + headerRow + '\r\n' + rows;
 }
 
+// Backwards-compatible alias
+export const generateClientCSV = exportCSV;
+
 // ── Excel Export (dynamic import of exceljs) ──────────────────────────────────
 
-export async function generateClientExcel(
+export async function exportXLSX(
   data: Record<string, any>[],
-  columns: ColumnOption[],
+  columns: (ColumnOption | string)[],
   sectionName: string = 'Data Export'
 ): Promise<ArrayBuffer> {
   const ExcelJS = await import('exceljs');
+  const cols = normalizeColumns(columns);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Zenemoo Data Solutions';
-  workbook.lastModifiedBy = 'Zenemoo Admin System';
+  workbook.lastModifiedBy = 'Zenemoo Admin Center';
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -686,26 +715,22 @@ export async function generateClientExcel(
   });
 
   // Calculate dynamic column widths based on label and data sample
-  sheet.columns = columns.map((col) => {
+  const sample = (data || []).slice(0, 50);
+  const colWidths = cols.map((col) => {
     let maxLength = col.label.length;
-    // Sample up to first 50 rows for performance
-    const sample = data.slice(0, 50);
     sample.forEach((row) => {
       const val = formatFieldValue(row, col.key);
       if (val && val.length > maxLength) {
         maxLength = Math.min(val.length, 60); // Cap at 60 chars width
       }
     });
-
-    return {
-      header: col.label,
-      key: col.key,
-      width: Math.max(maxLength + 4, 14),
-    };
+    return Math.max(maxLength + 4, 14);
   });
 
-  // Style Header Row
-  const headerRow = sheet.getRow(1);
+  // 1. Add Header Row
+  const headerLabels = cols.map((c) => c.label);
+  const headerRow = sheet.addRow(headerLabels);
+  headerRow.height = 28;
   headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Segoe UI', size: 10 };
   headerRow.fill = {
     type: 'pattern',
@@ -713,27 +738,22 @@ export async function generateClientExcel(
     fgColor: { argb: 'FF0E7490' }, // Cyan-700 enterprise accent
   };
   headerRow.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-  headerRow.height = 28;
 
-  // Add Data Rows with Alternating Colors
-  data.forEach((row, idx) => {
-    const rowData: Record<string, any> = {};
-    columns.forEach((col) => {
-      rowData[col.key] = formatFieldValue(row, col.key);
-    });
-
-    const excelRow = sheet.addRow(rowData);
+  // 2. Add Data Rows (using array of cell values to avoid property path lookup collisions)
+  (data || []).forEach((row, idx) => {
+    const rowValues = cols.map((col) => formatFieldValue(row, col.key));
+    const excelRow = sheet.addRow(rowValues);
     const isEven = idx % 2 === 0;
+
+    excelRow.height = 22;
     excelRow.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' }, // Clean slate-50 / white stripe
+      fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' }, // Slate-50 alternating stripe
     };
     excelRow.font = { color: { argb: 'FF1E293B' }, name: 'Segoe UI', size: 9.5 };
     excelRow.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-    excelRow.height = 22;
 
-    // Subtle cell borders
     excelRow.eachCell({ includeEmpty: true }, (cell) => {
       cell.border = {
         bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
@@ -742,11 +762,17 @@ export async function generateClientExcel(
     });
   });
 
-  // Enable Auto-Filter on All Columns
-  if (columns.length > 0 && data.length > 0) {
+  // 3. Set Column Widths Explicitly
+  cols.forEach((_, i) => {
+    const excelCol = sheet.getColumn(i + 1);
+    excelCol.width = colWidths[i];
+  });
+
+  // 4. Enable Auto-Filter on All Columns
+  if (cols.length > 0 && (data || []).length > 0) {
     sheet.autoFilter = {
       from: { row: 1, column: 1 },
-      to: { row: data.length + 1, column: columns.length },
+      to: { row: (data || []).length + 1, column: cols.length },
     };
   }
 
@@ -754,178 +780,238 @@ export async function generateClientExcel(
   return arrayBuffer as ArrayBuffer;
 }
 
+// Backwards-compatible alias
+export const generateClientExcel = exportXLSX;
+
 // ── PDF Export (dynamic import of jspdf + jspdf-autotable) ───────────────────
 
-export async function generateClientPDF(
+export async function exportPDF(
   data: Record<string, any>[],
-  columns: ColumnOption[],
+  columns: (ColumnOption | string)[],
   sectionName: string = 'Data Export',
   options: ExportPDFOptions = {}
 ): Promise<ArrayBuffer> {
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
 
-  const colCount = Math.max(1, columns.length);
+  const cols = normalizeColumns(columns);
+  if (cols.length === 0) {
+    throw new Error('No columns selected for PDF export');
+  }
 
-  // Dynamic Adaptive Orientation & Page Sizing:
-  // - <= 5 columns: A4 Portrait (210 × 297 mm) — classic clean document format
-  // - 6 - 14 columns: A4 Landscape (297 × 210 mm) — standard wide table
-  // - 15 - 22 columns: A3 Landscape (420 × 297 mm) — +41% wide space for extensive questionnaire answers
-  // - > 22 columns: A2 Landscape (594 × 420 mm) — super wide canvas for unlimited custom fields
-  const isPortrait = colCount <= 5;
-  const orientation: 'portrait' | 'landscape' = isPortrait ? 'portrait' : 'landscape';
-  const pageSizeFormat = isPortrait ? 'a4' : (colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4');
-
+  // Use A4 Landscape by default
+  const orientation: 'portrait' | 'landscape' = 'landscape';
   const doc = new jsPDF({
     orientation,
     unit: 'mm',
-    format: pageSizeFormat,
+    format: 'a4',
   });
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
+  const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+  const marginLeft = 8;
+  const marginRight = 8;
+  const usableWidth = pageWidth - marginLeft - marginRight; // 281mm
+
   const todayStr = new Date().toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   });
-
-  const formatBadge = isPortrait ? 'A4 PORTRAIT' : `${pageSizeFormat.toUpperCase()} WIDE LANDSCAPE`;
   const scopeText = options.scopeLabel || (data.length > 0 ? `${data.length} Records` : 'All Records');
   const filterText = options.filterSummary ? ` • Filters: ${options.filterSummary}` : '';
 
-  // ── 1. Page Header (Top Banner) ──
-  const headerHeight = 28;
-  doc.setFillColor(9, 13, 22); // Enterprise Dark Navy
-  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+  // ── Helper: Draw Standard Page Header ──
+  const drawPageHeader = (sectionTitleExtra: string = '', isFirstPageOfSection: boolean = true) => {
+    const headerHeight = isFirstPageOfSection ? 28 : 13;
+    doc.setFillColor(9, 13, 22); // Navy 950
+    doc.rect(0, 0, pageWidth, headerHeight, 'F');
+    doc.setFillColor(6, 182, 212); // Cyan accent bar
+    doc.rect(0, 0, pageWidth, isFirstPageOfSection ? 2 : 1.5, 'F');
 
-  // Top Accent Bar
-  doc.setFillColor(6, 182, 212); // Cyan accent line
-  doc.rect(0, 0, pageWidth, 2, 'F');
+    if (isFirstPageOfSection) {
+      doc.setFontSize(13);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ZENEMOO DATA SOLUTIONS', 12, 11);
 
-  // Title & Brand
-  doc.setFontSize(13);
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.text('ZENEMOO DATA SOLUTIONS', 12, 11);
+      doc.setFontSize(8.5);
+      doc.setTextColor(6, 182, 212);
+      doc.setFont('helvetica', 'bold');
+      doc.text(
+        `${sectionName.toUpperCase()}${sectionTitleExtra ? ` — ${sectionTitleExtra.toUpperCase()}` : ''} — DATA EXPORT`,
+        12,
+        18
+      );
 
-  doc.setFontSize(8.5);
-  doc.setTextColor(6, 182, 212);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`${sectionName.toUpperCase()} — DATA EXPORT`, 12, 18);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${cols.length} | Layout: A4 LANDSCAPE`;
+      const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 80 ? metaLine.slice(0, 160) + '...' : metaLine;
+      doc.text(truncatedMeta, 12, 24);
 
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184); // Slate-400
-  doc.setFont('helvetica', 'normal');
-  const metaLine = `Scope: ${scopeText}${filterText} | Total: ${data.length} Record${data.length === 1 ? '' : 's'} | Columns: ${colCount} | Layout: ${formatBadge}`;
-  const truncatedMeta = doc.getTextWidth(metaLine) > pageWidth - 80 ? metaLine.slice(0, 160) + '...' : metaLine;
-  doc.text(truncatedMeta, 12, 24);
+      doc.setFontSize(7.5);
+      doc.setTextColor(203, 213, 225);
+      doc.text(`Generated: ${todayStr}`, pageWidth - 12, 11, { align: 'right' });
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('CONFIDENTIAL ADMINISTRATIVE DOCUMENT', pageWidth - 12, 17, { align: 'right' });
+    } else {
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`ZENEMOO — ${sectionName.toUpperCase()}${sectionTitleExtra ? ` (${sectionTitleExtra})` : ''} (Continued)`, 12, 8.5);
 
-  // Right Date Stamp
-  doc.setFontSize(7.5);
-  doc.setTextColor(203, 213, 225);
-  doc.text(`Generated: ${todayStr}`, pageWidth - 12, 11, { align: 'right' });
-  doc.setFontSize(6.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`CONFIDENTIAL ADMINISTRATIVE DOCUMENT • ${formatBadge}`, pageWidth - 12, 17, { align: 'right' });
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated: ${todayStr}`, pageWidth - 12, 8.5, { align: 'right' });
+    }
+  };
 
-  // ── 2. Dynamic Table Sizing for Clean Alignment ──
-  let dynamicFontSize = 7.5;
-  let dynamicCellPadding = 2;
+  // ── Helper: Draw Standard Page Footer ──
+  const drawPageFooter = (pageNum: number) => {
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(8, pageHeight - 11, pageWidth - 8, pageHeight - 11);
 
-  if (isPortrait) {
-    dynamicFontSize = colCount <= 3 ? 8.5 : 8;
-    dynamicCellPadding = 2.5;
-  } else if (pageSizeFormat === 'a2') {
-    dynamicFontSize = 6.5;
-    dynamicCellPadding = 1.2;
-  } else if (pageSizeFormat === 'a3') {
-    dynamicFontSize = colCount > 18 ? 6.5 : 7;
-    dynamicCellPadding = 1.5;
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      'ZENEMOO DATA SOLUTIONS • AI Language & Data Solutions • Confidential • Internal Administrative Export',
+      12,
+      pageHeight - 6
+    );
+
+    doc.text(`Page ${pageNum}`, pageWidth - 12, pageHeight - 6, { align: 'right' });
+  };
+
+  // ── Dynamic Layout Algorithm ──
+  // Check if all columns can fit in a single table without illegible column widths.
+  // Up to 14 columns fit legibly on 281mm A4 landscape (average 20mm per column).
+  // If > 14 columns are selected (e.g. 20, 30 columns), we split columns into horizontal continuation chunks
+  // of at most 10-12 columns each, repeating headers and rendering all selected columns without any clipping!
+  const MAX_COLUMNS_PER_SINGLE_SPAN = 14;
+  const CHUNK_SIZE = 10;
+
+  const columnChunks: ColumnOption[][] = [];
+  if (cols.length <= MAX_COLUMNS_PER_SINGLE_SPAN) {
+    columnChunks.push(cols);
   } else {
-    // A4 Landscape
-    if (colCount > 10) {
-      dynamicFontSize = 6;
-      dynamicCellPadding = 1.2;
-    } else if (colCount > 7) {
-      dynamicFontSize = 6.8;
-      dynamicCellPadding = 1.6;
+    for (let i = 0; i < cols.length; i += CHUNK_SIZE) {
+      columnChunks.push(cols.slice(i, i + CHUNK_SIZE));
     }
   }
 
-  const head = [columns.map((c) => c.label)];
-  const body = data.map((row) =>
-    columns.map((col) => formatFieldValue(row, col.key))
-  );
+  // Iterate over column chunks
+  for (let chunkIdx = 0; chunkIdx < columnChunks.length; chunkIdx++) {
+    const chunkCols = columnChunks[chunkIdx];
+    const isMultiSection = columnChunks.length > 1;
+    const startColNum = chunkIdx * CHUNK_SIZE + 1;
+    const endColNum = startColNum + chunkCols.length - 1;
+    const sectionTitleExtra = isMultiSection
+      ? `Part ${chunkIdx + 1} of ${columnChunks.length} (Cols ${startColNum}–${endColNum} of ${cols.length})`
+      : '';
 
-  autoTable(doc, {
-    head,
-    body,
-    startY: 32,
-    margin: { left: 8, right: 8, top: 18, bottom: 16 },
-    showHead: 'everyPage',
-    tableWidth: 'auto',
-    styles: {
-      fontSize: dynamicFontSize,
-      cellPadding: dynamicCellPadding,
-      overflow: 'linebreak',
-      font: 'helvetica',
-      textColor: [30, 41, 59],
-      lineColor: [226, 232, 240],
-      lineWidth: 0.1,
-      valign: 'middle',
-      minCellHeight: 5,
-    },
-    headStyles: {
-      fillColor: [14, 116, 144], // Cyan-700
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: dynamicFontSize + 0.5,
-      halign: 'left',
-      cellPadding: dynamicCellPadding + 0.5,
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252], // Slate-50 alternating
-    },
-    tableLineColor: [203, 213, 225],
-    tableLineWidth: 0.15,
-    didDrawPage: (dataHook) => {
-      // ── Repeat Page Header on Subsequent Pages ──
-      if (dataHook.pageNumber > 1) {
-        doc.setFillColor(9, 13, 22);
-        doc.rect(0, 0, pageWidth, 13, 'F');
-        doc.setFillColor(6, 182, 212);
-        doc.rect(0, 0, pageWidth, 1.5, 'F');
+    // If starting a subsequent column chunk, add a new page
+    if (chunkIdx > 0) {
+      doc.addPage('a4', 'landscape');
+    }
 
-        doc.setFontSize(8);
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`ZENEMOO — ${sectionName.toUpperCase()} (Continued)`, 12, 8.5);
+    // 1. Calculate relative content weights for each column in this chunk
+    const sample = (data || []).slice(0, 50);
+    const weights = chunkCols.map((col) => {
+      let maxLen = col.label.length;
+      sample.forEach((row) => {
+        const val = formatFieldValue(row, col.key);
+        if (val) maxLen = Math.max(maxLen, Math.min(val.length, 45));
+      });
+      return Math.max(maxLen, 8);
+    });
 
-        doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Generated: ${todayStr}`, pageWidth - 12, 8.5, { align: 'right' });
-      }
+    // 2. Allocate proportional widths guaranteed to equal usableWidth
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    const minColWidth = chunkCols.length > 10 ? 14 : 18;
+    let rawWidths = weights.map((w) => (w / totalWeight) * usableWidth);
 
-      // ── Footer on Every Page ──
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.3);
-      doc.line(8, pageHeight - 11, pageWidth - 8, pageHeight - 11);
+    // Enforce minColWidth and rebalance
+    let distributed = 0;
+    const finalWidths = rawWidths.map((w) => {
+      const clamped = Math.max(w, minColWidth);
+      distributed += clamped;
+      return clamped;
+    });
+    // Scale proportionally to exactly match usableWidth
+    const scaleFactor = usableWidth / distributed;
+    const columnStyles: Record<number, { cellWidth: number }> = {};
+    chunkCols.forEach((_, idx) => {
+      const finalW = Math.floor(finalWidths[idx] * scaleFactor * 100) / 100;
+      columnStyles[idx] = { cellWidth: finalW };
+    });
 
-      doc.setFontSize(6);
-      doc.setTextColor(100, 116, 139);
-      doc.setFont('helvetica', 'normal');
-      doc.text(
-        'ZENEMOO DATA SOLUTIONS • AI Language & Data Solutions • Confidential • Internal Administrative Export',
-        12,
-        pageHeight - 6
-      );
+    // 3. Dynamic font size and padding
+    let dynamicFontSize = 7.5;
+    let dynamicCellPadding = 1.8;
+    if (chunkCols.length > 10) {
+      dynamicFontSize = 6.2;
+      dynamicCellPadding = 1.2;
+    } else if (chunkCols.length > 7) {
+      dynamicFontSize = 7.0;
+      dynamicCellPadding = 1.5;
+    }
 
-      const pageNumberStr = `Page ${dataHook.pageNumber}`;
-      doc.text(pageNumberStr, pageWidth - 12, pageHeight - 6, { align: 'right' });
-    },
-  });
+    // 4. Build Table Head & Body for this chunk
+    const head = [chunkCols.map((c) => c.label)];
+    const body = (data || []).map((row) =>
+      chunkCols.map((col) => formatFieldValue(row, col.key))
+    );
+
+    // Initial header on the chunk's first page
+    drawPageHeader(sectionTitleExtra, true);
+
+    autoTable(doc, {
+      head,
+      body,
+      startY: 32,
+      margin: { left: marginLeft, right: marginRight, top: 18, bottom: 16 },
+      showHead: 'everyPage',
+      tableWidth: usableWidth,
+      columnStyles,
+      styles: {
+        fontSize: dynamicFontSize,
+        cellPadding: dynamicCellPadding,
+        overflow: 'linebreak',
+        font: 'helvetica',
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240],
+        lineWidth: 0.1,
+        valign: 'middle',
+        minCellHeight: 5,
+      },
+      headStyles: {
+        fillColor: [14, 116, 144], // Cyan-700
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: dynamicFontSize + 0.5,
+        halign: 'left',
+        cellPadding: dynamicCellPadding + 0.5,
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252], // Slate-50 alternating
+      },
+      tableLineColor: [203, 213, 225],
+      tableLineWidth: 0.15,
+      didDrawPage: (dataHook) => {
+        // Redraw header on pages after the first page of this table
+        if (dataHook.pageNumber > 1) {
+          drawPageHeader(sectionTitleExtra, false);
+        }
+        drawPageFooter(dataHook.pageNumber);
+      },
+    });
+  }
 
   // Second pass: Calculate total page count for exact "Page X of Y" formatting
   const totalPages = (doc as any).internal.getNumberOfPages();
@@ -941,4 +1027,7 @@ export async function generateClientPDF(
 
   return doc.output('arraybuffer') as ArrayBuffer;
 }
+
+// Backwards-compatible alias
+export const generateClientPDF = exportPDF;
 

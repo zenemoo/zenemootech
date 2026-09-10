@@ -313,110 +313,143 @@ export const generatePDF = (dataset, selectedColumns, sectionTitle = 'Data Expor
   const cols = Array.isArray(selectedColumns) && selectedColumns.length > 0 ? selectedColumns : EXPORT_CONFIGS['contact-inquiries'].defaultColumns;
   const colCount = Math.max(1, cols.length);
 
-  // Dynamic Adaptive Orientation & Page Sizing:
-  // - <= 5 columns: A4 Portrait
-  // - 6 - 14 columns: A4 Landscape
-  // - 15 - 22 columns: A3 Landscape (420mm wide)
-  // - > 22 columns: A2 Landscape (594mm super wide)
-  const isPortrait = colCount <= 5;
-  const orientation = isPortrait ? 'portrait' : 'landscape';
-  const pageSizeFormat = isPortrait ? 'a4' : (colCount > 22 ? 'a2' : colCount > 14 ? 'a3' : 'a4');
-
+  // A4 Landscape by default
+  const orientation = 'landscape';
   const doc = new jsPDF({
     orientation,
     unit: 'pt',
-    format: pageSizeFormat,
+    format: 'a4',
   });
 
+  const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth(); // 841.89 pt
+  const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight(); // 595.28 pt
+  const marginLeft = 25;
+  const marginRight = 25;
+  const usableWidth = pageWidth - marginLeft - marginRight; // ~791.89 pt
   const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
 
-  let dynamicFontSize = 8;
-  let dynamicCellPadding = 4;
-
-  if (isPortrait) {
-    dynamicFontSize = colCount <= 3 ? 9 : 8.5;
-    dynamicCellPadding = 5;
-  } else if (pageSizeFormat === 'a2') {
-    dynamicFontSize = 6.5;
-    dynamicCellPadding = 2.5;
-  } else if (pageSizeFormat === 'a3') {
-    dynamicFontSize = colCount > 18 ? 6.5 : 7;
-    dynamicCellPadding = 3;
+  // Chunking for large column counts (>14) to avoid illegible squishing
+  const MAX_COLUMNS_PER_SPAN = 14;
+  const CHUNK_SIZE = 10;
+  const columnChunks = [];
+  if (cols.length <= MAX_COLUMNS_PER_SPAN) {
+    columnChunks.push(cols);
   } else {
-    if (colCount > 10) {
-      dynamicFontSize = 6.5;
-      dynamicCellPadding = 2.5;
-    } else if (colCount > 7) {
-      dynamicFontSize = 7.5;
-      dynamicCellPadding = 3.5;
+    for (let i = 0; i < cols.length; i += CHUNK_SIZE) {
+      columnChunks.push(cols.slice(i, i + CHUNK_SIZE));
     }
   }
 
-  const tableHeaders = [cols.map((col) => col.label || col.key)];
-  const tableRows = (dataset || []).map((row) =>
-    cols.map((col) => formatFieldValue(getRecordValue(row, col.key), col.key))
-  );
+  for (let chunkIdx = 0; chunkIdx < columnChunks.length; chunkIdx++) {
+    const chunkCols = columnChunks[chunkIdx];
+    const isMultiChunk = columnChunks.length > 1;
+    const sectionExtra = isMultiChunk ? ` (Part ${chunkIdx + 1} of ${columnChunks.length}: Cols ${chunkIdx * CHUNK_SIZE + 1}–${chunkIdx * CHUNK_SIZE + chunkCols.length})` : '';
 
-  autoTable(doc, {
-    head: tableHeaders,
-    body: tableRows,
-    startY: 75,
-    margin: { top: 75, right: 25, bottom: 40, left: 25 },
-    theme: 'grid',
-    tableWidth: 'auto',
-    headStyles: {
-      fillColor: [9, 13, 22],
-      textColor: [56, 189, 248],
-      fontSize: dynamicFontSize + 0.5,
-      fontStyle: 'bold',
-      halign: 'left',
-      cellPadding: dynamicCellPadding + 1,
-    },
-    bodyStyles: {
-      textColor: [30, 41, 59],
-      fontSize: dynamicFontSize,
-      valign: 'middle',
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252],
-    },
-    styles: {
-      overflow: 'linebreak',
-      cellPadding: dynamicCellPadding,
-      minCellHeight: 14,
-    },
-    didDrawPage: (data) => {
-      const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+    if (chunkIdx > 0) {
+      doc.addPage('a4', 'landscape');
+    }
 
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(14);
-      doc.setTextColor(6, 182, 212);
-      doc.text('ZENEMOO', 25, 30);
+    // Proportional column weights calculation
+    const sample = (dataset || []).slice(0, 50);
+    const weights = chunkCols.map((col) => {
+      let maxLen = (col.label || col.key).length;
+      sample.forEach((row) => {
+        const val = formatFieldValue(getRecordValue(row, col.key), col.key);
+        if (val) maxLen = Math.max(maxLen, Math.min(val.length, 45));
+      });
+      return Math.max(maxLen, 8);
+    });
 
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(51, 65, 85);
-      doc.text(`${sectionTitle.toUpperCase()} - DATA EXPORT (${pageSizeFormat.toUpperCase()} WIDE)`, 25, 45);
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    const minWidth = chunkCols.length > 10 ? 40 : 50;
+    let distributed = 0;
+    const finalWidths = weights.map((w) => {
+      const rawW = (w / totalWeight) * usableWidth;
+      const clamped = Math.max(rawW, minWidth);
+      distributed += clamped;
+      return clamped;
+    });
 
-      doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Exported on: ${formattedDate} | Total: ${dataset.length} Records | Columns: ${colCount}`, 25, 58);
+    const scale = usableWidth / distributed;
+    const columnStyles = {};
+    chunkCols.forEach((_, i) => {
+      columnStyles[i] = { cellWidth: Math.floor(finalWidths[i] * scale * 10) / 10 };
+    });
 
-      const pageCount = typeof doc.getNumberOfPages === 'function' ? doc.getNumberOfPages() : (doc.internal.getNumberOfPages ? doc.internal.getNumberOfPages() : 1);
+    let dynamicFontSize = 7.5;
+    let dynamicCellPadding = 3.5;
+    if (chunkCols.length > 10) {
+      dynamicFontSize = 6.2;
+      dynamicCellPadding = 2.5;
+    } else if (chunkCols.length > 7) {
+      dynamicFontSize = 7.0;
+      dynamicCellPadding = 3.0;
+    }
 
-      doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(148, 163, 184);
-      doc.text(
-        `Zenemoo • Confidential Administrative Data • Page ${data.pageNumber} of ${pageCount}`,
-        pageWidth / 2,
-        pageHeight - 20,
-        { align: 'center' }
-      );
-    },
-  });
+    const tableHeaders = [chunkCols.map((col) => col.label || col.key)];
+    const tableRows = (dataset || []).map((row) =>
+      chunkCols.map((col) => formatFieldValue(getRecordValue(row, col.key), col.key))
+    );
+
+    autoTable(doc, {
+      head: tableHeaders,
+      body: tableRows,
+      startY: 75,
+      margin: { top: 75, right: marginRight, bottom: 40, left: marginLeft },
+      theme: 'grid',
+      tableWidth: usableWidth,
+      columnStyles,
+      headStyles: {
+        fillColor: [9, 13, 22],
+        textColor: [56, 189, 248],
+        fontSize: dynamicFontSize + 0.5,
+        fontStyle: 'bold',
+        halign: 'left',
+        cellPadding: dynamicCellPadding + 1,
+      },
+      bodyStyles: {
+        textColor: [30, 41, 59],
+        fontSize: dynamicFontSize,
+        valign: 'middle',
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellPadding: dynamicCellPadding,
+        minCellHeight: 14,
+      },
+      didDrawPage: (data) => {
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(6, 182, 212);
+        doc.text('ZENEMOO', 25, 30);
+
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(51, 65, 85);
+        doc.text(`${sectionTitle.toUpperCase()} - DATA EXPORT${sectionExtra.toUpperCase()}`, 25, 45);
+
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Exported on: ${formattedDate} | Total: ${dataset.length} Records | Columns: ${cols.length}`, 25, 58);
+
+        const pageCount = typeof doc.getNumberOfPages === 'function' ? doc.getNumberOfPages() : (doc.internal.getNumberOfPages ? doc.internal.getNumberOfPages() : 1);
+
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          `Zenemoo • Confidential Administrative Data • Page ${data.pageNumber} of ${pageCount}`,
+          pageWidth / 2,
+          pageHeight - 20,
+          { align: 'center' }
+        );
+      },
+    });
+  }
 
   const pdfOutput = doc.output('arraybuffer');
   return Buffer.from(pdfOutput);

@@ -502,8 +502,8 @@ export const ZenemooWebsiteDirectoryPage: React.FC<{ onBackToHome?: () => void; 
         aria-label="Website Directory Navigation"
         className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
           scrolled
-            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 py-3 shadow-2xl shadow-cyan-950/30'
-            : 'bg-[#050505]/85 backdrop-blur-md border-b border-white/10 py-3.5 sm:py-4 shadow-lg'
+            ? 'bg-[#050505]/90 backdrop-blur-xl border-b border-white/10 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-3 shadow-2xl shadow-cyan-950/30'
+            : 'bg-[#050505]/85 backdrop-blur-md border-b border-white/10 pt-[calc(env(safe-area-inset-top,0px)+0.875rem)] pb-3.5 sm:pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:pb-4 shadow-lg'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

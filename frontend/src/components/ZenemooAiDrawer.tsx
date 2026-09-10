@@ -875,7 +875,8 @@ export const ZenemooAiDrawer: React.FC<ZenemooAiDrawerProps> = ({ isOpen, onClos
           className="relative z-10 w-full sm:w-[82%] md:w-[600px] lg:w-[660px] flex flex-col bg-[#07080f] border-l border-white/[0.08] shadow-2xl overflow-hidden text-slate-100 selection:bg-cyan-500/30"
           style={{
             height: '100dvh',
-            paddingBottom: 'env(safe-area-inset-bottom)',
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           }}
         >
 

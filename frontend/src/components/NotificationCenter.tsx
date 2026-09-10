@@ -316,7 +316,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
           {/* Floating Glassmorphic Notification Panel */}
           <div
             ref={panelRef}
-            className="fixed top-[62px] left-[10px] right-[10px] sm:absolute sm:top-[calc(100%+10px)] sm:left-auto sm:right-0 w-[calc(100vw-20px)] sm:w-[370px] max-w-[390px] mx-auto max-h-[min(480px,62vh)] sm:max-h-[520px] rounded-2xl sm:rounded-3xl bg-[#080d19]/95 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_16px_50px_rgba(0,0,0,0.85),0_0_20px_rgba(6,182,212,0.15)] z-[60] overflow-hidden text-xs font-sans flex flex-col animate-in fade-in slide-in-from-top-2 duration-200"
+            className="fixed top-[calc(env(safe-area-inset-top,0px)+64px)] left-[10px] right-[10px] sm:absolute sm:top-[calc(100%+10px)] sm:left-auto sm:right-0 w-[calc(100vw-20px)] sm:w-[370px] max-w-[390px] mx-auto max-h-[min(480px,62vh)] sm:max-h-[520px] rounded-2xl sm:rounded-3xl bg-[#080d19]/95 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_16px_50px_rgba(0,0,0,0.85),0_0_20px_rgba(6,182,212,0.15)] z-[60] overflow-hidden text-xs font-sans flex flex-col animate-in fade-in slide-in-from-top-2 duration-200"
           >
             {/* Compact Fixed Header */}
             <div className="py-2.5 px-3 sm:px-3.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02] shrink-0">

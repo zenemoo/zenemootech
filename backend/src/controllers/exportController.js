@@ -79,6 +79,14 @@ export const fetchSectionDataset = async (section, clientData = []) => {
           dbData = await supabaseService.selectAll('contacts', 'created_at', false);
         } catch (e2) {}
       }
+    } else if (section === 'candidate-applications' || section === 'opportunity-applications' || section === 'applications') {
+      try {
+        dbData = await supabaseService.selectAll('opportunity_applications', 'created_at', false);
+      } catch (e) {
+        try {
+          dbData = await supabaseService.selectAll('applications', 'created_at', false);
+        } catch (e2) {}
+      }
     }
   } catch (err) {
     console.warn(`[Export Dataset Fetch Warning for ${section}]:`, err.message);
@@ -129,14 +137,30 @@ export const handleExportData = async (req, res, next) => {
 
     if (!Array.isArray(dataset)) dataset = [];
 
-    // 3. Dynamic Column Inspection & Empty Column Filtering
-    let candidateColumns = config.defaultColumns;
-    const nonEmptyCandidateCols = filterNonEmptyColumns(dataset, candidateColumns);
+    // 3. Dynamic Column Inspection & Preservation of Client Selection
+    let selectedColumns = [];
+    const defaultMap = new Map((config.defaultColumns || []).map((c) => [c.key, c.label]));
 
-    let selectedColumns = nonEmptyCandidateCols;
-    if (Array.isArray(columns) && columns.length > 0) {
-      const colKeySet = new Set(columns);
-      selectedColumns = nonEmptyCandidateCols.filter((col) => colKeySet.has(col.key));
+    if (Array.isArray(req.body.columnDefs) && req.body.columnDefs.length > 0) {
+      selectedColumns = req.body.columnDefs;
+    } else if (Array.isArray(columns) && columns.length > 0) {
+      selectedColumns = columns.map((col) => {
+        if (typeof col === 'object' && col !== null && col.key) {
+          return col;
+        }
+        const key = String(col);
+        return {
+          key,
+          label:
+            defaultMap.get(key) ||
+            key
+              .replace(/_/g, ' ')
+              .replace(/([a-z])([A-Z])/g, '$1 $2')
+              .replace(/\b\w/g, (c) => c.toUpperCase()),
+        };
+      });
+    } else {
+      selectedColumns = filterNonEmptyColumns(dataset, config.defaultColumns);
     }
 
     if (selectedColumns.length === 0) {
