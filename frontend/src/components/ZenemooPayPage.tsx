@@ -243,38 +243,9 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
         <div className="w-24 h-0.5 bg-gradient-to-r from-transparent to-cyan-400/60 rounded-full mt-2" />
       </div>
 
-      {/* Top Navbar Header */}
-      <header className="relative z-20 py-5 px-6 sm:px-12 max-w-7xl mx-auto w-full flex items-center justify-between">
-        <a
-          href="/"
-          onClick={(e) => {
-            if (onBackToHome) {
-              e.preventDefault();
-              onBackToHome();
-            }
-          }}
-          className="flex items-center gap-3 group cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-cyan-500 to-sky-400 flex items-center justify-center p-0.5 shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform">
-            <div className="w-full h-full bg-[#030712] rounded-[10px] flex items-center justify-center">
-              <span className="text-cyan-400 font-display font-extrabold text-xl leading-none">Z</span>
-            </div>
-          </div>
-          <div>
-            <div className="font-display font-extrabold text-white text-base tracking-wider group-hover:text-cyan-400 transition-colors">
-              ZENEMOO
-            </div>
-            <div className="text-[10px] text-slate-400 font-sans tracking-tight">
-              People &bull; Opportunities &bull; Impact
-            </div>
-          </div>
-        </a>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-medium shadow-sm shadow-cyan-500/10">
-            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-            <span>256-Bit SSL Encrypted</span>
-          </div>
+      {/* 1. TOP NAVBAR HEADER — Sticky / Fixed with glass backdrop & Official Logo */}
+      <header className="sticky top-0 z-50 w-full bg-[#030712]/90 backdrop-blur-xl border-b border-white/10 py-3.5 px-6 sm:px-12 transition-all shadow-lg shadow-black/30">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <a
             href="/"
             onClick={(e) => {
@@ -283,16 +254,56 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
                 onBackToHome();
               }
             }}
-            className="px-4 py-2 rounded-full bg-[#0a1020] hover:bg-[#101b33] text-slate-300 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+            className="flex items-center gap-3 group cursor-pointer"
           >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Back to Home</span>
+            {/* Official Logo.png Container */}
+            <div className="w-10 h-10 rounded-xl bg-white p-1 shadow-md shadow-cyan-500/20 group-hover:scale-105 transition-transform flex items-center justify-center shrink-0">
+              <img
+                src="/assets/logo.png"
+                alt="Zenemoo"
+                className="w-full h-full object-contain rounded-lg"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (!target.src.includes('/logo.png')) {
+                    target.src = '/logo.png';
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <div className="font-display font-extrabold text-white text-base tracking-wider group-hover:text-cyan-400 transition-colors">
+                ZENEMOO
+              </div>
+              <div className="text-[10px] text-slate-400 font-sans tracking-tight">
+                People &bull; Opportunities &bull; Impact
+              </div>
+            </div>
           </a>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-medium shadow-sm shadow-cyan-500/10">
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+              <span>256-Bit SSL Encrypted</span>
+            </div>
+            <a
+              href="/"
+              onClick={(e) => {
+                if (onBackToHome) {
+                  e.preventDefault();
+                  onBackToHome();
+                }
+              }}
+              className="px-4 py-2 rounded-full bg-[#0a1020] hover:bg-[#101b33] text-slate-300 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Back to Home</span>
+            </a>
+          </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="relative z-10 max-w-xl mx-auto w-full px-4 py-6 sm:py-8 flex-1 flex flex-col justify-center">
+      <main className="relative z-10 max-w-xl mx-auto w-full px-4 py-8 sm:py-12 flex-1 flex flex-col justify-center">
         {/* PAYMENT RESULT / RECEIPT VIEW */}
         {paymentState === 'result' && activeOrderId ? (
           <div className="space-y-6">
@@ -551,7 +562,6 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
                 <div className="grid grid-cols-4 gap-2.5">
                   <div className="p-3 rounded-xl bg-[#040812] border border-white/10 flex flex-col items-center justify-center gap-1.5 text-center group hover:border-cyan-500/40 transition-colors">
                     <div className="w-6 h-6 flex items-center justify-center">
-                      {/* Stylized UPI Logo / Icon */}
                       <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-emerald-500 to-amber-400 flex items-center justify-center text-[9px] font-black text-black">
                         ▲
                       </div>
