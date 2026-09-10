@@ -29,6 +29,9 @@ import {
   Sparkles,
   MessageCircle,
   Share2,
+  Lock,
+  FileText,
+  ArrowRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { paymentLinksApi } from '../services/api';
@@ -48,6 +51,8 @@ export interface PaymentLinkRecord {
   link_expiry_time?: string | null;
   order_id?: string | null;
   payment_id?: string | null;
+  last_email_sent_at?: string | null;
+  last_email_sent_to?: string | null;
   created_by?: string;
   source?: string;
   created_at: string;
@@ -121,6 +126,111 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
   // Details Drawer State
   const [selectedLink, setSelectedLink] = useState<PaymentLinkRecord | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Send Payment Link via Email Modal State
+  const [emailModalLink, setEmailModalLink] = useState<PaymentLinkRecord | null>(null);
+  const [emailRecipient, setEmailRecipient] = useState<string>('');
+  const [emailCustomerName, setEmailCustomerName] = useState<string>('');
+  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
+  const [emailSendError, setEmailSendError] = useState<string | null>(null);
+
+  // Custom Toast Notification State
+  interface CustomToastInfo {
+    type: 'success' | 'error';
+    title: string;
+    recipient?: string;
+    detail?: string;
+  }
+  const [customToast, setCustomToast] = useState<CustomToastInfo | null>(null);
+
+  useEffect(() => {
+    if (customToast) {
+      const timer = setTimeout(() => {
+        setCustomToast(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [customToast]);
+
+  const openEmailModal = (link: PaymentLinkRecord) => {
+    setEmailModalLink(link);
+    setEmailRecipient(link.customer_email || '');
+    setEmailCustomerName(link.customer_name || '');
+    setEmailSendError(null);
+    setIsSendingEmail(false);
+  };
+
+  const handleSendEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailModalLink || isSendingEmail) return;
+
+    const targetEmail = emailRecipient.trim().toLowerCase();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setEmailSendError('Please enter a valid recipient email address.');
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailSendError(null);
+
+    try {
+      const res = await paymentLinksApi.sendLinkEmail(emailModalLink.link_id, {
+        recipient_email: targetEmail,
+        recipient_name: emailCustomerName.trim(),
+      });
+
+      const data = res?.data || res;
+      if (data?.success) {
+        const nowIso = new Date().toISOString();
+        // Update local memory state
+        setLinks((prev) =>
+          prev.map((l) =>
+            l.link_id === emailModalLink.link_id
+              ? { ...l, last_email_sent_at: nowIso, last_email_sent_to: targetEmail }
+              : l
+          )
+        );
+        if (globalPaymentLinksCache) {
+          globalPaymentLinksCache.links = globalPaymentLinksCache.links.map((l) =>
+            l.link_id === emailModalLink.link_id
+              ? { ...l, last_email_sent_at: nowIso, last_email_sent_to: targetEmail }
+              : l
+          );
+        }
+        if (selectedLink && selectedLink.link_id === emailModalLink.link_id) {
+          setSelectedLink((prev) =>
+            prev ? { ...prev, last_email_sent_at: nowIso, last_email_sent_to: targetEmail } : null
+          );
+        }
+
+        // Close modal
+        setEmailModalLink(null);
+
+        // Show Green Success Toast
+        setCustomToast({
+          type: 'success',
+          title: 'Payment link sent successfully',
+          recipient: targetEmail,
+          detail: 'Sent securely from Zenemoo via Brevo.',
+        });
+      } else {
+        throw new Error(data?.message || 'Failed to dispatch email.');
+      }
+    } catch (err: any) {
+      console.error('Send payment link email error:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Email could not be sent.';
+      setEmailSendError(msg);
+      // Show Red Error Toast
+      setCustomToast({
+        type: 'error',
+        title: 'Email could not be sent',
+        recipient: targetEmail,
+        detail: msg,
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const fetchPaymentLinks = useCallback(async (isManual = false) => {
     // 1. If not manual refresh and cache exists and is fresh (< 60s), avoid network call
@@ -633,13 +743,14 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                         >
                           <MessageCircle className="w-3.5 h-3.5" />
                         </a>
-                        <a
-                          href={getEmailShareUrl(link)}
-                          className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-blue-500/20 text-slate-400 hover:text-blue-300 border border-white/10 transition-colors"
+                        <button
+                          type="button"
+                          onClick={() => openEmailModal(link)}
+                          className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-blue-500/20 text-slate-400 hover:text-blue-300 border border-white/10 transition-colors cursor-pointer"
                           title="Share via Email"
                         >
                           <Mail className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
                         <a
                           href={link.link_url}
                           target="_blank"
@@ -1020,13 +1131,14 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                       <span>Share WhatsApp</span>
                     </a>
 
-                    <a
-                      href={getEmailShareUrl(createdLinkResult)}
-                      className="py-2.5 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center gap-2 transition-all font-bold"
+                    <button
+                      type="button"
+                      onClick={() => openEmailModal(createdLinkResult)}
+                      className="py-2.5 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center gap-2 transition-all font-bold cursor-pointer"
                     >
                       <Mail className="w-4 h-4" />
                       <span>Share Email</span>
-                    </a>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pt-2">
@@ -1183,13 +1295,14 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                       <span>WhatsApp</span>
                     </a>
 
-                    <a
-                      href={getEmailShareUrl(selectedLink)}
-                      className="py-2.5 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center gap-2 transition-all font-bold"
+                    <button
+                      type="button"
+                      onClick={() => openEmailModal(selectedLink)}
+                      className="py-2.5 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center gap-2 transition-all font-bold cursor-pointer"
                     >
                       <Mail className="w-4 h-4" />
                       <span>Email</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1216,6 +1329,381 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* 7. SEND PAYMENT LINK VIA EMAIL MODAL (2-Column Desktop, 1-Column Mobile) */}
+      <AnimatePresence>
+        {emailModalLink && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 font-mono text-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isSendingEmail) setEmailModalLink(null);
+              }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-md cursor-pointer"
+            />
+
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 10 }}
+              className="relative w-full max-w-4xl bg-[#070b14] border border-cyan-500/30 rounded-3xl p-5 sm:p-7 z-10 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center text-cyan-400 shadow-md">
+                    <Mail className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white font-display flex items-center gap-2">
+                      Send Payment Link via Email
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Send this secure payment link directly from Zenemoo.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSendingEmail}
+                  onClick={() => setEmailModalLink(null)}
+                  className="p-1.5 rounded-xl bg-white/[0.04] text-slate-400 hover:text-white cursor-pointer transition-colors disabled:opacity-30"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {emailSendError && (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{emailSendError}</span>
+                </div>
+              )}
+
+              {/* Two Column Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* LEFT COLUMN: Configuration & Sender Form */}
+                <form onSubmit={handleSendEmailSubmit} className="lg:col-span-5 space-y-4">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block mb-1">
+                        Recipient Email <span className="text-cyan-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          required
+                          value={emailRecipient}
+                          onChange={(e) => setEmailRecipient(e.target.value)}
+                          placeholder="customer@example.com"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block mb-1">
+                        Recipient Name
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={emailCustomerName}
+                          onChange={(e) => setEmailCustomerName(e.target.value)}
+                          placeholder="e.g. Prem Prasad Pradhan"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block mb-1">
+                        Email Subject Preview
+                      </label>
+                      <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 text-slate-300 text-[11px] select-all">
+                        Payment Request from Zenemoo — ₹{Number(emailModalLink.link_amount).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Metadata Snapshot */}
+                  <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2 text-[11px]">
+                    <div className="text-slate-400 uppercase font-bold text-[10px] tracking-wider mb-1">
+                      Payment Link Details
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Amount:</span>
+                      <span className="text-cyan-300 font-bold font-display text-sm">
+                        ₹{Number(emailModalLink.link_amount).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Reason:</span>
+                      <span className="text-white truncate max-w-[170px]">{emailModalLink.link_purpose}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Link ID:</span>
+                      <span className="text-slate-300 font-mono text-[10px]">{emailModalLink.link_id}</span>
+                    </div>
+                    {emailModalLink.link_expiry_time && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Valid Until:</span>
+                        <span className="text-emerald-400 font-semibold">
+                          {new Date(emailModalLink.link_expiry_time).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Brevo Delivery Assurance */}
+                  <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[11px] text-cyan-300/90 leading-relaxed flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <span>
+                      Dispatched securely via <strong>Zenemoo Brevo SMTP service</strong> with real-time delivery confirmation.
+                    </span>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="pt-2 flex items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={isSendingEmail}
+                      onClick={() => setEmailModalLink(null)}
+                      className="w-1/3 py-2.5 px-4 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/10 text-xs font-semibold cursor-pointer transition-colors"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isSendingEmail}
+                      className="w-2/3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50"
+                    >
+                      {isSendingEmail ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                          <span>Sending Email...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Send Email</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+
+                {/* RIGHT COLUMN: Live Email Preview matching the attached screenshot */}
+                <div className="lg:col-span-7 space-y-2">
+                  <div className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>Email Preview <span className="text-slate-500 font-normal lowercase">(as it will be sent)</span></span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                      Live Template
+                    </span>
+                  </div>
+
+                  <div className="rounded-2xl bg-white text-slate-900 overflow-hidden shadow-2xl border border-white/20 text-xs select-none">
+                    {/* Top Header Banner */}
+                    <div className="bg-[#030712] p-4 text-white flex items-center justify-between border-b border-white/10">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-white p-1 shadow shrink-0 flex items-center justify-center">
+                          <img src="/assets/logo.png" alt="Zenemoo" className="w-full h-full object-contain rounded-lg" />
+                        </div>
+                        <div>
+                          <div className="font-extrabold text-white text-sm tracking-wide">ZENEMOO</div>
+                          <div className="text-[9px] text-slate-400">People &bull; Opportunities &bull; Impact</div>
+                        </div>
+                      </div>
+                      <div className="text-right text-[10px] text-cyan-400 font-mono">
+                        <div>Building</div>
+                        <div className="text-slate-400 -mt-0.5">A Brighter Tomorrow Together</div>
+                        <div className="h-0.5 w-12 bg-cyan-400 ml-auto mt-0.5 rounded-full" />
+                      </div>
+                    </div>
+
+                    {/* Email Content Body */}
+                    <div className="p-5 space-y-3.5 font-sans">
+                      <div>
+                        <h4 className="text-base font-extrabold text-slate-900 leading-tight">Payment Request</h4>
+                        <div className="text-[11px] font-bold text-sky-600">from Zenemoo</div>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs text-slate-600 leading-relaxed">
+                        <p>
+                          Dear <strong className="text-slate-900">{emailCustomerName.trim() || 'Supporter'}</strong>,
+                        </p>
+                        <p>
+                          You have a payment request from <strong>Zenemoo</strong>. Please find the details below and use the secure payment link to complete your payment.
+                        </p>
+                      </div>
+
+                      {/* Details Box */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-slate-500 font-medium shrink-0">
+                            <FileText className="w-3.5 h-3.5 text-sky-600" />
+                            <span>Payment For</span>
+                          </div>
+                          <span className="font-bold text-slate-900 text-right">
+                            {emailModalLink.link_purpose || 'Support Zenemoo — Platform & Technology'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                            <span className="font-bold text-sky-600">₹</span>
+                            <span>Amount</span>
+                          </div>
+                          <span className="font-extrabold text-slate-900 text-sm">
+                            ₹{Number(emailModalLink.link_amount).toLocaleString('en-IN')}{' '}
+                            <span className="text-[10px] text-slate-500 font-normal">INR</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                            <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                            <span>Valid Until</span>
+                          </div>
+                          <span className="font-bold text-slate-900">
+                            {emailModalLink.link_expiry_time
+                              ? new Date(emailModalLink.link_expiry_time).toLocaleDateString('en-GB', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : '30 Days Validity'}
+                          </span>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-sky-700 font-semibold text-[11px]">
+                            <Link2 className="w-3.5 h-3.5" />
+                            <span>Payment Link</span>
+                          </div>
+                          <a
+                            href={emailModalLink.link_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span>Pay Now Securely</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Security Note */}
+                      <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-2 text-[11px] text-emerald-900">
+                        <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="leading-tight">
+                          <strong>This is a secure payment link powered by Cashfree.</strong>
+                          <div className="text-emerald-700 text-[10px] mt-0.5">You can pay using UPI, Cards, NetBanking or Wallets.</div>
+                        </div>
+                      </div>
+
+                      {/* Assistance Note */}
+                      <div className="p-2 rounded-lg bg-sky-50 border border-sky-100 flex items-center gap-2 text-[11px] text-sky-900">
+                        <AlertCircle className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span>If you have any questions or need assistance, feel free to contact us.</span>
+                      </div>
+
+                      {/* Sign-off */}
+                      <div className="text-xs text-slate-600 border-t border-slate-100 pt-2.5 leading-tight">
+                        <div>Thank you,</div>
+                        <div className="font-bold text-slate-900 mt-0.5">Team Zenemoo</div>
+                        <div className="text-[11px] text-slate-500">Zenemoo AI Data Solutions</div>
+                      </div>
+
+                      {/* Footer */}
+                      <div className="text-center pt-2 border-t border-slate-100 text-[10px] text-slate-500 space-y-1">
+                        <div className="flex items-center justify-center gap-3 text-sky-600 text-[10px] font-medium">
+                          <span>Website</span> &bull;
+                          <span>Support</span> &bull;
+                          <span>Privacy Policy</span> &bull;
+                          <span>Terms of Service</span>
+                        </div>
+                        <div className="font-medium text-slate-600">Building a brighter tomorrow, together.</div>
+                        <div className="text-[9px] text-slate-400">&copy; {new Date().getFullYear()} Zenemoo AI Data Solutions. All rights reserved.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 8. CUSTOM FLOATING TOAST (Green for Success, Red for Error) */}
+      <AnimatePresence>
+        {customToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-6 right-6 z-50 max-w-sm w-full font-mono text-xs"
+          >
+            <div
+              className={`p-4 rounded-2xl backdrop-blur-xl border shadow-2xl flex items-start gap-3 ${
+                customToast.type === 'success'
+                  ? 'bg-[#041a14]/95 border-emerald-500/40 text-emerald-100 shadow-[0_0_30px_rgba(16,185,129,0.25)]'
+                  : 'bg-[#1a0408]/95 border-rose-500/40 text-rose-100 shadow-[0_0_30px_rgba(244,63,94,0.25)]'
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  customToast.type === 'success'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}
+              >
+                {customToast.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+              </div>
+
+              <div className="space-y-1 flex-1">
+                <div className="font-bold text-white text-xs">{customToast.title}</div>
+                {customToast.recipient && (
+                  <div className="text-[11px] text-slate-300">
+                    Email sent to: <span className="text-cyan-300 font-semibold">{customToast.recipient}</span>
+                  </div>
+                )}
+                {customToast.detail && (
+                  <div
+                    className={`text-[10px] ${
+                      customToast.type === 'success' ? 'text-emerald-300/80' : 'text-rose-300/80'
+                    }`}
+                  >
+                    {customToast.detail}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCustomToast(null)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

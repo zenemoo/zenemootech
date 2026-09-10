@@ -10,6 +10,7 @@ import {
   createAdminPaymentLink,
   getAdminPaymentLinks,
   cancelAdminPaymentLink,
+  sendAdminPaymentLinkEmail,
   getPublicPaymentLink,
 } from '../controllers/supportPaymentController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
@@ -73,6 +74,12 @@ router.post(
   verifyToken,
   requireRole(['admin', 'super_admin', 'administrator', 'hr']),
   cancelAdminPaymentLink
+);
+router.post(
+  '/payment-links/:linkId/send-email',
+  verifyToken,
+  requireRole(['admin', 'super_admin', 'administrator', 'hr']),
+  sendAdminPaymentLinkEmail
 );
 
 // --- SUPPORT TICKETING ROUTES ---

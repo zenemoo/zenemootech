@@ -314,6 +314,8 @@ export const paymentLinksApi = {
   getPublicLink: (linkId: string) =>
     deduplicatedGet(`/support/public-link/${encodeURIComponent(linkId)}`),
   cancelLink: (linkId: string) => api.post(`/support/payment-links/${encodeURIComponent(linkId)}/cancel`),
+  sendLinkEmail: (linkId: string, data?: { recipient_email?: string; recipient_name?: string }) =>
+    api.post(`/support/payment-links/${encodeURIComponent(linkId)}/send-email`, data),
 };
 
 // Data Export System APIs
