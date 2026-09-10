@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { TalentHubAuthProvider, useTalentHubAuth } from './TalentHubAuthContext';
+import React, { useState, useEffect, useContext } from 'react';
+import { TalentHubAuthProvider, TalentHubAuthContext, useTalentHubAuth } from './TalentHubAuthContext';
 import { TalentHubLayout } from './TalentHubLayout';
 import { TalentHubLoginPage } from './TalentHubLoginPage';
 import { TalentHubDashboard } from './TalentHubDashboard';
@@ -108,14 +108,24 @@ export const ZenemooTalentHubPage: React.FC<ZenemooTalentHubPageProps> = ({
     }
   };
 
+  const existingContext = useContext(TalentHubAuthContext);
+
+  const content = (
+    <TalentHubContent
+      currentSubRoute={subRoute}
+      onChangeSubRoute={handleSubRouteChange}
+      onNavigateHome={onNavigateHome}
+      onNavigateRegister={onNavigateRegister}
+    />
+  );
+
+  if (existingContext) {
+    return content;
+  }
+
   return (
     <TalentHubAuthProvider>
-      <TalentHubContent
-        currentSubRoute={subRoute}
-        onChangeSubRoute={handleSubRouteChange}
-        onNavigateHome={onNavigateHome}
-        onNavigateRegister={onNavigateRegister}
-      />
+      {content}
     </TalentHubAuthProvider>
   );
 };

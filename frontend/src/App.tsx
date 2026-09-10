@@ -52,12 +52,12 @@ import { SupportZenemooPage } from './components/SupportZenemooPage';
 import { ZenemooPayPage } from './components/ZenemooPayPage';
 import { ZenemooReceiptVerifyPage } from './components/ZenemooReceiptVerifyPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
+import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
-import { supabase } from './lib/supabaseClient';
-import { talentHubApi } from './services/talentHubApi';
 
-export function App() {
+function AppInner() {
+  const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
     'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | '404'
   >('home');
@@ -94,55 +94,45 @@ export function App() {
     }
   }, [isAndroidApp]);
 
-  // Native Android startup session check: avoid flash of Home if authenticated user opens app
+  // Native Android startup session state machine
   useEffect(() => {
     if (!isAppInitializing) return;
 
     let isMounted = true;
     const fallbackTimer = setTimeout(() => {
-      if (isMounted) setIsAppInitializing(false);
-    }, 2200);
+      if (isMounted && isAppInitializing) {
+        setIsAppInitializing(false);
+      }
+    }, 2500);
 
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session }, error }) => {
-        if (!isMounted) return;
-        if (error || !session?.access_token) {
-          setCurrentRoute('home');
-          setIsAppInitializing(false);
-          return;
-        }
+    // Wait until auth state is determined
+    if (authState === 'checkingSession' || authState === 'loadingProfile') {
+      return () => {
+        isMounted = false;
+        clearTimeout(fallbackTimer);
+      };
+    }
 
-        try {
-          const profileRes = await talentHubApi.getProfile(session.access_token);
-          if (!isMounted) return;
-          if (profileRes?.success && profileRes?.registered) {
-            window.history.replaceState(null, '', '/talent-hub/dashboard');
-            setCurrentRoute('talent-hub-dashboard');
-          } else {
-            window.history.replaceState(null, '', '/talent-hub');
-            setCurrentRoute('talent-hub');
-          }
-        } catch (_) {
-          if (!isMounted) return;
-          window.history.replaceState(null, '', '/talent-hub');
-          setCurrentRoute('talent-hub');
-        } finally {
-          if (isMounted) setIsAppInitializing(false);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setCurrentRoute('home');
-          setIsAppInitializing(false);
-        }
-      });
+    if (authState === 'unauthenticated' || !session) {
+      setCurrentRoute('home');
+      setIsAppInitializing(false);
+    } else {
+      // Valid session restored
+      if (isRegistered === true) {
+        window.history.replaceState(null, '', '/talent-hub/dashboard');
+        setCurrentRoute('talent-hub-dashboard');
+      } else {
+        window.history.replaceState(null, '', '/talent-hub');
+        setCurrentRoute('talent-hub');
+      }
+      setIsAppInitializing(false);
+    }
 
     return () => {
       isMounted = false;
       clearTimeout(fallbackTimer);
     };
-  }, [isAppInitializing]);
+  }, [isAppInitializing, authState, isRegistered, session]);
 
   // Native Android deep link route listener
   useEffect(() => {
@@ -1109,6 +1099,14 @@ export function App() {
         </>
       )}
     </>
+  );
+}
+
+export function App() {
+  return (
+    <TalentHubAuthProvider>
+      <AppInner />
+    </TalentHubAuthProvider>
   );
 }
 

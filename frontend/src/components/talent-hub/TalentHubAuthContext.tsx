@@ -105,6 +105,8 @@ interface TalentHubAuthContextType {
   authState: TalentHubAuthState;
   isLoading: boolean;
   isProfileLoading: boolean;
+  isSigningIn: boolean;
+  isOpeningGoogle: boolean;
   authError: string | null;
 
   // Cached Data State
@@ -128,7 +130,7 @@ interface TalentHubAuthContextType {
   mutateApplications: (newOrUpdatedApp: ApplicationItem) => void;
 }
 
-const TalentHubAuthContext = createContext<TalentHubAuthContextType | undefined>(undefined);
+export const TalentHubAuthContext = createContext<TalentHubAuthContextType | undefined>(undefined);
 
 export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -139,6 +141,8 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [authState, setAuthState] = useState<TalentHubAuthState>('checkingSession');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
+  const [isOpeningGoogle, setIsOpeningGoogle] = useState<boolean>(false);
 
   // Cached Portal Data State
   const [opportunities, setOpportunities] = useState<OpportunityItem[]>([]);
@@ -450,8 +454,14 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
           await Browser.close();
         } catch (_) {}
 
+        setIsSigningIn(true);
         setAuthState('loadingProfile');
         setAuthError(null);
+
+        // Always close external browser/Custom Tab
+        try {
+          await Browser.close();
+        } catch (_) {}
 
         try {
           let code: string | null = null;
@@ -541,6 +551,8 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
           console.error('[TalentHub Auth Mobile] Callback handler exception:', err.message);
           setAuthError('Google sign-in could not be completed. Please try again.');
           setAuthState('unauthenticated');
+        } finally {
+          setIsSigningIn(false);
         }
       };
 
@@ -577,9 +589,28 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signInWithGoogle = async () => {
     try {
       setAuthError(null);
+
+      // PART 5: NEVER call signInWithOAuth if a valid session already exists!
+      if (session?.access_token) {
+        console.log('[Google OAuth] Existing active session detected in context. Restoring profile...');
+        await loadTalentProfile(session.access_token);
+        return;
+      }
+
+      const { data: currentAuth } = await supabase.auth.getSession();
+      if (currentAuth?.session?.access_token) {
+        console.log('[Google OAuth] Existing active session restored from storage. Skipping OAuth...');
+        setSession(currentAuth.session);
+        setUser(currentAuth.session.user || null);
+        lastLoadedUserIdRef.current = currentAuth.session.user?.id || null;
+        await loadTalentProfile(currentAuth.session.access_token);
+        return;
+      }
+
       const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
       if (isAndroid) {
+        setIsOpeningGoogle(true);
         console.log('[Google OAuth Mobile] Opening Chrome / system browser with redirect to zenemoo://auth/callback');
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
@@ -594,6 +625,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         });
 
         if (error) {
+          setIsOpeningGoogle(false);
           console.error('[Google OAuth Mobile Error]:', error.message);
           setAuthError('Google sign-in could not be completed. Please try again.');
           return;
@@ -601,7 +633,9 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (data?.url) {
           await Browser.open({ url: data.url, windowName: '_system' });
+          setTimeout(() => setIsOpeningGoogle(false), 2500);
         } else {
+          setIsOpeningGoogle(false);
           setAuthError('Unable to open Google sign-in. Please try again.');
         }
       } else {
@@ -626,6 +660,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
     } catch (err: any) {
+      setIsOpeningGoogle(false);
       console.error('[Google OAuth Trigger Error]:', err.message);
       setAuthError("We couldn't sign you in with Google. Please try again.");
     }
@@ -691,6 +726,8 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         authState,
         isLoading,
         isProfileLoading,
+        isSigningIn,
+        isOpeningGoogle,
         authError,
         opportunities,
         applications,
