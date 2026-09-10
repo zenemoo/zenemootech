@@ -1,7 +1,14 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { cashfreeService } from '../services/cashfreeService.js';
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PAYMENT_LINKS_STORE_PATH = path.join(__dirname, '../database/payment_links_store.json');
 
 // Resilient in-memory payment cache (prevents runtime failure if DB table is not yet migrated)
 const memorySupportPayments = new Map();
@@ -285,13 +292,15 @@ export const verifyPaymentOrder = async (req, res, next) => {
           });
 
           // If linked to an admin payment link, update the payment link status to PAID
-          const associatedLinkId = localRecord?.link_id || localRecord?.metadata?.link_id;
+          const associatedLinkId = localRecord?.link_id || localRecord?.metadata?.link_id || (orderId.startsWith('PL_') ? orderId : null);
           if (orderStatus === 'SUCCESS' && associatedLinkId) {
             try {
               await savePaymentLinkRecord(associatedLinkId, {
                 link_status: 'PAID',
                 order_id: orderId,
                 payment_id: paymentId,
+                payment_time: paymentTime,
+                updated_at: new Date().toISOString(),
               });
             } catch (linkErr) {
               console.warn('Link status update warning:', linkErr.message);
@@ -659,11 +668,43 @@ export const getAdminContributions = async (req, res) => {
   }
 };
 
-// Resilient in-memory payment links cache
-const memoryPaymentLinks = new Map();
+function loadDiskPaymentLinks() {
+  const map = new Map();
+  try {
+    if (fs.existsSync(PAYMENT_LINKS_STORE_PATH)) {
+      const content = fs.readFileSync(PAYMENT_LINKS_STORE_PATH, 'utf-8');
+      if (content) {
+        const arr = JSON.parse(content);
+        if (Array.isArray(arr)) {
+          arr.forEach((item) => {
+            if (item && item.link_id) {
+              map.set(item.link_id, item);
+            }
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading payment_links_store.json:', e.message);
+  }
+  return map;
+}
 
-// Selective columns projection for minimum Supabase egress
-const REQUIRED_PAYMENT_LINK_COLUMNS = 'id,link_id,cf_link_id,link_url,link_amount,link_currency,link_purpose,customer_phone,customer_email,customer_name,link_status,link_expiry_time,order_id,payment_id,created_by,source,created_at,updated_at';
+function saveDiskPaymentLinks(linksMap) {
+  try {
+    const dir = path.dirname(PAYMENT_LINKS_STORE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const arr = Array.from(linksMap.values());
+    fs.writeFileSync(PAYMENT_LINKS_STORE_PATH, JSON.stringify(arr, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Error writing payment_links_store.json:', e.message);
+  }
+}
+
+// Resilient in-memory payment links cache initialized from persistent disk store
+const memoryPaymentLinks = loadDiskPaymentLinks();
 
 // Server-side cache for Payment Links
 let cachedPaymentLinksData = null;
@@ -671,7 +712,7 @@ let lastPaymentLinksCacheTimestamp = 0;
 const PAYMENT_LINKS_CACHE_TTL_MS = 60 * 1000; // 60s TTL
 
 /**
- * Save or update payment link in Supabase or memory fallback
+ * Save or update payment link in persistent disk store, memory, and Supabase support_payments
  */
 async function savePaymentLinkRecord(linkId, linkData) {
   const existing = memoryPaymentLinks.get(linkId) || {};
@@ -685,33 +726,61 @@ async function savePaymentLinkRecord(linkId, linkData) {
     merged.created_at = new Date().toISOString();
   }
   memoryPaymentLinks.set(linkId, merged);
+  saveDiskPaymentLinks(memoryPaymentLinks);
 
+  // Mirror into unified support_payments database table
   if (supabase) {
     try {
       const { data: found } = await supabase
-        .from('support_payment_links')
-        .select('id')
-        .eq('link_id', linkId)
+        .from('support_payments')
+        .select('id, status, payment_id')
+        .eq('order_id', linkId)
         .maybeSingle();
+
+      const payStatus = merged.link_status === 'PAID' ? 'SUCCESS' : (merged.link_status === 'CANCELLED' ? 'CANCELLED' : (found?.status || 'PENDING'));
+
+      const dbPayload = {
+        order_id: linkId,
+        amount: Number(merged.link_amount || 0),
+        currency: merged.link_currency || 'INR',
+        provider: 'cashfree',
+        status: payStatus,
+        customer_name: merged.customer_name || 'Zenemoo Supporter',
+        customer_email: merged.customer_email || 'support@zenemoo.in',
+        customer_phone: merged.customer_phone || '9999999999',
+        metadata: {
+          purpose: merged.link_purpose || 'Support Zenemoo — Platform & Technology',
+          source: 'Admin Payment Link',
+          cf_link_id: merged.cf_link_id,
+          link_url: merged.link_url,
+          link_status: merged.link_status,
+          link_expiry_time: merged.link_expiry_time,
+          last_email_sent_at: merged.last_email_sent_at,
+          last_email_sent_to: merged.last_email_sent_to,
+        },
+        updated_at: new Date().toISOString(),
+      };
 
       if (found?.id) {
         await supabase
-          .from('support_payment_links')
-          .update(linkData)
-          .eq('link_id', linkId);
+          .from('support_payments')
+          .update(dbPayload)
+          .eq('order_id', linkId);
       } else {
+        dbPayload.created_at = merged.created_at;
         await supabase
-          .from('support_payment_links')
-          .insert([merged]);
+          .from('support_payments')
+          .insert([dbPayload]);
       }
     } catch (err) {
-      console.warn('Supabase support_payment_links fallback to memory:', err.message);
+      console.warn('Supabase support_payments mirror note:', err.message);
     }
   }
 
   // Invalidate server cache
   cachedPaymentLinksData = null;
   lastPaymentLinksCacheTimestamp = 0;
+  invalidateContributionsCache();
 
   return merged;
 }
@@ -720,20 +789,59 @@ async function savePaymentLinkRecord(linkId, linkData) {
  * Find payment link by linkId
  */
 async function findPaymentLinkRecord(linkId) {
+  if (memoryPaymentLinks.has(linkId)) {
+    return memoryPaymentLinks.get(linkId);
+  }
+
+  const diskStore = loadDiskPaymentLinks();
+  if (diskStore.has(linkId)) {
+    const rec = diskStore.get(linkId);
+    memoryPaymentLinks.set(linkId, rec);
+    return rec;
+  }
+
   if (supabase) {
     try {
       const { data } = await supabase
-        .from('support_payment_links')
-        .select(REQUIRED_PAYMENT_LINK_COLUMNS)
-        .eq('link_id', linkId)
+        .from('support_payments')
+        .select('*')
+        .eq('order_id', linkId)
         .maybeSingle();
-      if (data) return data;
+
+      if (data) {
+        let meta = data.metadata;
+        if (typeof meta === 'string') {
+          try { meta = JSON.parse(meta); } catch (_) {}
+        }
+        const linkRec = {
+          link_id: data.order_id,
+          cf_link_id: meta?.cf_link_id || '',
+          link_url: meta?.link_url || `https://www.zenemoo.in/pay/${data.order_id}`,
+          link_amount: Number(data.amount || 0),
+          link_currency: data.currency || 'INR',
+          link_purpose: meta?.purpose || 'Support Zenemoo — Platform & Technology',
+          customer_phone: data.customer_phone || '',
+          customer_email: data.customer_email || '',
+          customer_name: data.customer_name || 'Zenemoo Supporter',
+          link_status: data.status === 'SUCCESS' ? 'PAID' : (data.status === 'CANCELLED' ? 'CANCELLED' : (meta?.link_status || 'ACTIVE')),
+          link_expiry_time: meta?.link_expiry_time || null,
+          created_by: meta?.created_by || 'admin@zenemoo.in',
+          source: meta?.source || 'Admin Payment Link',
+          payment_id: data.payment_id || null,
+          order_id: data.order_id,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        };
+        memoryPaymentLinks.set(linkId, linkRec);
+        saveDiskPaymentLinks(memoryPaymentLinks);
+        return linkRec;
+      }
     } catch (err) {
-      console.warn('Supabase findPaymentLinkRecord fallback to memory:', err.message);
+      console.warn('Supabase findPaymentLinkRecord fallback:', err.message);
     }
   }
 
-  return memoryPaymentLinks.get(linkId) || null;
+  return null;
 }
 
 /**
@@ -866,32 +974,70 @@ export const getAdminPaymentLinks = async (req, res) => {
       return res.json(cachedPaymentLinksData);
     }
 
-    let records = [];
+    const recordMap = new Map();
 
+    // Load from disk store first
+    const diskStore = loadDiskPaymentLinks();
+    for (const [k, v] of diskStore.entries()) {
+      recordMap.set(k, v);
+      memoryPaymentLinks.set(k, v);
+    }
+
+    // Load from memory
+    for (const [k, v] of memoryPaymentLinks.entries()) {
+      recordMap.set(k, v);
+    }
+
+    // Query support_payments from Supabase (the single unified database)
     if (supabase) {
       try {
         const { data, error } = await supabase
-          .from('support_payment_links')
-          .select(REQUIRED_PAYMENT_LINK_COLUMNS)
+          .from('support_payments')
+          .select('*')
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
-          records = data;
+          for (const item of data) {
+            let meta = item.metadata;
+            if (typeof meta === 'string') {
+              try { meta = JSON.parse(meta); } catch (_) {}
+            }
+
+            const isLink = item.order_id?.startsWith('PL_') || meta?.source === 'Admin Payment Link';
+            if (isLink) {
+              const existing = recordMap.get(item.order_id) || {};
+              const linkStatus = item.status === 'SUCCESS' ? 'PAID' : (item.status === 'CANCELLED' ? 'CANCELLED' : (existing.link_status || meta?.link_status || 'ACTIVE'));
+              const linkRec = {
+                ...existing,
+                link_id: item.order_id,
+                cf_link_id: existing.cf_link_id || meta?.cf_link_id || '',
+                link_url: existing.link_url || meta?.link_url || `https://www.zenemoo.in/pay/${item.order_id}`,
+                link_amount: Number(item.amount || existing.link_amount || 0),
+                link_currency: item.currency || 'INR',
+                link_purpose: meta?.purpose || existing.link_purpose || 'Support Zenemoo — Platform & Technology',
+                customer_phone: item.customer_phone || existing.customer_phone || '',
+                customer_email: item.customer_email || existing.customer_email || '',
+                customer_name: item.customer_name || existing.customer_name || 'Zenemoo Supporter',
+                link_status: linkStatus,
+                link_expiry_time: meta?.link_expiry_time || existing.link_expiry_time || null,
+                created_by: meta?.created_by || existing.created_by || 'admin@zenemoo.in',
+                source: 'Admin Payment Link',
+                order_id: item.order_id,
+                payment_id: item.payment_id || existing.payment_id || null,
+                created_at: item.created_at || existing.created_at || new Date().toISOString(),
+                updated_at: item.updated_at || existing.updated_at || new Date().toISOString(),
+              };
+              recordMap.set(item.order_id, linkRec);
+              memoryPaymentLinks.set(item.order_id, linkRec);
+            }
+          }
         }
       } catch (err) {
         console.warn('Supabase getAdminPaymentLinks fallback:', err.message);
       }
     }
 
-    const recordMap = new Map();
-    for (const r of records) {
-      if (r.link_id) recordMap.set(r.link_id, r);
-    }
-    for (const r of memoryPaymentLinks.values()) {
-      if (r.link_id && !recordMap.has(r.link_id)) {
-        recordMap.set(r.link_id, r);
-      }
-    }
+    saveDiskPaymentLinks(memoryPaymentLinks);
 
     const allLinks = Array.from(recordMap.values()).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -934,7 +1080,6 @@ export const getAdminPaymentLinks = async (req, res) => {
       cachedAt: new Date().toISOString(),
     };
 
-    // Store in server-side cache
     cachedPaymentLinksData = responsePayload;
     lastPaymentLinksCacheTimestamp = Date.now();
 
