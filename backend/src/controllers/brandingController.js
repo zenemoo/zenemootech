@@ -38,7 +38,7 @@ const loadDiskActiveLogo = () => {
       const data = fs.readFileSync(PERSISTENT_FILE_PATH, 'utf-8');
       if (data) {
         const parsed = JSON.parse(data);
-        if (parsed && (parsed.url || parsed.secure_url)) {
+        if (parsed && parsed.isActive === true && (parsed.url || parsed.secure_url) && !parsed.isDefault) {
           return parsed;
         }
       }
@@ -55,12 +55,14 @@ const saveDiskActiveLogo = (payload) => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    if (payload && (payload.url || payload.secure_url)) {
+    if (payload && payload.isActive === true && (payload.url || payload.secure_url) && !payload.isDefault) {
       fs.writeFileSync(PERSISTENT_FILE_PATH, JSON.stringify(payload, null, 2), 'utf-8');
     } else {
-      if (fs.existsSync(PERSISTENT_FILE_PATH)) {
-        fs.unlinkSync(PERSISTENT_FILE_PATH);
-      }
+      fs.writeFileSync(
+        PERSISTENT_FILE_PATH,
+        JSON.stringify({ isActive: false, isDefault: true, url: null, secure_url: null, publicId: null }, null, 2),
+        'utf-8'
+      );
     }
   } catch (e) {
     console.warn('Error writing active_logo.json persistent file:', e.message);
@@ -72,13 +74,16 @@ let inMemoryActiveLogo = loadDiskActiveLogo();
 
 /**
  * GET /api/branding/active, /branding/active, /api/branding/logo, /branding/logo, /api/branding, /branding
- * MUST NEVER RETURN 404! Returns active logo payload or fallback.
+ * MUST NEVER RETURN 404! Returns active logo payload or default null data.
  */
 export const getActiveLogo = async (req, res) => {
   try {
     let activeRecord = null;
+    let dbSuccess = false;
+
     try {
       const records = await supabaseService.selectAll('site_branding', 'updated_at', false);
+      dbSuccess = true;
       if (Array.isArray(records) && records.length > 0) {
         activeRecord = records.find((r) => r.asset_type === 'site_logo' && (r.is_active === true || r.is_active === 'true')) || null;
       }
@@ -86,6 +91,7 @@ export const getActiveLogo = async (req, res) => {
       console.warn('Supabase site_branding select warning:', dbErr.message);
     }
 
+    // 1. If active record exists in database
     if (activeRecord && (activeRecord.cloudinary_secure_url || activeRecord.url)) {
       const secureUrl = activeRecord.cloudinary_secure_url || activeRecord.url;
       const pubId = activeRecord.cloudinary_public_id || activeRecord.public_id || '';
@@ -116,9 +122,20 @@ export const getActiveLogo = async (req, res) => {
       return res.status(200).json({ success: true, data: payload });
     }
 
-    // Fall back to memory / disk file payload before reverting to default
+    // 2. If database query succeeded and NO active record was found, it means logo was DELETED/REMOVED
+    if (dbSuccess && !activeRecord) {
+      inMemoryActiveLogo = null;
+      saveDiskActiveLogo(null);
+      return res.status(200).json({
+        success: true,
+        data: null,
+        defaultFallback: DEFAULT_LOGO_PAYLOAD,
+      });
+    }
+
+    // 3. Fall back to memory / disk file payload ONLY if DB was unreachable AND disk file is active
     const diskFallback = inMemoryActiveLogo || loadDiskActiveLogo();
-    if (diskFallback && (diskFallback.url || diskFallback.secure_url)) {
+    if (diskFallback && diskFallback.isActive === true && (diskFallback.url || diskFallback.secure_url)) {
       inMemoryActiveLogo = diskFallback;
       return res.status(200).json({ success: true, data: diskFallback });
     }
@@ -130,10 +147,9 @@ export const getActiveLogo = async (req, res) => {
     });
   } catch (err) {
     console.error('getActiveLogo Server Error:', err.message);
-    const diskFallback = inMemoryActiveLogo || loadDiskActiveLogo();
     return res.status(200).json({
       success: true,
-      data: diskFallback || null,
+      data: null,
       defaultFallback: DEFAULT_LOGO_PAYLOAD,
     });
   }
@@ -147,19 +163,21 @@ export const uploadOrReplaceLogo = async (req, res) => {
   try {
     const directUrlInput = req.body?.url || req.body?.image_url || req.body?.cloudinary_secure_url;
 
-    // Helper to deactivate previous records in Supabase
-    const deactivatePreviousLogos = async () => {
+    // Helper to deactivate/delete previous records in Supabase
+    const cleanupPreviousLogos = async () => {
       try {
         const records = await supabaseService.selectAll('site_branding', 'created_at', false);
         if (Array.isArray(records)) {
           for (const r of records) {
-            if (r.asset_type === 'site_logo' && (r.is_active || r.is_active === 'true')) {
-              await supabaseService.update('site_branding', r.id, { is_active: false, updated_at: new Date().toISOString() });
+            if (r.asset_type === 'site_logo') {
+              if (r.is_active || r.is_active === 'true') {
+                await supabaseService.update('site_branding', r.id, { is_active: false, updated_at: new Date().toISOString() });
+              }
             }
           }
         }
       } catch (e) {
-        console.warn('Warning deactivating previous branding records:', e.message);
+        console.warn('Warning cleaning up previous branding records:', e.message);
       }
     };
 
@@ -186,7 +204,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
       let oldPublicId = null;
       try {
         const records = await supabaseService.selectAll('site_branding', 'created_at', false);
-        const currentActive = (records || []).find((r) => r.asset_type === 'site_logo' && r.is_active === true);
+        const currentActive = (records || []).find((r) => r.asset_type === 'site_logo' && (r.is_active === true || r.is_active === 'true'));
         if (currentActive) {
           oldPublicId = currentActive.cloudinary_public_id || currentActive.public_id || null;
         }
@@ -210,7 +228,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
       const fileSizeFormatted = (req.file.size / 1024).toFixed(1) + ' KB';
 
       // Deactivate older logo records
-      await deactivatePreviousLogos();
+      await cleanupPreviousLogos();
 
       // Database Payload (Compatible with site_branding table columns)
       const dbPayload = {
@@ -278,7 +296,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
       const userTitle = req.body?.title || 'Zenemoo Official Logo';
       const cleanUrl = directUrlInput.trim();
 
-      await deactivatePreviousLogos();
+      await cleanupPreviousLogos();
 
       const dbPayload = {
         asset_type: 'site_logo',
@@ -349,30 +367,36 @@ export const uploadOrReplaceLogo = async (req, res) => {
  */
 export const deleteLogo = async (req, res) => {
   try {
-    let publicIdToDelete = null;
-    let recordIdToDelete = null;
-
+    // 1. Find all site_logo records in Supabase (active and inactive)
+    let records = [];
     try {
-      const records = await supabaseService.selectAll('site_branding', 'created_at', false);
-      const activeRecord = (records || []).find((r) => r.asset_type === 'site_logo' && r.is_active === true);
-      if (activeRecord) {
-        publicIdToDelete = activeRecord.cloudinary_public_id || activeRecord.public_id || null;
-        recordIdToDelete = activeRecord.id;
+      records = await supabaseService.selectAll('site_branding', 'created_at', false);
+    } catch (e) {
+      console.warn('Error querying site_branding for deletion:', e.message);
+    }
+
+    const logoRecords = (records || []).filter((r) => r.asset_type === 'site_logo');
+
+    // 2. Delete media from Cloudinary and remove records from Supabase
+    for (const r of logoRecords) {
+      const pubId = r.cloudinary_public_id || r.public_id;
+      if (pubId) {
+        try {
+          await cloudinaryService.deleteMedia(pubId);
+        } catch (cErr) {
+          console.warn('Cloudinary media deletion note:', cErr.message);
+        }
       }
-    } catch (e) {}
-
-    if (publicIdToDelete) {
-      try {
-        await cloudinaryService.deleteMedia(publicIdToDelete);
-      } catch (cErr) {}
+      if (r.id) {
+        try {
+          await supabaseService.delete('site_branding', r.id);
+        } catch (sErr) {
+          console.warn('Supabase record deletion note:', sErr.message);
+        }
+      }
     }
 
-    if (recordIdToDelete) {
-      try {
-        await supabaseService.delete('site_branding', recordIdToDelete);
-      } catch (sErr) {}
-    }
-
+    // 3. Clear in-memory and write clean inactive persistent file
     inMemoryActiveLogo = null;
     saveDiskActiveLogo(null);
 
@@ -390,4 +414,3 @@ export const deleteLogo = async (req, res) => {
     });
   }
 };
-

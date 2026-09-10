@@ -63,7 +63,7 @@ export const useActiveLogo = () => {
   const fetchLogo = async () => {
     try {
       const res = await brandingApi.getActiveLogo();
-      if (res?.data?.success && res.data.data) {
+      if (res?.data?.success && res.data.data && res.data.data.isActive === true && !res.data.data.isDefault) {
         const item = res.data.data;
         const rawUrl = item.secure_url || item.url || item.cloudinary_secure_url || item.image_url;
         
@@ -81,17 +81,13 @@ export const useActiveLogo = () => {
           }
         }
       } else {
-        // If API responds with default or null, check if data is explicitly removed
-        if (res?.data?.success && res.data.data === null) {
-          setLogoUrl(DEFAULT_LOGO);
-          setLogoData(null);
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem(LOGO_CACHE_KEY);
-          }
+        setLogoUrl(DEFAULT_LOGO);
+        setLogoData(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(LOGO_CACHE_KEY);
         }
       }
     } catch (err) {
-      // Retain existing cached logo on network error
       if (typeof window !== 'undefined') {
         const cached = localStorage.getItem(LOGO_CACHE_KEY);
         if (!cached) {

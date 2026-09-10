@@ -1,19 +1,7 @@
 {
-  "id": "dcb96ba0-86ff-41ec-b843-79cca99aec94",
-  "url": "https://res.cloudinary.com/rwoe0mm9/image/upload/v1788473814/zenemoo/site-branding/logo/site-logo-1788473814515.jpg",
-  "secure_url": "https://res.cloudinary.com/rwoe0mm9/image/upload/v1788473814/zenemoo/site-branding/logo/site-logo-1788473814515.jpg",
-  "publicId": "zenemoo/site-branding/logo/site-logo-1788473814515",
-  "cloudinary_public_id": "zenemoo/site-branding/logo/site-logo-1788473814515",
-  "altText": "Zenemoo official site logo",
-  "title": "Zenemoo Official Logo",
-  "seo_filename": "zenemoo-official-logo.png",
-  "original_filename": "logo.png",
-  "format": "jpg",
-  "width": 1254,
-  "height": 1254,
-  "fileSize": "N/A",
-  "isActive": true,
-  "isDefault": false,
-  "created_at": "2026-09-03T22:16:55.729+00:00",
-  "updated_at": "2026-09-03T22:16:55.729+00:00"
+  "isActive": false,
+  "isDefault": true,
+  "url": null,
+  "secure_url": null,
+  "publicId": null
 }

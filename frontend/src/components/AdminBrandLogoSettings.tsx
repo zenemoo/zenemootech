@@ -260,9 +260,15 @@ export const AdminBrandLogoSettings: React.FC = () => {
       setUploadState('SAVING');
       const response = await brandingApi.deleteLogo();
       if (response?.data?.success) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('zenemoo_active_logo_cache');
+        }
+        setFilePreviewUrl('');
+        setSelectedFile(null);
+        setDirectUrlInput('');
         await refetchLogo();
         notifyLogoUpdated();
-        setSuccessMessage('Custom logo removed. Default Zenemoo brand mark restored.');
+        setSuccessMessage('✓ Custom logo removed successfully. Default Zenemoo brandmark restored.');
         setUploadState('SUCCESS');
         setTimeout(() => setUploadState('IDLE'), 3500);
       } else {
@@ -271,7 +277,7 @@ export const AdminBrandLogoSettings: React.FC = () => {
     } catch (err: any) {
       console.error('Delete Logo Error:', err);
       setUploadState('ERROR');
-      setErrorMessage('Unable to remove the custom logo. The existing logo has been preserved.');
+      setErrorMessage('Unable to remove the custom logo. Please try again.');
     }
   };
 
