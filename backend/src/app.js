@@ -32,6 +32,7 @@ import bookingRoutes from './routes/bookingRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import scheduledEmailRoutes from './routes/scheduledEmailRoutes.js';
 import talentHubRoutes from './routes/talentHubRoutes.js';
+import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -60,7 +61,14 @@ app.use(
   })
 );
 app.use(morgan('dev'));
-app.use(express.json({ limit: '100mb' }));
+app.use(
+  express.json({
+    limit: '100mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Health Check API Route
@@ -132,6 +140,9 @@ app.use('/api/emails', emailInboxRoutes);
 app.use('/api/admin', exportRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/talent-hub', talentHubRoutes);
+
+// Dedicated Cashfree Webhook Handler
+app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);
 
 // Root Fallback Aliases
 app.use('/datasets', datasetRoutes);

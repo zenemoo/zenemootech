@@ -1,9 +1,43 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { createSupportTicket, getSupportTickets, updateTicketStatus } from '../controllers/supportController.js';
+import {
+  createPaymentOrder,
+  verifyPaymentOrder,
+  handleCashfreeWebhook,
+  getMyContributions,
+} from '../controllers/supportPaymentController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
 
+// Optional token extraction middleware (allows both guest and authenticated support)
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (_) {}
+  }
+  next();
+};
+
+// --- CASHFREE SUPPORT PAYMENT ROUTES ---
+// 1. Create a payment order on Cashfree
+router.post('/create-payment', optionalAuth, createPaymentOrder);
+
+// 2. Verify payment status (server-to-server check)
+router.get('/verify-payment/:orderId', verifyPaymentOrder);
+
+// 3. Webhook listener for Cashfree events
+router.post('/webhook', handleCashfreeWebhook);
+
+// 4. Supporter's contribution history (for authenticated users)
+router.get('/my-contributions', optionalAuth, getMyContributions);
+
+// --- SUPPORT TICKETING ROUTES ---
 // Public / Authenticated route to create a support ticket
 router.post('/ticket', createSupportTicket);
 
@@ -12,3 +46,4 @@ router.get('/tickets', verifyToken, requireRole(['admin', 'super_admin', 'admini
 router.put('/ticket/:id/status', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), updateTicketStatus);
 
 export default router;
+
