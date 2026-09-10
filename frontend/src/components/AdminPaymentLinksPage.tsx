@@ -27,6 +27,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  MessageCircle,
+  Share2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { paymentLinksApi } from '../services/api';
@@ -189,6 +191,22 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
     setCopiedField(label);
     setTimeout(() => setCopiedField(null), 2000);
     if (showToastRef.current) showToastRef.current(`Copied ${label} to clipboard`, 'info');
+  };
+
+  const getWhatsAppShareUrl = (link: PaymentLinkRecord) => {
+    const text = encodeURIComponent(
+      `Hello ${link.customer_name || 'Supporter'},\n\nHere is your secure Zenemoo payment link for ${link.link_purpose || 'Support Zenemoo'} (₹${Number(link.link_amount || 0).toLocaleString('en-IN')}):\n${link.link_url}\n\nThank you for supporting Zenemoo!`
+    );
+    const cleanPhone = (link.customer_phone || '').replace(/[^0-9]/g, '').slice(-10);
+    return cleanPhone ? `https://wa.me/91${cleanPhone}?text=${text}` : `https://wa.me/?text=${text}`;
+  };
+
+  const getEmailShareUrl = (link: PaymentLinkRecord) => {
+    const subject = encodeURIComponent(`Secure Payment Link — ${link.link_purpose || 'Support Zenemoo'}`);
+    const body = encodeURIComponent(
+      `Hello ${link.customer_name || 'Supporter'},\n\nPlease find your secure payment link for ₹${Number(link.link_amount || 0).toLocaleString('en-IN')} below:\n\n${link.link_url}\n\nPurpose: ${link.link_purpose || 'Support Zenemoo'}\n\nThank you,\nZenemoo Data Solutions\nhttps://www.zenemoo.in`
+    );
+    return `mailto:${link.customer_email || ''}?subject=${subject}&body=${body}`;
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -602,10 +620,26 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                           type="button"
                           onClick={() => handleCopy(link.link_url, `Link ${link.link_id}`)}
                           className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 border border-white/10 transition-colors"
-                          title="Copy Link URL"
+                          title="Copy Secure Link URL"
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
+                        <a
+                          href={getWhatsAppShareUrl(link)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-300 border border-white/10 transition-colors"
+                          title="Share on WhatsApp"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </a>
+                        <a
+                          href={getEmailShareUrl(link)}
+                          className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-blue-500/20 text-slate-400 hover:text-blue-300 border border-white/10 transition-colors"
+                          title="Share via Email"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </a>
                         <a
                           href={link.link_url}
                           target="_blank"
@@ -974,6 +1008,27 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                     </button>
                   </div>
 
+                  {/* WhatsApp & Email Quick Share */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <a
+                      href={getWhatsAppShareUrl(createdLinkResult)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center justify-center gap-2 transition-all font-bold"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Share WhatsApp</span>
+                    </a>
+
+                    <a
+                      href={getEmailShareUrl(createdLinkResult)}
+                      className="py-2.5 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center gap-2 transition-all font-bold"
+                    >
+                      <Mail className="w-4 h-4" />
+                      <span>Share Email</span>
+                    </a>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3 pt-2">
                     <a
                       href={createdLinkResult.link_url}
@@ -1109,6 +1164,32 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
                         {new Date(selectedLink.created_at).toLocaleString('en-IN')}
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Share Actions */}
+                <div className="space-y-2 text-xs">
+                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Share Payment Link
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <a
+                      href={getWhatsAppShareUrl(selectedLink)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center justify-center gap-2 transition-all font-bold"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>WhatsApp</span>
+                    </a>
+
+                    <a
+                      href={getEmailShareUrl(selectedLink)}
+                      className="py-2.5 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center justify-center gap-2 transition-all font-bold"
+                    >
+                      <Mail className="w-4 h-4" />
+                      <span>Email</span>
+                    </a>
                   </div>
                 </div>
               </div>

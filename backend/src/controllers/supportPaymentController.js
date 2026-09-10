@@ -284,6 +284,20 @@ export const verifyPaymentOrder = async (req, res, next) => {
             cf_order_id: String(cfOrder.cf_order_id || ''),
           });
 
+          // If linked to an admin payment link, update the payment link status to PAID
+          const associatedLinkId = localRecord?.link_id || localRecord?.metadata?.link_id;
+          if (orderStatus === 'SUCCESS' && associatedLinkId) {
+            try {
+              await savePaymentLinkRecord(associatedLinkId, {
+                link_status: 'PAID',
+                order_id: orderId,
+                payment_id: paymentId,
+              });
+            } catch (linkErr) {
+              console.warn('Link status update warning:', linkErr.message);
+            }
+          }
+
           // If payment newly succeeded and customer email provided, send receipt email
           if (orderStatus === 'SUCCESS' && localRecord?.status !== 'SUCCESS' && localRecord?.customer_email) {
             try {
@@ -374,6 +388,20 @@ export const handleCashfreeWebhook = async (req, res) => {
       payment_time: paymentData?.payment_time || new Date().toISOString(),
       amount: orderData?.order_amount || paymentData?.payment_amount,
     });
+
+    if (status === 'SUCCESS') {
+      const currentRec = await findPaymentRecord(orderId);
+      const associatedLinkId = currentRec?.link_id || currentRec?.metadata?.link_id;
+      if (associatedLinkId) {
+        try {
+          await savePaymentLinkRecord(associatedLinkId, {
+            link_status: 'PAID',
+            order_id: orderId,
+            payment_id: paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined,
+          });
+        } catch (_) {}
+      }
+    }
 
     return res.status(200).json({ success: true, message: 'Webhook processed' });
   } catch (err) {
@@ -926,6 +954,86 @@ export const cancelAdminPaymentLink = async (req, res) => {
   } catch (err) {
     console.error('cancelAdminPaymentLink error:', err);
     return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * GET /api/support/public-link/:linkId
+ * Public endpoint: Retrieve verified payment link details by ID without exposing PII in URLs
+ */
+export const getPublicPaymentLink = async (req, res) => {
+  try {
+    const { linkId } = req.params;
+    if (!linkId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment link ID is required.',
+      });
+    }
+
+    const link = await findPaymentLinkRecord(linkId);
+    if (!link) {
+      return res.status(404).json({
+        success: false,
+        message: 'This payment link does not exist or may have been deleted.',
+      });
+    }
+
+    // Check expiry
+    if (link.link_expiry_time && new Date(link.link_expiry_time).getTime() < Date.now()) {
+      if (link.link_status === 'ACTIVE') {
+        link.link_status = 'EXPIRED';
+        await savePaymentLinkRecord(linkId, { link_status: 'EXPIRED' });
+      }
+      return res.status(410).json({
+        success: false,
+        status: 'EXPIRED',
+        message: 'This payment link has expired. Please request a new payment link.',
+      });
+    }
+
+    // Check status
+    if (link.link_status === 'PAID') {
+      return res.status(400).json({
+        success: false,
+        status: 'PAID',
+        message: 'This payment link has already been completed.',
+        orderId: link.order_id || undefined,
+        paymentId: link.payment_id || undefined,
+      });
+    }
+
+    if (link.link_status === 'CANCELLED' || link.link_status === 'TERMINATED') {
+      return res.status(400).json({
+        success: false,
+        status: 'CANCELLED',
+        message: 'This payment link has been cancelled or disabled.',
+      });
+    }
+
+    // Sanitize response to exclude server secrets and internal metadata
+    return res.json({
+      success: true,
+      link: {
+        link_id: link.link_id,
+        amount: Number(link.link_amount || 0),
+        currency: link.link_currency || 'INR',
+        purpose: link.link_purpose || 'Support Zenemoo — Platform & Technology',
+        customer_name: link.customer_name || '',
+        customer_email: link.customer_email || '',
+        customer_phone: link.customer_phone || '',
+        link_status: link.link_status || 'ACTIVE',
+        link_expiry_time: link.link_expiry_time || null,
+        source: link.source || 'Admin Payment Link',
+        gateway_mode: link.cf_link_id?.startsWith('ZNM_PG_') ? 'ZENEMOO_FALLBACK' : 'CASHFREE',
+      },
+    });
+  } catch (err) {
+    console.error('getPublicPaymentLink error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve payment link details.',
+    });
   }
 };
 

@@ -300,6 +300,8 @@ export const paymentLinksApi = {
   }) => api.post('/support/payment-links', data),
   getLinks: (refresh: boolean = false) =>
     deduplicatedGet('/support/payment-links', { params: refresh ? { refresh: 'true' } : undefined }),
+  getPublicLink: (linkId: string) =>
+    deduplicatedGet(`/support/public-link/${encodeURIComponent(linkId)}`),
   cancelLink: (linkId: string) => api.post(`/support/payment-links/${encodeURIComponent(linkId)}/cancel`),
 };
 

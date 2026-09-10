@@ -268,18 +268,8 @@ class CashfreeService {
         responseData?.type === 'link_creation_api_not_approved';
 
       if (isNotApproved) {
-        console.warn('[Cashfree] link_creation_api not active on account. Generating direct Zenemoo Support PG link fallback.');
-        const queryParams = new URLSearchParams({
-          link_id: linkId,
-          amount: String(amount),
-          purpose: purpose || 'Support Zenemoo — Platform & Technology',
-          action: 'support',
-        });
-        if (customer.customerName) queryParams.set('name', customer.customerName);
-        if (customer.customerEmail) queryParams.set('email', customer.customerEmail);
-        if (customer.customerPhone) queryParams.set('phone', customer.customerPhone);
-
-        const directLinkUrl = `https://www.zenemoo.in/support-zenemooindia?${queryParams.toString()}`;
+        console.warn('[Cashfree] link_creation_api not active on account. Generating secure opaque Zenemoo /pay/:linkId link.');
+        const directLinkUrl = `https://www.zenemoo.in/pay/${encodeURIComponent(linkId)}`;
 
         return {
           success: true,
@@ -293,6 +283,7 @@ class CashfreeService {
           linkExpiryTime: expiryTime || null,
           linkCreatedAt: new Date().toISOString(),
           isDirectPGLink: true,
+          linkType: 'ZENEMOO_FALLBACK',
           env,
         };
       }

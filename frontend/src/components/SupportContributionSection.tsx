@@ -14,8 +14,9 @@ import {
   Globe,
   User,
   Mail,
+  Link2,
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api, paymentLinksApi } from '../services/api';
 import { launchCashfreeCheckout } from '../utils/cashfree';
 
 export interface ReceiptInfo {
@@ -60,6 +61,7 @@ const CONTEXTUAL_MESSAGES: Record<PurposeId, string> = {
 
 interface SupportContributionSectionProps {
   initialPurpose?: PurposeId;
+  directLinkId?: string | null;
   onClose?: () => void;
   onSuccess?: (receipt: ReceiptInfo) => void;
   className?: string;
@@ -67,6 +69,7 @@ interface SupportContributionSectionProps {
 
 export const SupportContributionSection: React.FC<SupportContributionSectionProps> = ({
   initialPurpose = 'general',
+  directLinkId = null,
   onClose,
   onSuccess,
   className = '',
@@ -78,6 +81,12 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
 
+  // Secure Server-side Link Resolution State
+  const [resolvedLinkId, setResolvedLinkId] = useState<string | null>(directLinkId || null);
+  const [linkPurpose, setLinkPurpose] = useState<string | null>(null);
+  const [linkStatusError, setLinkStatusError] = useState<string | null>(null);
+  const [isLoadingLink, setIsLoadingLink] = useState<boolean>(false);
+
   const [paymentState, setPaymentState] = useState<
     'idle' | 'processing' | 'checkout' | 'pending' | 'success' | 'failed' | 'cancelled'
   >('idle');
@@ -85,31 +94,60 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
 
-  // Auto-fill logged-in user profile or URL parameters
+  // Resolve secure opaque payment link from server
+  useEffect(() => {
+    let activeLinkId = directLinkId;
+    if (!activeLinkId && typeof window !== 'undefined') {
+      const pathname = window.location.pathname.replace(/\/$/, '');
+      const hash = window.location.hash;
+      if (pathname.startsWith('/pay/')) {
+        activeLinkId = pathname.replace('/pay/', '').replace(/^\//, '');
+      } else if (hash.startsWith('#pay/')) {
+        activeLinkId = hash.replace('#pay/', '').replace(/^\//, '');
+      } else if (hash.startsWith('#/pay/')) {
+        activeLinkId = hash.replace('#/pay/', '').replace(/^\//, '');
+      } else {
+        const searchParams = new URLSearchParams(window.location.search);
+        activeLinkId = searchParams.get('link_id');
+      }
+    }
+
+    if (activeLinkId) {
+      setResolvedLinkId(activeLinkId);
+      setIsLoadingLink(true);
+      setLinkStatusError(null);
+
+      paymentLinksApi.getPublicLink(activeLinkId)
+        .then((res: any) => {
+          const data = res?.data || res;
+          if (data?.success && data?.link) {
+            const link = data.link;
+            if (link.amount) {
+              const num = Number(link.amount);
+              setSelectedPreset(null);
+              setCustomAmount(String(num));
+            }
+            if (link.customer_name) setCustomerName(link.customer_name);
+            if (link.customer_email) setCustomerEmail(link.customer_email);
+            if (link.customer_phone) setCustomerPhone(link.customer_phone);
+            if (link.purpose) setLinkPurpose(link.purpose);
+          } else {
+            setLinkStatusError(data?.message || 'Payment link is inactive or could not be loaded.');
+          }
+        })
+        .catch((err: any) => {
+          const msg = err?.response?.data?.message || err?.message || 'Unable to load payment link.';
+          setLinkStatusError(msg);
+        })
+        .finally(() => {
+          setIsLoadingLink(false);
+        });
+    }
+  }, [directLinkId]);
+
+  // Auto-fill logged-in user profile if available
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
-        const searchParams = new URLSearchParams(window.location.search);
-        const urlAmt = searchParams.get('amount');
-        const urlName = searchParams.get('name') || searchParams.get('customer_name');
-        const urlEmail = searchParams.get('email') || searchParams.get('customer_email');
-        const urlPhone = searchParams.get('phone') || searchParams.get('customer_phone');
-
-        if (urlAmt && !isNaN(Number(urlAmt))) {
-          const num = Number(urlAmt);
-          if ([500, 1000, 2500, 5000].includes(num)) {
-            setSelectedPreset(num);
-            setCustomAmount('');
-          } else {
-            setSelectedPreset(null);
-            setCustomAmount(String(num));
-          }
-        }
-        if (urlName) setCustomerName(urlName);
-        if (urlEmail) setCustomerEmail(urlEmail);
-        if (urlPhone) setCustomerPhone(urlPhone);
-      }
-
       const portalUserStr = localStorage.getItem('zenemoo_portal_user');
       if (portalUserStr) {
         const parsed = JSON.parse(portalUserStr);
@@ -230,18 +268,18 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
         : 'https://www.zenemoo.in/support-zenemooindia?order_id={order_id}';
 
       const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const linkId = urlParams?.get('link_id');
+      const effectiveLinkId = resolvedLinkId || directLinkId || urlParams?.get('link_id') || undefined;
 
       const res = await api.post('/support/create-payment', {
         amount: effectiveAmount,
         currency: 'INR',
-        purpose: 'Support Zenemoo',
+        purpose: linkPurpose || 'Support Zenemoo',
         customer_name: customerName || 'Zenemoo Supporter',
         customer_email: customerEmail || 'supporter@zenemoo.in',
         customer_phone: customerPhone || '9999999999',
         return_url: returnUrl,
-        link_id: linkId || undefined,
-        source: linkId ? 'Admin Payment Link' : 'Direct Support Page',
+        link_id: effectiveLinkId,
+        source: effectiveLinkId ? 'Admin Payment Link' : 'Direct Support Page',
       });
 
       if (!res.data || !res.data.success) {
@@ -552,6 +590,35 @@ export const SupportContributionSection: React.FC<SupportContributionSectionProp
                 Every contribution helps us grow, create more opportunities and build a stronger Zenemoo.
               </p>
             </div>
+
+            {/* Payment Link Info Badge */}
+            {linkPurpose && (
+              <div className="p-3 rounded-xl bg-gradient-to-r from-cyan-950/60 to-blue-950/60 border border-cyan-500/30 flex items-center gap-2.5 text-xs text-cyan-200">
+                <Link2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-[9px] uppercase font-mono tracking-wider text-cyan-400 font-bold block">
+                    Verified Support Request
+                  </span>
+                  <span className="font-semibold text-white truncate block">{linkPurpose}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Link Loading */}
+            {isLoadingLink && (
+              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-mono flex items-center gap-2 animate-pulse">
+                <Clock className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                <span>Verifying payment link details...</span>
+              </div>
+            )}
+
+            {/* Payment Link Status Error */}
+            {linkStatusError && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{linkStatusError}</span>
+              </div>
+            )}
 
             {/* Error Message if any */}
             {errorMessage && (

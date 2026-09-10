@@ -355,7 +355,11 @@ export function App() {
         path === '/support-zenemoo' ||
         path === '/support-zenemoo/' ||
         hash === '#support-zenemoo' ||
-        hash === '#/support-zenemoo'
+        hash === '#/support-zenemoo' ||
+        path === '/pay' ||
+        path.startsWith('/pay/') ||
+        hash.startsWith('#pay/') ||
+        hash.startsWith('#/pay/')
       ) {
         if (
           path === '/support-zenemoo' ||

@@ -232,6 +232,7 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
 }) => {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [selectedPurpose, setSelectedPurpose] = useState<PurposeId>('build');
+  const [payLinkId, setPayLinkId] = useState<string | null>(null);
   const [copiedShare, setCopiedShare] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState('');
   const [notifySubmitted, setNotifySubmitted] = useState(false);
@@ -271,10 +272,26 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
   useEffect(() => {
     window.scrollTo(0, 0);
 
-    // Check if directly loaded with URL query params (e.g. ?action=support, ?support=true, ?purpose=build)
+    // Check if directly loaded with URL query params or /pay/:linkId route
     if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname.replace(/\/$/, '');
+      const hash = window.location.hash;
+      const isPayRoute = pathname.startsWith('/pay/') || hash.startsWith('#pay/') || hash.startsWith('#/pay/');
+      const resolvedLink = pathname.startsWith('/pay/')
+        ? pathname.replace('/pay/', '').replace(/^\//, '')
+        : hash.startsWith('#pay/')
+        ? hash.replace('#pay/', '').replace(/^\//, '')
+        : hash.startsWith('#/pay/')
+        ? hash.replace('#/pay/', '').replace(/^\//, '')
+        : null;
+
       const params = new URLSearchParams(window.location.search);
-      const hasSupport = params.get('support') || params.get('action') || params.get('contribute') || params.get('donate') || params.get('link_id');
+      const linkIdParam = params.get('link_id') || resolvedLink;
+      if (linkIdParam) {
+        setPayLinkId(linkIdParam);
+      }
+
+      const hasSupport = params.get('support') || params.get('action') || params.get('contribute') || params.get('donate') || linkIdParam || isPayRoute;
       const purposeParam = params.get('purpose') as PurposeId | null;
       const orderIdParam = params.get('order_id') || params.get('cf_order_id');
 
@@ -283,12 +300,10 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
         return;
       }
 
-      if (hasSupport || purposeParam) {
+      if (hasSupport || purposeParam || isPayRoute) {
         const validPurpose: PurposeId =
           purposeParam && ['build', 'empower', 'expand', 'innovate', 'general'].includes(purposeParam)
             ? purposeParam
-            : hasSupport && ['build', 'empower', 'expand', 'innovate', 'general'].includes(hasSupport)
-            ? (hasSupport as PurposeId)
             : 'build';
 
         setSelectedPurpose(validPurpose);
@@ -961,6 +976,7 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
           >
             <SupportContributionSection
               initialPurpose={selectedPurpose}
+              directLinkId={payLinkId}
               onClose={handleCloseSupportModal}
               onSuccess={(receipt) => {
                 setIsSupportModalOpen(false);
