@@ -6,6 +6,19 @@ import { sendMailViaBrevo } from '../services/emailService.js';
 // Resilient in-memory payment cache (prevents runtime failure if DB table is not yet migrated)
 const memorySupportPayments = new Map();
 
+// Selective columns to minimize Supabase egress and payload overhead
+const REQUIRED_CONTRIBUTION_COLUMNS = 'id, order_id, cf_order_id, payment_id, user_id, amount, currency, provider, status, customer_name, customer_email, customer_phone, metadata, payment_method, payment_time, created_at, updated_at';
+
+// Server-side response cache with smart TTL and mutation-based invalidation
+let cachedContributionsData = null;
+let lastCacheTimestamp = 0;
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+export function invalidateContributionsCache() {
+  cachedContributionsData = null;
+  lastCacheTimestamp = 0;
+}
+
 // Helper to sanitize customer strings
 const cleanStr = (val, max = 100) => (val ? String(val).trim().slice(0, max) : '');
 
@@ -13,6 +26,9 @@ const cleanStr = (val, max = 100) => (val ? String(val).trim().slice(0, max) : '
  * Save or update payment in Supabase or memory fallback
  */
 async function savePaymentRecord(orderId, paymentData) {
+  // Invalidate cache immediately on payment state change
+  invalidateContributionsCache();
+
   const existing = memorySupportPayments.get(orderId) || {};
   const merged = {
     ...existing,
@@ -60,7 +76,7 @@ async function findPaymentRecord(orderId) {
     try {
       const { data } = await supabase
         .from('support_payments')
-        .select('*')
+        .select(REQUIRED_CONTRIBUTION_COLUMNS)
         .eq('order_id', orderId)
         .maybeSingle();
       if (data) return data;
@@ -374,7 +390,10 @@ export const getMyContributions = async (req, res) => {
     let records = [];
     if (supabase) {
       try {
-        let query = supabase.from('support_payments').select('*').order('created_at', { ascending: false });
+        let query = supabase
+          .from('support_payments')
+          .select(REQUIRED_CONTRIBUTION_COLUMNS)
+          .order('created_at', { ascending: false });
         if (userId) {
           query = query.or(`user_id.eq.${userId},customer_email.eq.${userEmail}`);
         } else {
@@ -412,17 +431,25 @@ export const getMyContributions = async (req, res) => {
 /**
  * GET /api/support/contributions
  * Admin-protected API to retrieve all payment records, statistics, and date-wise collections
+ * Optimized for minimum Supabase egress using selective column projections and server-side TTL caching.
  */
 export const getAdminContributions = async (req, res) => {
   try {
+    const isRefresh = req.query.refresh === 'true';
+
+    // 1. Check server-side memory cache (bypasses Supabase query if recent and not explicitly refreshed)
+    if (!isRefresh && cachedContributionsData && (Date.now() - lastCacheTimestamp < CACHE_TTL_MS)) {
+      return res.json(cachedContributionsData);
+    }
+
     let records = [];
 
-    // 1. Fetch from Supabase if available
+    // 2. Fetch from Supabase with selective columns only (never select '*')
     if (supabase) {
       try {
         const { data, error } = await supabase
           .from('support_payments')
-          .select('*')
+          .select(REQUIRED_CONTRIBUTION_COLUMNS)
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
@@ -433,7 +460,7 @@ export const getAdminContributions = async (req, res) => {
       }
     }
 
-    // 2. Merge with memory records to guarantee no data is dropped
+    // 3. Merge with memory records to guarantee no data is dropped
     const recordMap = new Map();
     for (const r of records) {
       if (r.order_id) recordMap.set(r.order_id, r);
@@ -487,7 +514,7 @@ export const getAdminContributions = async (req, res) => {
     // Sort newest to oldest
     allPayments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // 3. Compute Summary Metrics
+    // 4. Compute Summary Metrics
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -564,7 +591,7 @@ export const getAdminContributions = async (req, res) => {
         amount: g.amount,
       }));
 
-    return res.json({
+    const responsePayload = {
       success: true,
       summary: {
         totalCollected,
@@ -579,7 +606,14 @@ export const getAdminContributions = async (req, res) => {
       collectionByDate,
       payments: allPayments,
       totalCount: allPayments.length,
-    });
+      cachedAt: new Date().toISOString(),
+    };
+
+    // Store in server-side cache
+    cachedContributionsData = responsePayload;
+    lastCacheTimestamp = Date.now();
+
+    return res.json(responsePayload);
   } catch (err) {
     console.error('getAdminContributions error:', err);
     return res.status(500).json({

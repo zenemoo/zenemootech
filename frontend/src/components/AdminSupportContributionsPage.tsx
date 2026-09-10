@@ -86,16 +86,31 @@ interface AdminSupportContributionsPageProps {
   showToast?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
+// Client-side cache singleton to prevent refetching on component re-render or tab switching
+interface CachedContributions {
+  payments: SupportContributionRecord[];
+  summary: ContributionSummary | null;
+  collectionByDate: DateCollectionGroup[];
+  timestamp: number;
+  lastUpdatedStr: string;
+}
+
+let globalContributionsCache: CachedContributions | null = null;
+let activeFetchPromise: Promise<any> | null = null;
+
 export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPageProps> = ({
   showToast,
 }) => {
   // --- Data State ---
-  const [payments, setPayments] = useState<SupportContributionRecord[]>([]);
-  const [summary, setSummary] = useState<ContributionSummary | null>(null);
-  const [collectionByDate, setCollectionByDate] = useState<DateCollectionGroup[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [payments, setPayments] = useState<SupportContributionRecord[]>(() => globalContributionsCache?.payments || []);
+  const [summary, setSummary] = useState<ContributionSummary | null>(() => globalContributionsCache?.summary || null);
+  const [collectionByDate, setCollectionByDate] = useState<DateCollectionGroup[]>(() => globalContributionsCache?.collectionByDate || []);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !globalContributionsCache);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastUpdatedStr, setLastUpdatedStr] = useState<string>(() => globalContributionsCache?.lastUpdatedStr || '');
+
+  const isMountedRef = React.useRef<boolean>(true);
 
   // --- View Mode: 'detailed' vs 'byDate' ---
   const [viewMode, setViewMode] = useState<'detailed' | 'byDate'>('detailed');
@@ -115,46 +130,93 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
 
   // --- Pagination State ---
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [itemsPerPage, setItemsPerPage] = useState<number>(20);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10);
 
   // --- Detail Drawer State ---
   const [selectedPayment, setSelectedPayment] = useState<SupportContributionRecord | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // --- Fetch Data ---
+  // --- Fetch Data with Zero-Egress Caching & In-Flight Deduplication ---
   const fetchData = useCallback(async (isManualRefresh = false) => {
+    const CACHE_LIFETIME_MS = 2 * 60 * 1000; // 2 minutes client cache
+    
+    // 1. If not a manual refresh and fresh cache exists, use it instantly (0 Supabase egress)
+    if (!isManualRefresh && globalContributionsCache && (Date.now() - globalContributionsCache.timestamp < CACHE_LIFETIME_MS)) {
+      setPayments(globalContributionsCache.payments);
+      setSummary(globalContributionsCache.summary);
+      setCollectionByDate(globalContributionsCache.collectionByDate);
+      setLastUpdatedStr(globalContributionsCache.lastUpdatedStr);
+      setIsLoading(false);
+      return;
+    }
+
+    // 2. In-flight request deduplication
+    if (activeFetchPromise && !isManualRefresh) {
+      try {
+        await activeFetchPromise;
+      } catch (_) {}
+      return;
+    }
+
     if (isManualRefresh) setIsRefreshing(true);
     else setIsLoading(true);
     setErrorMessage(null);
 
-    try {
-      const res = await supportApi.getContributions();
-      const data = res?.data || res;
+    const fetchTask = (async () => {
+      try {
+        const res = await supportApi.getContributions(isManualRefresh);
+        const data = res?.data || res;
 
-      if (data?.success) {
-        setPayments(data.payments || []);
-        setSummary(data.summary || null);
-        setCollectionByDate(data.collectionByDate || []);
-        if (isManualRefresh && showToast) {
-          showToast('Support contributions updated successfully.', 'success');
+        if (data?.success) {
+          const nowStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+          const newCache: CachedContributions = {
+            payments: data.payments || [],
+            summary: data.summary || null,
+            collectionByDate: data.collectionByDate || [],
+            timestamp: Date.now(),
+            lastUpdatedStr: nowStr,
+          };
+          globalContributionsCache = newCache;
+
+          if (isMountedRef.current) {
+            setPayments(newCache.payments);
+            setSummary(newCache.summary);
+            setCollectionByDate(newCache.collectionByDate);
+            setLastUpdatedStr(nowStr);
+            if (isManualRefresh && showToast) {
+              showToast('Support contributions updated successfully.', 'success');
+            }
+          }
+        } else {
+          throw new Error(data?.message || 'Failed to retrieve support payments.');
         }
-      } else {
-        throw new Error(data?.message || 'Failed to retrieve support payments.');
+      } catch (err: any) {
+        console.error('Failed to load support contributions:', err);
+        if (isMountedRef.current) {
+          setErrorMessage(err?.response?.data?.message || err?.message || 'Unable to load support contributions. Please try again.');
+          if (showToast) {
+            showToast('Unable to load support contributions.', 'error');
+          }
+        }
+      } finally {
+        activeFetchPromise = null;
+        if (isMountedRef.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
-    } catch (err: any) {
-      console.error('Failed to load support contributions:', err);
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Unable to load support contributions. Please try again.');
-      if (showToast) {
-        showToast('Unable to load support contributions.', 'error');
-      }
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
+    })();
+
+    activeFetchPromise = fetchTask;
+    await fetchTask;
   }, [showToast]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     fetchData();
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [fetchData]);
 
   // Copy to clipboard helper
@@ -409,6 +471,14 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Subtle Cache / Last Updated Indicator */}
+          {lastUpdatedStr && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-[11px] font-mono text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>Updated {lastUpdatedStr}</span>
+            </div>
+          )}
+
           {/* Refresh Button */}
           <button
             type="button"
