@@ -10,6 +10,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { useActiveLogo } from '../lib/useActiveLogo';
+import { api } from '../services/api';
 
 interface ZenemooReceiptVerifyPageProps {
   receiptNo?: string;
@@ -25,29 +26,36 @@ export function ZenemooReceiptVerifyPage({
 
   // Extract initial receipt ID from props, URL path, query param, or hash
   const getInitialReceiptId = (): string => {
-    if (propReceiptNo && propReceiptNo.trim()) return propReceiptNo.trim();
+    let raw = '';
+    if (propReceiptNo && propReceiptNo.trim()) {
+      raw = propReceiptNo.trim();
+    } else if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const match = path.match(/\/receipt\/(?:verify\/)?([^/?#]+)/i);
+      if (match && match[1]) {
+        const val = decodeURIComponent(match[1]).trim();
+        if (val && val !== 'verify') raw = val;
+      }
 
-    if (typeof window === 'undefined') return '';
+      if (!raw) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryParam = urlParams.get('receiptNo') || urlParams.get('receiptId') || urlParams.get('id');
+        if (queryParam && queryParam.trim()) raw = queryParam.trim();
+      }
 
-    const path = window.location.pathname;
-    const match = path.match(/\/receipt\/(?:verify\/)?([^/?#]+)/i);
-    if (match && match[1]) {
-      const val = decodeURIComponent(match[1]).trim();
-      if (val && val !== 'verify') return val;
+      if (!raw) {
+        const hash = window.location.hash;
+        const hashMatch = hash.match(/#\/?receipt\/(?:verify\/)?([^/?#]+)/i);
+        if (hashMatch && hashMatch[1]) {
+          const val = decodeURIComponent(hashMatch[1]).trim();
+          if (val && val !== 'verify') raw = val;
+        }
+      }
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const queryParam = urlParams.get('receiptNo') || urlParams.get('receiptId') || urlParams.get('id');
-    if (queryParam && queryParam.trim()) return queryParam.trim();
-
-    const hash = window.location.hash;
-    const hashMatch = hash.match(/#\/?receipt\/(?:verify\/)?([^/?#]+)/i);
-    if (hashMatch && hashMatch[1]) {
-      const val = decodeURIComponent(hashMatch[1]).trim();
-      if (val && val !== 'verify') return val;
-    }
-
-    return '';
+    if (!raw) return '';
+    // Normalize spaces/underscores into hyphens and clean (e.g. "RCPT ZNM 20260911 MS8L" -> "RCPT-ZNM-20260911-MS8L")
+    return raw.replace(/[\s]+/g, '-').replace(/^RCPT-7NM-/i, 'RCPT-ZNM-').toUpperCase();
   };
 
   const [activeReceiptId, setActiveReceiptId] = useState<string>(getInitialReceiptId());
@@ -63,7 +71,7 @@ export function ZenemooReceiptVerifyPage({
   const runVerification = async (targetId: string) => {
     if (!targetId || !targetId.trim()) return;
 
-    const cleanId = targetId.trim();
+    const cleanId = targetId.trim().replace(/[\s]+/g, '-').replace(/^RCPT-7NM-/i, 'RCPT-ZNM-').toUpperCase();
     setIsVerifying(true);
     setVerificationFailed(false);
     setVerifiedReceiptId(null);
@@ -72,13 +80,26 @@ export function ZenemooReceiptVerifyPage({
     const startTime = Date.now();
 
     try {
-      // Direct call to public minimal verification endpoint
-      const response = await fetch(`/api/support/receipt/verify/${encodeURIComponent(cleanId)}`);
-      const data = await response.json();
+      // Call dedicated verification endpoint via configured API client
+      let data: any = null;
+      try {
+        const response = await api.get(`/support/receipt/verify/${encodeURIComponent(cleanId)}`);
+        data = response.data;
+      } catch (apiErr: any) {
+        if (apiErr.response?.data) {
+          data = apiErr.response.data;
+        } else {
+          // Fallback direct endpoint query
+          const fallbackRes = await fetch(`/api/support/receipt/verify/${encodeURIComponent(cleanId)}`);
+          if (fallbackRes.ok) {
+            data = await fallbackRes.json();
+          }
+        }
+      }
 
-      // Ensure a smooth, professional 900ms verification animation feel
+      // Ensure a smooth, professional 800ms verification animation feel
       const elapsed = Date.now() - startTime;
-      const remainingDelay = Math.max(0, 900 - elapsed);
+      const remainingDelay = Math.max(0, 800 - elapsed);
 
       setTimeout(() => {
         setIsVerifying(false);

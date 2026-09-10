@@ -1574,22 +1574,68 @@ export const getReceiptVerificationData = async (req, res) => {
   try {
     const rawReceiptParam = req.params.receiptNo || req.query.receiptNo || '';
     if (!rawReceiptParam) {
-      return res.status(400).json({ success: false, message: 'Receipt number or Order ID is required.' });
+      return res.status(400).json({ verified: false, message: 'Receipt number or Order ID is required.' });
     }
 
-    const cleanParam = decodeURIComponent(rawReceiptParam).trim();
-    // Normalize OCR / QR variations (e.g. 7NM vs ZNM)
+    const rawDecoded = decodeURIComponent(rawReceiptParam).trim();
+    // Normalize spaces/underscores into hyphens and uppercase (e.g. "RCPT ZNM 20260911 MS8L" -> "RCPT-ZNM-20260911-MS8L")
+    const cleanParam = rawDecoded.replace(/[\s]+/g, '-').toUpperCase();
     const normalizedParam = cleanParam.replace(/^RCPT-7NM-/i, 'RCPT-ZNM-');
 
-    // 1. Check direct match by orderId
-    let record = await findPaymentRecord(cleanParam);
-    if (!record && normalizedParam !== cleanParam) {
-      record = await findPaymentRecord(normalizedParam);
+    const parts = normalizedParam.split('-');
+    const suffix = (parts[parts.length - 1] || '').trim().toUpperCase(); // e.g. "MS8L"
+
+    // 1. Check direct match in Supabase support_payments
+    let record = null;
+    if (supabase) {
+      try {
+        const { data: directMatch } = await supabase
+          .from('support_payments')
+          .select('*')
+          .or(`order_id.eq.${rawDecoded},order_id.eq.${cleanParam},order_id.eq.${normalizedParam},payment_id.eq.${rawDecoded},cf_order_id.eq.${rawDecoded}`)
+          .maybeSingle();
+
+        if (directMatch) {
+          record = directMatch;
+        } else if (suffix && suffix.length >= 3) {
+          // Search by suffix in order_id (e.g. %MS8L)
+          const { data: suffixMatches } = await supabase
+            .from('support_payments')
+            .select('*')
+            .ilike('order_id', `%${suffix}`)
+            .limit(10);
+
+          if (suffixMatches && suffixMatches.length > 0) {
+            record = suffixMatches[0];
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Supabase support_payments verification lookup warning:', dbErr.message);
+      }
     }
 
-    // 2. Check payment links store
+    // 2. Check local memory stores
     if (!record) {
-      const link = await findPaymentLinkRecord(cleanParam);
+      record = memorySupportPayments.get(rawDecoded) || memorySupportPayments.get(cleanParam) || memorySupportPayments.get(normalizedParam);
+    }
+
+    if (!record && suffix) {
+      for (const [key, val] of memorySupportPayments.entries()) {
+        const rNo = generateDeterministicReceiptNo(val.order_id || key, val.payment_time || val.created_at);
+        if (
+          rNo.toUpperCase() === normalizedParam ||
+          rNo.toUpperCase() === cleanParam ||
+          (val.order_id || key).toUpperCase().endsWith(suffix)
+        ) {
+          record = val;
+          break;
+        }
+      }
+    }
+
+    // 3. Check payment links memory and persistent store
+    if (!record) {
+      const link = await findPaymentLinkRecord(rawDecoded) || await findPaymentLinkRecord(cleanParam);
       if (link) {
         record = {
           order_id: link.order_id || link.link_id,
@@ -1607,112 +1653,82 @@ export const getReceiptVerificationData = async (req, res) => {
       }
     }
 
-    // 3. If still not found and param is a receipt number like RCPT-ZNM-YYYYMMDD-XXXX
-    if (!record && (normalizedParam.toUpperCase().startsWith('RCPT-') || cleanParam.toUpperCase().startsWith('RCPT-'))) {
-      const parts = normalizedParam.split('-');
-      const suffix = parts[parts.length - 1]?.trim().toUpperCase();
-
-      // Check Supabase support_payments
-      if (supabase) {
-        try {
-          const { data: matchedRows } = await supabase
-            .from('support_payments')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(200);
-
-          if (matchedRows && matchedRows.length > 0) {
-            const found = matchedRows.find((r) => {
-              const rNo = generateDeterministicReceiptNo(r.order_id, r.payment_time || r.created_at);
-              if (rNo.toUpperCase() === normalizedParam.toUpperCase() || rNo.toUpperCase() === cleanParam.toUpperCase()) return true;
-              if (suffix && (r.order_id || '').toUpperCase().endsWith(suffix)) return true;
-              return false;
-            });
-            if (found) record = found;
-          }
-        } catch (dbErr) {
-          console.warn('Receipt lookup Supabase fallback:', dbErr.message);
-        }
-      }
-
-      // Check memory store
-      if (!record) {
-        for (const [key, val] of memorySupportPayments.entries()) {
-          const rNo = generateDeterministicReceiptNo(val.order_id || key, val.payment_time || val.created_at);
-          if (
-            rNo.toUpperCase() === normalizedParam.toUpperCase() ||
-            rNo.toUpperCase() === cleanParam.toUpperCase() ||
-            (suffix && (val.order_id || key).toUpperCase().endsWith(suffix))
-          ) {
-            record = val;
-            break;
-          }
-        }
-      }
-
-      if (!record) {
-        for (const [key, val] of memoryPaymentLinks.entries()) {
-          const rNo = generateDeterministicReceiptNo(val.order_id || val.link_id || key, val.payment_time || val.created_at);
-          if (
-            rNo.toUpperCase() === normalizedParam.toUpperCase() ||
-            rNo.toUpperCase() === cleanParam.toUpperCase() ||
-            (suffix && ((val.order_id || '').toUpperCase().endsWith(suffix) || (val.link_id || key).toUpperCase().endsWith(suffix)))
-          ) {
+    if (!record) {
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const filePath = path.resolve('src/database/payment_links_store.json');
+        if (fs.existsSync(filePath)) {
+          const links = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          const foundLink = links.find((l) => {
+            const rNo = generateDeterministicReceiptNo(l.order_id || l.link_id, l.payment_time || l.created_at);
+            if (rNo.toUpperCase() === normalizedParam || rNo.toUpperCase() === cleanParam) return true;
+            if (suffix && ((l.order_id || '').toUpperCase().endsWith(suffix) || (l.link_id || '').toUpperCase().endsWith(suffix))) return true;
+            return false;
+          });
+          if (foundLink) {
             record = {
-              order_id: val.order_id || val.link_id,
-              payment_id: val.payment_id || null,
-              amount: Number(val.link_amount || 0),
-              currency: val.link_currency || 'INR',
-              customer_name: val.customer_name || 'Zenemoo Supporter',
-              customer_email: val.customer_email || '',
-              customer_phone: val.customer_phone || '',
-              purpose: val.link_purpose || 'Support Zenemoo — Platform & Technology',
-              status: val.link_status === 'PAID' ? 'SUCCESS' : (val.link_status || 'SUCCESS'),
-              payment_time: val.payment_time || val.created_at,
-              created_at: val.created_at,
+              order_id: foundLink.order_id || foundLink.link_id,
+              payment_id: foundLink.payment_id || null,
+              amount: Number(foundLink.link_amount || 0),
+              currency: foundLink.link_currency || 'INR',
+              customer_name: foundLink.customer_name || 'Zenemoo Supporter',
+              customer_email: foundLink.customer_email || '',
+              customer_phone: foundLink.customer_phone || '',
+              purpose: foundLink.link_purpose || 'Support Zenemoo — Platform & Technology',
+              status: foundLink.link_status === 'PAID' ? 'SUCCESS' : (foundLink.link_status || 'SUCCESS'),
+              payment_time: foundLink.payment_time || foundLink.created_at,
+              created_at: foundLink.created_at,
             };
-            break;
           }
         }
+      } catch (fsErr) {
+        console.warn('payment_links_store read warning:', fsErr.message);
       }
+    }
 
-      // Check payment_links_store.json file
-      if (!record) {
+    // 4. Live Cashfree Verification Fallback
+    const cfConfig = cashfreeService.getConfig();
+    if (cfConfig.isConfigured) {
+      const candidateOrderId = record?.order_id || (rawDecoded.startsWith('ZNM_') || rawDecoded.startsWith('PL_') ? rawDecoded : null);
+      if (candidateOrderId) {
         try {
-          const fs = await import('fs');
-          const path = await import('path');
-          const filePath = path.resolve('src/database/payment_links_store.json');
-          if (fs.existsSync(filePath)) {
-            const links = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-            const foundLink = links.find((l) => {
-              const rNo = generateDeterministicReceiptNo(l.order_id || l.link_id, l.payment_time || l.created_at);
-              if (rNo.toUpperCase() === normalizedParam.toUpperCase() || rNo.toUpperCase() === cleanParam.toUpperCase()) return true;
-              if (suffix && ((l.order_id || '').toUpperCase().endsWith(suffix) || (l.link_id || '').toUpperCase().endsWith(suffix))) return true;
-              return false;
-            });
-            if (foundLink) {
+          const cfOrder = await cashfreeService.getOrder(candidateOrderId);
+          if (cfOrder) {
+            const cfPayments = await cashfreeService.getOrderPayments(candidateOrderId);
+            const successfulPayment = cfPayments?.find((p) => p.payment_status === 'SUCCESS');
+            if (cfOrder.order_status === 'PAID' || successfulPayment) {
+              const updatedStatus = 'SUCCESS';
+              const paymentId = successfulPayment?.cf_payment_id ? String(successfulPayment.cf_payment_id) : record?.payment_id;
+              const paymentTime = successfulPayment?.payment_time || cfOrder.created_at || new Date().toISOString();
+
               record = {
-                order_id: foundLink.order_id || foundLink.link_id,
-                payment_id: foundLink.payment_id || null,
-                amount: Number(foundLink.link_amount || 0),
-                currency: foundLink.link_currency || 'INR',
-                customer_name: foundLink.customer_name || 'Zenemoo Supporter',
-                customer_email: foundLink.customer_email || '',
-                customer_phone: foundLink.customer_phone || '',
-                purpose: foundLink.link_purpose || 'Support Zenemoo — Platform & Technology',
-                status: foundLink.link_status === 'PAID' ? 'SUCCESS' : (foundLink.link_status || 'SUCCESS'),
-                payment_time: foundLink.payment_time || foundLink.created_at,
-                created_at: foundLink.created_at,
+                ...(record || {}),
+                order_id: candidateOrderId,
+                status: updatedStatus,
+                payment_id: paymentId,
+                payment_time: paymentTime,
+                created_at: cfOrder.created_at || record?.created_at || new Date().toISOString(),
+                amount: cfOrder.order_amount || record?.amount || 0,
               };
+
+              // Persist confirmed payment record
+              await savePaymentRecord(candidateOrderId, record);
             }
           }
-        } catch (fsErr) {
-          console.warn('payment_links_store read error:', fsErr.message);
+        } catch (cfErr) {
+          console.warn('Cashfree live verification check notice:', cfErr.message);
         }
       }
     }
 
-    // 4. Verify that the payment was successful/paid
+    if (!record) {
+      return res.json({
+        verified: false,
+      });
+    }
+
+    // 5. Verify that payment status is SUCCESS / PAID
     const isSuccess =
       (record.status || '').toUpperCase() === 'SUCCESS' ||
       (record.status || '').toUpperCase() === 'PAID';
@@ -1728,7 +1744,7 @@ export const getReceiptVerificationData = async (req, res) => {
       record.payment_time || record.created_at
     );
 
-    // Return strictly privacy-safe verification confirmation
+    // Return strictly privacy-safe confirmation
     return res.json({
       verified: true,
       receiptId: calculatedReceiptNo,
