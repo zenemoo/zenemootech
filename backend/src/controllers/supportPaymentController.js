@@ -815,10 +815,33 @@ export const createAdminPaymentLink = async (req, res) => {
 
     await savePaymentLinkRecord(linkId, linkRecord);
 
+    let emailSent = false;
+    let emailRecipient = null;
+    let emailError = null;
+
+    if (send_email && cleanEmail && cleanEmail.includes('@')) {
+      try {
+        const emailResult = await sendBrandedPaymentLinkEmail(linkRecord, cleanEmail, cleanName);
+        emailSent = true;
+        emailRecipient = emailResult.targetEmail;
+        if (emailResult.updated) {
+          Object.assign(linkRecord, emailResult.updated);
+        }
+      } catch (eErr) {
+        console.warn('Auto-dispatch payment link email error:', eErr.message);
+        emailError = eErr.message;
+      }
+    }
+
     return res.status(201).json({
       success: true,
       link: linkRecord,
-      message: 'Payment link created successfully.',
+      email_sent: emailSent,
+      email_recipient: emailRecipient,
+      email_error: emailError,
+      message: emailSent
+        ? `Payment link created and email dispatched to ${emailRecipient}.`
+        : 'Payment link created successfully.',
     });
   } catch (err) {
     console.error('createAdminPaymentLink error:', err);
@@ -958,6 +981,188 @@ export const cancelAdminPaymentLink = async (req, res) => {
 };
 
 /**
+ * Reusable helper to send branded payment link email via Brevo
+ */
+export async function sendBrandedPaymentLinkEmail(link, recipientEmail = null, recipientName = null) {
+  const targetEmail = (recipientEmail || link.customer_email || '').trim().toLowerCase();
+  if (!targetEmail || !targetEmail.includes('@')) {
+    throw new Error('A valid recipient email address is required.');
+  }
+
+  const customerName = (recipientName || link.customer_name || '').trim();
+  const amount = Number(link.link_amount || 0);
+  const purpose = link.link_purpose || 'Support Zenemoo — Platform & Technology';
+  const payUrl = `https://www.zenemoo.in/pay/${encodeURIComponent(link.link_id)}`;
+
+  // Determine link category wording
+  const isSupport = purpose.toLowerCase().includes('support') || (link.source && link.source.toLowerCase().includes('support'));
+  const greeting = customerName ? `Dear <strong>${customerName}</strong>,` : 'Hello,';
+  const requestIntro = `You have a payment request from <strong>Zenemoo</strong>. Please find the details below and use the secure payment link to complete your payment.`;
+
+  const formattedExpiry = link.link_expiry_time
+    ? new Date(link.link_expiry_time).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '30 Days Validity';
+
+  const subject = `Payment Request from Zenemoo — ₹${amount.toLocaleString('en-IN')}`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${subject}</title>
+    </head>
+    <body style="margin: 0; padding: 24px 12px; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.4);">
+        <!-- Top Header Banner -->
+        <tr>
+          <td style="background-color: #030712; padding: 24px 28px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="52" valign="middle">
+                  <img src="https://www.zenemoo.in/assets/logo.png" alt="Zenemoo" width="44" height="44" style="display: block; border-radius: 12px; background-color: #ffffff; padding: 3px;" />
+                </td>
+                <td valign="middle" style="padding-left: 12px;">
+                  <div style="font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px; line-height: 1.2;">ZENEMOO</div>
+                  <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">People &bull; Opportunities &bull; Impact</div>
+                </td>
+                <td align="right" valign="middle">
+                  <div style="font-size: 11px; color: #38bdf8; font-family: monospace; letter-spacing: 0.5px;">Building A Brighter Tomorrow<br><span style="color: #94a3b8;">Together</span></div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Main Content Body -->
+        <tr>
+          <td style="padding: 32px 28px; background-color: #ffffff; color: #0f172a;">
+            <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1.2;">Payment Request</h1>
+            <div style="font-size: 14px; font-weight: 600; color: #0284c7; margin-bottom: 20px;">from Zenemoo</div>
+
+            <p style="margin: 0 0 14px 0; font-size: 14px; color: #334155; line-height: 1.6;">${greeting}</p>
+            <p style="margin: 0 0 24px 0; font-size: 14px; color: #334155; line-height: 1.6;">${requestIntro}</p>
+
+            <!-- Payment Details Card Box -->
+            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; margin-bottom: 24px; overflow: hidden;">
+              <tr>
+                <td style="padding: 16px 18px; border-bottom: 1px solid #f1f5f9;">
+                  <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td width="120" style="font-size: 13px; color: #64748b; font-weight: 500;">📄 Payment For</td>
+                      <td style="font-size: 13px; font-weight: 700; color: #0f172a; text-align: right;">${purpose}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 16px 18px; border-bottom: 1px solid #f1f5f9;">
+                  <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td width="120" style="font-size: 13px; color: #64748b; font-weight: 500;">₹ Amount</td>
+                      <td style="font-size: 18px; font-weight: 800; color: #0f172a; text-align: right;">₹${amount.toLocaleString('en-IN')} <span style="font-size: 11px; color: #64748b; font-weight: 600;">INR</span></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 16px 18px; border-bottom: 1px solid #f1f5f9;">
+                  <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td width="120" style="font-size: 13px; color: #64748b; font-weight: 500;">📅 Valid Until</td>
+                      <td style="font-size: 13px; font-weight: 700; color: #0f172a; text-align: right;">${formattedExpiry}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 18px; background-color: #f0f9ff;">
+                  <table width="100%" border="0" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td width="120" style="font-size: 13px; color: #0284c7; font-weight: 600;">🔗 Payment Link</td>
+                      <td align="right">
+                        <a href="${payUrl}" target="_blank" style="display: inline-block; background-color: #0284c7; color: #ffffff; font-size: 13px; font-weight: 700; text-decoration: none; padding: 10px 22px; border-radius: 10px; box-shadow: 0 4px 12px rgba(2,132,199,0.3);">Pay Now Securely &rarr;</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Security Notice -->
+            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+              <tr>
+                <td width="24" valign="top" style="font-size: 16px;">🔒</td>
+                <td style="padding-left: 8px; font-size: 12px; color: #166534; line-height: 1.5;">
+                  <strong>This is a secure payment link powered by Cashfree.</strong><br>
+                  You can pay using UPI, Cards, NetBanking or Wallets.
+                </td>
+              </tr>
+            </table>
+
+            <!-- Help Note -->
+            <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 24px;">
+              <tr>
+                <td width="24" valign="top" style="font-size: 16px;">ℹ️</td>
+                <td style="padding-left: 8px; font-size: 12px; color: #475569; line-height: 1.5;">
+                  If you have any questions or need assistance, feel free to contact us at <a href="mailto:support@zenemoo.in" style="color: #0284c7; text-decoration: none;">support@zenemoo.in</a>.
+                </td>
+              </tr>
+            </table>
+
+            <!-- Sign-off -->
+            <div style="font-size: 13px; color: #475569; line-height: 1.5; border-top: 1px solid #e2e8f0; padding-top: 18px;">
+              Thank you,<br>
+              <strong style="color: #0f172a;">Team Zenemoo</strong><br>
+              <span style="color: #64748b; font-size: 12px;">Zenemoo AI Data Solutions</span>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Footer Area -->
+        <tr>
+          <td style="background-color: #030712; padding: 22px 28px; text-align: center; color: #64748b; font-size: 11px; line-height: 1.6;">
+            <div style="margin-bottom: 10px;">
+              <a href="https://www.zenemoo.in" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Website</a> &bull;
+              <a href="https://www.zenemoo.in/support-zenemooindia" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Support</a> &bull;
+              <a href="https://www.zenemoo.in/privacy" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Privacy Policy</a> &bull;
+              <a href="https://www.zenemoo.in/terms" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Terms of Service</a>
+            </div>
+            <div style="color: #94a3b8; font-weight: 500; margin-bottom: 4px;">Building a brighter tomorrow, together.</div>
+            <div>&copy; ${new Date().getFullYear()} Zenemoo AI Data Solutions. All rights reserved.</div>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const sendResult = await sendMailViaBrevo({
+    sender: 'support@zenemoo.in',
+    recipients: targetEmail,
+    subject,
+    html,
+  });
+
+  if (sendResult?.success === false) {
+    throw new Error(sendResult?.error || 'Brevo dispatch failed');
+  }
+
+  const updated = await savePaymentLinkRecord(link.link_id, {
+    last_email_sent_at: new Date().toISOString(),
+    last_email_sent_to: targetEmail,
+    email_send_status: 'SENT',
+  });
+
+  return { targetEmail, updated };
+}
+
+/**
  * POST /api/support/payment-links/:linkId/send-email
  * Admin endpoint: Send branded payment link email to customer via Brevo
  */
@@ -975,186 +1180,7 @@ export const sendAdminPaymentLinkEmail = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Payment link not found.' });
     }
 
-    const targetEmail = (recipient_email || link.customer_email || '').trim().toLowerCase();
-    if (!targetEmail || !targetEmail.includes('@')) {
-      return res.status(400).json({
-        success: false,
-        message: 'A valid recipient email address is required.',
-      });
-    }
-
-    const customerName = (recipient_name || link.customer_name || '').trim();
-    const amount = Number(link.link_amount || 0);
-    const purpose = link.link_purpose || 'Support Zenemoo — Platform & Technology';
-    const payUrl = `https://www.zenemoo.in/pay/${encodeURIComponent(link.link_id)}`;
-
-    // Determine link category wording
-    const isSupport = purpose.toLowerCase().includes('support') || (link.source && link.source.toLowerCase().includes('support'));
-    const greeting = customerName ? `Dear <strong>${customerName}</strong>,` : 'Hello,';
-    const requestTitle = isSupport ? 'Payment Request' : 'Payment Request';
-    const requestIntro = isSupport
-      ? `You have a payment request from <strong>Zenemoo</strong>. Please find the details below and use the secure payment link to complete your payment.`
-      : `You have a payment request from <strong>Zenemoo</strong>. Please find the details below and use the secure payment link to complete your payment.`;
-
-    const formattedExpiry = link.link_expiry_time
-      ? new Date(link.link_expiry_time).toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        })
-      : '30 Days Validity';
-
-    const subject = `Payment Request from Zenemoo — ₹${amount.toLocaleString('en-IN')}`;
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${subject}</title>
-      </head>
-      <body style="margin: 0; padding: 24px 12px; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
-        <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.4);">
-          <!-- Top Header Banner -->
-          <tr>
-            <td style="background-color: #030712; padding: 24px 28px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-              <table width="100%" border="0" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td width="52" valign="middle">
-                    <img src="https://www.zenemoo.in/assets/logo.png" alt="Zenemoo" width="44" height="44" style="display: block; border-radius: 12px; background-color: #ffffff; padding: 3px;" />
-                  </td>
-                  <td valign="middle" style="padding-left: 12px;">
-                    <div style="font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px; line-height: 1.2;">ZENEMOO</div>
-                    <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">People &bull; Opportunities &bull; Impact</div>
-                  </td>
-                  <td align="right" valign="middle">
-                    <div style="font-size: 11px; color: #38bdf8; font-family: monospace; letter-spacing: 0.5px;">Building A Brighter Tomorrow<br><span style="color: #94a3b8;">Together</span></div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Main Content Body -->
-          <tr>
-            <td style="padding: 32px 28px; background-color: #ffffff; color: #0f172a;">
-              <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1.2;">Payment Request</h1>
-              <div style="font-size: 14px; font-weight: 600; color: #0284c7; margin-bottom: 20px;">from Zenemoo</div>
-
-              <p style="margin: 0 0 14px 0; font-size: 14px; color: #334155; line-height: 1.6;">${greeting}</p>
-              <p style="margin: 0 0 24px 0; font-size: 14px; color: #334155; line-height: 1.6;">${requestIntro}</p>
-
-              <!-- Payment Details Card Box -->
-              <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; margin-bottom: 24px; overflow: hidden;">
-                <tr>
-                  <td style="padding: 16px 18px; border-bottom: 1px solid #f1f5f9;">
-                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td width="120" style="font-size: 13px; color: #64748b; font-weight: 500;">📄 Payment For</td>
-                        <td style="font-size: 13px; font-weight: 700; color: #0f172a; text-align: right;">${purpose}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 16px 18px; border-bottom: 1px solid #f1f5f9;">
-                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td width="120" style="font-size: 13px; color: #64748b; font-weight: 500;">₹ Amount</td>
-                        <td style="font-size: 18px; font-weight: 800; color: #0f172a; text-align: right;">₹${amount.toLocaleString('en-IN')} <span style="font-size: 11px; color: #64748b; font-weight: 600;">INR</span></td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 16px 18px; border-bottom: 1px solid #f1f5f9;">
-                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td width="120" style="font-size: 13px; color: #64748b; font-weight: 500;">📅 Valid Until</td>
-                        <td style="font-size: 13px; font-weight: 700; color: #0f172a; text-align: right;">${formattedExpiry}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 18px; background-color: #f0f9ff;">
-                    <table width="100%" border="0" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td width="120" style="font-size: 13px; color: #0284c7; font-weight: 600;">🔗 Payment Link</td>
-                        <td align="right">
-                          <a href="${payUrl}" target="_blank" style="display: inline-block; background-color: #0284c7; color: #ffffff; font-size: 13px; font-weight: 700; text-decoration: none; padding: 10px 22px; border-radius: 10px; box-shadow: 0 4px 12px rgba(2,132,199,0.3);">Pay Now Securely &rarr;</a>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Security Notice -->
-              <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
-                <tr>
-                  <td width="24" valign="top" style="font-size: 16px;">🔒</td>
-                  <td style="padding-left: 8px; font-size: 12px; color: #166534; line-height: 1.5;">
-                    <strong>This is a secure payment link powered by Cashfree.</strong><br>
-                    You can pay using UPI, Cards, NetBanking or Wallets.
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Help Note -->
-              <table width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 24px;">
-                <tr>
-                  <td width="24" valign="top" style="font-size: 16px;">ℹ️</td>
-                  <td style="padding-left: 8px; font-size: 12px; color: #475569; line-height: 1.5;">
-                    If you have any questions or need assistance, feel free to contact us at <a href="mailto:support@zenemoo.in" style="color: #0284c7; text-decoration: none;">support@zenemoo.in</a>.
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Sign-off -->
-              <div style="font-size: 13px; color: #475569; line-height: 1.5; border-top: 1px solid #e2e8f0; padding-top: 18px;">
-                Thank you,<br>
-                <strong style="color: #0f172a;">Team Zenemoo</strong><br>
-                <span style="color: #64748b; font-size: 12px;">Zenemoo AI Data Solutions</span>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Footer Area -->
-          <tr>
-            <td style="background-color: #030712; padding: 22px 28px; text-align: center; color: #64748b; font-size: 11px; line-height: 1.6;">
-              <div style="margin-bottom: 10px;">
-                <a href="https://www.zenemoo.in" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Website</a> &bull;
-                <a href="https://www.zenemoo.in/support-zenemooindia" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Support</a> &bull;
-                <a href="https://www.zenemoo.in/privacy" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Privacy Policy</a> &bull;
-                <a href="https://www.zenemoo.in/terms" style="color: #38bdf8; text-decoration: none; margin: 0 8px;">Terms of Service</a>
-              </div>
-              <div style="color: #94a3b8; font-weight: 500; margin-bottom: 4px;">Building a brighter tomorrow, together.</div>
-              <div>&copy; ${new Date().getFullYear()} Zenemoo AI Data Solutions. All rights reserved.</div>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const sendResult = await sendMailViaBrevo({
-      sender: 'support@zenemoo.in',
-      recipients: targetEmail,
-      subject,
-      html,
-    });
-
-    if (sendResult?.success === false) {
-      throw new Error(sendResult?.error || 'Brevo dispatch failed');
-    }
-
-    const updated = await savePaymentLinkRecord(linkId, {
-      last_email_sent_at: new Date().toISOString(),
-      last_email_sent_to: targetEmail,
-      email_send_status: 'SENT',
-    });
+    const { targetEmail, updated } = await sendBrandedPaymentLinkEmail(link, recipient_email, recipient_name);
 
     return res.json({
       success: true,

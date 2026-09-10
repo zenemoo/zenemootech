@@ -379,7 +379,16 @@ export const AdminPaymentLinksPage: React.FC<AdminPaymentLinksPageProps> = ({
           }
         }
 
-        if (showToastRef.current) showToastRef.current('Cashfree payment link generated successfully.', 'success');
+        if (data?.email_sent) {
+          setCustomToast({
+            type: 'success',
+            title: 'Payment link sent successfully',
+            recipient: data.email_recipient || created.customer_email || formEmail.trim(),
+            detail: 'Sent securely from Zenemoo via Brevo.',
+          });
+        } else if (showToastRef.current) {
+          showToastRef.current('Cashfree payment link generated successfully.', 'success');
+        }
       } else {
         throw new Error(data?.message || 'Failed to create payment link.');
       }

@@ -243,8 +243,8 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
         <div className="w-24 h-0.5 bg-gradient-to-r from-transparent to-cyan-400/60 rounded-full mt-2" />
       </div>
 
-      {/* 1. TOP NAVBAR HEADER — Sticky / Fixed with glass backdrop & Official Logo */}
-      <header className="sticky top-0 z-50 w-full bg-[#030712]/90 backdrop-blur-xl border-b border-white/10 py-3.5 px-6 sm:px-12 transition-all shadow-lg shadow-black/30">
+      {/* 1. TOP NAVBAR HEADER — Fixed at top with glass backdrop & Official Logo */}
+      <header className="fixed top-0 left-0 right-0 z-50 w-full bg-[#030712]/95 backdrop-blur-xl border-b border-white/10 py-3.5 px-6 sm:px-12 transition-all shadow-lg shadow-black/40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <a
             href="/"
@@ -303,7 +303,7 @@ export const ZenemooPayPage: React.FC<ZenemooPayPageProps> = ({
       </header>
 
       {/* Main Container */}
-      <main className="relative z-10 max-w-xl mx-auto w-full px-4 py-8 sm:py-12 flex-1 flex flex-col justify-center">
+      <main className="relative z-10 max-w-xl mx-auto w-full px-4 pt-28 pb-12 sm:pt-32 sm:pb-16 flex-1 flex flex-col justify-center">
         {/* PAYMENT RESULT / RECEIPT VIEW */}
         {paymentState === 'result' && activeOrderId ? (
           <div className="space-y-6">
