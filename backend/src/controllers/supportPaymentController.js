@@ -1423,7 +1423,23 @@ export const getPublicPaymentLink = async (req, res) => {
 };
 
 /**
- * Dispatch thank you receipt email via Brevo
+ * Deterministic receipt number generator matching frontend specification
+ */
+export function generateDeterministicReceiptNo(orderId, paymentDate) {
+  const d = paymentDate ? (typeof paymentDate === 'string' ? new Date(paymentDate) : paymentDate) : new Date();
+  const yyyy = d.getFullYear();
+  const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+  const dd = d.getDate().toString().padStart(2, '0');
+
+  // Extract trailing 4 alphanumeric chars from order ID
+  const cleanId = (orderId || '0000').replace(/[^a-zA-Z0-9]/g, '');
+  const suffix = (cleanId.slice(-4) || '0001').toUpperCase();
+
+  return `RCPT-ZNM-${yyyy}${mm}${dd}-${suffix}`;
+}
+
+/**
+ * Dispatch thank you receipt email via Brevo with 100% mobile-responsive layout
  */
 async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerName, customerEmail, paymentTime, purpose }) {
   if (!customerEmail || !customerEmail.includes('@')) return;
@@ -1434,67 +1450,319 @@ async function sendPaymentSuccessEmail({ orderId, paymentId, amount, customerNam
     year: 'numeric',
   });
 
+  const receiptNo = generateDeterministicReceiptNo(orderId, paymentTime);
+  const receiptVerifyUrl = `https://www.zenemoo.in/receipt/verify/${receiptNo}`;
+
   const html = `
-    <div style="font-family: Arial, sans-serif; background-color: #050811; color: #ffffff; padding: 30px 20px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid rgba(56, 189, 248, 0.2);">
-      <div style="text-align: center; margin-bottom: 24px;">
-        <span style="font-size: 32px;">❤️</span>
-        <h1 style="color: #ffffff; font-size: 24px; margin: 8px 0;">Thank You for Supporting Zenemoo</h1>
-        <p style="color: #38bdf8; font-size: 14px; margin: 0;">Your contribution has been successfully received.</p>
-      </div>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Payment Receipt - Zenemoo</title>
+      <style>
+        body { margin: 0; padding: 0; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .email-wrapper { width: 100%; max-width: 580px; margin: 0 auto; background-color: #080e1a; border-radius: 16px; border: 1px solid rgba(56, 189, 248, 0.25); overflow: hidden; }
+        .data-table td { padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+        .data-label { color: #94a3b8; font-size: 13px; width: 38%; vertical-align: top; }
+        .data-value { color: #f8fafc; font-size: 13px; text-align: right; width: 62%; font-weight: 500; word-break: break-all; overflow-wrap: anywhere; }
+      </style>
+    </head>
+    <body style="background-color: #030712; padding: 20px 10px;">
+      <div class="email-wrapper" style="max-width: 580px; margin: 0 auto; background-color: #080e1a; border-radius: 16px; border: 1px solid rgba(56, 189, 248, 0.25); overflow: hidden;">
+        
+        <!-- Header Banner -->
+        <div style="background: linear-gradient(180deg, rgba(6, 182, 212, 0.12) 0%, rgba(8, 14, 26, 0) 100%); padding: 32px 24px 20px; text-align: center;">
+          <div style="display: inline-block; margin-bottom: 14px;">
+            <img src="https://www.zenemoo.in/logo.png" alt="Zenemoo" width="130" style="max-width: 130px; height: auto; display: block; margin: 0 auto;" />
+          </div>
+          <div style="font-size: 32px; margin-bottom: 6px;">❤️</div>
+          <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 6px 0; letter-spacing: -0.3px;">Thank You for Supporting Zenemoo</h1>
+          <p style="color: #38bdf8; font-size: 13.5px; margin: 0; font-weight: 500;">Your contribution has been successfully received.</p>
+        </div>
 
-      <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-        <h3 style="color: #e2e8f0; font-size: 16px; margin-top: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px;">Support Receipt Details</h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #cbd5e1;">
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Supporter:</td>
-            <td style="padding: 8px 0; font-weight: bold; text-align: right; color: #ffffff;">${customerName}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Amount Received:</td>
-            <td style="padding: 8px 0; font-weight: bold; text-align: right; color: #38bdf8; font-size: 18px;">₹${Number(amount).toLocaleString('en-IN')}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Status:</td>
-            <td style="padding: 8px 0; font-weight: bold; text-align: right; color: #34d399;">Successful ✓</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Order ID:</td>
-            <td style="padding: 8px 0; font-family: monospace; text-align: right; color: #ffffff;">${orderId}</td>
-          </tr>
-          ${paymentId ? `
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Payment Reference:</td>
-            <td style="padding: 8px 0; font-family: monospace; text-align: right; color: #ffffff;">${paymentId}</td>
-          </tr>
-          ` : ''}
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Purpose:</td>
-            <td style="padding: 8px 0; text-align: right; color: #38bdf8;">${purpose || 'Support Zenemoo'}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8;">Date:</td>
-            <td style="padding: 8px 0; text-align: right; color: #cbd5e1;">${formattedDate}</td>
-          </tr>
-        </table>
-      </div>
+        <!-- Receipt Details Box -->
+        <div style="padding: 0 20px 24px 20px;">
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 18px 20px; box-sizing: border-box;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px; margin-bottom: 8px;">
+              <h3 style="color: #e2e8f0; font-size: 15px; margin: 0; font-weight: 600;">Support Receipt Details</h3>
+              <span style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 9999px;">Verified ✓</span>
+            </div>
 
-      <div style="background: rgba(6, 182, 212, 0.1); border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 12px; color: #94a3b8; line-height: 1.6;">
-        <p style="margin: 0;"><strong>Transparency Note:</strong> Support received through this initiative helps Zenemoo build technology, contributor resources and more opportunities. Zenemoo Data Solutions is a registered data-solutions and technology business (UDYAM-OD-11-0124893).</p>
-      </div>
+            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; word-break: break-all;">
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: top; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Supporter:</td>
+                <td class="data-value" style="padding: 9px 0; font-weight: 700; text-align: right; color: #ffffff; width: 62%; word-break: break-word; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">${customerName}</td>
+              </tr>
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: middle; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Amount Received:</td>
+                <td class="data-value" style="padding: 9px 0; font-weight: 800; text-align: right; color: #38bdf8; font-size: 18px; width: 62%; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">₹${Number(amount).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: middle; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Status:</td>
+                <td class="data-value" style="padding: 9px 0; font-weight: 700; text-align: right; color: #34d399; width: 62%; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Successful ✓</td>
+              </tr>
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: top; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Receipt No:</td>
+                <td class="data-value" style="padding: 9px 0; font-family: monospace; font-size: 12px; text-align: right; color: #a5f3fc; width: 62%; word-break: break-all; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">${receiptNo}</td>
+              </tr>
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: top; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Order ID:</td>
+                <td class="data-value" style="padding: 9px 0; font-family: monospace; font-size: 11.5px; text-align: right; color: #e2e8f0; width: 62%; word-break: break-all; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">${orderId}</td>
+              </tr>
+              ${paymentId ? `
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: top; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Payment Ref:</td>
+                <td class="data-value" style="padding: 9px 0; font-family: monospace; font-size: 11.5px; text-align: right; color: #e2e8f0; width: 62%; word-break: break-all; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">${paymentId}</td>
+              </tr>
+              ` : ''}
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: top; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">Purpose:</td>
+                <td class="data-value" style="padding: 9px 0; text-align: right; color: #38bdf8; width: 62%; word-break: break-word; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">${purpose || 'Support Zenemoo — Platform & Technology'}</td>
+              </tr>
+              <tr>
+                <td class="data-label" style="padding: 9px 0; color: #94a3b8; width: 38%; vertical-align: top;">Date:</td>
+                <td class="data-value" style="padding: 9px 0; text-align: right; color: #cbd5e1; width: 62%;">${formattedDate}</td>
+              </tr>
+            </table>
 
-      <div style="text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px;">
-        <p style="margin: 0 0 4px 0; font-weight: bold; color: #94a3b8;">People &bull; Opportunities &bull; A Brighter Tomorrow</p>
-        <p style="margin: 0 0 4px 0;">Zenemoo Data Solutions &bull; UDYAM-OD-11-0124893</p>
-        <p style="margin: 0;"><a href="https://www.zenemoo.in" style="color: #38bdf8; text-decoration: none;">www.zenemoo.in</a> &bull; <a href="mailto:support@zenemoo.in" style="color: #38bdf8; text-decoration: none;">support@zenemoo.in</a></p>
+            <!-- Prominent Action Button: Download Official Receipt -->
+            <div style="margin-top: 20px; text-align: center;">
+              <a href="${receiptVerifyUrl}" target="_blank" style="display: block; width: 100%; box-sizing: border-box; background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%); color: #ffffff !important; text-decoration: none; font-weight: 700; text-align: center; font-size: 14.5px; padding: 13px 18px; border-radius: 9px; box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);">
+                📄 Download Official Receipt (PDF) &rarr;
+              </a>
+            </div>
+            <p style="text-align: center; font-size: 11px; color: #64748b; margin: 10px 0 0 0; word-break: break-all;">
+              Or verify online at: <a href="${receiptVerifyUrl}" style="color: #38bdf8; text-decoration: underline;">${receiptVerifyUrl}</a>
+            </p>
+
+          </div>
+
+          <!-- Transparency Notice -->
+          <div style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 10px; padding: 14px 16px; margin-top: 18px; font-size: 12px; color: #94a3b8; line-height: 1.55;">
+            <p style="margin: 0;"><strong style="color: #38bdf8;">Transparency Note:</strong> Support received helps Zenemoo build speech technology, contributor resources, and meaningful work opportunities across India. Zenemoo Data Solutions is a recognized enterprise business (UDYAM-OD-11-0124893).</p>
+          </div>
+
+          <!-- Footer Area -->
+          <div style="text-align: center; font-size: 11.5px; color: #64748b; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 18px; margin-top: 20px; line-height: 1.6;">
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #94a3b8;">People &bull; Opportunities &bull; A Brighter Tomorrow</p>
+            <p style="margin: 0 0 4px 0;">Zenemoo Data Solutions &bull; UDYAM-OD-11-0124893</p>
+            <p style="margin: 0;"><a href="https://www.zenemoo.in" style="color: #38bdf8; text-decoration: none;">www.zenemoo.in</a> &bull; <a href="mailto:support@zenemoo.in" style="color: #38bdf8; text-decoration: none;">support@zenemoo.in</a></p>
+          </div>
+
+        </div>
+
       </div>
-    </div>
+    </body>
+    </html>
   `;
 
   await sendMailViaBrevo({
     sender: 'support@zenemoo.in',
     recipients: customerEmail,
-    subject: `Thank you for supporting Zenemoo (Order #${orderId})`,
+    subject: `Thank you for supporting Zenemoo (Receipt #${receiptNo})`,
     html,
   });
 }
+
+/**
+ * GET /api/support/receipt/verify/:receiptNo
+ * Public endpoint: Look up verified payment receipt by Receipt No or Order ID
+ */
+export const getReceiptVerificationData = async (req, res) => {
+  try {
+    const rawReceiptParam = req.params.receiptNo || req.query.receiptNo || '';
+    if (!rawReceiptParam) {
+      return res.status(400).json({ success: false, message: 'Receipt number or Order ID is required.' });
+    }
+
+    const cleanParam = decodeURIComponent(rawReceiptParam).trim();
+    // Normalize OCR / QR variations (e.g. 7NM vs ZNM)
+    const normalizedParam = cleanParam.replace(/^RCPT-7NM-/i, 'RCPT-ZNM-');
+
+    // 1. Check direct match by orderId
+    let record = await findPaymentRecord(cleanParam);
+    if (!record && normalizedParam !== cleanParam) {
+      record = await findPaymentRecord(normalizedParam);
+    }
+
+    // 2. Check payment links store
+    if (!record) {
+      const link = await findPaymentLinkRecord(cleanParam);
+      if (link) {
+        record = {
+          order_id: link.order_id || link.link_id,
+          payment_id: link.payment_id || null,
+          amount: Number(link.link_amount || 0),
+          currency: link.link_currency || 'INR',
+          customer_name: link.customer_name || 'Zenemoo Supporter',
+          customer_email: link.customer_email || '',
+          customer_phone: link.customer_phone || '',
+          purpose: link.link_purpose || 'Support Zenemoo — Platform & Technology',
+          status: link.link_status === 'PAID' ? 'SUCCESS' : (link.link_status || 'SUCCESS'),
+          payment_time: link.payment_time || link.created_at,
+          created_at: link.created_at,
+        };
+      }
+    }
+
+    // 3. If still not found and param is a receipt number like RCPT-ZNM-YYYYMMDD-XXXX
+    if (!record && (normalizedParam.toUpperCase().startsWith('RCPT-') || cleanParam.toUpperCase().startsWith('RCPT-'))) {
+      const parts = normalizedParam.split('-');
+      const suffix = parts[parts.length - 1]?.trim().toUpperCase();
+
+      // Check Supabase support_payments
+      if (supabase) {
+        try {
+          const { data: matchedRows } = await supabase
+            .from('support_payments')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+          if (matchedRows && matchedRows.length > 0) {
+            const found = matchedRows.find((r) => {
+              const rNo = generateDeterministicReceiptNo(r.order_id, r.payment_time || r.created_at);
+              if (rNo.toUpperCase() === normalizedParam.toUpperCase() || rNo.toUpperCase() === cleanParam.toUpperCase()) return true;
+              if (suffix && (r.order_id || '').toUpperCase().endsWith(suffix)) return true;
+              return false;
+            });
+            if (found) record = found;
+          }
+        } catch (dbErr) {
+          console.warn('Receipt lookup Supabase fallback:', dbErr.message);
+        }
+      }
+
+      // Check memory store
+      if (!record) {
+        for (const [key, val] of memorySupportPayments.entries()) {
+          const rNo = generateDeterministicReceiptNo(val.order_id || key, val.payment_time || val.created_at);
+          if (
+            rNo.toUpperCase() === normalizedParam.toUpperCase() ||
+            rNo.toUpperCase() === cleanParam.toUpperCase() ||
+            (suffix && (val.order_id || key).toUpperCase().endsWith(suffix))
+          ) {
+            record = val;
+            break;
+          }
+        }
+      }
+
+      if (!record) {
+        for (const [key, val] of memoryPaymentLinks.entries()) {
+          const rNo = generateDeterministicReceiptNo(val.order_id || val.link_id || key, val.payment_time || val.created_at);
+          if (
+            rNo.toUpperCase() === normalizedParam.toUpperCase() ||
+            rNo.toUpperCase() === cleanParam.toUpperCase() ||
+            (suffix && ((val.order_id || '').toUpperCase().endsWith(suffix) || (val.link_id || key).toUpperCase().endsWith(suffix)))
+          ) {
+            record = {
+              order_id: val.order_id || val.link_id,
+              payment_id: val.payment_id || null,
+              amount: Number(val.link_amount || 0),
+              currency: val.link_currency || 'INR',
+              customer_name: val.customer_name || 'Zenemoo Supporter',
+              customer_email: val.customer_email || '',
+              customer_phone: val.customer_phone || '',
+              purpose: val.link_purpose || 'Support Zenemoo — Platform & Technology',
+              status: val.link_status === 'PAID' ? 'SUCCESS' : (val.link_status || 'SUCCESS'),
+              payment_time: val.payment_time || val.created_at,
+              created_at: val.created_at,
+            };
+            break;
+          }
+        }
+      }
+
+      // Check payment_links_store.json file
+      if (!record) {
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const filePath = path.resolve('src/database/payment_links_store.json');
+          if (fs.existsSync(filePath)) {
+            const links = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            const foundLink = links.find((l) => {
+              const rNo = generateDeterministicReceiptNo(l.order_id || l.link_id, l.payment_time || l.created_at);
+              if (rNo.toUpperCase() === normalizedParam.toUpperCase() || rNo.toUpperCase() === cleanParam.toUpperCase()) return true;
+              if (suffix && ((l.order_id || '').toUpperCase().endsWith(suffix) || (l.link_id || '').toUpperCase().endsWith(suffix))) return true;
+              return false;
+            });
+            if (foundLink) {
+              record = {
+                order_id: foundLink.order_id || foundLink.link_id,
+                payment_id: foundLink.payment_id || null,
+                amount: Number(foundLink.link_amount || 0),
+                currency: foundLink.link_currency || 'INR',
+                customer_name: foundLink.customer_name || 'Zenemoo Supporter',
+                customer_email: foundLink.customer_email || '',
+                customer_phone: foundLink.customer_phone || '',
+                purpose: foundLink.link_purpose || 'Support Zenemoo — Platform & Technology',
+                status: foundLink.link_status === 'PAID' ? 'SUCCESS' : (foundLink.link_status || 'SUCCESS'),
+                payment_time: foundLink.payment_time || foundLink.created_at,
+                created_at: foundLink.created_at,
+              };
+            }
+          }
+        } catch (fsErr) {
+          console.warn('payment_links_store read error:', fsErr.message);
+        }
+      }
+    }
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        message: 'No verified payment record was found for this receipt number or order reference.',
+      });
+    }
+
+    // Verify status with Cashfree if needed
+    const cfConfig = cashfreeService.getConfig();
+    if (cfConfig.isConfigured && record.order_id && (!record.status || record.status === 'PENDING')) {
+      try {
+        const cfOrder = await cashfreeService.getOrder(record.order_id);
+        const cfPayments = await cashfreeService.getOrderPayments(record.order_id);
+        if (cfOrder) {
+          const successfulPayment = cfPayments.find((p) => p.payment_status === 'SUCCESS');
+          if (cfOrder.order_status === 'PAID' || successfulPayment) {
+            record.status = 'SUCCESS';
+            record.payment_id = successfulPayment?.cf_payment_id ? String(successfulPayment.cf_payment_id) : record.payment_id;
+            record.payment_time = successfulPayment?.payment_time || record.payment_time;
+          }
+        }
+      } catch (_) {}
+    }
+
+    const calculatedReceiptNo = generateDeterministicReceiptNo(record.order_id, record.payment_time || record.created_at);
+
+    return res.json({
+      success: true,
+      receipt: {
+        receiptNo: calculatedReceiptNo,
+        orderId: record.order_id,
+        paymentId: record.payment_id || record.cf_payment_id || null,
+        transactionId: record.payment_id || record.cf_payment_id || null,
+        amount: Number(record.amount || 0),
+        currency: record.currency || 'INR',
+        customerName: record.customer_name || 'Zenemoo Supporter',
+        customerEmail: record.customer_email || '',
+        customerPhone: record.customer_phone || '',
+        purpose: record.purpose || record.metadata?.purpose || 'Support Zenemoo — Platform & Technology',
+        status: (record.status || 'SUCCESS').toUpperCase(),
+        paymentMethod: record.payment_method || 'Online / UPI',
+        paymentDate: record.payment_time || record.created_at || new Date().toISOString(),
+        verified: true,
+      },
+    });
+  } catch (err) {
+    console.error('getReceiptVerificationData error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify payment receipt.',
+    });
+  }
+};
 

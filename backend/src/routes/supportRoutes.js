@@ -12,6 +12,7 @@ import {
   cancelAdminPaymentLink,
   sendAdminPaymentLinkEmail,
   getPublicPaymentLink,
+  getReceiptVerificationData,
 } from '../controllers/supportPaymentController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -47,6 +48,10 @@ router.get('/my-contributions', optionalAuth, getMyContributions);
 router.get('/public-link/:linkId', getPublicPaymentLink);
 router.get('/pay/:linkId', getPublicPaymentLink);
 router.get('/payment-links/public/:linkId', getPublicPaymentLink);
+
+// 5b. Public route: Retrieve verified payment receipt data by Receipt No or Order ID (QR Verification)
+router.get('/receipt/verify/:receiptNo', getReceiptVerificationData);
+router.get('/receipt/:receiptNo', getReceiptVerificationData);
 
 // 6. Admin-protected route: All contributions, summaries, and date-wise collections
 router.get(

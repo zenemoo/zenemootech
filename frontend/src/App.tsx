@@ -50,12 +50,14 @@ import { ZenemooBookingPage } from './components/ZenemooBookingPage';
 import { ZenemooWebsiteDirectoryPage } from './components/ZenemooWebsiteDirectoryPage';
 import { SupportZenemooPage } from './components/SupportZenemooPage';
 import { ZenemooPayPage } from './components/ZenemooPayPage';
+import { ZenemooReceiptVerifyPage } from './components/ZenemooReceiptVerifyPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 
 export function App() {
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | '404'
   >('home');
+  const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
@@ -130,6 +132,7 @@ export function App() {
         | 'sitemap'
         | 'support-zenemoo'
         | 'pay'
+        | 'receipt-verify'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -381,6 +384,36 @@ export function App() {
         }
         matchedRoute = 'support-zenemoo';
       } else if (
+        path.startsWith('/receipt/verify/') ||
+        path.startsWith('/receipt/') ||
+        path === '/receipt' ||
+        path === '/receipt/' ||
+        path === '/receipt/verify' ||
+        path === '/receipt/verify/' ||
+        hash.startsWith('#receipt/verify/') ||
+        hash.startsWith('#/receipt/verify/') ||
+        hash.startsWith('#receipt/') ||
+        hash.startsWith('#/receipt/') ||
+        hash === '#receipt' ||
+        hash === '#/receipt'
+      ) {
+        let rNo = '';
+        if (path.startsWith('/receipt/verify/')) {
+          rNo = path.replace('/receipt/verify/', '').replace(/^\//, '');
+        } else if (path.startsWith('/receipt/')) {
+          rNo = path.replace('/receipt/', '').replace(/^\//, '');
+        } else if (hash.startsWith('#receipt/verify/')) {
+          rNo = hash.replace('#receipt/verify/', '').replace(/^\//, '');
+        } else if (hash.startsWith('#/receipt/verify/')) {
+          rNo = hash.replace('#/receipt/verify/', '').replace(/^\//, '');
+        } else if (hash.startsWith('#receipt/')) {
+          rNo = hash.replace('#receipt/', '').replace(/^\//, '');
+        } else if (hash.startsWith('#/receipt/')) {
+          rNo = hash.replace('#/receipt/', '').replace(/^\//, '');
+        }
+        setSelectedReceiptNo(decodeURIComponent(rNo || ''));
+        matchedRoute = 'receipt-verify';
+      } else if (
         path === '/sitemap' ||
         path === '/sitemap/' ||
         path === '/directory' ||
@@ -421,6 +454,10 @@ export function App() {
         pageTitle = '404 – Page Not Found | Zenemoo';
         canonicalUrl = `https://www.zenemoo.in${path}`;
         metaDescription = "The page you requested could not be found. Explore Zenemoo's AI language services, data annotation, transcription, and enterprise solutions.";
+      } else if (matchedRoute === 'receipt-verify') {
+        pageTitle = 'Verified Payment Receipt — Zenemoo';
+        canonicalUrl = `https://www.zenemoo.in/receipt/verify/${encodeURIComponent(selectedReceiptNo || '')}`;
+        metaDescription = 'Official verified payment receipt and authenticated transaction record from Zenemoo Data Solutions.';
       } else if (matchedRoute === 'support-zenemoo' || path.includes('support-zenemoo') || hash.includes('support-zenemoo')) {
         pageTitle = 'Support Zenemoo | Build Opportunities Together';
         canonicalUrl = 'https://www.zenemoo.in/support-zenemooindia';
@@ -802,6 +839,12 @@ export function App() {
         <SupportZenemooPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : currentRoute === 'pay' ? (
         <ZenemooPayPage onBackToHome={handleBackToHome} onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
+      ) : currentRoute === 'receipt-verify' ? (
+        <ZenemooReceiptVerifyPage
+          receiptNo={selectedReceiptNo}
+          onBackToHome={handleBackToHome}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+        />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
@@ -834,8 +877,8 @@ export function App() {
         </div>
       )}
 
-      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay pages) */}
-      {currentRoute !== 'admin' && currentRoute !== 'pay' && (
+      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt pages) */}
+      {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && (
         <>
           {currentRoute !== 'zenemooai' && (
             <>
