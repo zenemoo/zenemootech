@@ -37,10 +37,68 @@ export const TalentHubLoginPage: React.FC<TalentHubLoginPageProps> = ({
     isOpeningGoogle,
     authError,
     signInWithGoogle,
+    sendEmailOtp,
+    verifyEmailOtp,
     signOut,
   } = useTalentHubAuth();
 
   const { logoUrl } = useActiveLogo();
+
+  // Email 6-Digit Code Authentication State
+  const [authMode, setAuthMode] = React.useState<'google' | 'email_code'>('google');
+  const [otpEmail, setOtpEmail] = React.useState('');
+  const [otpCode, setOtpCode] = React.useState('');
+  const [isOtpSent, setIsOtpSent] = React.useState(false);
+  const [isSendingOtp, setIsSendingOtp] = React.useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = React.useState(false);
+  const [otpCountdown, setOtpCountdown] = React.useState(0);
+  const [otpLocalError, setOtpLocalError] = React.useState<string | null>(null);
+
+  // OTP Resend Countdown Timer
+  React.useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCountdown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpCountdown]);
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpLocalError(null);
+    if (!otpEmail || !otpEmail.includes('@')) {
+      setOtpLocalError('Please enter a valid email address.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    const res = await sendEmailOtp(otpEmail);
+    setIsSendingOtp(false);
+
+    if (res.success) {
+      setIsOtpSent(true);
+      setOtpCountdown(60);
+    } else {
+      setOtpLocalError(res.error || 'Could not send verification code.');
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpLocalError(null);
+    if (!otpCode || otpCode.trim().length < 6) {
+      setOtpLocalError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    const res = await verifyEmailOtp(otpEmail, otpCode);
+    setIsVerifyingOtp(false);
+
+    if (!res.success) {
+      setOtpLocalError(res.error || 'Invalid verification code.');
+    }
+  };
 
   const handleRegisterClick = () => {
     if (onNavigateRegister) {
@@ -356,61 +414,200 @@ export const TalentHubLoginPage: React.FC<TalentHubLoginPageProps> = ({
               </p>
 
               {/* Auth Error Banner if present */}
-              {authError && (
+              {(authError || otpLocalError) && (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="mt-4 p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs text-left flex items-start gap-2.5"
                 >
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
-                  <span className="leading-snug">{authError}</span>
+                  <span className="leading-snug">{authError || otpLocalError}</span>
                 </motion.div>
               )}
 
-              {/* Large Full-Width White Google Login Button */}
-              <div className="mt-5 sm:mt-6">
+              {/* Login Method Tabs */}
+              <div className="mt-5 p-1 bg-white/[0.04] border border-white/10 rounded-2xl flex items-center gap-1 font-mono text-xs">
                 <button
-                  onClick={signInWithGoogle}
-                  disabled={isOpeningGoogle || isSigningIn}
-                  className={`w-full group flex items-center justify-between py-3 sm:py-3.5 px-4 sm:px-5 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 text-xs sm:text-sm font-semibold shadow-xl shadow-white/10 hover:shadow-white/20 transition-all duration-200 active:scale-[0.98] focus:outline-none cursor-pointer ${
-                    isOpeningGoogle || isSigningIn ? 'opacity-80 cursor-not-allowed' : ''
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('google');
+                    setOtpLocalError(null);
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-xl transition-all font-semibold cursor-pointer ${
+                    authMode === 'google'
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
                   }`}
-                  aria-label="Continue with Google"
                 >
-                  <div className="flex items-center gap-2.5 sm:gap-3">
-                    {isOpeningGoogle || isSigningIn ? (
-                      <Loader2 className="w-5 h-5 text-slate-700 animate-spin" />
-                    ) : (
-                      <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                        <path
-                          fill="#4285F4"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                        />
-                      </svg>
-                    )}
-                    <span className="font-sans font-semibold text-slate-900">
-                      {isOpeningGoogle
-                        ? 'Opening Google...'
-                        : isSigningIn
-                        ? 'Signing you in...'
-                        : 'Continue with Google'}
-                    </span>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-600 group-hover:translate-x-1 transition-transform shrink-0" />
+                  Google Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('email_code');
+                    setOtpLocalError(null);
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-xl transition-all font-semibold cursor-pointer ${
+                    authMode === 'email_code'
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Email Code
                 </button>
               </div>
+
+              {authMode === 'google' ? (
+                /* Large Full-Width White Google Login Button */
+                <div className="mt-4">
+                  <button
+                    onClick={signInWithGoogle}
+                    disabled={isOpeningGoogle || isSigningIn}
+                    className={`w-full group flex items-center justify-between py-3 sm:py-3.5 px-4 sm:px-5 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 text-xs sm:text-sm font-semibold shadow-xl shadow-white/10 hover:shadow-white/20 transition-all duration-200 active:scale-[0.98] focus:outline-none cursor-pointer ${
+                      isOpeningGoogle || isSigningIn ? 'opacity-80 cursor-not-allowed' : ''
+                    }`}
+                    aria-label="Continue with Google"
+                  >
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                      {isOpeningGoogle || isSigningIn ? (
+                        <Loader2 className="w-5 h-5 text-slate-700 animate-spin" />
+                      ) : (
+                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                          <path
+                            fill="#4285F4"
+                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                          />
+                          <path
+                            fill="#34A853"
+                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                          />
+                          <path
+                            fill="#FBBC05"
+                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                          />
+                          <path
+                            fill="#EA4335"
+                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                          />
+                        </svg>
+                      )}
+                      <span className="font-sans font-semibold text-slate-900">
+                        {isOpeningGoogle
+                          ? 'Connecting to Google...'
+                          : isSigningIn
+                          ? 'Signing you in...'
+                          : 'Continue with Google'}
+                      </span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-600 group-hover:translate-x-1 transition-transform shrink-0" />
+                  </button>
+                </div>
+              ) : (
+                /* 6-Digit Email Verification Code Form */
+                <div className="mt-4 text-left">
+                  {!isOtpSent ? (
+                    <form onSubmit={handleSendOtp} className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1.5 font-medium">
+                          Registered Email Address
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={otpEmail}
+                          onChange={(e) => setOtpEmail(e.target.value)}
+                          placeholder="e.g. yourname@gmail.com"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isSendingOtp}
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-mono font-bold shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                      >
+                        {isSendingOtp ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Sending code...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Send Verification Code</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleVerifyOtp} className="space-y-3">
+                      <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[11px] font-mono flex items-center justify-between">
+                        <span className="truncate">{otpEmail}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsOtpSent(false);
+                            setOtpCode('');
+                            setOtpLocalError(null);
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer ml-2 shrink-0"
+                        >
+                          Change
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1.5 font-medium">
+                          Enter 6-Digit Code
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          maxLength={6}
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                          placeholder="123456"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white text-center text-lg tracking-[0.3em] font-mono font-bold focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isVerifyingOtp}
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black text-xs font-mono font-bold shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                      >
+                        {isVerifyingOtp ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Verifying code...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Verify &amp; Open Talent Hub</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+
+                      <div className="text-center pt-1">
+                        {otpCountdown > 0 ? (
+                          <span className="text-[10px] font-mono text-slate-500">
+                            Resend code in {otpCountdown}s
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSendOtp}
+                            disabled={isSendingOtp}
+                            className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                          >
+                            Resend 6-Digit Code
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )}
+                </div>
+              )}
 
               {/* Divider */}
               <div className="relative my-4 sm:my-5">

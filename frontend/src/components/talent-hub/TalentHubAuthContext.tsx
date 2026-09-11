@@ -125,6 +125,8 @@ interface TalentHubAuthContextType {
 
   // Actions
   signInWithGoogle: () => Promise<void>;
+  sendEmailOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
+  verifyEmailOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   refreshTalentHubData: (isManual?: boolean) => Promise<void>;
   mutateApplications: (newOrUpdatedApp: ApplicationItem) => void;
@@ -352,6 +354,17 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (errCode || errDesc) {
         console.warn('[TalentHub OAuth Error Detected]:', errCode, errDesc);
         setAuthError("We couldn't sign you in with Google. Please try again.");
+      }
+
+      // Android Web Custom Tab Bridge: If opened on Android browser with OAuth tokens/code, forward immediately to native scheme
+      if (!Capacitor.isNativePlatform()) {
+        const isMobileAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+        const code = searchParams.get('code') || hashParams.get('code');
+        const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+        if (isMobileAndroid && (code || accessToken)) {
+          const deepLink = 'zenemoo://auth/callback' + window.location.search + window.location.hash;
+          window.location.href = deepLink;
+        }
       }
     }
 
@@ -687,6 +700,75 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const sendEmailOtp = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      setAuthError(null);
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return { success: false, error: 'Please enter a valid email address.' };
+      }
+
+      console.log('[TalentHub OTP] Sending 6-digit code to email...');
+      const { error } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          shouldCreateUser: true,
+        },
+      });
+
+      if (error) {
+        console.warn('[TalentHub OTP Send Error]:', error.message);
+        return { success: false, error: error.message || 'Could not send verification code. Please try again.' };
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'An unexpected error occurred. Please try again.' };
+    }
+  };
+
+  const verifyEmailOtp = async (email: string, token: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      setAuthError(null);
+      setIsSigningIn(true);
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanToken = token.trim();
+
+      if (!cleanToken || cleanToken.length < 6) {
+        setIsSigningIn(false);
+        return { success: false, error: 'Please enter the complete 6-digit code.' };
+      }
+
+      console.log('[TalentHub OTP] Verifying 6-digit OTP code...');
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanToken,
+        type: 'email',
+      });
+
+      if (error) {
+        setIsSigningIn(false);
+        console.warn('[TalentHub OTP Verify Error]:', error.message);
+        return { success: false, error: 'Invalid or expired verification code. Please try again.' };
+      }
+
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.session.user || null);
+        lastLoadedUserIdRef.current = data.session.user?.id || null;
+        await loadTalentProfile(data.session.access_token);
+        setIsSigningIn(false);
+        return { success: true };
+      }
+
+      setIsSigningIn(false);
+      return { success: false, error: 'Unable to establish session. Please try again.' };
+    } catch (e: any) {
+      setIsSigningIn(false);
+      return { success: false, error: e?.message || 'Verification failed. Please try again.' };
+    }
+  };
+
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -761,6 +843,8 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         acceptedCount,
         activeOpportunitiesCount,
         signInWithGoogle,
+        sendEmailOtp,
+        verifyEmailOtp,
         signOut,
         refreshTalentHubData,
         mutateApplications,
