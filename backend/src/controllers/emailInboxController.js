@@ -326,25 +326,27 @@ export const getIncomingEmailById = async (req, res, next) => {
     const { id } = req.params;
 
     if (supabase) {
-      const { data: email, error } = await supabase
-        .from('incoming_email_messages')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+      let query = supabase.from('incoming_email_messages').select('*');
+      if (id.startsWith('msg_') || id.startsWith('sent_') || id.includes('@') || id.includes('<')) {
+        query = query.or(`id.eq.${id},message_id.eq.${id}`);
+      } else {
+        query = query.eq('id', id);
+      }
+      const { data: email, error } = await query.maybeSingle();
 
       if (!error && email) {
         if (!email.is_read) {
           await supabase
             .from('incoming_email_messages')
             .update({ is_read: true, updated_at: new Date().toISOString() })
-            .eq('id', id);
+            .eq('id', email.id);
           email.is_read = true;
         }
         return res.json({ success: true, email });
       }
     }
 
-    const email = inMemoryEmails.find((e) => e.id === id);
+    const email = inMemoryEmails.find((e) => e.id === id || e.message_id === id);
     if (!email) {
       return res.status(404).json({ success: false, message: 'Email record not found.' });
     }

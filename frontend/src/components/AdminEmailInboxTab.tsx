@@ -194,14 +194,28 @@ function sanitizeHtmlContent(html: string): string {
   if (!html) return '';
   let clean = html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
     .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
     .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
-    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '')
+    .replace(/<base\b[^>]*>/gi, '')
+    .replace(/<meta\b[^>]*>/gi, '')
+    .replace(/<link\b[^>]*>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/href\s*=\s*["']?\s*(?:javascript|vbscript|data:text\/html):/gi, 'href="#blocked-')
+    .replace(/src\s*=\s*["']?\s*(?:javascript|vbscript):/gi, 'src="#blocked-');
+
+  // Ensure external links open securely in new tab
+  clean = clean.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"/gi, (match, url) => {
+    if (match.includes('target=')) return match;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-cyan-400 hover:underline"`;
+  });
 
   // Neutralize dark text inline colors for dark theme inbox detail view
   clean = clean
     .replace(/color:\s*(#1e293b|#0f172a|#475569|#64748b|#000000|#000|#333333|#333|#111111|#111|#222222|#222|black|darkslate|darkgray)/gi, 'color: #f1f5f9')
+    .replace(/background-color:\s*(#ffffff|#fff|white|#f8fafc|#f1f5f9)/gi, 'background-color: transparent')
     .replace(/border-top:\s*1px\s+solid\s+#e2e8f0/gi, 'border-top: 1px solid rgba(255,255,255,0.15)');
 
   return clean;
@@ -270,6 +284,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   // Loading & Modal UI
   const [isLoading, setIsLoading] = useState((mailTab === 'incoming' ? incomingEmails : sentEmails).length === 0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
@@ -653,6 +668,65 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       updateSelectedEmailId(filteredEmails[0].id);
     }
   }, [filteredEmails, selectedEmailId]);
+
+  // On-demand fetch full email detail (body_html, body_text, attachments) for selected incoming email
+  useEffect(() => {
+    if (!selectedEmail) return;
+
+    // Skip if full content is already loaded
+    if (selectedEmail.body_html || selectedEmail.body_text) return;
+
+    const emailId = selectedEmail.id;
+    let isMounted = true;
+    setIsDetailLoading(true);
+
+    emailInboxApi
+      .getEmailById(emailId)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.data?.success && res.data.email) {
+          const detail = res.data.email as EmailMessageRecord;
+          const updateItem = (item: EmailMessageRecord) =>
+            item.id === detail.id || item.message_id === detail.message_id
+              ? {
+                  ...item,
+                  body_html: detail.body_html,
+                  body_text: detail.body_text,
+                  attachments: detail.attachments || item.attachments,
+                  auth_results: detail.auth_results || item.auth_results,
+                  reply_to: detail.reply_to || item.reply_to,
+                  is_read: true,
+                }
+              : item;
+
+          if (mailTab === 'incoming') {
+            setIncomingEmails((prev) => {
+              const updated = prev.map(updateItem);
+              globalInboxCache.incomingEmails = updated;
+              return updated;
+            });
+          } else {
+            setSentEmails((prev) => {
+              const updated = prev.map(updateItem);
+              globalInboxCache.sentEmails = updated;
+              return updated;
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load email detail body:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsDetailLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedEmail?.id, mailTab]);
 
   // OPTIMISTIC ACTIONS
 
@@ -1546,15 +1620,20 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   </div>
 
                   {/* HTML / Text Message Body Container */}
-                  <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]">
-                    {parsedEmailContent.cleanHtml ? (
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.02] border border-white/10 text-slate-200 text-sm leading-relaxed font-sans space-y-4 shadow-inner min-w-0 max-w-full overflow-x-auto break-words [word-break:break-word] [overflow-wrap:anywhere]">
+                    {isDetailLoading && !parsedEmailContent.cleanHtml && !parsedEmailContent.cleanText ? (
+                      <div className="flex items-center justify-center py-12 gap-2.5 text-cyan-400 font-mono text-xs">
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Loading complete email content...</span>
+                      </div>
+                    ) : parsedEmailContent.cleanHtml ? (
                       <div
                         dangerouslySetInnerHTML={{ __html: parsedEmailContent.cleanHtml }}
-                        className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed overflow-x-hidden break-words [word-break:break-word] [overflow-wrap:anywhere]"
+                        className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed overflow-x-auto break-words [word-break:break-word] [overflow-wrap:anywhere]"
                       />
                     ) : (
-                      <div className="whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere]">
-                        {parsedEmailContent.cleanText || selectedEmail.snippet}
+                      <div className="whitespace-pre-wrap font-sans text-slate-200 text-sm leading-relaxed break-words [word-break:break-word] [overflow-wrap:anywhere]">
+                        {parsedEmailContent.cleanText || selectedEmail.body_text || selectedEmail.snippet}
                       </div>
                     )}
                   </div>
