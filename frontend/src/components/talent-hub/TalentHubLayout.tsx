@@ -160,7 +160,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       {/* ── Fixed Top Navigation Header (Dynamic & Responsive from 320px to 4K) ── */}
       <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))] pt-[var(--sat,env(safe-area-inset-top,0px))] bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-5 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
         <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
-          {/* Brand Logo & Portal Title */}
+          {/* Brand Logo & Portal Title (Mobile shows only logo, Desktop/Laptop shows full brand) */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
             <a
               href="/talent-hub/dashboard"
@@ -181,7 +181,8 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                   fallbackSrc="/assets/logo.png"
                 />
               </div>
-              <div className="flex flex-col min-w-0">
+              {/* Full Brand Text: Hidden on mobile phones (<640px) to prevent navbar squeeze, fully visible on tablets and laptops */}
+              <div className="hidden sm:flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-sm sm:text-base lg:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none truncate">
                     ZENEMOO
@@ -293,12 +294,13 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 />
               </button>
 
-              {/* Rich User Profile Dropdown Card */}
+              {/* Rich User Profile Dropdown Card (100% Solid Dark, Non-Transparent, High Contrast) */}
               <AnimatePresence>
                 {userMenuOpen && (
                   <>
+                    {/* Dimming Backdrop to prevent text bleed from background page */}
                     <div
-                      className="fixed inset-0 z-40"
+                      className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] transition-opacity"
                       onClick={() => setUserMenuOpen(false)}
                     />
                     <motion.div
@@ -307,7 +309,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: 8 }}
                       transition={{ duration: 0.18, ease: 'easeOut' }}
-                      className="absolute right-0 mt-2 w-72 sm:w-80 rounded-3xl bg-[#090d1a]/98 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.95),0_0_30px_rgba(6,182,212,0.15)] p-3.5 z-50 divide-y divide-white/10 text-xs"
+                      className="absolute right-0 mt-2 w-72 sm:w-80 rounded-3xl bg-[#080d1a] border border-cyan-500/40 shadow-[0_25px_70px_rgba(0,0,0,0.99),0_0_30px_rgba(6,182,212,0.2)] p-3.5 z-50 divide-y divide-white/10 text-xs"
                     >
                       {/* Top Profile Card Header */}
                       <div className="pb-3.5 space-y-2.5">
@@ -325,7 +327,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                                 {displayName.charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#090d1a]" />
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#080d1a]" />
                           </div>
 
                           <div className="min-w-0 flex-1">
@@ -378,11 +380,11 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
                         {/* Quick Summary Chips */}
                         <div className="grid grid-cols-2 gap-2 pt-1">
-                          <div className="p-2 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                          <div className="p-2.5 rounded-xl bg-[#0c1222] border border-white/10 text-center shadow-inner">
                             <p className="text-[10px] text-slate-400 uppercase font-mono">My Applications</p>
                             <p className="text-sm font-bold text-white mt-0.5">{totalApplications ?? applications?.length ?? 0}</p>
                           </div>
-                          <div className="p-2 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                          <div className="p-2.5 rounded-xl bg-[#0c1222] border border-white/10 text-center shadow-inner">
                             <p className="text-[10px] text-slate-400 uppercase font-mono">Open Projects</p>
                             <p className="text-sm font-bold text-cyan-400 mt-0.5">{activeOpportunitiesCount || opportunities?.length || 0}</p>
                           </div>
