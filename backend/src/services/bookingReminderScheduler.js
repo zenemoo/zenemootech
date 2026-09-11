@@ -31,7 +31,7 @@ export const processBookingReminders = async () => {
 
     const { data: dueBookings, error } = await supabase
       .from('call_bookings')
-      .select('*')
+      .select('id, booking_id, full_name, email, phone, company_name, purpose, topic, start_time, end_time, timezone, google_meet_url, status, reminder_sent, customer_reminder_status, admin_reminder_status')
       .eq('status', 'confirmed')
       .eq('reminder_sent', false)
       .gte('start_time', minStart)

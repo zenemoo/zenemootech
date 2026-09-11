@@ -1,3 +1,4 @@
+import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 
 export const subscribeNewsletter = async (req, res, next) => {
@@ -55,8 +56,20 @@ export const subscribeNewsletter = async (req, res, next) => {
       });
     }
 
-    // 3. Query existing subscribers in Supabase database
-    const existingList = await supabaseService.selectAll('subscribers', 'subscribed_at', false);
+    // 3. Query existing subscribers in Supabase database with targeted lookup (Zero full-table scan)
+    let existingList = [];
+    if (supabase) {
+      try {
+        const { data: matchedDb } = await supabase
+          .from('subscribers')
+          .select('id, email, status')
+          .in('email', validCandidateEmails);
+        existingList = matchedDb || [];
+      } catch (e) {
+        console.warn('Supabase targeted subscriber check warning:', e.message);
+      }
+    }
+
     const existingMap = new Map((existingList || []).map((s) => [s.email.toLowerCase().trim(), s]));
 
     const alreadySubscribedEmails = [];
@@ -118,18 +131,16 @@ export const subscribeNewsletter = async (req, res, next) => {
 
     // 6. Construct user-friendly summary
     let message = 'Subscription request processed.';
-    const totalAddedOrReactivated = newEmailsToInsert.length + reactivatedEmails.length;
-
-    if (totalAddedOrReactivated > 0 && alreadySubscribedEmails.length === 0) {
-      if (reactivatedEmails.length > 0 && newEmailsToInsert.length === 0) {
-        message = `Subscriber reactivated successfully! (${reactivatedEmails.length} email(s))`;
-      } else {
-        message = `Successfully enrolled ${totalAddedOrReactivated} subscriber(s)!`;
-      }
-    } else if (totalAddedOrReactivated > 0 && alreadySubscribedEmails.length > 0) {
-      message = `Enrolled/reactivated ${totalAddedOrReactivated} subscriber(s). ${alreadySubscribedEmails.length} email(s) were already active and skipped.`;
-    } else if (totalAddedOrReactivated === 0 && alreadySubscribedEmails.length > 0) {
-      message = `All ${alreadySubscribedEmails.length} email(s) are already subscribed to Zenemoo Dispatch.`;
+    if (savedRecords.length > 0 && alreadySubscribedEmails.length === 0) {
+      message = savedRecords.length === 1
+        ? `Successfully subscribed ${savedRecords[0].email} to Zenemoo Dispatch!`
+        : `Successfully subscribed ${savedRecords.length} email addresses to Zenemoo Dispatch!`;
+    } else if (savedRecords.length > 0 && alreadySubscribedEmails.length > 0) {
+      message = `Subscribed ${savedRecords.length} new email(s). (${alreadySubscribedEmails.length} were already active subscribers)`;
+    } else if (savedRecords.length === 0 && alreadySubscribedEmails.length > 0) {
+      message = alreadySubscribedEmails.length === 1
+        ? `${alreadySubscribedEmails[0]} is already subscribed to Zenemoo Dispatch.`
+        : `All ${alreadySubscribedEmails.length} email addresses are already active subscribers.`;
     }
 
     return res.status(200).json({
@@ -138,15 +149,12 @@ export const subscribeNewsletter = async (req, res, next) => {
       summary: {
         addedCount: savedRecords.length,
         skippedCount: alreadySubscribedEmails.length,
-        reactivatedCount: reactivatedEmails.length,
         invalidCount: invalidEmails.length,
-        addedEmails: newEmailsToInsert,
-        reactivatedEmails: reactivatedEmails.map((r) => r.email),
-        skippedEmails: alreadySubscribedEmails,
+        addedEmails: savedRecords.map((r) => r.email),
+        alreadySubscribedEmails,
         invalidEmails,
       },
-      data: savedRecords.length > 0 ? savedRecords[0] : null,
-      allSavedData: savedRecords,
+      data: savedRecords,
     });
   } catch (err) {
     next(err);
@@ -156,14 +164,15 @@ export const subscribeNewsletter = async (req, res, next) => {
 /**
  * 2. Unsubscribe Newsletter Controller
  */
-export const unsubscribeNewsletter = async (req, res, next) => {
+export const unsubscribeNewsletter = async (req, res) => {
   try {
     const { email } = req.body;
+
     if (!email || typeof email !== 'string') {
       return res.status(400).json({
         success: false,
-        code: 'INVALID_EMAIL',
-        message: 'Please enter a valid email address.',
+        code: 'EMAIL_REQUIRED',
+        message: 'Please provide a valid email address to unsubscribe.',
       });
     }
 
@@ -178,11 +187,20 @@ export const unsubscribeNewsletter = async (req, res, next) => {
       });
     }
 
-    // Step 2 — Search existing subscriber in public.subscribers table by normalized email
-    const existingList = await supabaseService.selectAll('subscribers', 'subscribed_at', false);
-    const existingRecord = (existingList || []).find(
-      (s) => (s.email || '').trim().toLowerCase() === cleanEmail
-    );
+    // Step 2 — Targeted single lookup in public.subscribers table (Zero full-table scan)
+    let existingRecord = null;
+    if (supabase) {
+      try {
+        const { data: matched } = await supabase
+          .from('subscribers')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+        existingRecord = matched;
+      } catch (e) {
+        console.warn('Supabase unsubscribe single lookup warning:', e.message);
+      }
+    }
 
     // Step 5 — If email does NOT exist in subscribers
     if (!existingRecord) {
@@ -231,13 +249,72 @@ export const unsubscribeNewsletter = async (req, res, next) => {
   }
 };
 
+// GET /api/subscribers - Database-side pagination & filtering for Admin
 export const getSubscribers = async (req, res, next) => {
   try {
+    const { page = 1, pageSize = 25, limit = 25, status, search } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
+
+    const LIST_COLUMNS = 'id, email, status, subscribed_at, unsubscribed_at, created_at, updated_at';
+
+    if (supabase) {
+      try {
+        let query = supabase.from('subscribers').select(LIST_COLUMNS, { count: 'exact' });
+
+        if (status && status.trim() && status.toLowerCase() !== 'all') {
+          query = query.ilike('status', status.trim());
+        }
+
+        if (search && search.trim()) {
+          const q = search.trim();
+          query = query.ilike('email', `%${q}%`);
+        }
+
+        query = query.order('subscribed_at', { ascending: false }).range(from, to);
+
+        const { data: dbData, count: totalCount, error } = await query;
+
+        if (!error && Array.isArray(dbData)) {
+          const total = totalCount || dbData.length;
+          return res.json({
+            success: true,
+            count: dbData.length,
+            total,
+            page: pageNum,
+            pageSize: limitNum,
+            totalPages: Math.max(1, Math.ceil(total / limitNum)),
+            data: dbData,
+          });
+        }
+      } catch (dbErr) {
+        console.warn('Supabase subscribers DB pagination note:', dbErr.message);
+      }
+    }
+
+    // Fallback
     const data = await supabaseService.selectAll('subscribers', 'subscribed_at', false);
+    let filtered = Array.isArray(data) ? data : [];
+    if (status && status !== 'all') {
+      filtered = filtered.filter((s) => (s.status || '').toLowerCase() === status.toLowerCase());
+    }
+    if (search && search.trim()) {
+      filtered = filtered.filter((s) => (s.email || '').toLowerCase().includes(search.toLowerCase().trim()));
+    }
+    const total = filtered.length;
+    const paginated = filtered.slice(from, to + 1);
+
     res.json({
       success: true,
-      count: data.length,
-      data,
+      count: paginated.length,
+      total,
+      page: pageNum,
+      pageSize: limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      data: paginated,
     });
   } catch (err) {
     next(err);

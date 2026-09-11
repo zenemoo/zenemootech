@@ -69,6 +69,17 @@ const saveDiskActiveLogo = (payload) => {
   }
 };
 
+// In-Memory Public Cache (30-Minute TTL)
+let activeLogoCache = {
+  data: undefined,
+  timestamp: 0,
+};
+const BRANDING_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+export const invalidateBrandingCache = () => {
+  activeLogoCache = { data: undefined, timestamp: 0 };
+};
+
 // In-memory active logo state initialized from disk fallback
 let inMemoryActiveLogo = loadDiskActiveLogo();
 
@@ -78,6 +89,16 @@ let inMemoryActiveLogo = loadDiskActiveLogo();
  */
 export const getActiveLogo = async (req, res) => {
   try {
+    const now = Date.now();
+    if (activeLogoCache.data !== undefined && now - activeLogoCache.timestamp < BRANDING_CACHE_TTL) {
+      return res.status(200).json({
+        success: true,
+        data: activeLogoCache.data,
+        defaultFallback: DEFAULT_LOGO_PAYLOAD,
+        cached: true,
+      });
+    }
+
     let activeRecord = null;
     let dbSuccess = false;
 
@@ -119,6 +140,7 @@ export const getActiveLogo = async (req, res) => {
 
       inMemoryActiveLogo = payload;
       saveDiskActiveLogo(payload);
+      activeLogoCache = { data: payload, timestamp: Date.now() };
       return res.status(200).json({ success: true, data: payload });
     }
 
@@ -126,6 +148,7 @@ export const getActiveLogo = async (req, res) => {
     if (dbSuccess && !activeRecord) {
       inMemoryActiveLogo = null;
       saveDiskActiveLogo(null);
+      activeLogoCache = { data: null, timestamp: Date.now() };
       return res.status(200).json({
         success: true,
         data: null,
@@ -137,9 +160,11 @@ export const getActiveLogo = async (req, res) => {
     const diskFallback = inMemoryActiveLogo || loadDiskActiveLogo();
     if (diskFallback && diskFallback.isActive === true && (diskFallback.url || diskFallback.secure_url)) {
       inMemoryActiveLogo = diskFallback;
+      activeLogoCache = { data: diskFallback, timestamp: Date.now() };
       return res.status(200).json({ success: true, data: diskFallback });
     }
 
+    activeLogoCache = { data: null, timestamp: Date.now() };
     return res.status(200).json({
       success: true,
       data: null,
@@ -275,6 +300,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
 
       inMemoryActiveLogo = responseData;
       saveDiskActiveLogo(responseData);
+      invalidateBrandingCache();
 
       if (oldPublicId && oldPublicId !== cloudinaryRes.public_id) {
         try {
@@ -341,6 +367,7 @@ export const uploadOrReplaceLogo = async (req, res) => {
 
       inMemoryActiveLogo = responseData;
       saveDiskActiveLogo(responseData);
+      invalidateBrandingCache();
 
       return res.status(200).json({
         success: true,
@@ -399,6 +426,7 @@ export const deleteLogo = async (req, res) => {
     // 3. Clear in-memory and write clean inactive persistent file
     inMemoryActiveLogo = null;
     saveDiskActiveLogo(null);
+    invalidateBrandingCache();
 
     return res.status(200).json({
       success: true,

@@ -14,6 +14,7 @@ import {
   Mail,
   ShieldCheck,
   ChevronDown,
+  ChevronUp,
   RefreshCw,
   CheckCircle2,
   Heart,
@@ -61,6 +62,20 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   const [isSocialSheetOpen, setIsSocialSheetOpen] = useState(false);
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  // Monitor window scroll for Back-to-Top button visibility
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 300);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Close mobile drawer and social sheet on Escape key
   useEffect(() => {
@@ -846,11 +861,30 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── Fixed Floating AI Assistant Button (Bottom Right, Safe on Mobile) ── */}
-      <div className="fixed bottom-20 md:bottom-5 right-4 sm:right-6 z-30 print:hidden">
+      {/* ── Fixed Floating Controls Stack (Back to Top ABOVE, AI Contributor Assistant BELOW) ── */}
+      <div className="fixed bottom-20 md:bottom-6 right-3.5 sm:right-6 z-30 flex flex-col items-end gap-2.5 sm:gap-3 pointer-events-none print:hidden">
+        {/* 1. Back to Top Button (Small circular floating button positioned strictly ABOVE AI Assistant) */}
+        <AnimatePresence>
+          {showBackToTop && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 10 }}
+              transition={{ duration: 0.18 }}
+              onClick={scrollToTop}
+              className="pointer-events-auto p-2.5 sm:p-2.5 rounded-full bg-[#080d19]/90 hover:bg-[#0c1324] text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 shadow-[0_4px_20px_rgba(0,0,0,0.6),0_0_15px_rgba(6,182,212,0.25)] hover:shadow-[0_4px_25px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-95 group"
+              aria-label="Back to Top"
+              title="Scroll to top"
+            >
+              <ChevronUp className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* 2. Zenemoo AI Contributor Assistant (Positioned strictly BELOW Back to Top) */}
         <button
           onClick={() => setIsAiDrawerOpen(true)}
-          className="group relative flex items-center gap-2 sm:gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full bg-[#080d19]/95 hover:bg-[#0c1324] border border-cyan-500/40 hover:border-cyan-300 shadow-[0_8px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_8px_35px_rgba(0,0,0,0.9),0_0_30px_rgba(6,182,212,0.5)] transition-all duration-300 cursor-pointer active:scale-95"
+          className="pointer-events-auto group relative flex items-center gap-2 sm:gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-[#080d19]/95 hover:bg-[#0c1324] border border-cyan-500/40 hover:border-cyan-300 shadow-[0_8px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_8px_35px_rgba(0,0,0,0.9),0_0_30px_rgba(6,182,212,0.5)] backdrop-blur-md transition-all duration-300 cursor-pointer active:scale-95"
           aria-label="Ask Zenemoo AI Assistant"
           title="Ask Zenemoo AI Assistant"
         >
@@ -877,32 +911,63 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       {/* ── Centralized Zenemoo AI Drawer ── */}
       <ZenemooAiDrawer isOpen={isAiDrawerOpen} onClose={() => setIsAiDrawerOpen(false)} />
 
-      {/* ── Standard Zenemoo Talent Hub Footer ── */}
-      <footer className="talent-hub-footer border-t border-white/10 bg-[#080808]/90 py-8 pb-24 md:pb-8 px-4 sm:px-6 lg:px-8 text-slate-400 text-xs mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-center sm:text-left">
-            <span className="font-semibold text-slate-200">Zenemoo</span>
-            <span className="hidden sm:inline text-slate-600">•</span>
-            <span>&ldquo;A Bright Tomorrow, Together.&rdquo;</span>
-            <span className="hidden sm:inline text-slate-600">•</span>
-            <span className="text-slate-400">Technology should create opportunities for everyone.</span>
-          </div>
+      {/* ── Compact Professional Talent Hub Footer ── */}
+      <footer className="w-full border-t border-cyan-500/20 bg-[#060810]/95 backdrop-blur-md text-slate-400 text-xs mt-auto py-3.5 px-4 sm:px-6 lg:px-8 shadow-[0_-4px_20px_rgba(0,0,0,0.6)] z-20 pb-20 md:pb-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 min-w-0">
+          {/* Horizontal Items List: Brand + Tagline + Legal/Contact Links */}
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2.5 sm:gap-x-3 gap-y-1.5 text-[11px] sm:text-xs text-slate-400 min-w-0 text-center md:text-left">
+            {/* Logo + Zenemoo */}
+            <div className="flex items-center gap-1.5 font-bold text-white tracking-wide shrink-0">
+              <div className="w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[1px] shrink-0">
+                <SeoImage
+                  src="/assets/logo.png"
+                  alt="Zenemoo"
+                  width={18}
+                  height={18}
+                  className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                />
+              </div>
+              <span className="font-display text-white">Zenemoo</span>
+            </div>
 
-          <div className="flex items-center gap-6">
+            <span className="text-cyan-500/30 select-none hidden sm:inline">|</span>
+            <span className="text-slate-300 font-medium whitespace-nowrap">A Bright Tomorrow, Together.</span>
+
+            <span className="text-cyan-500/30 select-none">|</span>
+            <a href="/terms" className="hover:text-cyan-300 transition-colors whitespace-nowrap">
+              Terms &amp; Conditions
+            </a>
+
+            <span className="text-cyan-500/30 select-none">|</span>
+            <a href="/privacy" className="hover:text-cyan-300 transition-colors whitespace-nowrap">
+              Privacy Policy
+            </a>
+
+            <span className="text-cyan-500/30 select-none">|</span>
+            <a href="/#contact" className="hover:text-cyan-300 transition-colors whitespace-nowrap">
+              Contact
+            </a>
+
+            <span className="text-cyan-500/30 select-none">|</span>
             <a
               href="mailto:info@zenemoo.in"
-              className="flex items-center gap-1.5 text-slate-300 hover:text-cyan-400 transition-colors"
+              className="hover:text-cyan-300 transition-colors whitespace-nowrap text-cyan-400/90 font-mono inline-flex items-center gap-1"
             >
-              <Mail className="w-3.5 h-3.5" />
+              <Mail className="w-3 h-3 text-cyan-400 shrink-0" />
               <span>info@zenemoo.in</span>
             </a>
-            <a
-              href="/"
-              className="flex items-center gap-1 text-slate-400 hover:text-white transition-colors"
+          </div>
+
+          {/* Logout Pill Button at the Far Right */}
+          <div className="shrink-0 flex items-center">
+            <button
+              onClick={() => signOut()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 hover:border-rose-500/50 shadow-sm transition-all text-xs font-medium cursor-pointer active:scale-95"
+              title="Sign out of Talent Hub"
             >
-              <span>Main Website</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </footer>

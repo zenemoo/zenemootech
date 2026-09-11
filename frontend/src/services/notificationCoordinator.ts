@@ -31,7 +31,7 @@ class NotificationCoordinator {
   private listeners: Set<NotificationListener> = new Set();
   private pollIntervalHandle: any = null;
   private isListeningLifecycle: boolean = false;
-  private readonly CACHE_TTL_MS = 60 * 1000; // 60s in-memory freshness window
+  private readonly CACHE_TTL_MS = 120 * 1000; // 120s in-memory freshness window
 
   constructor() {
     this.initLifecycleListeners();
@@ -67,12 +67,12 @@ class NotificationCoordinator {
 
   private startBackgroundTimer() {
     this.stopBackgroundTimer();
-    // Unified 2-minute (120s) background refresh when tab is active
+    // Unified 3-minute (180s) background refresh fallback when tab is active (Realtime/WebPush updates immediately)
     this.pollIntervalHandle = setInterval(() => {
       if (document.visibilityState === 'visible') {
         this.fetchNotifications(false);
       }
-    }, 120000);
+    }, 180000);
   }
 
   private stopBackgroundTimer() {

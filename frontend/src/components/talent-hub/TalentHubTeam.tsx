@@ -59,23 +59,62 @@ const POPULAR_LANGUAGES = [
   'Bhojpuri', 'Sanskrit', 'Marwari', 'Nepali', 'Santali', 'Kashmiri'
 ];
 
+// Session-scoped cache to avoid refetches on route transitions
+interface TeamSessionCache {
+  status: TeamStatusResponse | null;
+  members: TeamMember[];
+  totalPages: number;
+  totalCount: number;
+  token: string | null;
+  page: number;
+  limit: number;
+  q: string;
+  timestamp: number;
+}
+
+let teamSessionCache: TeamSessionCache = {
+  status: null,
+  members: [],
+  totalPages: 1,
+  totalCount: 0,
+  token: null,
+  page: 1,
+  limit: 20,
+  q: '',
+  timestamp: 0,
+};
+
+export const invalidateTeamSessionCache = () => {
+  teamSessionCache = {
+    status: null,
+    members: [],
+    totalPages: 1,
+    totalCount: 0,
+    token: null,
+    page: 1,
+    limit: 20,
+    q: '',
+    timestamp: 0,
+  };
+};
+
 export const TalentHubTeam: React.FC = () => {
   const { token, session, talentProfile } = useTalentHubAuth();
   const sessionToken = token || session?.access_token || '';
   const isAuthenticated = Boolean(session);
 
   // Team status & statistics
-  const [teamStatus, setTeamStatus] = useState<TeamStatusResponse | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [teamStatus, setTeamStatus] = useState<TeamStatusResponse | null>(teamSessionCache.status);
+  const [loadingStatus, setLoadingStatus] = useState(!teamSessionCache.status);
 
   // Member listing state
-  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>(teamSessionCache.members);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(teamSessionCache.totalPages || 1);
+  const [totalCount, setTotalCount] = useState(teamSessionCache.totalCount || 0);
 
   // Modals & Drawers
   const [showAddModal, setShowAddModal] = useState(false);
@@ -127,12 +166,22 @@ export const TalentHubTeam: React.FC = () => {
   };
 
   // Fetch Team Status
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (isManual = false) => {
     if (!sessionToken) return;
+    const now = Date.now();
+    if (!isManual && teamSessionCache.token === sessionToken && teamSessionCache.status && now - teamSessionCache.timestamp < 3 * 60 * 1000) {
+      setTeamStatus(teamSessionCache.status);
+      setLoadingStatus(false);
+      return;
+    }
+
     setLoadingStatus(true);
     try {
       const res = await talentTeamApi.getStatus(sessionToken);
       setTeamStatus(res);
+      teamSessionCache.status = res;
+      teamSessionCache.token = sessionToken;
+      teamSessionCache.timestamp = Date.now();
     } catch (err: any) {
       console.error('Failed to load team status:', err);
     } finally {
@@ -141,8 +190,25 @@ export const TalentHubTeam: React.FC = () => {
   }, [sessionToken]);
 
   // Fetch Team Members
-  const fetchMembers = useCallback(async () => {
+  const fetchMembers = useCallback(async (isManual = false) => {
     if (!sessionToken) return;
+    const now = Date.now();
+    if (
+      !isManual &&
+      teamSessionCache.token === sessionToken &&
+      teamSessionCache.page === page &&
+      teamSessionCache.limit === limit &&
+      teamSessionCache.q === searchQuery &&
+      teamSessionCache.members.length > 0 &&
+      now - teamSessionCache.timestamp < 3 * 60 * 1000
+    ) {
+      setMembers(teamSessionCache.members);
+      setTotalPages(teamSessionCache.totalPages);
+      setTotalCount(teamSessionCache.totalCount);
+      setLoadingMembers(false);
+      return;
+    }
+
     setLoadingMembers(true);
     try {
       const res = await talentTeamApi.getMembers(sessionToken, {
@@ -154,6 +220,15 @@ export const TalentHubTeam: React.FC = () => {
         setMembers(res.members);
         setTotalPages(res.pagination.totalPages);
         setTotalCount(res.pagination.totalCount);
+
+        teamSessionCache.members = res.members;
+        teamSessionCache.totalPages = res.pagination.totalPages;
+        teamSessionCache.totalCount = res.pagination.totalCount;
+        teamSessionCache.token = sessionToken;
+        teamSessionCache.page = page;
+        teamSessionCache.limit = limit;
+        teamSessionCache.q = searchQuery;
+        teamSessionCache.timestamp = Date.now();
       }
     } catch (err: any) {
       console.error('Failed to load team members:', err);
@@ -164,8 +239,8 @@ export const TalentHubTeam: React.FC = () => {
 
   useEffect(() => {
     if (isAuthenticated && sessionToken) {
-      fetchStatus();
-      fetchMembers();
+      fetchStatus(false);
+      fetchMembers(false);
     }
   }, [isAuthenticated, sessionToken, fetchStatus, fetchMembers]);
 
@@ -308,8 +383,9 @@ export const TalentHubTeam: React.FC = () => {
         showToast('Team member added successfully!');
         setShowAddModal(false);
         resetForm();
-        fetchStatus();
-        fetchMembers();
+        invalidateTeamSessionCache();
+        fetchStatus(true);
+        fetchMembers(true);
       } else {
         setFormError(res.message || 'Failed to add team member.');
       }
@@ -338,7 +414,8 @@ export const TalentHubTeam: React.FC = () => {
         showToast('Team member updated successfully!');
         setShowEditModal(false);
         setActiveMember(null);
-        fetchMembers();
+        invalidateTeamSessionCache();
+        fetchMembers(true);
       } else {
         setFormError(res.message || 'Failed to update member.');
       }
@@ -360,8 +437,9 @@ export const TalentHubTeam: React.FC = () => {
         showToast(`${activeMember.full_name} removed from your team.`);
         setShowDeleteModal(false);
         setActiveMember(null);
-        fetchStatus();
-        fetchMembers();
+        invalidateTeamSessionCache();
+        fetchStatus(true);
+        fetchMembers(true);
       } else {
         showToast(res.message || 'Failed to remove member.', 'error');
       }
@@ -378,11 +456,14 @@ export const TalentHubTeam: React.FC = () => {
     try {
       const res = await talentTeamApi.generateInviteToken(sessionToken);
       if (res.success) {
-        showToast('New invitation link generated!');
-        fetchStatus();
+        showToast('New invite link generated!');
+        invalidateTeamSessionCache();
+        fetchStatus(true);
+      } else {
+        showToast(res.message || 'Failed to generate new token.', 'error');
       }
     } catch (err: any) {
-      showToast('Failed to regenerate invitation link', 'error');
+      showToast('Error generating invite link.', 'error');
     }
   };
 

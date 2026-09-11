@@ -4,6 +4,7 @@ import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { generateApplicationConfirmationHtml } from '../services/applicationEmailTemplate.js';
 import { generateApplicationAcceptanceHtml } from '../services/applicationAcceptanceEmailTemplate.js';
+import { invalidateTalentOpportunitiesCache } from './talentHubController.js';
 
 /**
  * Asynchronously sends confirmation email to applicant upon successful Opportunity Application submission
@@ -169,9 +170,13 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
 // 1. GET ALL APPLICATIONS (Filtered by opportunity_id if provided)
 export const getApplications = async (req, res) => {
   try {
-    const { opportunity_id } = req.query;
+    const { opportunity_id, include_answers } = req.query;
 
-    let query = supabase.from('opportunity_applications').select('*').order('created_at', { ascending: false });
+    const selectColumns = include_answers === 'true'
+      ? 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, answers, status, email_status, acceptance_email_status, acceptance_email_sent_at, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, terms_accepted, terms_accepted_at, terms_version, admin_notes, sync_status, created_at, updated_at'
+      : 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, status, email_status, acceptance_email_status, acceptance_email_sent_at, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, terms_accepted, terms_accepted_at, terms_version, admin_notes, sync_status, created_at, updated_at';
+
+    let query = supabase.from('opportunity_applications').select(selectColumns).order('created_at', { ascending: false });
     if (opportunity_id) {
       query = query.eq('opportunity_id', opportunity_id);
     }
@@ -185,6 +190,31 @@ export const getApplications = async (req, res) => {
     return res.json({ status: 'success', data: data || [] });
   } catch (err) {
     console.error('getApplications controller exception:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// 1.1 GET SINGLE APPLICATION BY ID (For detail modals)
+export const getApplicationById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Application ID is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('opportunity_applications')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return res.status(404).json({ error: 'Application record not found.' });
+    }
+
+    return res.json({ status: 'success', data });
+  } catch (err) {
+    console.error('getApplicationById exception:', err.message);
     return res.status(500).json({ error: err.message });
   }
 };
@@ -402,6 +432,9 @@ export const submitApplication = async (req, res) => {
     sendApplicationConfirmationEmail(savedRecord).catch((err) => {
       console.warn('[Application Confirmation Email Dispatch Note]:', err.message);
     });
+
+    // Invalidate cached opportunity applicant counts
+    invalidateTalentOpportunitiesCache();
 
     return res.status(201).json({ status: 'success', data: savedRecord });
   } catch (err) {

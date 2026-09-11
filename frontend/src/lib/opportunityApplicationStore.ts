@@ -53,11 +53,25 @@ const saveLocalApplications = (list: CandidateApplication[]): CandidateApplicati
   return list;
 };
 
-// Fetch candidate applications directly from Supabase (with fallback)
+// Fetch candidate applications via backend API first with explicit columns (and local fallback)
 export const getStoredCandidateApplications = async (opportunity_id?: string): Promise<CandidateApplication[]> => {
+  // 1. Primary: Use Express Backend API (pruned explicit fields, no heavy JSONB)
+  try {
+    const res = await opportunityApplicationApi.getAll(opportunity_id);
+    if (res.data && res.data.data && Array.isArray(res.data.data)) {
+      const live = res.data.data as CandidateApplication[];
+      saveLocalApplications(live);
+      return live;
+    }
+  } catch (err: any) {
+    console.warn('Backend opportunity applications fetch note. Trying fallback:', err.message);
+  }
+
+  // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'))
   if (supabase) {
     try {
-      let query = supabase.from('opportunity_applications').select('*').order('created_at', { ascending: false });
+      const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, status, email_status, acceptance_email_status, acceptance_email_sent_at, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, terms_accepted, terms_accepted_at, terms_version, admin_notes, sync_status, created_at, updated_at';
+      let query = supabase.from('opportunity_applications').select(explicitCols).order('created_at', { ascending: false });
       if (opportunity_id) {
         query = query.eq('opportunity_id', opportunity_id);
       }
@@ -69,17 +83,6 @@ export const getStoredCandidateApplications = async (opportunity_id?: string): P
     } catch (err: any) {
       console.warn('Direct Supabase fetch candidate applications error:', err.message);
     }
-  }
-
-  try {
-    const res = await opportunityApplicationApi.getAll(opportunity_id);
-    if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const live = res.data.data as CandidateApplication[];
-      saveLocalApplications(live);
-      return live;
-    }
-  } catch (err: any) {
-    console.warn('Backend opportunity applications fetch error. Using local fallback:', err.message);
   }
 
   const localList = getLocalApplications();

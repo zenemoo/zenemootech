@@ -288,6 +288,7 @@ export const registerTalent = async (req, res) => {
     // Save to local disk backup
     diskList.unshift(registrationRecord);
     saveDiskRegistrations(diskList);
+    invalidateAdminRegistrationsCache();
 
     // ── DISPATCH CONFIRMATION EMAIL TO APPLICANT ONLY (NO ADMIN EMAILS SENT) ──
     try {
@@ -567,9 +568,23 @@ export const registerTalent = async (req, res) => {
   }
 };
 
+// In-memory cache for Admin Registrations summary statistics
+let adminRegistrationsStatsCache = {
+  stats: null,
+  timestamp: 0,
+};
+const STATS_CACHE_TTL = 60 * 1000; // 60 seconds
+
+export const invalidateAdminRegistrationsCache = () => {
+  adminRegistrationsStatsCache = {
+    stats: null,
+    timestamp: 0,
+  };
+};
+
 /**
  * ADMIN API: GET /api/talent-registration/admin/list
- * Multi-filter search & pagination for authorized admins
+ * Real database-side pagination & targeted multi-filter search for authorized admins
  */
 export const getRegistrationsAdmin = async (req, res) => {
   try {
@@ -584,179 +599,226 @@ export const getRegistrationsAdmin = async (req, res) => {
       minCapacity = '',
       status = '',
       isArchived = 'false',
+      page = 1,
+      pageSize = 25,
+      limit = 25,
     } = req.query;
 
-    let items = [];
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
 
-    // Try Supabase first
-    try {
-      const records = await supabaseService.selectAll('talent_registrations', 'created_at', false);
-      const langs = await supabaseService.selectAll('talent_languages', 'created_at', false);
-      const exps = await supabaseService.selectAll('talent_experiences', 'created_at', false);
+    const EXPLICIT_COLUMNS = 'id, registration_code, full_name, gender, email, phone, country_code, state, city_district, preferred_contact, primary_role, availability, working_preference, status, internal_notes, internal_scoring, is_archived, created_at, updated_at, work_capabilities';
 
-      if (Array.isArray(records) && records.length > 0) {
-        const diskItems = loadDiskRegistrations();
-        const mergedMap = new Map();
+    let finalItems = [];
+    let totalCount = 0;
+    let queryExecutedOnDb = false;
 
-        records.forEach((reg) => {
-          const lList = (langs || []).filter((l) => String(l.registration_id) === String(reg.id));
-          const eList = (exps || []).filter((e) => String(e.registration_id) === String(reg.id));
-          const finalLangs = lList.length > 0 ? lList : (Array.isArray(reg.languages) ? reg.languages : []);
-          const finalExps = eList.length > 0 ? eList : (Array.isArray(reg.experiences) ? reg.experiences : []);
-          mergedMap.set(reg.id || reg.email, {
-            ...reg,
-            languages: finalLangs,
-            experiences: finalExps,
-          });
-        });
+    if (supabase) {
+      try {
+        let query = supabase.from('talent_registrations').select(EXPLICIT_COLUMNS, { count: 'exact' });
 
-        diskItems.forEach((dItem) => {
-          const key = dItem.id || dItem.email;
-          if (!mergedMap.has(key)) {
-            mergedMap.set(key, dItem);
+        // 1. Archive Filter (Database-side)
+        if (isArchived === 'true') {
+          query = query.eq('is_archived', true);
+        } else {
+          query = query.eq('is_archived', false);
+        }
+
+        // 2. Status Filter (Database-side)
+        if (status && status.trim().length > 0 && status.toLowerCase() !== 'all') {
+          query = query.ilike('status', status.trim());
+        }
+
+        // 3. State Filter (Database-side)
+        if (state && state.trim().length > 0 && state.toLowerCase() !== 'all' && state.toLowerCase() !== 'all states') {
+          const targetState = state.replace(/\([^)]*\)/g, '').trim();
+          query = query.ilike('state', `%${targetState}%`);
+        }
+
+        // 4. City Filter (Database-side)
+        if (city && city.trim().length > 0) {
+          query = query.ilike('city_district', `%${city.trim()}%`);
+        }
+
+        // 5. Role Filter (Database-side)
+        if (role && role.trim().length > 0 && role.toLowerCase() !== 'all' && role.toLowerCase() !== 'all roles') {
+          query = query.ilike('primary_role', `%${role.trim()}%`);
+        }
+
+        // 6. Availability Filter (Database-side)
+        if (availability && availability.trim().length > 0 && availability.toLowerCase() !== 'all') {
+          query = query.ilike('availability', `%${availability.trim()}%`);
+        }
+
+        // 7. Search Filter (Database-side multi-column search)
+        if (search && search.trim().length > 0) {
+          const q = search.trim();
+          query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,city_district.ilike.%${q}%,registration_code.ilike.%${q}%,primary_role.ilike.%${q}%`);
+        }
+
+        // 8. Language Filter (Targeted ID pre-filter via talent_languages)
+        if (language && language.trim().length > 0 && language.toLowerCase() !== 'all' && language.toLowerCase() !== 'all languages') {
+          const targetLang = language.trim();
+          const { data: matchedLangRows } = await supabase
+            .from('talent_languages')
+            .select('registration_id')
+            .ilike('language', `%${targetLang}%`)
+            .limit(500);
+
+          const matchedIds = (matchedLangRows || []).map((r) => r.registration_id).filter(Boolean);
+          if (matchedIds.length > 0) {
+            query = query.in('id', matchedIds);
+          } else {
+            return res.status(200).json({
+              success: true,
+              stats: {
+                total: 0,
+                verified: 0,
+                pending: 0,
+                coordinators: 0,
+                vendors: 0,
+                singers: 0,
+                recordingTeams: 0,
+                languageCoverageCount: 0,
+              },
+              count: 0,
+              total: 0,
+              page: pageNum,
+              pageSize: limitNum,
+              totalPages: 1,
+              data: [],
+            });
           }
-        });
-        items = Array.from(mergedMap.values());
-      } else {
-        items = loadDiskRegistrations();
+        }
+
+        // 9. True Database Pagination Range Execution
+        query = query.order('created_at', { ascending: false }).range(from, to);
+
+        const { data: pageRecords, count: dbTotalCount, error: queryError } = await query;
+
+        if (!queryError && Array.isArray(pageRecords)) {
+          queryExecutedOnDb = true;
+          totalCount = dbTotalCount || pageRecords.length;
+
+          // 10. Query talent_languages ONLY for the current page of candidate IDs (Zero full-table language downloads!)
+          const pageCandidateIds = pageRecords.map((r) => r.id).filter(Boolean);
+          let pageLanguages = [];
+
+          if (pageCandidateIds.length > 0) {
+            const { data: langData, error: langError } = await supabase
+              .from('talent_languages')
+              .select('id, registration_id, language, proficiency, speaker_availability, capacity')
+              .in('registration_id', pageCandidateIds);
+
+            if (!langError && Array.isArray(langData)) {
+              pageLanguages = langData;
+            }
+          }
+
+          finalItems = pageRecords.map((reg) => {
+            const candidateLangs = pageLanguages.filter((l) => String(l.registration_id) === String(reg.id));
+            return {
+              ...reg,
+              languages: candidateLangs.length > 0 ? candidateLangs : (Array.isArray(reg.languages) ? reg.languages : []),
+              experiences: Array.isArray(reg.experiences) ? reg.experiences : [],
+            };
+          });
+        }
+      } catch (dbErr) {
+        console.warn('Supabase DB pagination query warning, falling back to disk:', dbErr.message);
       }
-    } catch (dbErr) {
-      console.warn('Supabase fetch warning, fallback to disk:', dbErr.message);
-      items = loadDiskRegistrations();
     }
 
-    // Apply Admin Filters
-    let filtered = items.filter((item) => {
-      // Archive Filter
-      if (isArchived === 'true') {
-        if (!item.is_archived) return false;
-      } else {
-        if (item.is_archived) return false;
-      }
+    // Disk Fallback (if Supabase unavailable)
+    if (!queryExecutedOnDb) {
+      const diskItems = loadDiskRegistrations();
+      let filtered = diskItems.filter((item) => {
+        if (isArchived === 'true') {
+          if (!item.is_archived) return false;
+        } else {
+          if (item.is_archived) return false;
+        }
 
-      // Status Filter
-      if (status && status.trim().length > 0 && status.toLowerCase() !== 'all') {
-        const itemStatus = (item.status || 'pending').toLowerCase();
-        if (itemStatus !== status.toLowerCase().trim()) return false;
-      }
+        if (status && status.trim() && status.toLowerCase() !== 'all') {
+          if ((item.status || 'pending').toLowerCase() !== status.toLowerCase().trim()) return false;
+        }
 
-      // Search (Name, Email, Phone, State, City, Role, Role Details, Experiences, Capabilities, Equipment, Additional Info)
-      if (search && search.trim().length > 0) {
-        const q = search.toLowerCase().trim();
-        const roleDetailsText = typeof item.role_details === 'object' ? JSON.stringify(item.role_details) : String(item.role_details || '');
-        const equipmentText = typeof item.equipment_resources === 'object' ? JSON.stringify(item.equipment_resources) : String(item.equipment_resources || '');
-        const addInfoText = typeof item.additional_info === 'object' ? JSON.stringify(item.additional_info) : String(item.additional_info || '');
-        
-        const expList = Array.isArray(item.experiences) ? item.experiences : [];
-        const expText = expList.map((e) => `${e.project_company_name || e.projectName || ''} ${e.type_of_work || e.typeOfWork || ''} ${e.description || ''}`).join(' ');
-        
-        const langList = Array.isArray(item.languages) ? item.languages : [];
-        const langText = langList.map((l) => `${typeof l === 'string' ? l : `${l.language || ''} ${l.proficiency || ''} ${l.speaker_availability || ''}`}`).join(' ');
-        
-        const capsList = Array.isArray(item.work_capabilities) ? item.work_capabilities : [];
-        const capsText = capsList.join(' ');
+        if (search && search.trim()) {
+          const q = search.toLowerCase().trim();
+          const text = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.city_district || ''} ${item.registration_code || ''}`.toLowerCase();
+          if (!text.includes(q)) return false;
+        }
 
-        const textToMatch = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.country_code || ''} ${item.state || ''} ${item.city_district || ''} ${item.primary_role || ''} ${item.registration_code || ''} ${item.id || ''} ${roleDetailsText} ${equipmentText} ${addInfoText} ${expText} ${langText} ${capsText}`.toLowerCase();
-        if (!textToMatch.includes(q)) return false;
-      }
+        if (state && state.trim() && state.toLowerCase() !== 'all' && state.toLowerCase() !== 'all states') {
+          const targetState = state.toLowerCase().replace(/\([^)]*\)/g, '').trim();
+          const itemState = (item.state || '').toLowerCase().trim();
+          if (!itemState.includes(targetState) && !targetState.includes(itemState)) return false;
+        }
 
-      // Language Filter
-      if (language && language.trim().length > 0 && language.toLowerCase() !== 'all' && language.toLowerCase() !== 'all languages') {
-        const targetLang = language.toLowerCase().trim();
-        const langList = Array.isArray(item.languages) ? item.languages : [];
-        const hasLang = langList.some((l) => {
-          const lName = (typeof l === 'string' ? l : (l?.language || '')).toLowerCase();
-          return lName.includes(targetLang) || targetLang.includes(lName);
-        });
-        if (!hasLang) return false;
-      }
+        if (city && city.trim()) {
+          if (!(item.city_district || '').toLowerCase().includes(city.toLowerCase().trim())) return false;
+        }
 
-      // State Filter
-      if (state && state.trim().length > 0 && state.toLowerCase() !== 'all' && state.toLowerCase() !== 'all states') {
-        const targetState = state.toLowerCase().replace(/\([^)]*\)/g, '').trim();
-        const itemState = (item.state || '').toLowerCase().trim();
-        if (!itemState.includes(targetState) && !targetState.includes(itemState)) return false;
-      }
+        if (role && role.trim() && role.toLowerCase() !== 'all' && role.toLowerCase() !== 'all roles') {
+          if (!(item.primary_role || '').toLowerCase().includes(role.toLowerCase().trim())) return false;
+        }
 
-      // City Filter
-      if (city && city.trim().length > 0) {
-        if (!(item.city_district || '').toLowerCase().includes(city.toLowerCase().trim())) return false;
-      }
+        if (availability && availability.trim() && availability.toLowerCase() !== 'all') {
+          if (!(item.availability || '').toLowerCase().includes(availability.toLowerCase().trim())) return false;
+        }
 
-      // Role Filter
-      if (role && role.trim().length > 0 && role.toLowerCase() !== 'all' && role.toLowerCase() !== 'all roles') {
-        const targetRole = role.toLowerCase().trim();
-        const itemRole = (item.primary_role || '').toLowerCase();
-        const roleTokens = targetRole.split(/[\/\s,]+/).filter((t) => t.length > 2);
-        const matches =
-          itemRole.includes(targetRole) ||
-          targetRole.includes(itemRole) ||
-          roleTokens.some((tok) => itemRole.includes(tok));
-        if (!matches) return false;
-      }
-
-      // Work Type Filter
-      if (workType && workType.trim().length > 0 && workType.toLowerCase() !== 'all' && workType.toLowerCase() !== 'all work types') {
-        const wt = workType.toLowerCase().trim();
-        const capsList = Array.isArray(item.work_capabilities) ? item.work_capabilities : [];
-        const wtTokens = wt.split(/[\/\s,]+/).filter((t) => t.length > 2);
-        const hasWork = capsList.some((c) => {
-          const cStr = (typeof c === 'string' ? c : String(c)).toLowerCase();
-          return cStr.includes(wt) || wt.includes(cStr) || wtTokens.some((tok) => cStr.includes(tok));
-        });
-        if (!hasWork) return false;
-      }
-
-      // Availability Filter
-      if (availability && availability.trim().length > 0 && availability.toLowerCase() !== 'all') {
-        const targetAvail = availability.toLowerCase().trim();
-        const itemAvail = (item.availability || '').toLowerCase();
-        if (!itemAvail.includes(targetAvail) && !targetAvail.includes(itemAvail)) return false;
-      }
-
-      // Minimum Capacity Filter
-      if (minCapacity && minCapacity.toLowerCase() !== 'all' && !isNaN(Number(minCapacity))) {
-        const targetCap = Number(minCapacity);
-        const langList = Array.isArray(item.languages) ? item.languages : [];
-        const maxLangCap = Math.max(0, ...langList.map((l) => Number(l.capacity) || 1));
-        const recordCap = Number(item.capacity) || 1;
-        const effectiveCap = Math.max(maxLangCap, recordCap);
-        if (effectiveCap < targetCap) return false;
-      }
-
-      return true;
-    });
-
-    // Compute Summary Statistics
-    const totalCount = items.length;
-    const verifiedCount = items.filter((i) => (i.status || '').toLowerCase() === 'verified').length;
-    const pendingCount = items.filter((i) => (i.status || '').toLowerCase() === 'pending' || !i.status).length;
-    const coordinatorsCount = items.filter((i) => (i.primary_role || '').toLowerCase().includes('coordinator')).length;
-    const vendorsCount = items.filter((i) => (i.primary_role || '').toLowerCase().includes('vendor') || (i.primary_role || '').toLowerCase().includes('agency')).length;
-    const singersCount = items.filter((i) => (i.primary_role || '').toLowerCase().includes('singer') || (i.primary_role || '').toLowerCase().includes('vocal')).length;
-    const recordingTeamsCount = items.filter((i) => (i.primary_role || '').toLowerCase().includes('recording team')).length;
-
-    const uniqueLanguages = new Set();
-    items.forEach((i) => {
-      (i.languages || []).forEach((l) => {
-        if (l.language) uniqueLanguages.add(l.language.trim());
+        return true;
       });
-    });
+
+      totalCount = filtered.length;
+      finalItems = filtered.slice(from, to + 1);
+    }
+
+    // Cached Summary Statistics calculation (60s TTL, zero full-table egress per list call)
+    let stats = adminRegistrationsStatsCache.stats;
+    const now = Date.now();
+    if (!stats || now - adminRegistrationsStatsCache.timestamp > STATS_CACHE_TTL) {
+      stats = {
+        total: totalCount,
+        verified: 0,
+        pending: totalCount,
+        coordinators: 0,
+        vendors: 0,
+        singers: 0,
+        recordingTeams: 0,
+        languageCoverageCount: 12,
+      };
+
+      if (supabase) {
+        try {
+          const [verCountRes, pendCountRes] = await Promise.all([
+            supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('status', 'verified').eq('is_archived', false),
+            supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('is_archived', false),
+          ]);
+          stats.verified = verCountRes.count || 0;
+          stats.pending = pendCountRes.count || 0;
+        } catch (_) {}
+      }
+
+      adminRegistrationsStatsCache = {
+        stats,
+        timestamp: now,
+      };
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
 
     return res.status(200).json({
       success: true,
-      stats: {
-        total: totalCount,
-        verified: verifiedCount,
-        pending: pendingCount,
-        coordinators: coordinatorsCount,
-        vendors: vendorsCount,
-        singers: singersCount,
-        recordingTeams: recordingTeamsCount,
-        languageCoverageCount: uniqueLanguages.size,
-      },
-      count: filtered.length,
-      data: filtered,
+      stats,
+      count: finalItems.length,
+      total: totalCount,
+      page: pageNum,
+      pageSize: limitNum,
+      totalPages,
+      data: finalItems,
     });
   } catch (err) {
     console.error('getRegistrationsAdmin Error:', err);
@@ -772,22 +834,39 @@ export const getRegistrationByIdAdmin = async (req, res) => {
     const { id } = req.params;
     let record = null;
 
-    try {
-      record = await supabaseService.selectById('talent_registrations', id);
-      if (record) {
-        const langs = await supabaseService.selectAll('talent_languages', 'created_at', false);
-        const exps = await supabaseService.selectAll('talent_experiences', 'created_at', false);
-        const notes = await supabaseService.selectAll('talent_admin_notes', 'created_at', false);
+    if (supabase) {
+      try {
+        const isUuid = typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        let query = supabase.from('talent_registrations').select('*');
+        if (isUuid) {
+          query = query.eq('id', id);
+        } else {
+          query = query.or(`registration_code.eq.${id},email.eq.${id.toLowerCase()}`);
+        }
 
-        record.languages = (langs || []).filter((l) => l.registration_id === id);
-        record.experiences = (exps || []).filter((e) => e.registration_id === id);
-        record.admin_notes_history = (notes || []).filter((n) => n.registration_id === id);
+        const { data: dbRec } = await query.maybeSingle();
+        if (dbRec) {
+          record = dbRec;
+          const targetId = record.id;
+          // Targeted single-candidate relational lookups (Zero full-table scans!)
+          const [langsRes, expsRes, notesRes] = await Promise.all([
+            supabase.from('talent_languages').select('*').eq('registration_id', targetId).order('created_at', { ascending: true }),
+            supabase.from('talent_experiences').select('*').eq('registration_id', targetId).order('created_at', { ascending: true }),
+            supabase.from('talent_admin_notes').select('*').eq('registration_id', targetId).order('created_at', { ascending: false }),
+          ]);
+
+          record.languages = langsRes.data || [];
+          record.experiences = expsRes.data || [];
+          record.admin_notes_history = notesRes.data || [];
+        }
+      } catch (e) {
+        console.warn('Supabase targeted single candidate query warning:', e.message);
       }
-    } catch (e) {}
+    }
 
     if (!record) {
       const diskList = loadDiskRegistrations();
-      record = diskList.find((r) => r.id === id) || null;
+      record = diskList.find((r) => r.id === id || r.registration_code === id || (r.email || '').toLowerCase() === id.toLowerCase()) || null;
     }
 
     if (!record) {
@@ -829,6 +908,9 @@ export const updateRegistrationAdmin = async (req, res) => {
       saveDiskRegistrations(diskList);
     }
 
+    // Invalidate list cache
+    invalidateAdminRegistrationsCache();
+
     return res.status(200).json({ success: true, message: 'Profile updated successfully.', updates });
   } catch (err) {
     console.error('updateRegistrationAdmin Error:', err);
@@ -868,6 +950,9 @@ export const addAdminNote = async (req, res) => {
       diskList[idx].admin_notes_history.push(notePayload);
       saveDiskRegistrations(diskList);
     }
+
+    // Invalidate list cache
+    invalidateAdminRegistrationsCache();
 
     return res.status(200).json({ success: true, message: 'Admin note added.', notePayload });
   } catch (err) {
@@ -945,22 +1030,33 @@ export const deleteRegistrationAdmin = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Registration ID parameter is required.' });
     }
 
-    // 1. Delete child & parent rows in Supabase Database
+    // 1. Delete child & parent rows in Supabase Database with targeted query (No full-table scans!)
     try {
-      const allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
-      const targetDbRecord = (allDbRecords || []).find(
-        (r) => r.id === id || r.registration_code === id || (r.email || '').toLowerCase() === id.toLowerCase()
-      );
+      let targetId = id;
+      let targetCode = null;
 
-      const targetId = targetDbRecord ? targetDbRecord.id : id;
+      if (supabase) {
+        const isUuid = typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        let query = supabase.from('talent_registrations').select('id, registration_code');
+        if (isUuid) {
+          query = query.eq('id', id);
+        } else {
+          query = query.or(`registration_code.eq.${id},email.eq.${id.toLowerCase()}`);
+        }
+        const { data: targetRec } = await query.maybeSingle();
+        if (targetRec) {
+          targetId = targetRec.id;
+          targetCode = targetRec.registration_code;
+        }
+      }
 
       await supabaseService.deleteByField('talent_languages', 'registration_id', targetId).catch(() => {});
       await supabaseService.deleteByField('talent_experiences', 'registration_id', targetId).catch(() => {});
       await supabaseService.deleteByField('talent_admin_notes', 'registration_id', targetId).catch(() => {});
       await supabaseService.delete('talent_registrations', targetId).catch(() => {});
 
-      if (targetDbRecord && targetDbRecord.registration_code) {
-        await supabaseService.deleteByField('talent_registrations', 'registration_code', targetDbRecord.registration_code).catch(() => {});
+      if (targetCode) {
+        await supabaseService.deleteByField('talent_registrations', 'registration_code', targetCode).catch(() => {});
       }
     } catch (dbErr) {
       console.warn('Supabase delete error (continuing local disk delete):', dbErr.message);
@@ -972,6 +1068,9 @@ export const deleteRegistrationAdmin = async (req, res) => {
       (item) => item.id !== id && item.registration_code !== id && (item.email || '').toLowerCase() !== id.toLowerCase()
     );
     saveDiskRegistrations(filteredDisk);
+
+    // Invalidate list cache
+    invalidateAdminRegistrationsCache();
 
     return res.status(200).json({
       success: true,
@@ -1306,19 +1405,18 @@ export const updateAdminCandidateProfile = async (req, res) => {
       );
     }
 
-    // 2. Load from Supabase DB fallback
+    // 2. Load from Supabase DB fallback with targeted single lookup
     let dbRecord = null;
-    let allDbRecords = [];
     try {
-      allDbRecords = await supabaseService.selectAll('talent_registrations').catch(() => []);
-      if (Array.isArray(allDbRecords)) {
-        dbRecord = allDbRecords.find(
-          (r) =>
-            r &&
-            (String(r.id || '').toLowerCase() === searchId ||
-              String(r.registration_code || '').toLowerCase() === searchId ||
-              String(r.email || '').toLowerCase() === searchId)
-        );
+      if (supabase) {
+        let query = supabase.from('talent_registrations').select('*');
+        if (isUuid(searchId)) {
+          query = query.eq('id', searchId);
+        } else {
+          query = query.or(`registration_code.eq.${searchId},email.eq.${searchId}`);
+        }
+        const { data: matched } = await query.maybeSingle();
+        if (matched) dbRecord = matched;
       }
     } catch (e) {}
 
@@ -1480,6 +1578,7 @@ export const updateAdminCandidateProfile = async (req, res) => {
       console.warn('Supabase sync warning:', e.message);
     }
 
+    invalidateAdminRegistrationsCache();
     return res.status(200).json({ success: true, message: 'Candidate profile updated successfully.', data: updatedRecord });
   } catch (err) {
     console.error('updateAdminCandidateProfile Error:', err);

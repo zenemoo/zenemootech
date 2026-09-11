@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { createSupportTicket, getSupportTickets, updateTicketStatus } from '../controllers/supportController.js';
+import { createSupportTicket, getSupportTickets, getSupportTicketById, updateTicketStatus } from '../controllers/supportController.js';
 import {
   createPaymentOrder,
   verifyPaymentOrder,
@@ -109,6 +109,8 @@ router.post('/ticket', createSupportTicket);
 
 // Admin-protected routes to view and update tickets
 router.get('/tickets', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), getSupportTickets);
+router.get('/tickets/:id', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), getSupportTicketById);
+router.get('/ticket/:id', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), getSupportTicketById);
 router.put('/ticket/:id/status', verifyToken, requireRole(['admin', 'super_admin', 'administrator']), updateTicketStatus);
 
 export default router;

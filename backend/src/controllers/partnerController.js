@@ -1,6 +1,17 @@
 import { supabaseService } from '../services/supabaseService.js';
 import { sendPartnerNotification } from '../services/telegramNotificationService.js';
 
+// In-Memory Public Cache (10-Minute TTL)
+let partnersCache = {
+  data: null,
+  timestamp: 0,
+};
+const PARTNERS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+export const invalidatePartnersCache = () => {
+  partnersCache = { data: null, timestamp: 0 };
+};
+
 // Helper: Normalize partner positions using 2-phase offset update to prevent PostgreSQL UNIQUE key collisions
 const normalizeAndSavePositions = async (customList = null) => {
   let list = customList;
@@ -44,11 +55,27 @@ const normalizeAndSavePositions = async (customList = null) => {
 // GET /api/partners - Get all partner records ordered by position ASC
 export const getPartners = async (req, res, next) => {
   try {
+    const now = Date.now();
+    if (partnersCache.data && now - partnersCache.timestamp < PARTNERS_CACHE_TTL) {
+      return res.json({
+        success: true,
+        count: partnersCache.data.length,
+        data: partnersCache.data,
+        cached: true,
+      });
+    }
+
     const data = await supabaseService.selectAll('partners', 'position', true);
+    const resultList = data || [];
+    partnersCache = {
+      data: resultList,
+      timestamp: Date.now(),
+    };
+
     res.json({
       success: true,
-      count: data.length,
-      data,
+      count: resultList.length,
+      data: resultList,
     });
   } catch (err) {
     next(err);
@@ -83,6 +110,7 @@ export const createPartner = async (req, res, next) => {
 
     const created = await supabaseService.insert('partners', payload);
     const updatedList = await normalizeAndSavePositions();
+    invalidatePartnersCache();
 
     // Asynchronously dispatch Telegram notification to all active administrators (non-blocking)
     sendPartnerNotification({
@@ -127,6 +155,7 @@ export const reorderPartner = async (req, res, next) => {
     currentList.splice(clampedPos - 1, 0, targetItem);
 
     const freshList = await normalizeAndSavePositions(currentList);
+    invalidatePartnersCache();
 
     res.json({
       success: true,
@@ -166,6 +195,7 @@ export const updatePartner = async (req, res, next) => {
 
     const updated = await supabaseService.update('partners', id, cleanPayload);
     const updatedList = await normalizeAndSavePositions();
+    invalidatePartnersCache();
 
     res.json({
       success: true,
@@ -184,6 +214,7 @@ export const deletePartner = async (req, res, next) => {
     const { id } = req.params;
     await supabaseService.delete('partners', id);
     const updatedList = await normalizeAndSavePositions();
+    invalidatePartnersCache();
 
     res.json({
       success: true,

@@ -124,43 +124,96 @@ export const getTalentProfile = async (req, res) => {
   }
 };
 
+// In-memory cache for Talent Hub Opportunities with applicant counts (60s TTL)
+let talentOpportunitiesCache = {
+  data: null,
+  timestamp: 0,
+};
+const TALENT_OPPS_CACHE_TTL = 60 * 1000; // 60 seconds
+
+export const invalidateTalentOpportunitiesCache = () => {
+  talentOpportunitiesCache = { data: null, timestamp: 0 };
+};
+
 /**
  * GET /api/talent-hub/opportunities
  * Retrieves all opportunities with secure applicant counts for talents.
  */
 export const getTalentOpportunities = async (req, res) => {
   try {
+    const now = Date.now();
+    if (talentOpportunitiesCache.data && now - talentOpportunitiesCache.timestamp < TALENT_OPPS_CACHE_TTL) {
+      return res.json({
+        success: true,
+        data: talentOpportunitiesCache.data,
+        cached: true,
+      });
+    }
+
     if (!supabase) {
       return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    const { data: opps, error } = await supabase
-      .from('opportunities')
-      .select('*')
-      .order('position', { ascending: true });
+    // Attempt 1: Try PostgREST server-side relationship count (Zero application rows transferred)
+    let oppsWithCounts = null;
+    try {
+      const { data: relData, error: relError } = await supabase
+        .from('opportunities')
+        .select('*, opportunity_applications(count)')
+        .order('position', { ascending: true });
 
-    if (error) {
-      console.error('[TalentHub getOpportunities Error]:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to load opportunities' });
+      if (!relError && Array.isArray(relData) && relData.length > 0 && relData[0].opportunity_applications !== undefined) {
+        oppsWithCounts = relData.map((opp) => {
+          const appCountArr = opp.opportunity_applications;
+          const countVal = Array.isArray(appCountArr) && appCountArr.length > 0 ? (appCountArr[0]?.count || 0) : 0;
+          const cleanOpp = { ...opp };
+          delete cleanOpp.opportunity_applications;
+          return {
+            ...cleanOpp,
+            applicant_count: countVal,
+          };
+        });
+      }
+    } catch (_) {}
+
+    // Attempt 2: Fallback to single parallel query for opportunities + applicant IDs (Zero N+1!)
+    if (!oppsWithCounts) {
+      const [oppsRes, appsCountRes] = await Promise.all([
+        supabase
+          .from('opportunities')
+          .select('*')
+          .order('position', { ascending: true }),
+        supabase
+          .from('opportunity_applications')
+          .select('opportunity_id'),
+      ]);
+
+      if (oppsRes.error) {
+        console.error('[TalentHub getOpportunities Error]:', oppsRes.error.message);
+        return res.status(500).json({ success: false, message: 'Failed to load opportunities' });
+      }
+
+      // Aggregate counts in memory
+      const countMap = {};
+      if (appsCountRes.data && Array.isArray(appsCountRes.data)) {
+        appsCountRes.data.forEach((app) => {
+          if (app.opportunity_id) {
+            countMap[app.opportunity_id] = (countMap[app.opportunity_id] || 0) + 1;
+          }
+        });
+      }
+
+      oppsWithCounts = (oppsRes.data || []).map((opp) => ({
+        ...opp,
+        applicant_count: countMap[opp.id] || 0,
+      }));
     }
 
-    // Calculate applicant count per opportunity
-    const oppsWithCounts = await Promise.all(
-      (opps || []).map(async (opp) => {
-        try {
-          const { count, error: countErr } = await supabase
-            .from('opportunity_applications')
-            .select('id', { count: 'exact', head: true })
-            .eq('opportunity_id', opp.id);
-          return {
-            ...opp,
-            applicant_count: countErr ? 0 : (count || 0),
-          };
-        } catch (_) {
-          return { ...opp, applicant_count: 0 };
-        }
-      })
-    );
+    // Cache the resolved dataset
+    talentOpportunitiesCache = {
+      data: oppsWithCounts,
+      timestamp: Date.now(),
+    };
 
     return res.json({
       success: true,

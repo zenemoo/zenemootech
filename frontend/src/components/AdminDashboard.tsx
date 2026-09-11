@@ -1085,14 +1085,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       })
       .subscribe();
 
-    // Start 90-second visibility-aware timer
+    // Start 180-second visibility-aware timer (Realtime handles instant changes)
     const startPolling = () => {
       stopPolling();
       refreshTimer = setInterval(() => {
         if (document.visibilityState === 'visible') {
           executeControlledRefresh();
         }
-      }, 90000); // 90s safe background fallback
+      }, 180000); // 180s safe background fallback
     };
 
     const stopPolling = () => {

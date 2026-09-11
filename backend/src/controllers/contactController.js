@@ -1,3 +1,4 @@
+import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendContactNotification } from '../services/telegramNotificationService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
@@ -181,10 +182,116 @@ export const submitContact = async (req, res, next) => {
   }
 };
 
+// GET /api/contacts - Database-side pagination & filtering
 export const getContacts = async (req, res, next) => {
   try {
+    const { page = 1, pageSize = 25, limit = 25, status, search } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
+
+    const LIST_COLUMNS = 'id, inquiry_code, name, email, phone, company, service, language, status, notes, created_at, updated_at';
+
+    if (supabase) {
+      try {
+        let query = supabase.from('contacts').select(LIST_COLUMNS, { count: 'exact' });
+
+        if (status && status.trim() && status.toLowerCase() !== 'all') {
+          query = query.ilike('status', status.trim());
+        }
+
+        if (search && search.trim()) {
+          const q = search.trim();
+          query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,company.ilike.%${q}%,inquiry_code.ilike.%${q}%`);
+        }
+
+        query = query.order('created_at', { ascending: false }).range(from, to);
+
+        const { data: dbData, count: totalCount, error } = await query;
+
+        if (!error && Array.isArray(dbData)) {
+          const total = totalCount || dbData.length;
+          return res.json({
+            success: true,
+            count: dbData.length,
+            total,
+            page: pageNum,
+            pageSize: limitNum,
+            totalPages: Math.max(1, Math.ceil(total / limitNum)),
+            data: dbData,
+          });
+        }
+      } catch (dbErr) {
+        console.warn('Supabase contacts DB pagination note:', dbErr.message);
+      }
+    }
+
     const data = await supabaseService.selectAll('contacts', 'created_at', false);
-    res.json({ success: true, data: data || [] });
+    let filtered = Array.isArray(data) ? data : [];
+    if (status && status !== 'all') {
+      filtered = filtered.filter((c) => (c.status || '').toLowerCase() === status.toLowerCase());
+    }
+    if (search && search.trim()) {
+      const q = search.toLowerCase().trim();
+      filtered = filtered.filter(
+        (c) =>
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.email || '').toLowerCase().includes(q) ||
+          (c.company || '').toLowerCase().includes(q) ||
+          (c.inquiry_code || '').toLowerCase().includes(q)
+      );
+    }
+    const total = filtered.length;
+    const paginated = filtered.slice(from, to + 1);
+
+    res.json({
+      success: true,
+      count: paginated.length,
+      total,
+      page: pageNum,
+      pageSize: limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      data: paginated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/contacts/:id - Targeted single inquiry detail fetch
+export const getContactById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Contact ID is required' });
+    }
+
+    if (supabase) {
+      try {
+        let query = supabase.from('contacts').select('*');
+        if (typeof id === 'string' && id.startsWith('INQ-')) {
+          query = query.eq('inquiry_code', id);
+        } else {
+          query = query.eq('id', id);
+        }
+        const { data: dbContact, error } = await query.maybeSingle();
+        if (!error && dbContact) {
+          return res.json({ success: true, data: dbContact });
+        }
+      } catch (dbErr) {
+        console.warn('Supabase targeted single contact fetch warning:', dbErr.message);
+      }
+    }
+
+    const data = await supabaseService.selectAll('contacts', 'created_at', false);
+    const found = (data || []).find((c) => c.id === id || c.inquiry_code === id);
+    if (found) {
+      return res.json({ success: true, data: found });
+    }
+
+    return res.status(404).json({ success: false, message: 'Contact inquiry record not found.' });
   } catch (err) {
     next(err);
   }

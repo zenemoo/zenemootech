@@ -80,21 +80,50 @@ interface ReferredApplicationItem {
   referral_source?: string;
 }
 
+// Session-scoped cache to avoid refetches on route transitions
+interface ReferralCache {
+  stats: ReferralSummaryStats | null;
+  opportunityStats: OpportunityReferralStat[];
+  referredApplications: ReferredApplicationItem[];
+  token: string | null;
+  timestamp: number;
+}
+
+let referralSessionCache: ReferralCache = {
+  stats: null,
+  opportunityStats: [],
+  referredApplications: [],
+  token: null,
+  timestamp: 0,
+};
+
+export const invalidateReferralSessionCache = () => {
+  referralSessionCache = {
+    stats: null,
+    opportunityStats: [],
+    referredApplications: [],
+    token: null,
+    timestamp: 0,
+  };
+};
+
 export const TalentHubReferrals: React.FC = () => {
   const { talentProfile, token, opportunities } = useTalentHubAuth();
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState<ReferralSummaryStats>({
-    total: 0,
-    applications: 0,
-    selected: 0,
-    accepted: 0,
-    shortlisted: 0,
-    pending: 0,
-    rejected: 0,
-  });
-  const [opportunityStats, setOpportunityStats] = useState<OpportunityReferralStat[]>([]);
-  const [referredApplications, setReferredApplications] = useState<ReferredApplicationItem[]>([]);
+  const [isLoading, setIsLoading] = useState(!referralSessionCache.stats);
+  const [stats, setStats] = useState<ReferralSummaryStats>(
+    referralSessionCache.stats || {
+      total: 0,
+      applications: 0,
+      selected: 0,
+      accepted: 0,
+      shortlisted: 0,
+      pending: 0,
+      rejected: 0,
+    }
+  );
+  const [opportunityStats, setOpportunityStats] = useState<OpportunityReferralStat[]>(referralSessionCache.opportunityStats || []);
+  const [referredApplications, setReferredApplications] = useState<ReferredApplicationItem[]>(referralSessionCache.referredApplications || []);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedOppId, setCopiedOppId] = useState<string | null>(null);
   const [copiedAppId, setCopiedAppId] = useState<string | null>(null);
@@ -119,15 +148,36 @@ export const TalentHubReferrals: React.FC = () => {
 
   const referralCode = talentProfile?.registration_code || '';
 
-  const fetchReferralData = useCallback(async () => {
+  const fetchReferralData = useCallback(async (isManual = false) => {
     if (!token) return;
+    const now = Date.now();
+    if (!isManual && referralSessionCache.token === token && referralSessionCache.stats && now - referralSessionCache.timestamp < 3 * 60 * 1000) {
+      setStats(referralSessionCache.stats);
+      setOpportunityStats(referralSessionCache.opportunityStats);
+      setReferredApplications(referralSessionCache.referredApplications);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       const res = await talentHubApi.getReferrals(token);
       if (res && res.success) {
-        setStats(res.stats || { total: 0, applications: 0, selected: 0, accepted: 0, shortlisted: 0, pending: 0, rejected: 0 });
-        setOpportunityStats(res.opportunity_referrals || []);
-        setReferredApplications(res.referred_applications || []);
+        const fetchedStats = res.stats || { total: 0, applications: 0, selected: 0, accepted: 0, shortlisted: 0, pending: 0, rejected: 0 };
+        const fetchedOppStats = res.opportunity_referrals || [];
+        const fetchedReferredApps = res.referred_applications || [];
+
+        setStats(fetchedStats);
+        setOpportunityStats(fetchedOppStats);
+        setReferredApplications(fetchedReferredApps);
+
+        referralSessionCache = {
+          stats: fetchedStats,
+          opportunityStats: fetchedOppStats,
+          referredApplications: fetchedReferredApps,
+          token,
+          timestamp: Date.now(),
+        };
       }
     } catch (err) {
       console.warn('[TalentHub Referrals Fetch Error]:', err);
@@ -137,7 +187,7 @@ export const TalentHubReferrals: React.FC = () => {
   }, [token]);
 
   useEffect(() => {
-    fetchReferralData();
+    fetchReferralData(false);
   }, [fetchReferralData]);
 
   // Construct absolute referral URL for an opportunity
@@ -513,7 +563,7 @@ export const TalentHubReferrals: React.FC = () => {
             <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
               <span>{copiedCode ? '✓ Code copied to clipboard!' : 'Permanent talent identity'}</span>
               <button
-                onClick={fetchReferralData}
+                onClick={() => fetchReferralData(true)}
                 disabled={isLoading}
                 className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 cursor-pointer"
               >

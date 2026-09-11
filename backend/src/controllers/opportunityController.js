@@ -2,9 +2,25 @@ import { supabase } from '../config/supabase.js';
 import { ensureOpportunitySheetExists } from '../services/googleSheetsService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 
+// In-Memory Public Cache (5-Minute TTL)
+let opportunitiesCache = {
+  data: null,
+  timestamp: 0,
+};
+const OPPORTUNITIES_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export const invalidateOpportunitiesCache = () => {
+  opportunitiesCache = { data: null, timestamp: 0 };
+};
+
 // 1. GET ALL OPPORTUNITY PROGRAMS (Sorted by position ASC)
 export const getOpportunities = async (req, res) => {
   try {
+    const now = Date.now();
+    if (opportunitiesCache.data && now - opportunitiesCache.timestamp < OPPORTUNITIES_CACHE_TTL) {
+      return res.json({ status: 'success', data: opportunitiesCache.data, cached: true });
+    }
+
     const { data, error } = await supabase
       .from('opportunities')
       .select('*')
@@ -15,7 +31,13 @@ export const getOpportunities = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    return res.json({ status: 'success', data: data || [] });
+    const resultList = data || [];
+    opportunitiesCache = {
+      data: resultList,
+      timestamp: Date.now(),
+    };
+
+    return res.json({ status: 'success', data: resultList });
   } catch (err) {
     console.error('getOpportunities controller exception:', err.message);
     return res.status(500).json({ error: err.message });
@@ -116,6 +138,7 @@ export const createOpportunity = async (req, res) => {
       console.warn('[Automatic Opportunity Notification Error]:', notifErr.message);
     }
 
+    invalidateOpportunitiesCache();
     // Return updated full list with notification dispatch status
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
     return res.status(201).json({
@@ -157,6 +180,7 @@ export const updateOpportunity = async (req, res) => {
       });
     }
 
+    invalidateOpportunitiesCache();
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
     return res.json({ status: 'success', data: updatedRecord, opportunities: fullList });
   } catch (err) {
@@ -199,6 +223,7 @@ export const reorderOpportunity = async (req, res) => {
       await supabase.from('opportunities').update({ position: i + 1 }).eq('id', allOps[i].id);
     }
 
+    invalidateOpportunitiesCache();
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
     return res.json({ status: 'success', opportunities: fullList });
   } catch (err) {
@@ -226,6 +251,7 @@ export const deleteOpportunity = async (req, res) => {
       }
     }
 
+    invalidateOpportunitiesCache();
     const { data: fullList } = await supabase.from('opportunities').select('*').order('position', { ascending: true });
     return res.json({ status: 'success', opportunities: fullList });
   } catch (err) {

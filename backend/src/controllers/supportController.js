@@ -136,44 +136,123 @@ export const createSupportTicket = async (req, res, next) => {
   }
 };
 
-// GET /api/support/tickets - Fetch all support tickets (Admin Center)
+// GET /api/support/tickets - Fetch support tickets with DB pagination & filters (Admin Center)
 export const getSupportTickets = async (req, res, next) => {
   try {
-    let dbTickets = [];
-    try {
-      dbTickets = await supabaseService.selectAll('support_tickets', 'created_at', false);
-    } catch (e) {
-      console.warn('Supabase selectAll support_tickets ordered fetch warning:', e.message);
+    const { page = 1, pageSize = 25, limit = 25, status, category, search } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
+
+    const LIST_COLUMNS = 'id, ticket_id, name, email, subject, category, priority, status, created_at, updated_at';
+
+    if (supabase) {
       try {
-        if (supabase) {
-          const { data } = await supabase.from('support_tickets').select('*');
-          dbTickets = data || [];
+        let query = supabase.from('support_tickets').select(LIST_COLUMNS, { count: 'exact' });
+
+        if (status && status.trim() && status.toLowerCase() !== 'all') {
+          query = query.ilike('status', status.trim());
         }
-      } catch (e2) {
-        console.warn('Supabase support_tickets fallback fetch warning:', e2.message);
-        dbTickets = [];
+
+        if (category && category.trim() && category.toLowerCase() !== 'all') {
+          query = query.ilike('category', category.trim());
+        }
+
+        if (search && search.trim()) {
+          const q = search.trim();
+          query = query.or(`ticket_id.ilike.%${q}%,name.ilike.%${q}%,email.ilike.%${q}%,subject.ilike.%${q}%`);
+        }
+
+        query = query.order('created_at', { ascending: false }).range(from, to);
+
+        const { data: dbTickets, count: totalCount, error } = await query;
+
+        if (!error && Array.isArray(dbTickets)) {
+          const total = totalCount || dbTickets.length;
+          return res.json({
+            success: true,
+            count: dbTickets.length,
+            total,
+            page: pageNum,
+            pageSize: limitNum,
+            totalPages: Math.max(1, Math.ceil(total / limitNum)),
+            data: dbTickets,
+          });
+        }
+      } catch (dbErr) {
+        console.warn('Supabase support_tickets DB pagination query note:', dbErr.message);
       }
     }
 
-    if (!Array.isArray(dbTickets)) dbTickets = [];
-
-    // Deduplicate DB & memory tickets
-    const combined = [...dbTickets, ...memorySupportTickets];
-    const seen = new Set();
-    const uniqueTickets = [];
-    for (const t of combined) {
-      const key = t.ticket_id || t.id;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        uniqueTickets.push(t);
-      }
+    // In-memory fallback
+    let filtered = [...memorySupportTickets];
+    if (status && status !== 'all') {
+      filtered = filtered.filter((t) => (t.status || '').toLowerCase() === status.toLowerCase());
     }
+    if (category && category !== 'all') {
+      filtered = filtered.filter((t) => (t.category || '').toLowerCase() === category.toLowerCase());
+    }
+    if (search && search.trim()) {
+      const q = search.toLowerCase().trim();
+      filtered = filtered.filter(
+        (t) =>
+          (t.name || '').toLowerCase().includes(q) ||
+          (t.email || '').toLowerCase().includes(q) ||
+          (t.subject || '').toLowerCase().includes(q) ||
+          (t.ticket_id || '').toLowerCase().includes(q)
+      );
+    }
+
+    const total = filtered.length;
+    const paginated = filtered.slice(from, to + 1);
 
     return res.json({
       success: true,
-      count: uniqueTickets.length,
-      data: uniqueTickets,
+      count: paginated.length,
+      total,
+      page: pageNum,
+      pageSize: limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      data: paginated,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/support/ticket/:id or /api/support/tickets/:id - Fetch single complete support ticket detail
+export const getSupportTicketById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+    }
+
+    if (supabase) {
+      try {
+        let query = supabase.from('support_tickets').select('*');
+        if (typeof id === 'string' && id.startsWith('TKT-')) {
+          query = query.eq('ticket_id', id);
+        } else {
+          query = query.eq('id', id);
+        }
+        const { data: dbTicket, error } = await query.maybeSingle();
+        if (!error && dbTicket) {
+          return res.json({ success: true, ticket: dbTicket, data: dbTicket });
+        }
+      } catch (dbErr) {
+        console.warn('Supabase targeted single ticket fetch warning:', dbErr.message);
+      }
+    }
+
+    const memItem = memorySupportTickets.find((t) => t.ticket_id === id || String(t.id) === String(id));
+    if (memItem) {
+      return res.json({ success: true, ticket: memItem, data: memItem });
+    }
+
+    return res.status(404).json({ success: false, message: 'Support ticket not found.' });
   } catch (err) {
     next(err);
   }

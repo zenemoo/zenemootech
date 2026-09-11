@@ -229,7 +229,8 @@ export const getIncomingEmails = async (req, res, next) => {
     const { search, mailbox, category, view, page = 1, limit = 20 } = req.query;
 
     if (supabase) {
-      let query = supabase.from('incoming_email_messages').select('*', { count: 'exact' });
+      const listColumns = 'id, message_id, mailbox_email, sender_name, sender_email, recipient_email, reply_to, subject, snippet, category, is_read, is_starred, is_archived, is_trashed, auth_results, received_at, created_at, updated_at';
+      let query = supabase.from('incoming_email_messages').select(listColumns, { count: 'exact' });
 
       // View filters
       if (view === 'unread') {
@@ -866,12 +867,18 @@ export const getSentEmails = async (req, res, next) => {
       status = '',
       view = 'all',
       page = 1,
-      limit = 20,
-    } = req.query;
-
     let dbLogs = [];
     try {
-      dbLogs = await supabaseService.selectAll('email_history', 'created_at', false);
+      if (supabase) {
+        const { data: logsData } = await supabase
+          .from('email_history')
+          .select('id, message_id, sender, recipients, subject, html, attachments_meta, status, created_at')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        dbLogs = logsData || [];
+      } else {
+        dbLogs = await supabaseService.selectAll('email_history', 'created_at', false);
+      }
     } catch (e) {
       dbLogs = [];
     }
