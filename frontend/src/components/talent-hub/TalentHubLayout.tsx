@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
+  ArrowUp,
   RefreshCw,
   CheckCircle2,
   Heart,
@@ -63,13 +64,23 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
 
-  // Monitor window scroll for Back-to-Top button visibility
+  // Monitor window scroll for Back-to-Top button visibility & progress calculation
   useEffect(() => {
     const handleScroll = () => {
-      setShowBackToTop(window.scrollY > 300);
+      const scrollTotal = document.documentElement.scrollHeight - window.innerHeight;
+      const currentScroll = window.scrollY;
+      if (scrollTotal > 0) {
+        setScrollProgress(Math.min(100, Math.max(0, (currentScroll / scrollTotal) * 100)));
+      } else {
+        setScrollProgress(0);
+      }
+      setShowBackToTop(currentScroll > 120);
     };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -861,30 +872,77 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── Fixed Floating Controls Stack (Back to Top ABOVE, AI Contributor Assistant BELOW) ── */}
-      <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-30 flex flex-col items-end gap-3 sm:gap-3.5 pointer-events-none print:hidden">
-        {/* 1. Back to Top Button (Small circular floating button positioned strictly ABOVE AI Assistant) */}
+      {/* ── Fixed Floating Controls Stack (Progress Ring Back to Top ABOVE, AI Contributor Assistant BELOW) ── */}
+      <div className="fixed bottom-20 md:bottom-16 lg:bottom-16 right-4 sm:right-6 z-30 flex flex-col items-end gap-3 pointer-events-none print:hidden">
+        {/* 1. Scroll Progress Ring Back to Top Button (Positioned strictly ABOVE AI Assistant) */}
         <AnimatePresence>
           {showBackToTop && (
-            <motion.button
+            <motion.div
               initial={{ opacity: 0, scale: 0.8, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.8, y: 10 }}
-              transition={{ duration: 0.18 }}
-              onClick={scrollToTop}
-              className="pointer-events-auto p-2.5 rounded-full bg-[#080d19]/90 hover:bg-[#0c1324] text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 shadow-[0_4px_20px_rgba(0,0,0,0.6),0_0_15px_rgba(6,182,212,0.25)] hover:shadow-[0_4px_25px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-95 group"
-              aria-label="Back to Top"
-              title="Scroll to top"
+              transition={{ duration: 0.2 }}
+              className="pointer-events-auto"
             >
-              <ChevronUp className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" />
-            </motion.button>
+              <button
+                onClick={scrollToTop}
+                aria-label={`Scroll back to top (${Math.round(scrollProgress)}% read)`}
+                title={`Back to top (${Math.round(scrollProgress)}%)`}
+                className="group relative flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#080912]/95 border border-white/15 backdrop-blur-xl shadow-xl shadow-cyan-950/60 text-cyan-400 hover:text-white transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+              >
+                {/* SVG Circular Progress Ring */}
+                <svg
+                  className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none p-0.5"
+                  viewBox="0 0 48 48"
+                >
+                  <defs>
+                    <linearGradient id="talent-cyan-indigo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#22d3ee" />
+                      <stop offset="50%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#818cf8" />
+                    </linearGradient>
+                    <filter id="talent-cyan-glow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="1.5" floodColor="#06b6d4" floodOpacity="0.8" />
+                    </filter>
+                  </defs>
+
+                  {/* Background Track Circle */}
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r={18}
+                    className="stroke-white/10"
+                    strokeWidth="2.5"
+                    fill="transparent"
+                  />
+
+                  {/* Progress Indicator Circle */}
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r={18}
+                    stroke="url(#talent-cyan-indigo-gradient)"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    fill="transparent"
+                    strokeDasharray={113.1}
+                    strokeDashoffset={113.1 - (scrollProgress / 100) * 113.1}
+                    filter="url(#talent-cyan-glow)"
+                    className="transition-[stroke-dashoffset] duration-150 ease-out"
+                  />
+                </svg>
+
+                {/* Center Upward Arrow Icon */}
+                <ArrowUp className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 group-hover:text-cyan-200 group-hover:-translate-y-0.5 transition-all duration-300 z-10 shrink-0" />
+              </button>
+            </motion.div>
           )}
         </AnimatePresence>
 
-        {/* 2. Zenemoo AI Contributor Assistant (Positioned strictly BELOW Back to Top) */}
+        {/* 2. Zenemoo AI Contributor Assistant (Positioned strictly BELOW Back to Top & Safe Above Footer) */}
         <button
           onClick={() => setIsAiDrawerOpen(true)}
-          className="pointer-events-auto group relative flex items-center gap-2 sm:gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-[#080d19]/95 hover:bg-[#0c1324] border border-cyan-500/40 hover:border-cyan-300 shadow-[0_8px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_8px_35px_rgba(0,0,0,0.9),0_0_30px_rgba(6,182,212,0.5)] backdrop-blur-md transition-all duration-300 cursor-pointer active:scale-95"
+          className="pointer-events-auto group relative flex items-center gap-2 sm:gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full bg-[#080d19]/95 hover:bg-[#0c1324] border border-cyan-500/40 hover:border-cyan-300 shadow-[0_8px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_8px_35px_rgba(0,0,0,0.9),0_0_30px_rgba(6,182,212,0.5)] backdrop-blur-md transition-all duration-300 cursor-pointer active:scale-95"
           aria-label="Ask Zenemoo AI Assistant"
           title="Ask Zenemoo AI Assistant"
         >
