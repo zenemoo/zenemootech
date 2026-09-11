@@ -936,14 +936,15 @@ export const TalentHubTeam: React.FC = () => {
          ══════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {(showAddModal || showEditModal) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md overflow-y-auto">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl my-8"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="relative bg-slate-900/85 backdrop-blur-2xl border border-sky-500/20 rounded-2xl w-full max-w-2xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8),0_0_40px_rgba(14,165,233,0.12)] my-8"
             >
-              <div className="flex items-center justify-between p-5 border-b border-slate-800">
+              <div className="flex items-center justify-between p-5 border-b border-white/10 bg-white/[0.02]">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
                     {showAddModal ? (
@@ -968,7 +969,7 @@ export const TalentHubTeam: React.FC = () => {
                     setShowAddModal(false);
                     setShowEditModal(false);
                   }}
-                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg"
+                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1210,21 +1211,21 @@ export const TalentHubTeam: React.FC = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
                   <button
                     type="button"
                     onClick={() => {
                       setShowAddModal(false);
                       setShowEditModal(false);
                     }}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
+                    className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold rounded-xl transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={formSubmitting}
-                    className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-sky-500/20 cursor-pointer"
+                    className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-sky-500/20 cursor-pointer transition-all"
                   >
                     {formSubmitting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                     {showAddModal ? 'Add Member' : 'Save Changes'}
@@ -1241,14 +1242,15 @@ export const TalentHubTeam: React.FC = () => {
          ══════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {showShareModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="relative bg-slate-900/85 backdrop-blur-2xl border border-sky-500/20 rounded-2xl w-full max-w-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8),0_0_40px_rgba(14,165,233,0.12)]"
             >
-              <div className="flex items-center justify-between p-5 border-b border-slate-800">
+              <div className="flex items-center justify-between p-5 border-b border-white/10 bg-white/[0.02]">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
                     <Share2 className="w-4 h-4 text-sky-400" />
@@ -1262,7 +1264,7 @@ export const TalentHubTeam: React.FC = () => {
                 </div>
                 <button
                   onClick={() => setShowShareModal(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg"
+                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-white/10 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1308,7 +1310,7 @@ export const TalentHubTeam: React.FC = () => {
 
                   <button
                     onClick={() => handleCopy(publicInviteUrl, 'Invite Link')}
-                    className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 rounded-xl transition-colors cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-semibold py-2.5 rounded-xl border border-white/10 transition-colors cursor-pointer"
                   >
                     <Copy className="w-4 h-4 text-sky-400" />
                     Copy Link
@@ -1316,7 +1318,7 @@ export const TalentHubTeam: React.FC = () => {
                 </div>
 
                 {/* Regenerate security note */}
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
                   <span>Need a new secure token?</span>
                   <button
                     onClick={handleRegenerateToken}
@@ -1337,89 +1339,109 @@ export const TalentHubTeam: React.FC = () => {
          ══════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {showViewModal && activeMember && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="relative w-full max-w-lg rounded-2xl bg-slate-900/80 backdrop-blur-2xl border border-sky-500/25 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8),0_0_40px_rgba(14,165,233,0.15)] overflow-hidden"
             >
-              <div className="flex items-center justify-between p-5 border-b border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
-                    <Eye className="w-4 h-4 text-sky-400" />
+              {/* Radial glow background effect */}
+              <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-36 bg-gradient-to-br from-sky-500/20 via-cyan-500/10 to-transparent blur-3xl pointer-events-none rounded-full" />
+
+              {/* Header */}
+              <div className="relative flex items-center justify-between p-5 border-b border-white/10 bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500/20 to-cyan-500/10 border border-sky-400/30 flex items-center justify-center shadow-[0_0_15px_rgba(14,165,233,0.2)]">
+                    <Eye className="w-5 h-5 text-sky-400" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-100 text-base">{activeMember.full_name}</h3>
-                    <p className="text-xs font-mono text-sky-400">{activeMember.member_code}</p>
+                    <h3 className="font-bold text-slate-100 text-base leading-tight">{activeMember.full_name}</h3>
+                    <span className="inline-block text-[11px] font-mono font-semibold text-sky-400 tracking-wider mt-0.5">
+                      {activeMember.member_code}
+                    </span>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowViewModal(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg"
+                  className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-white/10 rounded-xl transition-all cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-                  <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px]">Email</span>
-                    <span className="text-slate-200 font-medium">{activeMember.email || '-'}</span>
+              {/* Content Body */}
+              <div className="relative p-6 space-y-4 text-xs">
+                {/* Grid of Key-Value Details */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] p-3 rounded-xl transition-colors">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-0.5">Email</span>
+                    <span className="text-slate-200 font-medium break-all">{activeMember.email || '—'}</span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px]">Contact</span>
+                  <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] p-3 rounded-xl transition-colors">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-0.5">Contact</span>
                     <span className="text-slate-200 font-medium">
-                      {activeMember.phone ? `${activeMember.country_code || '+91'} ${activeMember.phone}` : '-'}
+                      {activeMember.phone ? `${activeMember.country_code || '+91'} ${activeMember.phone}` : '—'}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px]">State</span>
-                    <span className="text-slate-200 font-medium">{activeMember.state || '-'}</span>
+                  <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] p-3 rounded-xl transition-colors">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-0.5">State</span>
+                    <span className="text-slate-200 font-medium">{activeMember.state || '—'}</span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px]">City / District</span>
-                    <span className="text-slate-200 font-medium">{activeMember.city_district || '-'}</span>
+                  <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] p-3 rounded-xl transition-colors">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-0.5">City / District</span>
+                    <span className="text-slate-200 font-medium">{activeMember.city_district || '—'}</span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px]">Availability</span>
-                    <span className="text-slate-200 font-medium">{activeMember.availability || 'Immediately'}</span>
+                  <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] p-3 rounded-xl transition-colors">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-0.5">Availability</span>
+                    <span className="text-emerald-400 font-medium flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      {activeMember.availability || 'Immediately'}
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px]">Preferred Contact</span>
+                  <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.07] p-3 rounded-xl transition-colors">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-0.5">Preferred Contact</span>
                     <span className="text-slate-200 font-medium">{activeMember.preferred_contact || 'WhatsApp'}</span>
                   </div>
                 </div>
 
+                {/* Languages */}
                 <div>
-                  <span className="text-slate-500 font-semibold block uppercase text-[10px] mb-1.5">Languages</span>
+                  <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-2">Languages</span>
                   <div className="flex flex-wrap gap-1.5">
                     {Array.isArray(activeMember.languages) && activeMember.languages.length > 0 ? (
                       activeMember.languages.map((l, i) => (
-                        <span key={i} className="bg-slate-800 text-slate-200 px-2.5 py-1 rounded-lg text-xs">
+                        <span
+                          key={i}
+                          className="bg-sky-500/15 text-sky-200 border border-sky-400/30 px-2.5 py-1 rounded-lg text-xs font-medium backdrop-blur-sm"
+                        >
                           {l}
                         </span>
                       ))
                     ) : (
-                      <span className="text-slate-500">None specified</span>
+                      <span className="text-slate-500 italic">None specified</span>
                     )}
                   </div>
                 </div>
 
+                {/* Skills & Notes */}
                 {activeMember.skills_notes && (
                   <div>
-                    <span className="text-slate-500 font-semibold block uppercase text-[10px] mb-1">Skills & Notes</span>
-                    <p className="text-slate-300 bg-slate-950/40 p-3 rounded-lg border border-slate-800/80">
+                    <span className="text-slate-400 font-semibold block uppercase text-[10px] tracking-wider mb-1.5">Skills & Notes</span>
+                    <p className="text-slate-200 bg-white/[0.03] p-3 rounded-xl border border-white/[0.07] leading-relaxed">
                       {activeMember.skills_notes}
                     </p>
                   </div>
                 )}
 
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Source: {activeMember.source === 'share_link' ? 'Invitation Link' : 'Manual Entry'}</span>
+                {/* Footer metadata */}
+                <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/10">
+                    Source: <strong className="text-slate-200 font-medium">{activeMember.source === 'share_link' ? 'Invitation Link' : 'Manual Entry'}</strong>
+                  </span>
                   <span>
-                    Added: {activeMember.created_at ? new Date(activeMember.created_at).toLocaleDateString('en-IN') : '-'}
+                    Added: <strong className="text-slate-200 font-medium">{activeMember.created_at ? new Date(activeMember.created_at).toLocaleDateString('en-IN') : '—'}</strong>
                   </span>
                 </div>
               </div>
@@ -1433,12 +1455,13 @@ export const TalentHubTeam: React.FC = () => {
          ══════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {showDeleteModal && activeMember && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 text-center"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="relative bg-slate-900/85 backdrop-blur-2xl border border-rose-500/20 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8),0_0_40px_rgba(244,63,94,0.12)] p-6 text-center"
             >
               <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto mb-4">
                 <Trash2 className="w-6 h-6 text-rose-400" />
@@ -1455,7 +1478,7 @@ export const TalentHubTeam: React.FC = () => {
                     setShowDeleteModal(false);
                     setActiveMember(null);
                   }}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
+                  className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold rounded-xl border border-white/10 transition-colors"
                 >
                   Cancel
                 </button>
@@ -1463,7 +1486,7 @@ export const TalentHubTeam: React.FC = () => {
                   type="button"
                   disabled={formSubmitting}
                   onClick={handleConfirmDelete}
-                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-2 cursor-pointer"
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-lg shadow-rose-600/20"
                 >
                   {formSubmitting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                   Remove Member
