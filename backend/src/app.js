@@ -32,6 +32,8 @@ import bookingRoutes from './routes/bookingRoutes.js';
 import emailInboxRoutes from './routes/emailInboxRoutes.js';
 import scheduledEmailRoutes from './routes/scheduledEmailRoutes.js';
 import talentHubRoutes from './routes/talentHubRoutes.js';
+import publicTeamInviteRoutes from './routes/publicTeamInviteRoutes.js';
+import adminTalentTeamsRoutes from './routes/adminTalentTeamsRoutes.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -140,6 +142,8 @@ app.use('/api/emails', emailInboxRoutes);
 app.use('/api/admin', exportRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/talent-hub', talentHubRoutes);
+app.use('/api/public/team-invite', publicTeamInviteRoutes);
+app.use('/api/admin/talent-teams', adminTalentTeamsRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);
@@ -148,6 +152,8 @@ app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCash
 app.use('/datasets', datasetRoutes);
 app.use('/bookings', bookingRoutes);
 app.use('/30min', bookingRoutes);
+app.use('/public/team-invite', publicTeamInviteRoutes);
+app.use('/admin/talent-teams', adminTalentTeamsRoutes);
 
 // Root Fallback Aliases
 app.use('/auth', authRoutes);
