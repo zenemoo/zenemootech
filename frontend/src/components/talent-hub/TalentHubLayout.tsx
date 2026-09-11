@@ -177,7 +177,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
           </div>
 
           {/* Desktop Nav Items (xl+) */}
-          <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md">
+          <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -187,7 +187,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                   onClick={() => handleNavClick(item.id)}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
                     isActive
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm shadow-cyan-500/20'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-[0_0_12px_rgba(6,182,212,0.25)]'
                       : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium border border-transparent'
                   }`}
                 >
@@ -200,7 +200,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               onClick={() => handleNavClick('support-zenemooindia')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
                 currentTab === 'support-zenemooindia'
-                  ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold shadow-sm shadow-pink-500/20'
+                  ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold shadow-[0_0_12px_rgba(244,114,182,0.25)]'
                   : 'text-pink-300 hover:text-white hover:bg-pink-500/15 font-medium border border-pink-500/20 hover:border-pink-500/40'
               }`}
             >
@@ -210,7 +210,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
           </nav>
 
           {/* Tablet Nav Items (md to xl) */}
-          <nav className="hidden md:flex xl:hidden items-center gap-1">
+          <nav className="hidden md:flex xl:hidden items-center gap-1 bg-white/[0.02] p-1 rounded-xl border border-white/5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -218,10 +218,10 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                     isActive
-                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold'
-                      : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold shadow-sm'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent font-medium'
                   }`}
                 >
                   <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-300' : 'text-slate-400'}`} />
@@ -231,10 +231,10 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             })}
             <button
               onClick={() => handleNavClick('support-zenemooindia')}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                 currentTab === 'support-zenemooindia'
                   ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
-                  : 'text-pink-300 hover:text-white hover:bg-pink-500/15 border border-pink-500/20'
+                  : 'text-pink-300 hover:text-white hover:bg-pink-500/15 border border-pink-500/20 font-medium'
               }`}
             >
               <Heart className="w-3.5 h-3.5 text-pink-400" />
