@@ -93,6 +93,15 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 }) => {
   const { user, talentProfile, languages, experiences, token, updateProfile } = useTalentHubAuth();
 
+  // Lock body scroll while workspace is open to avoid background page peek/bleed
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalStyle;
+    };
+  }, []);
+
   // Active section state
   const [activeSection, setActiveSection] = useState<SectionKey>('personal');
 
@@ -555,9 +564,9 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
   const registrationCode = talentProfile?.registration_code || 'ZEN-CONTRIBUTOR';
 
   return (
-    <div className="fixed inset-0 z-[150] bg-[#060911] overflow-y-auto flex flex-col text-slate-200 animate-in fade-in duration-200">
-      {/* ── Top Workspace Header ── */}
-      <header className="sticky top-0 z-30 bg-[#080d1a]/95 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between shadow-lg">
+    <div className="fixed inset-0 z-[999] bg-[#060911] overflow-y-auto flex flex-col text-slate-200 animate-in fade-in duration-150 top-0 left-0 right-0 bottom-0 m-0 p-0">
+      {/* ── Top Workspace Header (Clean 0px from viewport top) ── */}
+      <header className="sticky top-0 z-50 bg-[#080d1a] border-b border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between shadow-2xl w-full shrink-0">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-inner">
             <User className="w-5 h-5" />
@@ -619,10 +628,10 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
       </div>
 
       {/* ── Main Workspace Body ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 pb-32">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 pb-32 flex flex-col justify-start">
         {/* Error Banner */}
         {errorMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-red-200 flex items-start gap-3 animate-in shake">
+          <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-red-200 flex items-start gap-3 animate-in shake shrink-0">
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
               <div className="font-bold text-xs text-red-300">Validation Notice</div>
@@ -632,11 +641,11 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
         )}
 
         {/* 3-Column Desktop Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1">
           {/* ══════════════════════════════════════════════════════ */}
           {/* ── COLUMN 1: LEFT SECTION NAVIGATION (Desktop) ── */}
           {/* ══════════════════════════════════════════════════════ */}
-          <aside className="hidden lg:flex lg:col-span-3 flex-col gap-4 sticky top-24">
+          <aside className="hidden lg:flex lg:col-span-3 flex-col justify-between gap-4">
             <div className="p-3 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-1.5">
               {SECTIONS.map((sec) => {
                 const Icon = sec.icon;
@@ -688,8 +697,8 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
               })}
             </div>
 
-            {/* Need Help? Card */}
-            <div className="p-4 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-3">
+            {/* Need Help? Card (Pinned to bottom of left column) */}
+            <div className="p-4 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-3 mt-auto">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
                   <MessageSquare className="w-4 h-4" />
@@ -710,236 +719,239 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
           </aside>
 
           {/* ══════════════════════════════════════════════════════ */}
-          {/* ── COLUMN 2: MAIN FORM AREA (Center) ── */}
+          {/* ── COLUMN 2: MAIN FORM AREA (Center - Extends fully) ── */}
           {/* ══════════════════════════════════════════════════════ */}
-          <section className="lg:col-span-6 space-y-6">
+          <section className="lg:col-span-6 flex flex-col h-full">
             {/* ── SECTION 1: PERSONAL INFORMATION ── */}
             {activeSection === 'personal' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl space-y-6 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
-                  <h2 className="text-xs sm:text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 font-mono">
-                    <User className="w-4 h-4 text-cyan-400" /> 1. Personal &amp; Contact Details
-                  </h2>
-                  <span className="text-[11px] text-slate-400">Update your basic information and how we can reach you.</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Full Name */}
-                  <div id="edit-field-fullName" className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Full Name *</label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Your complete official name"
-                      className={`w-full px-4 py-2.5 rounded-xl bg-black/80 border text-white font-medium text-xs focus:outline-none transition-all ${
-                        highlightedFieldId === 'edit-field-fullName'
-                          ? 'border-red-500 ring-2 ring-red-500/40'
-                          : 'border-white/15 focus:border-cyan-400'
-                      }`}
-                    />
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
+                    <h2 className="text-xs sm:text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 font-mono">
+                      <User className="w-4 h-4 text-cyan-400" /> 1. Personal &amp; Contact Details
+                    </h2>
+                    <span className="text-[11px] text-slate-400">Update your basic information and how we can reach you.</span>
                   </div>
 
-                  {/* Gender */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Gender *</label>
-                    <select
-                      value={gender}
-                      onChange={(e) => setGender(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-
-                  {/* Email Address (Read-Only Authentication Identity) */}
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-slate-300 font-bold flex items-center gap-1.5 text-xs">
-                        <Mail className="w-3.5 h-3.5 text-slate-400" /> Account Identity Email
-                      </label>
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                        <Lock className="w-3 h-3" /> Verified Auth Account (Read-Only)
-                      </span>
-                    </div>
-                    <input
-                      type="email"
-                      value={talentProfile?.email || user?.email || ''}
-                      disabled
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-slate-400 font-mono text-xs cursor-not-allowed select-none"
-                    />
-                    <p className="text-[10px] text-slate-500">
-                      Your email is locked to your authenticated session to ensure security and prevent identity disruption.
-                    </p>
-                  </div>
-
-                  {/* Phone / WhatsApp */}
-                  <div id="edit-field-phone" className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">WhatsApp / Phone Number *</label>
-                    <div className="flex gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Full Name */}
+                    <div id="edit-field-fullName" className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Full Name *</label>
                       <input
                         type="text"
-                        value={countryCode}
-                        onChange={(e) => setCountryCode(e.target.value)}
-                        className="w-16 px-2.5 py-2.5 rounded-xl bg-black/80 border border-white/15 text-cyan-300 font-bold text-center text-xs focus:outline-none"
-                      />
-                      <input
-                        type="text"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="10-digit mobile number"
-                        className={`w-full px-4 py-2.5 rounded-xl bg-black/80 border text-white font-mono text-xs focus:outline-none transition-all ${
-                          highlightedFieldId === 'edit-field-phone'
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Your complete official name"
+                        className={`w-full px-4 py-2.5 rounded-xl bg-black/80 border text-white font-medium text-xs focus:outline-none transition-all ${
+                          highlightedFieldId === 'edit-field-fullName'
                             ? 'border-red-500 ring-2 ring-red-500/40'
                             : 'border-white/15 focus:border-cyan-400'
                         }`}
                       />
                     </div>
-                  </div>
 
-                  {/* Preferred Contact Channel */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Preferred Contact Channel *</label>
-                    <select
-                      value={preferredContact}
-                      onChange={(e) => setPreferredContact(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="WhatsApp">WhatsApp</option>
-                      <option value="Email">Email</option>
-                      <option value="Phone Call">Phone Call</option>
-                      <option value="Telegram">Telegram</option>
-                    </select>
-                  </div>
-
-                  {/* State */}
-                  <div id="edit-field-state" className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">State / UT *</label>
-                    {indianStates.length > 0 ? (
+                    {/* Gender */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Gender *</label>
                       <select
-                        value={state}
-                        onChange={(e) => setState(e.target.value)}
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value)}
                         className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
                       >
-                        <option value="">Select State</option>
-                        {indianStates.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
                       </select>
-                    ) : (
+                    </div>
+
+                    {/* Email Address (Read-Only Authentication Identity) */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-300 font-bold flex items-center gap-1.5 text-xs">
+                          <Mail className="w-3.5 h-3.5 text-slate-400" /> Account Identity Email
+                        </label>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                          <Lock className="w-3 h-3" /> Verified Auth Account (Read-Only)
+                        </span>
+                      </div>
+                      <input
+                        type="email"
+                        value={talentProfile?.email || user?.email || ''}
+                        disabled
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-slate-400 font-mono text-xs cursor-not-allowed select-none"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        Your email is locked to your authenticated session to ensure security and prevent identity disruption.
+                      </p>
+                    </div>
+
+                    {/* Phone / WhatsApp */}
+                    <div id="edit-field-phone" className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">WhatsApp / Phone Number *</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={countryCode}
+                          onChange={(e) => setCountryCode(e.target.value)}
+                          className="w-16 px-2.5 py-2.5 rounded-xl bg-black/80 border border-white/15 text-cyan-300 font-bold text-center text-xs focus:outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="10-digit mobile number"
+                          className={`w-full px-4 py-2.5 rounded-xl bg-black/80 border text-white font-mono text-xs focus:outline-none transition-all ${
+                            highlightedFieldId === 'edit-field-phone'
+                              ? 'border-red-500 ring-2 ring-red-500/40'
+                              : 'border-white/15 focus:border-cyan-400'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preferred Contact Channel */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Preferred Contact Channel *</label>
+                      <select
+                        value={preferredContact}
+                        onChange={(e) => setPreferredContact(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="WhatsApp">WhatsApp</option>
+                        <option value="Email">Email</option>
+                        <option value="Phone Call">Phone Call</option>
+                        <option value="Telegram">Telegram</option>
+                      </select>
+                    </div>
+
+                    {/* State */}
+                    <div id="edit-field-state" className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">State / UT *</label>
+                      {indianStates.length > 0 ? (
+                        <select
+                          value={state}
+                          onChange={(e) => setState(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                        >
+                          <option value="">Select State</option>
+                          {indianStates.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={state}
+                          onChange={(e) => setState(e.target.value)}
+                          placeholder="e.g. Odisha, Karnataka"
+                          className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                        />
+                      )}
+                    </div>
+
+                    {/* City / District */}
+                    <div id="edit-field-city" className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">City / District *</label>
                       <input
                         type="text"
-                        value={state}
-                        onChange={(e) => setState(e.target.value)}
-                        placeholder="e.g. Odisha, Karnataka"
+                        value={cityDistrict}
+                        onChange={(e) => setCityDistrict(e.target.value)}
+                        placeholder="e.g. Bhubaneswar, Bangalore"
                         className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
                       />
-                    )}
-                  </div>
+                    </div>
 
-                  {/* City / District */}
-                  <div id="edit-field-city" className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">City / District *</label>
-                    <input
-                      type="text"
-                      value={cityDistrict}
-                      onChange={(e) => setCityDistrict(e.target.value)}
-                      placeholder="e.g. Bhubaneswar, Bangalore"
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
+                    {/* How did you hear about Zenemoo */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="text-slate-300 font-bold block text-xs">
+                        How did you hear about Zenemoo? (Optional)
+                      </label>
+                      <select
+                        value={additionalInfo.hear_about_zenemoo || ''}
+                        onChange={(e) =>
+                          setAdditionalInfo({ ...additionalInfo, hear_about_zenemoo: e.target.value })
+                        }
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="">Select an option</option>
+                        <option value="LinkedIn">LinkedIn</option>
+                        <option value="Instagram">Instagram / Social Media</option>
+                        <option value="Friend / Referral">Friend or Colleague Referral</option>
+                        <option value="WhatsApp Group">WhatsApp / Telegram Community</option>
+                        <option value="Google Search">Google / Web Search</option>
+                        <option value="College / University">College / Campus Event</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
 
-                  {/* How did you hear about Zenemoo */}
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <label className="text-slate-300 font-bold block text-xs">
-                      How did you hear about Zenemoo? (Optional)
-                    </label>
-                    <select
-                      value={additionalInfo.hear_about_zenemoo || ''}
-                      onChange={(e) =>
-                        setAdditionalInfo({ ...additionalInfo, hear_about_zenemoo: e.target.value })
-                      }
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="">Select an option</option>
-                      <option value="LinkedIn">LinkedIn</option>
-                      <option value="Instagram">Instagram / Social Media</option>
-                      <option value="Friend / Referral">Friend or Colleague Referral</option>
-                      <option value="WhatsApp Group">WhatsApp / Telegram Community</option>
-                      <option value="Google Search">Google / Web Search</option>
-                      <option value="College / University">College / Campus Event</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
+                    {/* Additional Notes */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="text-slate-300 font-bold block text-xs">
+                        Additional Notes (Optional)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={additionalInfo.additional_notes || ''}
+                        onChange={(e) =>
+                          setAdditionalInfo({ ...additionalInfo, additional_notes: e.target.value })
+                        }
+                        placeholder="Tell us something about yourself..."
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
 
-                  {/* Additional Notes */}
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <label className="text-slate-300 font-bold block text-xs">
-                      Additional Notes (Optional)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={additionalInfo.additional_notes || ''}
-                      onChange={(e) =>
-                        setAdditionalInfo({ ...additionalInfo, additional_notes: e.target.value })
-                      }
-                      placeholder="Tell us something about yourself..."
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    />
+                    {/* Dynamic Questions if any */}
+                    {dynamicQuestions.map((q) => {
+                      const key = q.field_key || q.id;
+                      return (
+                        <div key={key} id={`edit-dynamic-${key}`} className="space-y-1.5 sm:col-span-2">
+                          <label className="text-slate-300 font-bold block text-xs">
+                            {q.label} {q.is_required ? '*' : '(Optional)'}
+                          </label>
+                          {q.question_type === 'textarea' ? (
+                            <textarea
+                              rows={2}
+                              value={additionalInfo[key] || ''}
+                              onChange={(e) =>
+                                setAdditionalInfo({ ...additionalInfo, [key]: e.target.value })
+                              }
+                              className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                            />
+                          ) : q.question_type === 'select' && Array.isArray(q.options) ? (
+                            <select
+                              value={additionalInfo[key] || ''}
+                              onChange={(e) =>
+                                setAdditionalInfo({ ...additionalInfo, [key]: e.target.value })
+                              }
+                              className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                            >
+                              <option value="">Select an option</option>
+                              {q.options.map((opt: any) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={additionalInfo[key] || ''}
+                              onChange={(e) =>
+                                setAdditionalInfo({ ...additionalInfo, [key]: e.target.value })
+                              }
+                              className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  {/* Dynamic Questions if any */}
-                  {dynamicQuestions.map((q) => {
-                    const key = q.field_key || q.id;
-                    return (
-                      <div key={key} id={`edit-dynamic-${key}`} className="space-y-1.5 sm:col-span-2">
-                        <label className="text-slate-300 font-bold block text-xs">
-                          {q.label} {q.is_required ? '*' : '(Optional)'}
-                        </label>
-                        {q.question_type === 'textarea' ? (
-                          <textarea
-                            rows={2}
-                            value={additionalInfo[key] || ''}
-                            onChange={(e) =>
-                              setAdditionalInfo({ ...additionalInfo, [key]: e.target.value })
-                            }
-                            className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                          />
-                        ) : q.question_type === 'select' && Array.isArray(q.options) ? (
-                          <select
-                            value={additionalInfo[key] || ''}
-                            onChange={(e) =>
-                              setAdditionalInfo({ ...additionalInfo, [key]: e.target.value })
-                            }
-                            className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                          >
-                            <option value="">Select an option</option>
-                            {q.options.map((opt: any) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            value={additionalInfo[key] || ''}
-                            onChange={(e) =>
-                              setAdditionalInfo({ ...additionalInfo, [key]: e.target.value })
-                            }
-                            className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
                 </div>
 
-                <div className="pt-3 border-t border-white/10 flex justify-end">
+                {/* Step navigation pinned cleanly at the bottom */}
+                <div className="pt-4 mt-6 border-t border-white/10 flex justify-end">
                   <button
                     type="button"
                     onClick={() => setActiveSection('professional')}
@@ -954,188 +966,191 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 2: PROFESSIONAL INFORMATION ── */}
             {activeSection === 'professional' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl space-y-6 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
-                  <h2 className="text-xs sm:text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2 font-mono">
-                    <Briefcase className="w-4 h-4 text-blue-400" /> 2. Professional Role &amp; Availability
-                  </h2>
-                  <span className="text-[11px] text-slate-400">Configure your primary contributor profile.</span>
-                </div>
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
+                    <h2 className="text-xs sm:text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2 font-mono">
+                      <Briefcase className="w-4 h-4 text-blue-400" /> 2. Professional Role &amp; Availability
+                    </h2>
+                    <span className="text-[11px] text-slate-400">Configure your primary contributor profile.</span>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Primary Role */}
-                  <div id="edit-field-role" className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Primary Contributor Role *</label>
-                    <select
-                      value={primaryRole}
-                      onChange={(e) => setPrimaryRole(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      {(availableRoles.length > 0
-                        ? availableRoles
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Primary Role */}
+                    <div id="edit-field-role" className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Primary Contributor Role *</label>
+                      <select
+                        value={primaryRole}
+                        onChange={(e) => setPrimaryRole(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        {(availableRoles.length > 0
+                          ? availableRoles
+                          : [
+                              'Individual Participant',
+                              'Coordinator',
+                              'Speaker Recruiter',
+                              'Singer / Vocal Artist',
+                              'Recording Team',
+                              'Field Agent',
+                              'Vendor / Agency',
+                              'Community / Organization',
+                              'Other',
+                            ]
+                        ).map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Availability */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Availability Timeframe</label>
+                      <select
+                        value={availability}
+                        onChange={(e) => setAvailability(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="Immediately">Immediately</option>
+                        <option value="Within 1–3 days">Within 1–3 days</option>
+                        <option value="Within 1 week">Within 1 week</option>
+                        <option value="More than 1 week">More than 1 week</option>
+                        <option value="Flexible">Flexible</option>
+                      </select>
+                    </div>
+
+                    {/* Working Preference */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Working Preference</label>
+                      <select
+                        value={workingPreference}
+                        onChange={(e) => setWorkingPreference(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="Project Basis">Project Basis</option>
+                        <option value="Part Time">Part Time</option>
+                        <option value="Full Time">Full Time</option>
+                        <option value="Flexible">Flexible</option>
+                      </select>
+                    </div>
+
+                    {/* Previous AI Experience */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Previous AI Data Task Experience</label>
+                      <select
+                        value={hasPreviousExperience ? 'true' : 'false'}
+                        onChange={(e) => setHasPreviousExperience(e.target.value === 'true')}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        <option value="true">Yes, I have prior experience</option>
+                        <option value="false">No, I am new to AI data projects</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Dynamic Role-Specific Fields */}
+                  {primaryRole === 'Coordinator' && (
+                    <div className="p-4 rounded-2xl bg-black/60 border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-400 font-medium">Coordination Capacity:</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 50–100 participants"
+                          value={roleDetails.coordCapacity || ''}
+                          onChange={(e) => setRoleDetails({ ...roleDetails, coordCapacity: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-400 font-medium">Regional Coverage:</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Odisha, Andhra Pradesh"
+                          value={roleDetails.coordCoverage || ''}
+                          onChange={(e) => setRoleDetails({ ...roleDetails, coordCoverage: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {primaryRole === 'Speaker Recruiter' && (
+                    <div className="p-4 rounded-2xl bg-black/60 border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-400 font-medium">Recruiter Capacity:</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 100+ native speakers"
+                          value={roleDetails.recruiterCapacity || ''}
+                          onChange={(e) => setRoleDetails({ ...roleDetails, recruiterCapacity: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-400 font-medium">Recruitment Timeline:</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 50 speakers in 3 days"
+                          value={roleDetails.recruiterTimeline || ''}
+                          onChange={(e) => setRoleDetails({ ...roleDetails, recruiterTimeline: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Work Capabilities Grid */}
+                  <div className="space-y-3 pt-2 border-t border-white/10">
+                    <label className="text-slate-300 font-bold block text-xs">
+                      Work Capabilities ({workCapabilities.length} Selected)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
+                      {(availableCapabilities.length > 0
+                        ? availableCapabilities
                         : [
-                            'Individual Participant',
-                            'Coordinator',
-                            'Speaker Recruiter',
-                            'Singer / Vocal Artist',
-                            'Recording Team',
-                            'Field Agent',
-                            'Vendor / Agency',
-                            'Community / Organization',
+                            'Voice / Audio Recording',
+                            'Speech Data Collection',
+                            'Video Recording',
+                            'Image Collection',
+                            'Text Data Collection',
+                            'Transcription',
+                            'Translation / Localization',
+                            'Data Annotation / Labeling',
+                            'AI / LLM Evaluation',
+                            'Human Feedback / RLHF',
+                            'Search Relevance',
+                            'OCR / Document Data',
+                            'Field Data Collection',
+                            'Participant Recruitment',
+                            'Singing / Vocal Recording',
                             'Other',
                           ]
-                      ).map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Availability */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Availability Timeframe</label>
-                    <select
-                      value={availability}
-                      onChange={(e) => setAvailability(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="Immediately">Immediately</option>
-                      <option value="Within 1–3 days">Within 1–3 days</option>
-                      <option value="Within 1 week">Within 1 week</option>
-                      <option value="More than 1 week">More than 1 week</option>
-                      <option value="Flexible">Flexible</option>
-                    </select>
-                  </div>
-
-                  {/* Working Preference */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Working Preference</label>
-                    <select
-                      value={workingPreference}
-                      onChange={(e) => setWorkingPreference(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="Project Basis">Project Basis</option>
-                      <option value="Part Time">Part Time</option>
-                      <option value="Full Time">Full Time</option>
-                      <option value="Flexible">Flexible</option>
-                    </select>
-                  </div>
-
-                  {/* Previous AI Experience */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Previous AI Data Task Experience</label>
-                    <select
-                      value={hasPreviousExperience ? 'true' : 'false'}
-                      onChange={(e) => setHasPreviousExperience(e.target.value === 'true')}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="true">Yes, I have prior experience</option>
-                      <option value="false">No, I am new to AI data projects</option>
-                    </select>
+                      ).map((cap) => {
+                        const isSelected = workCapabilities.includes(cap);
+                        return (
+                          <button
+                            key={cap}
+                            type="button"
+                            onClick={() => handleToggleCapability(cap)}
+                            className={`p-2.5 rounded-xl border text-left font-medium transition-all flex items-center justify-between cursor-pointer text-xs ${
+                              isSelected
+                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                                : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            <span className="truncate">{cap}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 ml-1" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
-                {/* Dynamic Role-Specific Fields */}
-                {primaryRole === 'Coordinator' && (
-                  <div className="p-4 rounded-2xl bg-black/60 border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400 font-medium">Coordination Capacity:</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 50–100 participants"
-                        value={roleDetails.coordCapacity || ''}
-                        onChange={(e) => setRoleDetails({ ...roleDetails, coordCapacity: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400 font-medium">Regional Coverage:</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Odisha, Andhra Pradesh"
-                        value={roleDetails.coordCoverage || ''}
-                        onChange={(e) => setRoleDetails({ ...roleDetails, coordCoverage: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {primaryRole === 'Speaker Recruiter' && (
-                  <div className="p-4 rounded-2xl bg-black/60 border border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400 font-medium">Recruiter Capacity:</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 100+ native speakers"
-                        value={roleDetails.recruiterCapacity || ''}
-                        onChange={(e) => setRoleDetails({ ...roleDetails, recruiterCapacity: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400 font-medium">Recruitment Timeline:</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 50 speakers in 3 days"
-                        value={roleDetails.recruiterTimeline || ''}
-                        onChange={(e) => setRoleDetails({ ...roleDetails, recruiterTimeline: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-cyan-400"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Work Capabilities Grid */}
-                <div className="space-y-3 pt-2 border-t border-white/10">
-                  <label className="text-slate-300 font-bold block text-xs">
-                    Work Capabilities ({workCapabilities.length} Selected)
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto p-3 rounded-2xl bg-black/50 border border-white/10">
-                    {(availableCapabilities.length > 0
-                      ? availableCapabilities
-                      : [
-                          'Voice / Audio Recording',
-                          'Speech Data Collection',
-                          'Video Recording',
-                          'Image Collection',
-                          'Text Data Collection',
-                          'Transcription',
-                          'Translation / Localization',
-                          'Data Annotation / Labeling',
-                          'AI / LLM Evaluation',
-                          'Human Feedback / RLHF',
-                          'Search Relevance',
-                          'OCR / Document Data',
-                          'Field Data Collection',
-                          'Participant Recruitment',
-                          'Singing / Vocal Recording',
-                          'Other',
-                        ]
-                    ).map((cap) => {
-                      const isSelected = workCapabilities.includes(cap);
-                      return (
-                        <button
-                          key={cap}
-                          type="button"
-                          onClick={() => handleToggleCapability(cap)}
-                          className={`p-2.5 rounded-xl border text-left font-medium transition-all flex items-center justify-between cursor-pointer text-xs ${
-                            isSelected
-                              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
-                              : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          <span className="truncate">{cap}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 ml-1" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                {/* Step navigation pinned cleanly at the bottom */}
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => setActiveSection('personal')}
@@ -1158,128 +1173,131 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 3: LANGUAGES ── */}
             {activeSection === 'languages' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl space-y-6 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
-                  <div>
-                    <h2 className="text-xs sm:text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2 font-mono">
-                      <Globe className="w-4 h-4 text-emerald-400" /> 3. Configured Languages &amp; Proficiency ({formLanguages.length})
-                    </h2>
-                    <span className="text-[11px] text-slate-400">Add all the languages you speak or can recruit speakers for.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddLanguageRow}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-emerald-500/40 transition-all shrink-0 shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Language
-                  </button>
-                </div>
-
-                {formLanguages.length === 0 ? (
-                  <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs text-center space-y-2">
-                    <p>No languages currently configured.</p>
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
+                    <div>
+                      <h2 className="text-xs sm:text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2 font-mono">
+                        <Globe className="w-4 h-4 text-emerald-400" /> 3. Configured Languages &amp; Proficiency ({formLanguages.length})
+                      </h2>
+                      <span className="text-[11px] text-slate-400">Add all the languages you speak or can recruit speakers for.</span>
+                    </div>
                     <button
                       type="button"
                       onClick={handleAddLanguageRow}
-                      className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold border border-amber-500/40 cursor-pointer"
+                      className="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-emerald-500/40 transition-all shrink-0 shadow-sm"
                     >
-                      + Add Your Primary Language
+                      <Plus className="w-3.5 h-3.5" /> Add Language
                     </button>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {formLanguages.map((l, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 sm:p-5 rounded-2xl bg-black/60 border border-white/10 space-y-3.5 relative shadow-md"
+
+                  {formLanguages.length === 0 ? (
+                    <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs text-center space-y-2">
+                      <p>No languages currently configured.</p>
+                      <button
+                        type="button"
+                        onClick={handleAddLanguageRow}
+                        className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold border border-amber-500/40 cursor-pointer"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1">
-                            <label className="text-xs text-slate-300 font-bold block mb-1">
-                              Language Name *
-                            </label>
-                            {supportedLanguagesList.length > 0 ? (
-                              <div className="flex gap-2">
+                        + Add Your Primary Language
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {formLanguages.map((l, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 sm:p-5 rounded-2xl bg-black/60 border border-white/10 space-y-3.5 relative shadow-md"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1">
+                              <label className="text-xs text-slate-300 font-bold block mb-1">
+                                Language Name *
+                              </label>
+                              {supportedLanguagesList.length > 0 ? (
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    list={`lang-list-${idx}`}
+                                    placeholder="e.g. Odia, Hindi, Kui, Santali, Bengali"
+                                    value={l.language}
+                                    onChange={(e) => handleUpdateLanguageField(idx, 'language', e.target.value)}
+                                    className="w-full px-3.5 py-2 rounded-xl bg-black border border-white/15 text-white font-bold text-xs focus:outline-none focus:border-emerald-400"
+                                  />
+                                  <datalist id={`lang-list-${idx}`}>
+                                    {supportedLanguagesList.map((sl) => (
+                                      <option key={sl} value={sl} />
+                                    ))}
+                                  </datalist>
+                                </div>
+                              ) : (
                                 <input
                                   type="text"
-                                  list={`lang-list-${idx}`}
-                                  placeholder="e.g. Odia, Hindi, Kui, Santali, Bengali"
+                                  placeholder="e.g. Odia, Hindi, English"
                                   value={l.language}
                                   onChange={(e) => handleUpdateLanguageField(idx, 'language', e.target.value)}
                                   className="w-full px-3.5 py-2 rounded-xl bg-black border border-white/15 text-white font-bold text-xs focus:outline-none focus:border-emerald-400"
                                 />
-                                <datalist id={`lang-list-${idx}`}>
-                                  {supportedLanguagesList.map((sl) => (
-                                    <option key={sl} value={sl} />
-                                  ))}
-                                </datalist>
-                              </div>
-                            ) : (
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLanguageRow(idx)}
+                              className="p-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 transition-colors shrink-0 mt-5 cursor-pointer"
+                              title="Remove language"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Proficiency:</label>
+                              <select
+                                value={l.proficiency}
+                                onChange={(e) => handleUpdateLanguageField(idx, 'proficiency', e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs"
+                              >
+                                <option value="Native">Native</option>
+                                <option value="Fluent">Fluent</option>
+                                <option value="Advanced">Advanced</option>
+                                <option value="Intermediate">Intermediate</option>
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Speaker Availability:</label>
+                              <select
+                                value={l.speaker_availability}
+                                onChange={(e) => handleUpdateLanguageField(idx, 'speaker_availability', e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs"
+                              >
+                                <option value="I am a native speaker">I am a native speaker</option>
+                                <option value="I can arrange native speakers">I can arrange native speakers</option>
+                                <option value="Both">Both</option>
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Arranged Capacity:</label>
                               <input
-                                type="text"
-                                placeholder="e.g. Odia, Hindi, English"
-                                value={l.language}
-                                onChange={(e) => handleUpdateLanguageField(idx, 'language', e.target.value)}
-                                className="w-full px-3.5 py-2 rounded-xl bg-black border border-white/15 text-white font-bold text-xs focus:outline-none focus:border-emerald-400"
+                                type="number"
+                                min="1"
+                                value={l.capacity}
+                                onChange={(e) => handleUpdateLanguageField(idx, 'capacity', Number(e.target.value))}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-emerald-300 font-bold text-xs"
                               />
-                            )}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLanguageRow(idx)}
-                            className="p-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 transition-colors shrink-0 mt-5 cursor-pointer"
-                            title="Remove language"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Proficiency:</label>
-                            <select
-                              value={l.proficiency}
-                              onChange={(e) => handleUpdateLanguageField(idx, 'proficiency', e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs"
-                            >
-                              <option value="Native">Native</option>
-                              <option value="Fluent">Fluent</option>
-                              <option value="Advanced">Advanced</option>
-                              <option value="Intermediate">Intermediate</option>
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Speaker Availability:</label>
-                            <select
-                              value={l.speaker_availability}
-                              onChange={(e) => handleUpdateLanguageField(idx, 'speaker_availability', e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs"
-                            >
-                              <option value="I am a native speaker">I am a native speaker</option>
-                              <option value="I can arrange native speakers">I can arrange native speakers</option>
-                              <option value="Both">Both</option>
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Arranged Capacity:</label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={l.capacity}
-                              onChange={(e) => handleUpdateLanguageField(idx, 'capacity', Number(e.target.value))}
-                              className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-emerald-300 font-bold text-xs"
-                            />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                {/* Step navigation pinned cleanly at the bottom */}
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => setActiveSection('professional')}
@@ -1302,114 +1320,117 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 4: EXPERIENCE RECORDS ── */}
             {activeSection === 'experience' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl space-y-6 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
-                  <div>
-                    <h2 className="text-xs sm:text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2 font-mono">
-                      <Award className="w-4 h-4 text-purple-400" /> 4. Experience Records ({formExperiences.length})
-                    </h2>
-                    <span className="text-[11px] text-slate-400">List past projects, speech recordings, or annotation work.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddExperienceRow}
-                    className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-purple-500/40 transition-all shrink-0 shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Experience Record
-                  </button>
-                </div>
-
-                {formExperiences.length === 0 ? (
-                  <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 text-slate-400 text-xs text-center space-y-2">
-                    <p>No past project experiences currently listed.</p>
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
+                    <div>
+                      <h2 className="text-xs sm:text-sm font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2 font-mono">
+                        <Award className="w-4 h-4 text-purple-400" /> 4. Experience Records ({formExperiences.length})
+                      </h2>
+                      <span className="text-[11px] text-slate-400">List past projects, speech recordings, or annotation work.</span>
+                    </div>
                     <button
                       type="button"
                       onClick={handleAddExperienceRow}
-                      className="px-4 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-bold border border-purple-500/40 cursor-pointer"
+                      className="px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-purple-500/40 transition-all shrink-0 shadow-sm"
                     >
-                      + Add Past Project Experience
+                      <Plus className="w-3.5 h-3.5" /> Add Experience Record
                     </button>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {formExperiences.map((exp, idx) => (
-                      <div key={idx} className="p-4 sm:p-5 rounded-2xl bg-black/60 border border-white/10 space-y-3.5 shadow-md">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-white text-xs flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-300 flex items-center justify-center font-mono text-[10px]">
-                              {idx + 1}
+
+                  {formExperiences.length === 0 ? (
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 text-slate-400 text-xs text-center space-y-2">
+                      <p>No past project experiences currently listed.</p>
+                      <button
+                        type="button"
+                        onClick={handleAddExperienceRow}
+                        className="px-4 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-bold border border-purple-500/40 cursor-pointer"
+                      >
+                        + Add Past Project Experience
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {formExperiences.map((exp, idx) => (
+                        <div key={idx} className="p-4 sm:p-5 rounded-2xl bg-black/60 border border-white/10 space-y-3.5 shadow-md">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-300 flex items-center justify-center font-mono text-[10px]">
+                                {idx + 1}
+                              </span>
+                              <span>Record #{idx + 1}</span>
                             </span>
-                            <span>Record #{idx + 1}</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveExperienceRow(idx)}
-                            className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 transition-colors cursor-pointer"
-                            title="Remove experience"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExperienceRow(idx)}
+                              className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 transition-colors cursor-pointer"
+                              title="Remove experience"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Company / Project Name:</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Project Vani / AI Data Co"
-                              value={exp.projectName}
-                              onChange={(e) => handleUpdateExperienceField(idx, 'projectName', e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
-                            />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Company / Project Name:</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Project Vani / AI Data Co"
+                                value={exp.projectName}
+                                onChange={(e) => handleUpdateExperienceField(idx, 'projectName', e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Type of Work:</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Speech Recording, Audio Annotation"
+                                value={exp.typeOfWork}
+                                onChange={(e) => handleUpdateExperienceField(idx, 'typeOfWork', e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Languages Used:</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Odia, Hindi"
+                                value={exp.languagesUsed}
+                                onChange={(e) => handleUpdateExperienceField(idx, 'languagesUsed', e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[11px] text-slate-400 font-medium">Duration / Work Volume:</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 3 Months / 50 Hours"
+                                value={exp.duration}
+                                onChange={(e) => handleUpdateExperienceField(idx, 'duration', e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
+                              />
+                            </div>
                           </div>
+
                           <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Type of Work:</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Speech Recording, Audio Annotation"
-                              value={exp.typeOfWork}
-                              onChange={(e) => handleUpdateExperienceField(idx, 'typeOfWork', e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Languages Used:</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Odia, Hindi"
-                              value={exp.languagesUsed}
-                              onChange={(e) => handleUpdateExperienceField(idx, 'languagesUsed', e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-slate-400 font-medium">Duration / Work Volume:</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. 3 Months / 50 Hours"
-                              value={exp.duration}
-                              onChange={(e) => handleUpdateExperienceField(idx, 'duration', e.target.value)}
+                            <label className="text-[11px] text-slate-400 font-medium">Description (Optional):</label>
+                            <textarea
+                              rows={2}
+                              placeholder="Briefly describe your responsibilities and volume delivered..."
+                              value={exp.description}
+                              onChange={(e) => handleUpdateExperienceField(idx, 'description', e.target.value)}
                               className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
                             />
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                        <div className="space-y-1">
-                          <label className="text-[11px] text-slate-400 font-medium">Description (Optional):</label>
-                          <textarea
-                            rows={2}
-                            placeholder="Briefly describe your responsibilities and volume delivered..."
-                            value={exp.description}
-                            onChange={(e) => handleUpdateExperienceField(idx, 'description', e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-black border border-white/15 text-white text-xs focus:border-purple-400"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                {/* Step navigation pinned cleanly at the bottom */}
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => setActiveSection('languages')}
@@ -1432,122 +1453,125 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 5: EQUIPMENT & RESOURCES ── */}
             {activeSection === 'equipment' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl space-y-6 animate-in fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
-                  <h2 className="text-xs sm:text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 font-mono">
-                    <Monitor className="w-4 h-4 text-amber-400" /> 5. Equipment &amp; Technical Setup
-                  </h2>
-                  <span className="text-[11px] text-slate-400">Your hardware, environment, and network connectivity.</span>
-                </div>
-
-                {/* Available Equipment Multi-Select */}
-                <div className="space-y-3">
-                  <label className="text-slate-300 font-bold block text-xs">
-                    Equipment Available ({equipmentList.length} Selected)
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    {(availableEquipment.length > 0
-                      ? availableEquipment
-                      : [
-                          'Smartphone',
-                          'Professional Microphone',
-                          'USB Microphone',
-                          'Headphones',
-                          'Camera',
-                          'Laptop/Desktop',
-                          'Recording Studio',
-                          'Quiet Recording Environment',
-                        ]
-                    ).map((eq) => {
-                      const isSelected = equipmentList.includes(eq);
-                      return (
-                        <button
-                          key={eq}
-                          type="button"
-                          onClick={() => handleToggleEquipment(eq)}
-                          className={`p-2.5 rounded-xl border text-left font-medium transition-all flex items-center justify-between cursor-pointer text-xs ${
-                            isSelected
-                              ? 'bg-amber-500/20 border-amber-400 text-amber-200'
-                              : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          <span className="truncate">{eq}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 ml-1" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                  {/* Recording Environment */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Recording Environment</label>
-                    <select
-                      value={recordingEnvironment}
-                      onChange={(e) => setRecordingEnvironment(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-amber-400"
-                    >
-                      {(availableEnvironments.length > 0
-                        ? availableEnvironments
-                        : ['Professional Studio', 'Quiet Home/Room', 'Office', 'Outdoor', 'Other']
-                      ).map((env) => (
-                        <option key={env} value={env}>
-                          {env}
-                        </option>
-                      ))}
-                    </select>
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
+                    <h2 className="text-xs sm:text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 font-mono">
+                      <Monitor className="w-4 h-4 text-amber-400" /> 5. Equipment &amp; Technical Setup
+                    </h2>
+                    <span className="text-[11px] text-slate-400">Your hardware, environment, and network connectivity.</span>
                   </div>
 
-                  {/* Internet Quality */}
-                  <div className="space-y-1.5">
-                    <label className="text-slate-300 font-bold block text-xs">Internet Quality</label>
-                    <select
-                      value={internetQuality}
-                      onChange={(e) => setInternetQuality(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-amber-400"
-                    >
-                      {(availableInternetQualities.length > 0
-                        ? availableInternetQualities
+                  {/* Available Equipment Multi-Select */}
+                  <div className="space-y-3">
+                    <label className="text-slate-300 font-bold block text-xs">
+                      Equipment Available ({equipmentList.length} Selected)
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {(availableEquipment.length > 0
+                        ? availableEquipment
                         : [
-                            'Good (High speed / Broadband)',
-                            'Average (Stable 4G/Mobile)',
-                            'Limited',
+                            'Smartphone',
+                            'Professional Microphone',
+                            'USB Microphone',
+                            'Headphones',
+                            'Camera',
+                            'Laptop/Desktop',
+                            'Recording Studio',
+                            'Quiet Recording Environment',
                           ]
-                      ).map((iq) => (
-                        <option key={iq} value={iq}>
-                          {iq}
-                        </option>
-                      ))}
-                    </select>
+                      ).map((eq) => {
+                        const isSelected = equipmentList.includes(eq);
+                        return (
+                          <button
+                            key={eq}
+                            type="button"
+                            onClick={() => handleToggleEquipment(eq)}
+                            className={`p-2.5 rounded-xl border text-left font-medium transition-all flex items-center justify-between cursor-pointer text-xs ${
+                              isSelected
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                : 'bg-white/[0.02] border-white/10 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            <span className="truncate">{eq}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 ml-1" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    {/* Recording Environment */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Recording Environment</label>
+                      <select
+                        value={recordingEnvironment}
+                        onChange={(e) => setRecordingEnvironment(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-amber-400"
+                      >
+                        {(availableEnvironments.length > 0
+                          ? availableEnvironments
+                          : ['Professional Studio', 'Quiet Home/Room', 'Office', 'Outdoor', 'Other']
+                        ).map((env) => (
+                          <option key={env} value={env}>
+                            {env}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Internet Quality */}
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-bold block text-xs">Internet Quality</label>
+                      <select
+                        value={internetQuality}
+                        onChange={(e) => setInternetQuality(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-amber-400"
+                      >
+                        {(availableInternetQualities.length > 0
+                          ? availableInternetQualities
+                          : [
+                              'Good (High speed / Broadband)',
+                              'Average (Stable 4G/Mobile)',
+                              'Limited',
+                            ]
+                        ).map((iq) => (
+                          <option key={iq} value={iq}>
+                            {iq}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Read-Only System Details Card */}
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-400 text-xs font-mono font-bold uppercase tracking-wider">
+                      <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Protected System Credentials (Read-Only)</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1">
+                      <div>
+                        <span className="text-slate-500 uppercase text-[10px] font-mono block">Registration Code</span>
+                        <span className="font-mono font-bold text-cyan-300 text-xs">{registrationCode}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 uppercase text-[10px] font-mono block">Account Status</span>
+                        <span className="font-semibold text-emerald-300 capitalize text-xs">
+                          {talentProfile?.status || 'Active'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 uppercase text-[10px] font-mono block">Profile Mode</span>
+                        <span className="text-slate-300 text-xs">Self-Service Enabled</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Read-Only System Details Card */}
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
-                  <div className="flex items-center gap-2 text-slate-400 text-xs font-mono font-bold uppercase tracking-wider">
-                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Protected System Credentials (Read-Only)</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1">
-                    <div>
-                      <span className="text-slate-500 uppercase text-[10px] font-mono block">Registration Code</span>
-                      <span className="font-mono font-bold text-cyan-300 text-xs">{registrationCode}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 uppercase text-[10px] font-mono block">Account Status</span>
-                      <span className="font-semibold text-emerald-300 capitalize text-xs">
-                        {talentProfile?.status || 'Active'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 uppercase text-[10px] font-mono block">Profile Mode</span>
-                      <span className="text-slate-300 text-xs">Self-Service Enabled</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                {/* Step navigation pinned cleanly at the bottom */}
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => setActiveSection('experience')}
@@ -1573,7 +1597,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
           {/* ══════════════════════════════════════════════════════ */}
           {/* ── COLUMN 3: RIGHT SIDEBAR (Desktop & Mobile) ── */}
           {/* ══════════════════════════════════════════════════════ */}
-          <aside className="lg:col-span-3 space-y-6">
+          <aside className="lg:col-span-3 flex flex-col justify-between gap-4">
             {/* Contributor Profile Card */}
             <div className="p-5 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-4 text-center sm:text-left">
               <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -1632,7 +1656,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
             </div>
 
             {/* Quick Tips Card */}
-            <div className="p-5 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-3.5">
+            <div className="p-5 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-3.5 mt-auto">
               <div className="flex items-center gap-2 text-amber-400">
                 <Lightbulb className="w-4 h-4" />
                 <h4 className="font-bold text-xs text-white uppercase tracking-wider font-mono">Quick Tips</h4>
@@ -1664,7 +1688,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
       {/* ══════════════════════════════════════════════════════ */}
       {/* ── FIXED BOTTOM ACTION BAR ── */}
       {/* ══════════════════════════════════════════════════════ */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[#080d1a]/95 backdrop-blur-md border-t border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 shadow-2xl">
+      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-[#080d1a]/98 backdrop-blur-md border-t border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 shadow-2xl">
         <div className="max-w-7xl mx-auto flex flex-row items-center justify-between gap-3">
           {/* Discard Button */}
           <button
@@ -1716,7 +1740,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
       {/* ── Unsaved Changes Confirmation Modal ── */}
       {showUnsavedPrompt && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-[#0e1320] border border-amber-500/30 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-amber-400">
               <AlertTriangle className="w-6 h-6" />
