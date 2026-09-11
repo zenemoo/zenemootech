@@ -160,9 +160,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden pt-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))]">
+    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden pt-14 sm:pt-16">
       {/* ── Fixed Top Navigation Header (Dynamic & Responsive from 320px to 4K) ── */}
-      <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))] pt-[var(--sat,env(safe-area-inset-top,0px))] bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-5 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
+      <header className="fixed top-0 left-0 right-0 z-40 h-14 sm:h-16 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-5 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
         <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
           {/* Brand Logo & Portal Title (Mobile shows only logo, Desktop/Laptop shows full brand) */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
@@ -716,7 +716,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       </AnimatePresence>
 
       {/* ── Main Content Area (Compact, Snug, Perfectly Proportioned Spacing) ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-24 sm:pt-6 sm:pb-8 min-w-0 overflow-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-24 sm:pt-4 sm:pb-8 min-w-0 overflow-hidden">
         {children}
       </main>
 
