@@ -867,6 +867,9 @@ export const getSentEmails = async (req, res, next) => {
       status = '',
       view = 'all',
       page = 1,
+      limit = 50,
+    } = req.query;
+
     let dbLogs = [];
     try {
       if (supabase) {
