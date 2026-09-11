@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   User,
   Mail,
@@ -92,9 +93,11 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
   onSuccess,
 }) => {
   const { user, talentProfile, languages, experiences, token, updateProfile } = useTalentHubAuth();
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Lock body scroll while workspace is open to avoid background page peek/bleed
+  // Lock body scroll and mount portal
   useEffect(() => {
+    setIsMounted(true);
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -196,13 +199,13 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
   // Load Form Config (dynamic questions, supported languages, options)
   useEffect(() => {
-    let isMounted = true;
+    let isMountedLocal = true;
     const fetchConfig = async () => {
       setIsLoadingConfig(true);
       try {
         if (token) {
           const res = await talentHubApi.getProfileFormConfig(token);
-          if (res?.success && isMounted) {
+          if (res?.success && isMountedLocal) {
             setDynamicQuestions(res.dynamic_questions || []);
             if (Array.isArray(res.supported_languages)) {
               setSupportedLanguagesList(res.supported_languages.map((l: any) => l.language || l));
@@ -218,12 +221,12 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
       } catch (err) {
         console.warn('Profile form config fetch warning:', err);
       } finally {
-        if (isMounted) setIsLoadingConfig(false);
+        if (isMountedLocal) setIsLoadingConfig(false);
       }
     };
     fetchConfig();
     return () => {
-      isMounted = false;
+      isMountedLocal = false;
     };
   }, [token]);
 
@@ -563,9 +566,13 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
   const registrationCode = talentProfile?.registration_code || 'ZEN-CONTRIBUTOR';
 
-  return (
-    <div className="fixed inset-0 z-[999] bg-[#060911] overflow-y-auto flex flex-col text-slate-200 animate-in fade-in duration-150 top-0 left-0 right-0 bottom-0 m-0 p-0">
-      {/* ── Top Workspace Header (Clean 0px from viewport top) ── */}
+  if (!isMounted || typeof document === 'undefined') {
+    return null;
+  }
+
+  const modalContent = (
+    <div className="fixed inset-0 z-[99999] bg-[#060911] overflow-y-auto flex flex-col text-slate-200 top-0 left-0 right-0 bottom-0 w-screen h-screen m-0 p-0 antialiased">
+      {/* ── Top Workspace Header (0px from viewport top) ── */}
       <header className="sticky top-0 z-50 bg-[#080d1a] border-b border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between shadow-2xl w-full shrink-0">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-inner">
@@ -628,7 +635,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
       </div>
 
       {/* ── Main Workspace Body ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 pb-32 flex flex-col justify-start">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:px-8 pb-32 flex flex-col">
         {/* Error Banner */}
         {errorMsg && (
           <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-red-200 flex items-start gap-3 animate-in shake shrink-0">
@@ -641,11 +648,11 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
         )}
 
         {/* 3-Column Desktop Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 min-h-[calc(100vh-200px)]">
           {/* ══════════════════════════════════════════════════════ */}
           {/* ── COLUMN 1: LEFT SECTION NAVIGATION (Desktop) ── */}
           {/* ══════════════════════════════════════════════════════ */}
-          <aside className="hidden lg:flex lg:col-span-3 flex-col justify-between gap-4">
+          <aside className="hidden lg:flex lg:col-span-3 flex-col justify-between gap-4 h-full">
             <div className="p-3 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-1.5">
               {SECTIONS.map((sec) => {
                 const Icon = sec.icon;
@@ -724,7 +731,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
           <section className="lg:col-span-6 flex flex-col h-full">
             {/* ── SECTION 1: PERSONAL INFORMATION ── */}
             {activeSection === 'personal' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between h-full min-h-[580px] animate-in fade-in">
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
                     <h2 className="text-xs sm:text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 font-mono">
@@ -951,7 +958,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                 </div>
 
                 {/* Step navigation pinned cleanly at the bottom */}
-                <div className="pt-4 mt-6 border-t border-white/10 flex justify-end">
+                <div className="pt-4 mt-6 border-t border-white/10 flex justify-end shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveSection('professional')}
@@ -966,7 +973,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 2: PROFESSIONAL INFORMATION ── */}
             {activeSection === 'professional' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between h-full min-h-[580px] animate-in fade-in">
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
                     <h2 className="text-xs sm:text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2 font-mono">
@@ -1150,7 +1157,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                 </div>
 
                 {/* Step navigation pinned cleanly at the bottom */}
-                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveSection('personal')}
@@ -1173,7 +1180,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 3: LANGUAGES ── */}
             {activeSection === 'languages' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between h-full min-h-[580px] animate-in fade-in">
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
                     <div>
@@ -1297,7 +1304,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                 </div>
 
                 {/* Step navigation pinned cleanly at the bottom */}
-                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveSection('professional')}
@@ -1320,7 +1327,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 4: EXPERIENCE RECORDS ── */}
             {activeSection === 'experience' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between h-full min-h-[580px] animate-in fade-in">
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
                     <div>
@@ -1430,7 +1437,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                 </div>
 
                 {/* Step navigation pinned cleanly at the bottom */}
-                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveSection('languages')}
@@ -1453,7 +1460,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
             {/* ── SECTION 5: EQUIPMENT & RESOURCES ── */}
             {activeSection === 'equipment' && (
-              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between min-h-[580px] h-full animate-in fade-in">
+              <div className="p-5 sm:p-7 rounded-3xl bg-[#090e1b] border border-white/10 shadow-2xl flex flex-col justify-between h-full min-h-[580px] animate-in fade-in">
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-white/10 pb-4">
                     <h2 className="text-xs sm:text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 font-mono">
@@ -1571,7 +1578,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                 </div>
 
                 {/* Step navigation pinned cleanly at the bottom */}
-                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between">
+                <div className="pt-4 mt-6 border-t border-white/10 flex items-center justify-between shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveSection('experience')}
@@ -1597,7 +1604,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
           {/* ══════════════════════════════════════════════════════ */}
           {/* ── COLUMN 3: RIGHT SIDEBAR (Desktop & Mobile) ── */}
           {/* ══════════════════════════════════════════════════════ */}
-          <aside className="lg:col-span-3 flex flex-col justify-between gap-4">
+          <aside className="lg:col-span-3 flex flex-col justify-between gap-4 h-full">
             {/* Contributor Profile Card */}
             <div className="p-5 rounded-3xl bg-[#090e1b] border border-white/10 shadow-xl space-y-4 text-center sm:text-left">
               <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -1688,7 +1695,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
       {/* ══════════════════════════════════════════════════════ */}
       {/* ── FIXED BOTTOM ACTION BAR ── */}
       {/* ══════════════════════════════════════════════════════ */}
-      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-[#080d1a]/98 backdrop-blur-md border-t border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 shadow-2xl">
+      <footer className="fixed bottom-0 left-0 right-0 z-50 bg-[#080d1a]/98 backdrop-blur-md border-t border-white/10 px-4 sm:px-6 lg:px-8 py-3.5 shadow-2xl w-full">
         <div className="max-w-7xl mx-auto flex flex-row items-center justify-between gap-3">
           {/* Discard Button */}
           <button
@@ -1740,7 +1747,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
 
       {/* ── Unsaved Changes Confirmation Modal ── */}
       {showUnsavedPrompt && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-[#0e1320] border border-amber-500/30 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-amber-400">
               <AlertTriangle className="w-6 h-6" />
@@ -1770,4 +1777,6 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
       )}
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
