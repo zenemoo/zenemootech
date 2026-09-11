@@ -13,6 +13,7 @@ const INSTALLATION_KEY = 'zenemoo_installation_id';
 const PROMPT_STATUS_KEY = 'zenemoo_notif_prompt_status'; // 'granted' | 'denied'
 const ONBOARDING_COMPLETED_KEY = 'zenemoo_notification_onboarding_completed';
 const DENIED_AT_KEY = 'zenemoo_notif_denied_at'; // timestamp ms
+const LAST_CHECKED_APP_VERSION_KEY = 'zenemoo_last_checked_app_version';
 const RETRY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Idempotency session caches
@@ -103,30 +104,50 @@ export const getInstallationId = (): string => {
 };
 
 /**
- * Asynchronously checks whether the custom notification prompt should be displayed.
- * Decoupled from native FCM initialization.
+ * Fast synchronous/asynchronous check if notification permission is currently granted
  */
-export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted' | 'permanently_denied' | 'in_cooling_period'> => {
-  if (typeof window === 'undefined') return 'in_cooling_period';
+export const isNotificationPermissionGranted = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
 
-  // 1. Check local onboarding completion flag
-  const onboardingCompleted = localStorage.getItem(ONBOARDING_COMPLETED_KEY);
-  if (onboardingCompleted === 'true') {
-    return 'granted';
-  }
-
-  // 2. Check local 7-day cooling period for 'Not Now'
-  const promptStatus = localStorage.getItem(PROMPT_STATUS_KEY);
-  const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
-  if (promptStatus === 'denied' && deniedAtStr) {
-    const deniedAt = parseInt(deniedAtStr, 10);
-    const now = Date.now();
-    if (now - deniedAt < RETRY_INTERVAL_MS) {
-      return 'in_cooling_period'; // Within 7 days
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const perm = await PushNotifications.checkPermissions();
+      return perm.receive === 'granted';
+    } catch {
+      return false;
     }
   }
 
-  // 3. Check native Android permission if native platform
+  if ('Notification' in window) {
+    return Notification.permission === 'granted';
+  }
+
+  return false;
+};
+
+/**
+ * Asynchronously checks whether the custom notification prompt should be displayed.
+ * Correctly validates actual OS / Browser permission status on install, update, and launch.
+ */
+export const checkPromptEligibility = async (
+  force = false
+): Promise<'can_prompt' | 'granted' | 'permanently_denied' | 'in_cooling_period'> => {
+  if (typeof window === 'undefined') return 'in_cooling_period';
+
+  // 1. Check for App Version changes (e.g. fresh install or updated APK/release)
+  try {
+    const currentVer = await getAppVersion();
+    const lastVer = localStorage.getItem(LAST_CHECKED_APP_VERSION_KEY);
+    if (lastVer !== currentVer) {
+      // App updated or new installation detected — reset temporary cooling period
+      localStorage.setItem(LAST_CHECKED_APP_VERSION_KEY, currentVer);
+      localStorage.removeItem(DENIED_AT_KEY);
+    }
+  } catch (e) {
+    console.warn('[Version Check Warn]:', e);
+  }
+
+  // 2. Check native Android permission if native platform
   if (Capacitor.isNativePlatform()) {
     try {
       const permStatus = await PushNotifications.checkPermissions();
@@ -137,7 +158,22 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
         localStorage.removeItem(DENIED_AT_KEY);
         return 'granted';
       }
-      // On Android 13+ (API 33+), checkPermissions() returns 'denied' or 'prompt' before requestPermissions() is invoked.
+
+      // Permission is NOT granted in OS
+      localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
+
+      if (!force) {
+        const promptStatus = localStorage.getItem(PROMPT_STATUS_KEY);
+        const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
+        if (promptStatus === 'denied' && deniedAtStr) {
+          const deniedAt = parseInt(deniedAtStr, 10);
+          if (Date.now() - deniedAt < RETRY_INTERVAL_MS) {
+            return 'in_cooling_period';
+          }
+        }
+      }
+
+      // On Android 13+ (API 33+), checkPermissions() returns 'prompt' or 'denied' before requestPermissions() is invoked.
       // Return 'can_prompt' so the custom UI shows the "Allow Notifications" action button, which triggers native OS dialog.
       return 'can_prompt';
     } catch (err) {
@@ -145,7 +181,7 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
     }
   }
 
-  // 4. Check browser Web Notification API state if web platform
+  // 3. Check browser Web Notification API state if web platform
   if ('Notification' in window && !Capacitor.isNativePlatform()) {
     if (Notification.permission === 'granted') {
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
@@ -153,12 +189,83 @@ export const checkPromptEligibility = async (): Promise<'can_prompt' | 'granted'
       localStorage.removeItem(DENIED_AT_KEY);
       return 'granted';
     }
+
+    // Permission is not granted in browser
+    localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
+
     if (Notification.permission === 'denied') {
       return 'permanently_denied';
+    }
+
+    if (!force) {
+      const promptStatus = localStorage.getItem(PROMPT_STATUS_KEY);
+      const deniedAtStr = localStorage.getItem(DENIED_AT_KEY);
+      if (promptStatus === 'denied' && deniedAtStr) {
+        const deniedAt = parseInt(deniedAtStr, 10);
+        if (Date.now() - deniedAt < RETRY_INTERVAL_MS) {
+          return 'in_cooling_period';
+        }
+      }
     }
   }
 
   return 'can_prompt';
+};
+
+/**
+ * Explicitly triggers the Notification Prompt modal across the app.
+ * Can be called when the user clicks the Notification Bell icon.
+ */
+export const triggerNotificationPrompt = (force = true) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('zenemoo:open-notification-prompt', {
+      detail: { force },
+    })
+  );
+};
+
+/**
+ * Checks permission and backend subscription status when a user clicks the notification button.
+ * If permission is not granted or device is not subscribed, triggers the notification prompt modal.
+ */
+export const checkAndPromptNotificationPermission = async (
+  force = true
+): Promise<{ granted: boolean; status: string }> => {
+  if (typeof window === 'undefined') {
+    return { granted: false, status: 'unknown' };
+  }
+
+  const isGranted = await isNotificationPermissionGranted();
+  const installation_id = getInstallationId();
+  const platform = Capacitor.isNativePlatform() ? 'android' : 'web';
+
+  if (!isGranted) {
+    const eligibility = await checkPromptEligibility(force);
+    triggerNotificationPrompt(force);
+    return { granted: false, status: eligibility };
+  }
+
+  // Permission is granted locally — verify/ensure backend subscription is active
+  try {
+    const res = await notificationApi.checkSubscriptionStatus({
+      installation_id,
+      platform,
+    });
+    if (res.data && res.data.success && !res.data.is_subscribed) {
+      console.log('[NotificationService]: Device not registered in backend, re-registering...');
+      if (Capacitor.isNativePlatform()) {
+        const appType = window.location.pathname.includes('/team') || window.location.pathname.includes('/hr') ? 'team_hr' : 'zenemoo';
+        initFCMIfGranted(appType);
+      } else {
+        initWebPushIfGranted();
+      }
+    }
+  } catch (e) {
+    // Non-blocking network check
+  }
+
+  return { granted: true, status: 'granted' };
 };
 
 /**

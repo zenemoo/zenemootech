@@ -94,6 +94,14 @@ function AppInner() {
     }
   }, [isAndroidApp]);
 
+  // Synchronize Talent Hub route when user is authenticated & registered
+  useEffect(() => {
+    if (session && isRegistered === true && currentRoute === 'talent-hub') {
+      window.history.replaceState(null, '', '/talent-hub/dashboard');
+      setCurrentRoute('talent-hub-dashboard');
+    }
+  }, [session, isRegistered, currentRoute]);
+
   // Native Android startup session state machine
   useEffect(() => {
     if (!isAppInitializing) return;
@@ -142,8 +150,13 @@ function AppInner() {
       if (!url) return;
       if (url.startsWith('zenemoo://auth/callback') || url.includes('auth/callback')) {
         setIsAppInitializing(false);
-        window.history.replaceState(null, '', '/talent-hub');
-        setCurrentRoute('talent-hub');
+        if (isRegistered === true) {
+          window.history.replaceState(null, '', '/talent-hub/dashboard');
+          setCurrentRoute('talent-hub-dashboard');
+        } else {
+          window.history.replaceState(null, '', '/talent-hub');
+          setCurrentRoute('talent-hub');
+        }
       }
     };
 
@@ -163,7 +176,7 @@ function AppInner() {
     return () => {
       if (appUrlHandle?.remove) appUrlHandle.remove();
     };
-  }, [isAndroidApp]);
+  }, [isAndroidApp, isRegistered]);
 
   // Native Android hardware back button handler
   useEffect(() => {
@@ -1090,10 +1103,10 @@ function AppInner() {
           ) && (
             <>
               <SubscribeModal />
-              <ZenemooNotificationPrompt />
               <ScrollProgressButton />
             </>
           )}
+          <ZenemooNotificationPrompt />
           <NotificationToast />
           <ZenemooAppUpdatePrompt />
         </>

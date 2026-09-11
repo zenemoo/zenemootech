@@ -139,21 +139,8 @@ if (fs.existsSync(path.resolve('frontend/dist/app'))) {
 
 console.log(`✓ Release artifacts & metadata synchronized (v${versionName} - ${sizeMB} MB)`);
 
-// 7. Automatic Release Notification Dispatch
-console.log('\n🔔 Step 7: Checking and dispatching automatic release notification...');
-try {
-  const { checkAndNotifyAppRelease } = await import('../backend/src/services/appReleaseNotifier.js');
-  const result = await checkAndNotifyAppRelease();
-  if (result.triggered && result.success) {
-    console.log(`🎉 Success: Automatic release notification dispatched for v${versionName}`);
-  } else if (!result.triggered) {
-    console.log(`ℹ️ Info: Release notification status: ${result.reason || 'already notified'}`);
-  } else {
-    console.warn(`⚠️ Warning: Notification dispatch result: ${result.reason || result.error}`);
-  }
-} catch (notifErr) {
-  console.warn(`[Release Notification Warning]:`, notifErr.message);
-}
+// 7. Automatic Release Notification Dispatch (Skipped for staging/testing)
+console.log('\n🔔 Step 7: Automatic notification dispatch skipped for test build.');
 
 console.log(`\n=====================================================`);
 console.log(`✅ Zenemoo Production Signed Release v${versionName} Ready!`);

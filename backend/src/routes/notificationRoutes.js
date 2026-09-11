@@ -5,6 +5,7 @@ import {
   getUserNotifications,
   getAdminNotifications,
   getAppVersionInfo,
+  getSubscriptionStatus,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   deleteUserNotification,
@@ -19,6 +20,7 @@ const router = Router();
 // Strictly returns public broadcast & announcement notifications only
 router.get('/vapid-key', getVapidPublicKey);
 router.get('/app-version', getAppVersionInfo);
+router.get('/subscription-status', getSubscriptionStatus);
 router.post('/subscribe', registerSubscription);
 
 // Public Notification History & Read Status (Supports both authenticated users & guests via installation_id)

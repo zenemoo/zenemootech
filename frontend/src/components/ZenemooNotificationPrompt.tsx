@@ -34,29 +34,44 @@ export const ZenemooNotificationPrompt: React.FC = () => {
     }
 
     let isMounted = true;
-    const checkEligibility = async () => {
-      const eligibility = await checkPromptEligibility();
+    const checkEligibility = async (force = false) => {
+      const eligibility = await checkPromptEligibility(force);
       if (isMounted) {
         if (eligibility === 'can_prompt') {
           setIsVisible(true);
+          setShowSettingsOption(false);
         } else if (eligibility === 'permanently_denied' && Capacitor.isNativePlatform()) {
           setIsVisible(true);
           setShowSettingsOption(true);
+        } else if (force) {
+          setIsVisible(true);
+          setShowSettingsOption(eligibility === 'permanently_denied');
         } else {
           setIsVisible(false);
         }
       }
     };
 
+    // Auto-check on app startup after subtle 2.5s delay
     const timer = setTimeout(() => {
-      checkEligibility();
+      checkEligibility(false);
     }, 2500);
+
+    // Reactive listener for notification bell / button clicks across the app
+    const handleTriggerPrompt = (e: Event) => {
+      const customEvent = e as CustomEvent<{ force?: boolean }>;
+      const force = customEvent?.detail?.force ?? true;
+      checkEligibility(force);
+    };
+
+    window.addEventListener('zenemoo:open-notification-prompt', handleTriggerPrompt);
 
     return () => {
       isMounted = false;
       clearTimeout(timer);
+      window.removeEventListener('zenemoo:open-notification-prompt', handleTriggerPrompt);
     };
-  }, []);
+  }, [isTeamPortal]);
 
   const handleAllow = async () => {
     setIsRegistering(true);

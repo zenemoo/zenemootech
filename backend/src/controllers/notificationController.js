@@ -645,3 +645,65 @@ export const getAppVersionInfo = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * 10. GET /api/notifications/subscription-status
+ * Query if a device installation has an active push notification subscription
+ */
+export const getSubscriptionStatus = async (req, res, next) => {
+  try {
+    const { installation_id, platform, app_type } = req.query;
+
+    if (!installation_id) {
+      return res.json({
+        success: true,
+        is_subscribed: false,
+        permission_status: 'none',
+      });
+    }
+
+    let isSubscribed = false;
+    let permissionStatus = 'none';
+
+    if (supabase) {
+      try {
+        let query = supabase
+          .from('zenemoo_notifications')
+          .select('id, permission_status, is_active, updated_at, created_at')
+          .eq('record_type', 'subscription')
+          .eq('installation_id', installation_id);
+
+        if (platform) {
+          query = query.eq('platform', platform);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false }).limit(1);
+
+        if (!error && data && data.length > 0) {
+          const sub = data[0];
+          isSubscribed = sub.is_active === true && sub.permission_status === 'granted';
+          permissionStatus = sub.permission_status || (isSubscribed ? 'granted' : 'none');
+        }
+      } catch (dbErr) {
+        console.warn('[getSubscriptionStatus DB error]:', dbErr.message);
+      }
+    }
+
+    if (!isSubscribed) {
+      const memorySub = memorySubscriptions.get(`${platform || 'web'}_${installation_id}`);
+      if (memorySub) {
+        isSubscribed = memorySub.is_active === true && memorySub.permission_status === 'granted';
+        permissionStatus = memorySub.permission_status || (isSubscribed ? 'granted' : 'none');
+      }
+    }
+
+    return res.json({
+      success: true,
+      is_subscribed: isSubscribed,
+      permission_status: permissionStatus,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

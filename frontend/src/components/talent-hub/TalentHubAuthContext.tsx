@@ -611,7 +611,10 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (isAndroid) {
         setIsOpeningGoogle(true);
-        console.log('[Google OAuth Mobile] Opening Chrome / system browser with redirect to zenemoo://auth/callback');
+        setIsSigningIn(true);
+        setAuthError(null);
+        console.log('[Google OAuth Mobile] Initiating in-app Google Sign-In with callback: zenemoo://auth/callback');
+
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
@@ -626,16 +629,33 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (error) {
           setIsOpeningGoogle(false);
+          setIsSigningIn(false);
           console.error('[Google OAuth Mobile Error]:', error.message);
           setAuthError('Google sign-in could not be completed. Please try again.');
           return;
         }
 
         if (data?.url) {
-          await Browser.open({ url: data.url, windowName: '_system' });
-          setTimeout(() => setIsOpeningGoogle(false), 2500);
+          // Listen for user closing the in-app browser overlay manually
+          const browserFinishedHandle = await Browser.addListener('browserFinished', () => {
+            console.log('[Google OAuth Mobile] In-app browser dismissed by user.');
+            setIsOpeningGoogle(false);
+            setIsSigningIn(false);
+            browserFinishedHandle.remove();
+          });
+
+          // Open In-App Custom Tab overlay (not external _system Chrome!)
+          await Browser.open({
+            url: data.url,
+            windowName: '_blank',
+            presentationStyle: 'popover',
+            toolbarColor: '#080d19',
+          });
+
+          setTimeout(() => setIsOpeningGoogle(false), 2000);
         } else {
           setIsOpeningGoogle(false);
+          setIsSigningIn(false);
           setAuthError('Unable to open Google sign-in. Please try again.');
         }
       } else {
@@ -661,6 +681,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } catch (err: any) {
       setIsOpeningGoogle(false);
+      setIsSigningIn(false);
       console.error('[Google OAuth Trigger Error]:', err.message);
       setAuthError("We couldn't sign you in with Google. Please try again.");
     }

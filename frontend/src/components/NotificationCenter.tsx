@@ -14,7 +14,13 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { notificationApi } from '../services/api';
-import { getInstallationId, sanitizeZenemooUrl } from '../services/notificationService';
+import {
+  getInstallationId,
+  sanitizeZenemooUrl,
+  checkAndPromptNotificationPermission,
+  triggerNotificationPrompt,
+  isNotificationPermissionGranted,
+} from '../services/notificationService';
 import { notificationCoordinator, ZenemooNotificationItem as NotificationItemType } from '../services/notificationCoordinator';
 
 export type ZenemooNotificationItem = NotificationItemType;
@@ -30,10 +36,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [isPermissionGranted, setIsPermissionGranted] = useState<boolean>(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [selectedLongNotif, setSelectedLongNotif] = useState<ZenemooNotificationItem | null>(null);
+
+  // Check initial permission state
+  useEffect(() => {
+    isNotificationPermissionGranted().then(setIsPermissionGranted);
+  }, [isOpen]);
 
   // Lock body scroll and preserve exact page scroll position when long message modal is open
   useEffect(() => {
@@ -279,10 +291,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
       {/* 🔔 BELL BUTTON (Desktop & Mobile) */}
       <button
         type="button"
-        onClick={() => {
+        onClick={async () => {
           const next = !isOpen;
           setIsOpen(next);
-          if (next) fetchNotifications(false);
+          if (next) {
+            fetchNotifications(false);
+            // Verify and prompt for notification permission if not yet enabled
+            const res = await checkAndPromptNotificationPermission(false);
+            setIsPermissionGranted(res.granted);
+          }
         }}
         className={`relative p-2 sm:p-2.5 rounded-2xl border transition-all duration-300 cursor-pointer flex items-center justify-center group ${
           isOpen
@@ -370,6 +387,29 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
               onWheel={(e) => e.stopPropagation()}
               onTouchMove={(e) => e.stopPropagation()}
             >
+              {/* Permission Request Banner (if notifications are disabled) */}
+              {!isPermissionGranted && (
+                <div className="mb-2 p-2.5 rounded-xl bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent border border-cyan-500/30 flex items-center justify-between gap-2 shadow-sm animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 shrink-0">
+                      <Bell className="w-3.5 h-3.5 animate-pulse" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[11px] text-white leading-tight">Enable Live Alerts</p>
+                      <p className="text-[10px] text-slate-300 leading-tight">Get opportunities & updates in real time</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerNotificationPrompt(true);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-md shadow-cyan-500/20"
+                  >
+                    Allow
+                  </button>
+                </div>
+              )}
               {/* Loading Skeleton State */}
               {isLoading && notifications.length === 0 ? (
                 <div className="space-y-1.5 p-1">

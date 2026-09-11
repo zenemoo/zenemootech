@@ -16,6 +16,11 @@ import {
   X,
 } from 'lucide-react';
 import { notificationCoordinator, ZenemooNotificationItem as NotificationItem } from '../services/notificationCoordinator';
+import {
+  checkAndPromptNotificationPermission,
+  triggerNotificationPrompt,
+  isNotificationPermissionGranted,
+} from '../services/notificationService';
 
 export type { NotificationItem };
 
@@ -26,7 +31,12 @@ export const NotificationBell: React.FC = () => {
   const [filterTab, setFilterTab] = useState<'all' | 'unread'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isPermissionGranted, setIsPermissionGranted] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    isNotificationPermissionGranted().then(setIsPermissionGranted);
+  }, [isOpen]);
 
   useEffect(() => {
     // Subscribe to centralized notification coordinator
@@ -126,7 +136,14 @@ export const NotificationBell: React.FC = () => {
     <div className="relative" ref={dropdownRef}>
       {/* Bell Button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={async () => {
+          const next = !isOpen;
+          setIsOpen(next);
+          if (next) {
+            const res = await checkAndPromptNotificationPermission(false);
+            setIsPermissionGranted(res.granted);
+          }
+        }}
         className="relative p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white transition-all cursor-pointer"
         title="Notification Center"
       >
@@ -171,6 +188,30 @@ export const NotificationBell: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Permission Request Banner (if notifications are disabled) */}
+          {!isPermissionGranted && (
+            <div className="p-3 bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent border-b border-cyan-500/30 flex items-center justify-between gap-2 shadow-sm animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 shrink-0">
+                  <Bell className="w-3.5 h-3.5 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-[11px] text-white leading-tight">Enable Live Alerts</p>
+                  <p className="text-[10px] text-slate-300 leading-tight">Get team updates and alerts in real time</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerNotificationPrompt(true);
+                }}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-md shadow-cyan-500/20"
+              >
+                Allow
+              </button>
+            </div>
+          )}
 
           {/* Filter Tabs & Search */}
           <div className="p-3 bg-white/[0.02] border-b border-white/5 space-y-2">
