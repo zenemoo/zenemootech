@@ -9,6 +9,7 @@ import {
   Mail,
   Paperclip,
   Check,
+  Copy,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -222,6 +223,25 @@ function sanitizeHtmlContent(html: string): string {
 }
 
 // ============================================================================
+// HTML TO PLAIN TEXT CONVERTER FOR COPY & EXPORT
+// ============================================================================
+function htmlToPlainText(html: string): string {
+  if (!html) return '';
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const breaks = doc.querySelectorAll('br');
+    breaks.forEach((b) => b.replaceWith('\n'));
+    const blockElements = doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, tr, li, blockquote');
+    blockElements.forEach((el) => {
+      el.after(doc.createTextNode('\n'));
+    });
+    return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+  } catch (_) {
+    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+}
+
+// ============================================================================
 // PERSISTENT MODULE-LEVEL INBOX CACHE (Survives Admin Tab Switching)
 // ============================================================================
 interface InboxCacheState {
@@ -229,6 +249,7 @@ interface InboxCacheState {
   sentEmails: EmailMessageRecord[];
   sentTotalCount: number;
   selectedEmailId: string | null;
+  emailDetails: Record<string, EmailMessageRecord>;
   mailTab: 'incoming' | 'sent';
   activeSidebarView: InboxView;
   viewFilter: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
@@ -244,6 +265,7 @@ const globalInboxCache: InboxCacheState = {
   sentEmails: [],
   sentTotalCount: 0,
   selectedEmailId: null,
+  emailDetails: {},
   mailTab: 'incoming',
   activeSidebarView: { type: 'mailbox', value: 'all' },
   viewFilter: 'all',
@@ -263,6 +285,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   const [incomingEmails, setIncomingEmails] = useState<EmailMessageRecord[]>(globalInboxCache.incomingEmails);
   const [sentEmails, setSentEmails] = useState<EmailMessageRecord[]>(globalInboxCache.sentEmails);
   const [sentTotalCount, setSentTotalCount] = useState<number>(globalInboxCache.sentTotalCount);
+  const [emailDetails, setEmailDetails] = useState<Record<string, EmailMessageRecord>>(globalInboxCache.emailDetails || {});
 
   const [mailTab, setMailTabState] = useState<'incoming' | 'sent'>(globalInboxCache.mailTab);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(globalInboxCache.selectedEmailId);
@@ -287,6 +310,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Compose Reply & Forward Modal State
   const [isComposeOpen, setIsComposeOpen] = useState<boolean>(false);
@@ -387,7 +411,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     } catch (_) {}
   }, []);
 
-  // Merge server list with optimistic cache
+  // Merge server list with optimistic cache (strictly preserving already loaded body content)
   const mergeEmailsWithCache = useCallback((existingList: EmailMessageRecord[], serverList: EmailMessageRecord[]) => {
     const existingMap = new Map<string, EmailMessageRecord>();
     existingList.forEach((e) => {
@@ -403,14 +427,21 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       seenKeys.add(key);
 
       const local = existingMap.get(key);
-      if (local) {
+      const cachedDetail = globalInboxCache.emailDetails[key] || (s.id ? globalInboxCache.emailDetails[s.id] : undefined);
+
+      if (local || cachedDetail) {
         merged.push({
           ...s,
-          is_read: local.is_read || s.is_read,
-          is_starred: local.is_starred !== undefined ? local.is_starred : s.is_starred,
-          is_archived: local.is_archived !== undefined ? local.is_archived : s.is_archived,
-          is_trashed: local.is_trashed !== undefined ? local.is_trashed : s.is_trashed,
-          category: local.category || s.category,
+          body_html: cachedDetail?.body_html || local?.body_html || s.body_html,
+          body_text: cachedDetail?.body_text || local?.body_text || s.body_text,
+          attachments: cachedDetail?.attachments || local?.attachments || s.attachments,
+          auth_results: cachedDetail?.auth_results || local?.auth_results || s.auth_results,
+          reply_to: cachedDetail?.reply_to || local?.reply_to || s.reply_to,
+          is_read: local ? (local.is_read || s.is_read) : s.is_read,
+          is_starred: local && local.is_starred !== undefined ? local.is_starred : s.is_starred,
+          is_archived: local && local.is_archived !== undefined ? local.is_archived : s.is_archived,
+          is_trashed: local && local.is_trashed !== undefined ? local.is_trashed : s.is_trashed,
+          category: local?.category || s.category,
         });
       } else {
         merged.push(s);
@@ -657,10 +688,27 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     return result;
   }, [mailTab, incomingEmails, sentEmails, viewFilter, activeSidebarView, advancedFilters, searchQuery, sortBy]);
 
-  // Selected Email Record
-  const selectedEmail = useMemo(() => {
+  // Selected Email Record (combines lightweight list item with dedicated full detail cache)
+  const rawSelectedEmail = useMemo(() => {
     return (mailTab === 'incoming' ? incomingEmails : sentEmails).find((e) => e.id === selectedEmailId) || filteredEmails[0] || null;
   }, [mailTab, incomingEmails, sentEmails, selectedEmailId, filteredEmails]);
+
+  const selectedEmail = useMemo(() => {
+    if (!rawSelectedEmail) return null;
+    const detailKey = rawSelectedEmail.message_id || rawSelectedEmail.id;
+    const detail = emailDetails[detailKey] || (rawSelectedEmail.id ? emailDetails[rawSelectedEmail.id] : undefined);
+    if (detail) {
+      return {
+        ...rawSelectedEmail,
+        body_html: detail.body_html || rawSelectedEmail.body_html,
+        body_text: detail.body_text || rawSelectedEmail.body_text,
+        attachments: detail.attachments || rawSelectedEmail.attachments,
+        auth_results: detail.auth_results || rawSelectedEmail.auth_results,
+        reply_to: detail.reply_to || rawSelectedEmail.reply_to,
+      };
+    }
+    return rawSelectedEmail;
+  }, [rawSelectedEmail, emailDetails]);
 
   // Auto Select first email if none selected
   useEffect(() => {
@@ -669,12 +717,16 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }
   }, [filteredEmails, selectedEmailId]);
 
-  // On-demand fetch full email detail (body_html, body_text, attachments) for selected incoming email
+  // On-demand fetch full email detail (body_html, body_text, attachments) for selected email
   useEffect(() => {
     if (!selectedEmail) return;
 
-    // Skip if full content is already loaded
-    if (selectedEmail.body_html || selectedEmail.body_text) return;
+    const detailKey = selectedEmail.message_id || selectedEmail.id;
+    const hasFullBody = Boolean(selectedEmail.body_html || selectedEmail.body_text);
+    const isAlreadyCached = Boolean(emailDetails[detailKey] || (selectedEmail.id && emailDetails[selectedEmail.id]));
+
+    // Skip if full content is already loaded or in cache
+    if (hasFullBody || isAlreadyCached) return;
 
     const emailId = selectedEmail.id;
     let isMounted = true;
@@ -686,6 +738,20 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         if (!isMounted) return;
         if (res.data?.success && res.data.email) {
           const detail = res.data.email as EmailMessageRecord;
+          const key = detail.message_id || detail.id || emailId;
+
+          // Store in dedicated emailDetails dictionary (stable across background list refreshes)
+          setEmailDetails((prev) => {
+            const updated = {
+              ...prev,
+              [key]: detail,
+              [emailId]: detail,
+            };
+            globalInboxCache.emailDetails = updated;
+            return updated;
+          });
+
+          // Also update list records
           const updateItem = (item: EmailMessageRecord) =>
             item.id === detail.id || item.message_id === detail.message_id
               ? {
@@ -726,7 +792,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [selectedEmail?.id, mailTab]);
+  }, [selectedEmail?.id, selectedEmail?.message_id, mailTab, emailDetails]);
 
   // OPTIMISTIC ACTIONS
 
@@ -939,6 +1005,65 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     if (!selectedEmail) return { cleanText: '', cleanHtml: '' };
     return extractHumanEmailBody(selectedEmail.body_text, selectedEmail.body_html);
   }, [selectedEmail]);
+
+  // Copy Full Email Content to Clipboard
+  const handleCopyEmail = useCallback(async () => {
+    if (!selectedEmail) return;
+
+    try {
+      const subject = decodeMimeHeader(selectedEmail.subject || '(No Subject)');
+      const senderName = decodeMimeHeader(selectedEmail.sender_name);
+      const sender = senderName
+        ? `${senderName} <${selectedEmail.sender_email}>`
+        : selectedEmail.sender_email;
+      const recipient = selectedEmail.recipient_email;
+      const formattedDate = selectedEmail.received_at
+        ? `${new Date(selectedEmail.received_at).toLocaleDateString()} ${new Date(selectedEmail.received_at).toLocaleTimeString()}`
+        : '';
+
+      let bodyContent = '';
+      if (parsedEmailContent.cleanText) {
+        bodyContent = parsedEmailContent.cleanText;
+      } else if (selectedEmail.body_text) {
+        bodyContent = selectedEmail.body_text;
+      } else if (parsedEmailContent.cleanHtml || selectedEmail.body_html) {
+        bodyContent = htmlToPlainText(parsedEmailContent.cleanHtml || selectedEmail.body_html || '');
+      } else {
+        bodyContent = normalizeMojibake(decodeMimeHeader(selectedEmail.snippet || ''));
+      }
+
+      const formattedClipboardText = `Subject: ${subject}
+From: ${sender}
+To: ${recipient}
+Date: ${formattedDate}
+
+--------------------
+
+${bodyContent}`.trim();
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(formattedClipboardText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = formattedClipboardText;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setIsCopied(true);
+      addToast('Copied to Clipboard', 'Complete email content copied.', 'success');
+      setTimeout(() => {
+        setIsCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy email:', err);
+      addToast('Copy Failed', 'Could not copy email content to clipboard.', 'error');
+    }
+  }, [selectedEmail, parsedEmailContent, addToast]);
 
   // Active Filter Chips Helper
   const hasActiveAdvancedFilters = useMemo(() => {
@@ -1768,6 +1893,28 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                   >
                     <Forward className="w-4 h-4" /> Forward
+                  </button>
+
+                  <button
+                    onClick={handleCopyEmail}
+                    className={`px-4 py-2 rounded-xl border font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      isCopied
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                        : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
+                    }`}
+                    title="Copy complete email content to clipboard"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-400" />
+                        <span className="text-emerald-300">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-slate-300" />
+                        <span>Copy</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
