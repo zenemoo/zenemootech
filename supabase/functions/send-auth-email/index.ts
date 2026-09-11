@@ -2,8 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 /**
  * Supabase Auth "Send Email" Hook Edge Function
- * - Primary Email Provider: Resend (zenemoo.in)
- * - Fallback Email Provider: Brevo (v3 API)
+ * - Verified with: SEND_EMAIL_HOOK_SECRET (Svix / Standard Webhooks)
+ * - Primary Provider: Resend API (zenemoo.in)
+ * - Fallback Provider: Brevo v3 API
  * - Sender: Zenemoo <no-reply@zenemoo.in>
  * - Never logs OTPs, tokens, or private secrets.
  */
@@ -29,7 +30,78 @@ const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const SENDER_EMAIL = "no-reply@zenemoo.in";
 const SENDER_NAME = "Zenemoo";
 
-// Helper to generate world-class, responsive, branded HTML email
+/**
+ * Verifies Supabase Auth Hook Webhook Signature (Svix / Standard Webhook)
+ */
+async function verifyWebhookSignature(
+  secret: string,
+  rawBody: string,
+  headers: Headers
+): Promise<boolean> {
+  const msgId = headers.get("webhook-id") || headers.get("svix-id");
+  const msgTimestamp = headers.get("webhook-timestamp") || headers.get("svix-timestamp");
+  const msgSignature = headers.get("webhook-signature") || headers.get("svix-signature");
+
+  if (!msgId || !msgTimestamp || !msgSignature) {
+    return false;
+  }
+
+  // Prevent replay attacks (tolerance: 5 minutes)
+  const timestampSec = parseInt(msgTimestamp, 10);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (isNaN(timestampSec) || Math.abs(nowSec - timestampSec) > 300) {
+    console.warn("[Auth Hook Security] Webhook timestamp outside allowed 5-minute window");
+    return false;
+  }
+
+  const toSign = `${msgId}.${msgTimestamp}.${rawBody}`;
+  const encoder = new TextEncoder();
+
+  let keyBytes: Uint8Array;
+  if (secret.startsWith("whsec_")) {
+    const base64Part = secret.slice(6);
+    const binaryStr = atob(base64Part);
+    keyBytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      keyBytes[i] = binaryStr.charCodeAt(i);
+    }
+  } else {
+    keyBytes = encoder.encode(secret);
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signatureBuffer = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    encoder.encode(toSign)
+  );
+
+  const computedSigBase64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+
+  // Signature header may contain multiple signatures: "v1,signature1 v1,signature2"
+  const signatures = msgSignature.split(" ").map((s) => s.trim());
+  for (const sig of signatures) {
+    const parts = sig.split(",");
+    if (parts.length === 2 && parts[0] === "v1") {
+      if (parts[1] === computedSigBase64) {
+        return true;
+      }
+    } else if (sig === computedSigBase64) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Builds high-conversion, responsive branded HTML email
 function buildAuthEmailHtml(params: {
   actionType: string;
   otpToken?: string;
@@ -220,7 +292,6 @@ async function sendWithBrevo(apiKey: string, to: string, subject: string, html: 
 }
 
 serve(async (req: Request) => {
-  // Only allow POST
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -229,7 +300,22 @@ serve(async (req: Request) => {
   }
 
   try {
-    const payload: SupabaseAuthHookPayload = await req.json();
+    const rawBody = await req.text();
+
+    // 1. Verify Webhook Secret if configured
+    const hookSecret = Deno.env.get("SEND_EMAIL_HOOK_SECRET");
+    if (hookSecret) {
+      const isValid = await verifyWebhookSignature(hookSecret, rawBody, req.headers);
+      if (!isValid) {
+        console.warn("[Auth Hook Security] Webhook signature verification failed. Request rejected.");
+        return new Response(JSON.stringify({ error: "Unauthorized: Invalid webhook signature" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    const payload: SupabaseAuthHookPayload = JSON.parse(rawBody);
 
     const recipientEmail = payload?.user?.email;
     if (!recipientEmail || typeof recipientEmail !== "string") {
@@ -245,7 +331,7 @@ serve(async (req: Request) => {
     const redirectTo = payload?.email_data?.redirect_to;
     const siteUrl = payload?.email_data?.site_url || "https://www.zenemoo.in";
 
-    // Build confirmation URL if token_hash is available
+    // Build verification URL if token_hash is available
     let confirmationUrl: string | undefined = undefined;
     if (tokenHash) {
       const supabaseProjectUrl = Deno.env.get("SUPABASE_URL") || siteUrl;
@@ -270,7 +356,7 @@ serve(async (req: Request) => {
 
     let sent = false;
 
-    // 1. Try Resend Primary
+    // Primary: Resend
     if (resendApiKey) {
       try {
         sent = await sendWithResend(resendApiKey, recipientEmail, subject, html);
@@ -282,7 +368,7 @@ serve(async (req: Request) => {
       console.warn("[Send Auth Email] RESEND_API_KEY secret not found. Attempting fallback...");
     }
 
-    // 2. If Resend failed or is unconfigured, try Brevo fallback
+    // Fallback: Brevo
     if (!sent && brevoApiKey) {
       console.log("[Send Auth Email] Triggering Brevo fallback delivery...");
       try {
@@ -301,7 +387,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // Return empty JSON 200 to signal success to Supabase Auth Hook
+    // Return empty JSON 200 for Supabase Auth Hook
     return new Response(JSON.stringify({}), {
       status: 200,
       headers: { "Content-Type": "application/json" },
