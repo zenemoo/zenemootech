@@ -39,19 +39,19 @@ export const TalentHubDashboard: React.FC<TalentHubDashboardProps> = ({ onNaviga
     : user?.user_metadata?.full_name?.split(' ')[0] || user?.user_metadata?.name?.split(' ')[0] || 'Contributor';
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
       {/* ── App Welcome Hero Banner ── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#080d19] via-[#0f172a]/60 to-[#080d19] border border-cyan-500/20 p-6 sm:p-8 shadow-2xl">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-r from-[#080d19] via-[#0f172a]/60 to-[#080d19] border border-cyan-500/20 p-4 sm:p-6 lg:p-8 shadow-2xl">
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/3 w-60 h-60 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4 sm:gap-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-semibold uppercase tracking-wider mb-3 shadow-sm">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] sm:text-xs font-mono font-semibold uppercase tracking-wider mb-2 sm:mb-3 shadow-sm">
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400" />
               <span>Zenemoo Contributor Network</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight font-display">
+            <h1 className="text-xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight font-display">
               Hello, {firstName} 👋
             </h1>
             <p className="text-sm sm:text-base text-slate-300 mt-2 font-normal max-w-2xl leading-relaxed">

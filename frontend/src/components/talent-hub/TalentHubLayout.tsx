@@ -431,10 +431,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         </div>
       </header>
 
-      {/* ── Fixed Header Spacer (Prevents page content overlap, 100% stable) ── */}
-      <div className="h-[calc(4rem+env(safe-area-inset-top,0px))] w-full shrink-0" aria-hidden="true" />
+      {/* ── Fixed Header Spacer (Removed duplicate spacer to prevent 150px+ mobile gap) ── */}
 
-      {/* ── MOBILE GLASS OVERLAY DRAWER (Sliding Overlay, Zero Page Push) ── */}
+      {/* ── MOBILE GLASS OVERLAY DRAWER (Sliding Overlay with Safe Area Inset) ── */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <div className="fixed inset-0 z-50 md:hidden overflow-hidden">
@@ -448,16 +447,16 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               onClick={() => setMobileMenuOpen(false)}
             />
 
-            {/* Sliding Glass Drawer Panel */}
+            {/* Sliding Glass Drawer Panel with Android Status Bar Safe Area */}
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed top-0 right-0 bottom-0 w-[85%] max-w-sm bg-[#080d19]/98 backdrop-blur-2xl border-l border-cyan-500/30 shadow-2xl p-5 flex flex-col z-50 overflow-y-auto"
+              className="fixed top-0 right-0 bottom-0 w-[85%] max-w-sm bg-[#080d19]/98 backdrop-blur-2xl border-l border-cyan-500/30 shadow-2xl px-4 sm:px-5 pt-[calc(var(--sat,env(safe-area-inset-top,0px))+1.25rem)] pb-[calc(var(--sab,env(safe-area-inset-bottom,0px))+1.5rem)] flex flex-col z-50 overflow-y-auto"
             >
               {/* Drawer Header */}
-              <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center justify-between pb-3.5 border-b border-white/10 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="h-7 w-7 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[1.5px]">
                     <SeoImage
@@ -620,8 +619,8 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── Main Content Area ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-hidden">
+      {/* ── Main Content Area (Compact, Snug, Perfectly Proportioned Spacing) ── */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-24 sm:pt-6 sm:pb-8 min-w-0 overflow-hidden">
         {children}
       </main>
 

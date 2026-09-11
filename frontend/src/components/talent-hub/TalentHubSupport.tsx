@@ -76,9 +76,9 @@ export const TalentHubSupport: React.FC<TalentHubSupportProps> = ({ onNavigateBa
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
       {/* ── 1. Top Header & Personalized Greeting ── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0a1020] via-[#080d19] to-[#05070e] border border-cyan-500/20 p-6 sm:p-8 md:p-10 shadow-2xl">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#0a1020] via-[#080d19] to-[#05070e] border border-cyan-500/20 p-4 sm:p-6 md:p-8 shadow-2xl">
         <div className="absolute top-0 right-0 -mt-16 -mr-16 w-80 h-80 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/4 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
