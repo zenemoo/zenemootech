@@ -130,7 +130,6 @@ export const getTalentOpportunities = async (req, res) => {
     const { data: opps, error } = await supabase
       .from('opportunities')
       .select('*')
-      .in('status', ['active', 'open', 'ACTIVE', 'OPEN'])
       .order('position', { ascending: true });
 
     if (error) {
