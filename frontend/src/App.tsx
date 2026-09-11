@@ -1140,34 +1140,16 @@ function AppInner() {
       {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt, non-application-verify pages) */}
       {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && currentRoute !== 'application-verify' && (
         <>
-          {currentRoute !== 'zenemooai' && (
+          {currentRoute !== 'zenemooai' && !currentRoute.startsWith('talent-hub') && (
             <>
-              {!(
-                currentRoute === 'talent-hub' ||
-                currentRoute === 'talent-hub-dashboard' ||
-                currentRoute === 'talent-hub-profile' ||
-                currentRoute === 'talent-hub-opportunities' ||
-                currentRoute === 'talent-hub-applications' ||
-                currentRoute === 'talent-hub-support'
-              ) && (
-                <>
-                  <ZenemooAiDrawer
-                    isOpen={isAiDrawerOpen}
-                    onClose={() => setIsAiDrawerOpen(false)}
-                  />
-                  <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
-                </>
-              )}
+              <ZenemooAiDrawer
+                isOpen={isAiDrawerOpen}
+                onClose={() => setIsAiDrawerOpen(false)}
+              />
+              <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
             </>
           )}
-          {!(
-            currentRoute === 'talent-hub' ||
-            currentRoute === 'talent-hub-dashboard' ||
-            currentRoute === 'talent-hub-profile' ||
-            currentRoute === 'talent-hub-opportunities' ||
-            currentRoute === 'talent-hub-applications' ||
-            currentRoute === 'talent-hub-support'
-          ) && (
+          {!currentRoute.startsWith('talent-hub') && (
             <>
               <SubscribeModal />
               <ScrollProgressButton />

@@ -5,6 +5,15 @@ export const ScrollProgressButton: React.FC = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
 
+  // Prevent duplicate rendering on Talent Hub pages which have their own unified floating stack
+  const isTalentHub =
+    typeof window !== 'undefined' &&
+    (window.location.pathname.startsWith('/talent-hub') ||
+      window.location.hash.startsWith('#talent-hub') ||
+      window.location.hash.startsWith('#/talent-hub'));
+
+  if (isTalentHub) return null;
+
   const calculateScrollProgress = useCallback(() => {
     if (typeof window === 'undefined') return;
 

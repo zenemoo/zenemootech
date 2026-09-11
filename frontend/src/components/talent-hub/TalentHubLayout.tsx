@@ -862,7 +862,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       </AnimatePresence>
 
       {/* ── Fixed Floating Controls Stack (Back to Top ABOVE, AI Contributor Assistant BELOW) ── */}
-      <div className="fixed bottom-20 md:bottom-6 right-3.5 sm:right-6 z-30 flex flex-col items-end gap-2.5 sm:gap-3 pointer-events-none print:hidden">
+      <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-30 flex flex-col items-end gap-3 sm:gap-3.5 pointer-events-none print:hidden">
         {/* 1. Back to Top Button (Small circular floating button positioned strictly ABOVE AI Assistant) */}
         <AnimatePresence>
           {showBackToTop && (
@@ -872,7 +872,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               exit={{ opacity: 0, scale: 0.8, y: 10 }}
               transition={{ duration: 0.18 }}
               onClick={scrollToTop}
-              className="pointer-events-auto p-2.5 sm:p-2.5 rounded-full bg-[#080d19]/90 hover:bg-[#0c1324] text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 shadow-[0_4px_20px_rgba(0,0,0,0.6),0_0_15px_rgba(6,182,212,0.25)] hover:shadow-[0_4px_25px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-95 group"
+              className="pointer-events-auto p-2.5 rounded-full bg-[#080d19]/90 hover:bg-[#0c1324] text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 shadow-[0_4px_20px_rgba(0,0,0,0.6),0_0_15px_rgba(6,182,212,0.25)] hover:shadow-[0_4px_25px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.4)] backdrop-blur-md transition-all duration-200 cursor-pointer active:scale-95 group"
               aria-label="Back to Top"
               title="Scroll to top"
             >
