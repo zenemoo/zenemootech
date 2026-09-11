@@ -49,3 +49,10 @@ CREATE INDEX IF NOT EXISTS idx_talent_team_members_status
 CREATE INDEX IF NOT EXISTS idx_talent_registrations_invite_token 
   ON talent_registrations(team_invite_token) 
   WHERE team_invite_token IS NOT NULL;
+
+-- 4. Global functional unique index on normalized active team member emails
+-- Ensures a person's email can only belong to one active team across the entire platform
+CREATE UNIQUE INDEX IF NOT EXISTS uq_talent_team_members_active_email 
+  ON talent_team_members(LOWER(TRIM(email))) 
+  WHERE deleted_at IS NULL AND email IS NOT NULL AND TRIM(email) != '';
+

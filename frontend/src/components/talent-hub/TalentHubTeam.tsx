@@ -104,6 +104,8 @@ export const TalentHubTeam: React.FC = () => {
   });
 
   const [customLanguageInput, setCustomLanguageInput] = useState('');
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [customLanguageError, setCustomLanguageError] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -176,10 +178,10 @@ export const TalentHubTeam: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Check role restriction
-  const isVendorRole = useMemo(() => {
-    return talentProfile?.primary_role === 'Vendor / Agency' || teamStatus?.isVendor === true;
-  }, [talentProfile, teamStatus]);
+  // Check role restriction: all roles except "Individual Participant"
+  const hasTeamAccess = useMemo(() => {
+    return talentProfile?.primary_role !== 'Individual Participant';
+  }, [talentProfile]);
 
   // Reset form
   const resetForm = () => {
@@ -197,6 +199,8 @@ export const TalentHubTeam: React.FC = () => {
       skills_notes: '',
     });
     setCustomLanguageInput('');
+    setShowOtherInput(false);
+    setCustomLanguageError(null);
     setFormError(null);
   };
 
@@ -222,6 +226,8 @@ export const TalentHubTeam: React.FC = () => {
       availability: member.availability || 'Immediately',
       skills_notes: member.skills_notes || '',
     });
+    setShowOtherInput(false);
+    setCustomLanguageError(null);
     setFormError(null);
     setShowEditModal(true);
   };
@@ -240,6 +246,11 @@ export const TalentHubTeam: React.FC = () => {
 
   // Language Chip Toggle
   const toggleLanguage = (lang: string) => {
+    if (lang === 'Other') {
+      setShowOtherInput((prev) => !prev);
+      setCustomLanguageError(null);
+      return;
+    }
     setFormData((prev) => {
       const exists = prev.languages.includes(lang);
       if (exists) {
@@ -252,10 +263,31 @@ export const TalentHubTeam: React.FC = () => {
 
   const addCustomLanguage = () => {
     const trimmed = customLanguageInput.trim();
-    if (trimmed && !formData.languages.includes(trimmed)) {
-      setFormData((prev) => ({ ...prev, languages: [...prev.languages, trimmed] }));
-      setCustomLanguageInput('');
+    if (!trimmed) {
+      setCustomLanguageError('Please enter a language name.');
+      return;
     }
+    if (trimmed.length > 50) {
+      setCustomLanguageError('Language name must be 50 characters or less.');
+      return;
+    }
+    const alreadyExists = formData.languages.some(
+      (l) => l.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (alreadyExists) {
+      setCustomLanguageError('This language is already added.');
+      return;
+    }
+    setFormData((prev) => ({ ...prev, languages: [...prev.languages, trimmed] }));
+    setCustomLanguageInput('');
+    setCustomLanguageError(null);
+  };
+
+  const removeLanguage = (lang: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      languages: prev.languages.filter((l) => l !== lang),
+    }));
   };
 
   // Submit Add Manual Member
@@ -398,20 +430,20 @@ export const TalentHubTeam: React.FC = () => {
     }
   };
 
-  // Non-vendor gating screen
-  if (!loadingStatus && !isVendorRole) {
+  // Non-eligible gating screen for Individual Participant
+  if (!loadingStatus && !hasTeamAccess) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
           <ShieldCheck className="w-8 h-8 text-amber-400" />
         </div>
-        <h2 className="text-xl font-bold text-slate-100 mb-2">Vendor / Agency Feature Only</h2>
+        <h2 className="text-xl font-bold text-slate-100 mb-2">Team Management Not Available</h2>
         <p className="text-slate-400 max-w-md text-sm mb-6 leading-relaxed">
-          The <span className="text-sky-400 font-semibold">My Team</span> workspace is reserved exclusively for registered
-          Talents with the <span className="text-slate-200 font-medium">Vendor / Agency</span> role to manage and supply talent pools.
+          The <span className="text-sky-400 font-semibold">My Team</span> workspace is available for Coordinators, Recruiters,
+          Agencies, Recording Teams, and Organizational partners to manage and supply talent pools.
         </p>
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-xs text-slate-400 max-w-sm">
-          Your current registered role is: <span className="text-sky-400 font-semibold">{talentProfile?.primary_role || 'Talent'}</span>.
+          Your current registered role is: <span className="text-sky-400 font-semibold">{talentProfile?.primary_role || 'Individual Participant'}</span>.
         </div>
       </div>
     );
@@ -1028,10 +1060,14 @@ export const TalentHubTeam: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Languages Multi-select */}
+                {/* Languages Multi-select with Other Option */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Supported Languages</label>
-                  <div className="flex flex-wrap gap-1.5 mb-2.5 max-h-28 overflow-y-auto p-1 bg-slate-950/50 rounded-xl border border-slate-800/80">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300">Supported Languages</label>
+                    <span className="text-[11px] text-slate-500">Select all that apply</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 mb-2.5 max-h-32 overflow-y-auto p-1.5 bg-slate-950/50 rounded-xl border border-slate-800/80">
                     {POPULAR_LANGUAGES.map((lang) => {
                       const isSelected = formData.languages.includes(lang);
                       return (
@@ -1049,25 +1085,82 @@ export const TalentHubTeam: React.FC = () => {
                         </button>
                       );
                     })}
-                  </div>
 
-                  {/* Add Custom Language */}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={customLanguageInput}
-                      onChange={(e) => setCustomLanguageInput(e.target.value)}
-                      placeholder="Or type another language..."
-                      className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
-                    />
+                    {/* "Other" Option button */}
                     <button
                       type="button"
-                      onClick={addCustomLanguage}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-xl"
+                      onClick={() => toggleLanguage('Other')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                        showOtherInput
+                          ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                          : 'bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/30'
+                      }`}
                     >
-                      Add
+                      {showOtherInput ? '✓ Other' : '+ Other'}
                     </button>
                   </div>
+
+                  {/* Custom languages added that aren't in POPULAR_LANGUAGES */}
+                  {formData.languages.filter((l) => !POPULAR_LANGUAGES.includes(l)).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2.5 p-2 bg-slate-950/40 rounded-xl border border-slate-800/60">
+                      <span className="text-[10px] text-slate-500 self-center uppercase font-mono mr-1">Selected Custom:</span>
+                      {formData.languages
+                        .filter((l) => !POPULAR_LANGUAGES.includes(l))
+                        .map((customLang) => (
+                          <span
+                            key={customLang}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-medium"
+                          >
+                            <span>✓ {customLang}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeLanguage(customLang)}
+                              className="text-sky-400 hover:text-white"
+                              title="Remove"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* "Enter language" Input Box - appears immediately when Other is active */}
+                  {showOtherInput && (
+                    <div className="space-y-1.5 p-3 rounded-xl bg-slate-950/70 border border-amber-500/30">
+                      <label className="block text-[11px] font-semibold text-amber-300">
+                        Enter language
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={customLanguageInput}
+                          onChange={(e) => {
+                            setCustomLanguageInput(e.target.value);
+                            if (customLanguageError) setCustomLanguageError(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addCustomLanguage();
+                            }
+                          }}
+                          placeholder="e.g. Santali, Marwari, Dogri..."
+                          className="flex-1 bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={addCustomLanguage}
+                          className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+                        >
+                          Add Language
+                        </button>
+                      </div>
+                      {customLanguageError && (
+                        <p className="text-[11px] text-rose-400 font-medium">{customLanguageError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Availability & Preferred Contact */}

@@ -134,7 +134,8 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     'Zenemoo Contributor';
   const displayEmail = user?.email || talentProfile?.email || '';
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
-  const isVendor = talentProfile?.primary_role === 'Vendor / Agency';
+  const isIndividualParticipant = talentProfile?.primary_role === 'Individual Participant';
+  const hasTeamAccess = !isIndividualParticipant;
 
   const navItems = [
     { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
@@ -142,7 +143,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
     { id: 'applications' as const, label: 'My Applications', icon: FileCheck },
     { id: 'referrals' as const, label: 'Referrals', icon: Share2 },
-    ...(isVendor ? [{ id: 'team' as const, label: 'My Team', icon: Users }] : []),
+    ...(hasTeamAccess ? [{ id: 'team' as const, label: 'My Team', icon: Users }] : []),
   ];
 
   const handleManualRefresh = async () => {
@@ -424,7 +425,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                           <Share2 className="w-3.5 h-3.5 text-cyan-400" />
                           <span>Refer & Earn</span>
                         </button>
-                        {isVendor && (
+                        {hasTeamAccess && (
                           <button
                             onClick={() => handleNavClick('team')}
                             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-sky-300 hover:text-white hover:bg-sky-500/10 transition-colors cursor-pointer"

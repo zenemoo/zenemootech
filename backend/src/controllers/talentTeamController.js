@@ -38,15 +38,15 @@ export const getAuthenticatedVendor = async (req) => {
     return { error: 'No talent profile found for authenticated session', status: 404 };
   }
 
-  if (vendor.primary_role !== 'Vendor / Agency') {
+  if (vendor.primary_role === 'Individual Participant') {
     return {
-      error: 'Access restricted: Team management is only available for Vendor / Agency profiles.',
+      error: 'Access restricted: Team management is not available for Individual Participant profiles.',
       status: 403,
-      isVendor: false,
+      isAllowed: false,
     };
   }
 
-  return { vendor, isVendor: true };
+  return { vendor, isAllowed: true };
 };
 
 /**
@@ -60,7 +60,7 @@ export const getVendorTeamStatus = async (req, res) => {
       return res.status(authResult.status).json({
         success: false,
         message: authResult.error,
-        isVendor: false,
+        isAllowed: false,
       });
     }
 
@@ -219,13 +219,12 @@ export const addVendorTeamMemberManual = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Full Name is required.' });
     }
 
-    // Check duplicate email under this vendor
+    // Global duplicate email check across all active team members
     const normalizedEmail = (email || '').trim().toLowerCase();
     if (normalizedEmail) {
       const { data: existing } = await supabase
         .from('talent_team_members')
         .select('id, full_name')
-        .eq('vendor_registration_id', vendor.id)
         .ilike('email', normalizedEmail)
         .is('deleted_at', null)
         .maybeSingle();
@@ -233,7 +232,7 @@ export const addVendorTeamMemberManual = async (req, res) => {
       if (existing) {
         return res.status(409).json({
           success: false,
-          message: `This person (${existing.full_name}) is already part of your team.`,
+          message: 'This email is already registered as a team member. A person can only belong to one team.',
         });
       }
     }
@@ -266,6 +265,12 @@ export const addVendorTeamMemberManual = async (req, res) => {
 
     if (error) {
       console.error('[addVendorTeamMemberManual Error]:', error.message);
+      if (error.code === '23505' || error.message?.includes('uq_talent_team_members') || error.message?.includes('duplicate key')) {
+        return res.status(409).json({
+          success: false,
+          message: 'This email is already registered as a team member. A person can only belong to one team.',
+        });
+      }
       return res.status(500).json({ success: false, message: 'Failed to create team member record' });
     }
 
@@ -329,12 +334,31 @@ export const updateVendorTeamMember = async (req, res) => {
       status,
     } = req.body;
 
+    // Global duplicate email check if email is changed
+    const normalizedEmail = email !== undefined ? (email || '').trim().toLowerCase() : undefined;
+    if (normalizedEmail) {
+      const { data: existing } = await supabase
+        .from('talent_team_members')
+        .select('id')
+        .ilike('email', normalizedEmail)
+        .neq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: 'This email is already registered as a team member. A person can only belong to one team.',
+        });
+      }
+    }
+
     const updatePayload = {
       updated_at: new Date().toISOString(),
     };
 
     if (full_name !== undefined) updatePayload.full_name = full_name.trim();
-    if (email !== undefined) updatePayload.email = (email || '').trim().toLowerCase() || null;
+    if (email !== undefined) updatePayload.email = normalizedEmail || null;
     if (phone !== undefined) updatePayload.phone = (phone || '').trim() || null;
     if (country_code !== undefined) updatePayload.country_code = country_code.trim();
     if (gender !== undefined) updatePayload.gender = gender;
@@ -357,6 +381,12 @@ export const updateVendorTeamMember = async (req, res) => {
 
     if (updateErr) {
       console.error('[updateVendorTeamMember Error]:', updateErr.message);
+      if (updateErr.code === '23505' || updateErr.message?.includes('uq_talent_team_members') || updateErr.message?.includes('duplicate key')) {
+        return res.status(409).json({
+          success: false,
+          message: 'This email is already registered as a team member. A person can only belong to one team.',
+        });
+      }
       return res.status(500).json({ success: false, message: 'Failed to update team member' });
     }
 
@@ -610,21 +640,27 @@ export const submitPublicTeamMember = async (req, res) => {
 
     const normalizedEmail = (email || '').trim().toLowerCase();
 
-    // Prevent duplicate submission under the same vendor
+    // Prevent duplicate submission globally across all teams
     if (normalizedEmail) {
       const { data: existing } = await supabase
         .from('talent_team_members')
-        .select('id')
-        .eq('vendor_registration_id', vendor.id)
+        .select('id, vendor_registration_id')
         .ilike('email', normalizedEmail)
         .is('deleted_at', null)
         .maybeSingle();
 
       if (existing) {
-        return res.status(409).json({
-          success: false,
-          message: 'You have already submitted your details to this team.',
-        });
+        if (existing.vendor_registration_id === vendor.id) {
+          return res.status(409).json({
+            success: false,
+            message: 'You have already submitted your details to this team.',
+          });
+        } else {
+          return res.status(409).json({
+            success: false,
+            message: 'This email is already registered as a team member and cannot be added to another team.',
+          });
+        }
       }
     }
 
@@ -654,6 +690,12 @@ export const submitPublicTeamMember = async (req, res) => {
 
     if (insertErr) {
       console.error('[submitPublicTeamMember Error]:', insertErr.message);
+      if (insertErr.code === '23505' || insertErr.message?.includes('uq_talent_team_members') || insertErr.message?.includes('duplicate key')) {
+        return res.status(409).json({
+          success: false,
+          message: 'This email is already registered as a team member and cannot be added to another team.',
+        });
+      }
       return res.status(500).json({ success: false, message: 'Failed to submit team registration' });
     }
 
@@ -682,11 +724,11 @@ export const getAdminTalentTeamsOverview = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    // Query all Vendor / Agency registrations
+    // Query all talent registrations except Individual Participant
     const { data: vendors, error: vendorErr } = await supabase
       .from('talent_registrations')
-      .select('id, full_name, email, phone, state, city_district, registration_code, status, created_at')
-      .eq('primary_role', 'Vendor / Agency')
+      .select('id, full_name, email, phone, state, city_district, registration_code, primary_role, status, created_at')
+      .neq('primary_role', 'Individual Participant')
       .order('created_at', { ascending: false });
 
     if (vendorErr) {
@@ -788,8 +830,8 @@ export const getAdminAllTeamMembersExport = async (req, res) => {
 
     let vendorQuery = supabase
       .from('talent_registrations')
-      .select('id, full_name, email, registration_code')
-      .eq('primary_role', 'Vendor / Agency');
+      .select('id, full_name, email, registration_code, primary_role')
+      .neq('primary_role', 'Individual Participant');
 
     if (vendorId) {
       vendorQuery = vendorQuery.eq('id', vendorId);
