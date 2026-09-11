@@ -58,13 +58,40 @@ export interface OpportunityItem {
   badge?: string;
   status: string; // 'active' | 'open' | 'coming_soon' | 'closed'
   description?: string;
+  company_logo?: string;
   features?: string[];
   requirements?: string[];
   language_skills?: string[];
+  eligibility_criteria?: string[];
   action_url?: string;
   poster_url?: string;
   pdf_link?: string;
+  whatsapp_group_url?: string;
+  whatsapp_channel_url?: string;
+  telegram_url?: string;
+  contact_support_url?: string;
   linkedin_post_url?: string;
+  x_post_url?: string;
+  facebook_post_url?: string;
+  instagram_url?: string;
+  youtube_url?: string;
+  other_social_url?: string;
+  application_post_url?: string;
+  about_project?: string;
+  what_you_will_do?: string[];
+  experience_requirements?: string;
+  equipment_requirements?: string;
+  internet_requirements?: string;
+  working_hours?: string;
+  project_duration?: string;
+  payment_info?: string;
+  payment_frequency?: string;
+  work_mode?: string;
+  availability_requirement?: string;
+  project_highlights?: string[];
+  benefits?: string[];
+  why_join?: string;
+  important_notes?: string;
   applicant_count?: number;
   custom_questions?: any[];
   position?: number;
@@ -82,6 +109,8 @@ export interface ApplicationItem {
   applicant_phone?: string;
   answers: Record<string, any>;
   status: string; // 'pending' | 'shortlisted' | 'accepted' | 'rejected'
+  terms_accepted?: boolean;
+  terms_accepted_at?: string;
   created_at: string;
   updated_at?: string;
 }

@@ -16,10 +16,28 @@ import {
   Users,
   Clock,
   Ban,
+  Globe,
+  MessageCircle,
+  FileText,
+  Share2,
+  Layers,
+  Award,
+  Cpu,
+  Wifi,
+  Zap,
+  Check,
+  Maximize2,
+  ShieldCheck,
+  FileDown,
+  DollarSign,
+  Phone,
+  Linkedin,
 } from 'lucide-react';
+import { FaXTwitter, FaFacebook, FaInstagram, FaYoutube } from 'react-icons/fa6';
 import confetti from 'canvas-confetti';
-import { useTalentHubAuth, OpportunityItem } from './TalentHubAuthContext';
+import { useTalentHubAuth, OpportunityItem, ApplicationItem } from './TalentHubAuthContext';
 import { talentHubApi } from '../../services/talentHubApi';
+import { downloadApplicationPdf } from '../../services/applicationPdfService';
 
 export const TalentHubOpportunities: React.FC = () => {
   const { talentProfile, token, opportunities, applications, isDataLoading, mutateApplications } = useTalentHubAuth();
@@ -36,10 +54,44 @@ export const TalentHubOpportunities: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<any | null>(null);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
 
   // Check if talent already applied to a given opportunity
   const isAlreadyApplied = (opportunityId: string) => {
     return applications.some((app) => app.opportunity_id === opportunityId);
+  };
+
+  const getExistingApplicationForOpp = (opportunityId: string): ApplicationItem | undefined => {
+    return applications.find((app) => app.opportunity_id === opportunityId);
+  };
+
+  const handleDownloadAppPdf = async (opp: OpportunityItem) => {
+    const existingApp = getExistingApplicationForOpp(opp.id);
+    if (!existingApp) return;
+
+    setDownloadingPdfId(opp.id);
+    try {
+      await downloadApplicationPdf({
+        applicant_id: existingApp.applicant_id,
+        applicant_name: existingApp.applicant_name,
+        applicant_email: existingApp.applicant_email,
+        applicant_phone: existingApp.applicant_phone || talentProfile?.phone || '',
+        opportunity_title: existingApp.opportunity_title || opp.title,
+        partner_name: opp.partner_name,
+        status: existingApp.status || 'pending',
+        created_at: existingApp.created_at,
+        work_mode: opp.work_mode,
+        payment_info: opp.payment_info,
+        working_hours: opp.working_hours,
+        answers: existingApp.answers,
+        custom_questions: opp.custom_questions,
+        terms_accepted: true,
+      });
+    } catch (err) {
+      console.error('[PDF Download Error]:', err);
+    } finally {
+      setDownloadingPdfId(null);
+    }
   };
 
   // Classify opportunity status
@@ -411,12 +463,12 @@ export const TalentHubOpportunities: React.FC = () => {
         </div>
       )}
 
-      {/* ── Modal 1: Opportunity Detail View Modal ── */}
+      {/* ── Modal 1: Opportunity Detail View Modal (Full Specifications, Partner Logo, Links & Unlocked WhatsApp) ── */}
       <AnimatePresence>
         {selectedOppForDetail && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto">
             <div
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/85 backdrop-blur-md"
               onClick={() => setSelectedOppForDetail(null)}
             />
 
@@ -424,86 +476,243 @@ export const TalentHubOpportunities: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="relative w-full max-w-2xl bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden z-10 my-6 max-h-[90vh] flex flex-col"
+              className="relative w-full max-w-4xl bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden z-10 my-4 max-h-[92vh] flex flex-col font-sans"
             >
-              {/* Modal Header */}
-              <div className="sticky top-0 bg-[#080d19]/95 backdrop-blur-md px-6 py-4 border-b border-white/10 flex items-center justify-between z-20">
-                <div className="flex items-center gap-2.5">
-                  <span className="px-2.5 py-1 rounded-full bg-cyan-500/15 text-cyan-300 text-[10px] font-mono font-bold uppercase border border-cyan-500/30">
-                    {selectedOppForDetail.badge || selectedOppForDetail.status?.toUpperCase() || 'ACTIVE'}
-                  </span>
-                  <span className="text-xs font-mono text-slate-400 truncate max-w-xs">{selectedOppForDetail.partner_name}</span>
+              {/* Modal Sticky Header */}
+              <div className="sticky top-0 bg-[#080d19]/95 backdrop-blur-md px-5 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between z-20">
+                <div className="flex items-center gap-3 min-w-0">
+                  {selectedOppForDetail.company_logo ? (
+                    <img
+                      src={selectedOppForDetail.company_logo}
+                      alt={selectedOppForDetail.partner_name || 'Partner'}
+                      className="w-9 h-9 object-contain bg-white/10 p-1 rounded-xl border border-white/10 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+                      <Briefcase className="w-4 h-4" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono font-bold text-cyan-400 truncate">
+                        {selectedOppForDetail.partner_name || 'Zenemoo AI Partner'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 text-[10px] font-mono font-bold uppercase border border-cyan-500/30">
+                        {selectedOppForDetail.badge || selectedOppForDetail.status?.toUpperCase() || 'ACTIVE'}
+                      </span>
+                      {selectedOppForDetail.work_mode && (
+                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-slate-300 text-[10px] font-mono uppercase border border-white/10">
+                          {selectedOppForDetail.work_mode.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
+
                 <button
                   onClick={() => setSelectedOppForDetail(null)}
-                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer shrink-0 transition-colors"
+                  title="Close details"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Scrollable Content */}
-              <div className="p-6 space-y-6 overflow-y-auto flex-1 text-xs">
+              {/* Scrollable Content Body */}
+              <div className="p-5 sm:p-7 space-y-6 overflow-y-auto flex-1 text-xs text-slate-200">
+                {/* Poster Graphic Banner (if provided) */}
                 {selectedOppForDetail.poster_url && (
-                  <div className="rounded-2xl overflow-hidden max-h-60 w-full border border-white/10 shadow-lg">
+                  <div className="rounded-2xl overflow-hidden border border-white/10 shadow-xl bg-black/40 max-h-72 w-full flex items-center justify-center relative group">
                     <img
                       src={selectedOppForDetail.poster_url}
                       alt={selectedOppForDetail.title}
-                      className="w-full h-full object-cover"
+                      className="w-full h-auto max-h-72 object-contain"
                     />
                   </div>
                 )}
 
-                <div>
-                  <div className="flex items-center gap-2 text-slate-400 font-mono text-[11px] mb-1">
+                {/* Hero Header */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-slate-400 font-mono text-[11px]">
                     <Users className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>{selectedOppForDetail.applicant_count || 0} Contributor Applications</span>
+                    <span>{selectedOppForDetail.applicant_count || 0} Total Applications Submitted</span>
+                    {isAlreadyApplied(selectedOppForDetail.id) && (
+                      <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                        <CheckCircle2 className="w-3 h-3" /> You Have Applied
+                      </span>
+                    )}
                   </div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight font-display">
+                  <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight font-display">
                     {selectedOppForDetail.title}
                   </h2>
-                  <p className="text-slate-300 mt-2.5 leading-relaxed text-sm">
-                    {selectedOppForDetail.description}
+                  <p className="text-slate-300 leading-relaxed text-sm whitespace-pre-wrap">
+                    {selectedOppForDetail.description || selectedOppForDetail.about_project}
                   </p>
                 </div>
 
-                {/* Features / Highlights */}
-                {Array.isArray(selectedOppForDetail.features) && selectedOppForDetail.features.length > 0 && (
-                  <div className="space-y-2.5">
-                    <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Key Highlights</h4>
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {selectedOppForDetail.features.map((feat: string, idx: number) => (
-                        <li key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-start gap-2.5 text-slate-300">
-                          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                {/* Core Specifications 3-Column Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="flex items-center gap-1.5 text-cyan-400 font-mono text-[10px] uppercase font-bold">
+                      <DollarSign className="w-3.5 h-3.5" /> Compensation / Pay
+                    </div>
+                    <div className="text-emerald-300 font-bold text-sm">
+                      {selectedOppForDetail.payment_info || 'Project Milestone Rates'}
+                    </div>
+                    {selectedOppForDetail.payment_frequency && (
+                      <div className="text-slate-400 text-[10px] font-mono">
+                        Frequency: {selectedOppForDetail.payment_frequency}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="flex items-center gap-1.5 text-cyan-400 font-mono text-[10px] uppercase font-bold">
+                      <Clock className="w-3.5 h-3.5" /> Working Hours
+                    </div>
+                    <div className="text-white font-bold text-sm">
+                      {selectedOppForDetail.working_hours || selectedOppForDetail.availability_requirement || 'Flexible Schedule'}
+                    </div>
+                    <div className="text-slate-400 text-[10px] font-mono">
+                      Work Mode: {selectedOppForDetail.work_mode ? selectedOppForDetail.work_mode.toUpperCase() : 'REMOTE'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
+                    <div className="flex items-center gap-1.5 text-cyan-400 font-mono text-[10px] uppercase font-bold">
+                      <Globe className="w-3.5 h-3.5" /> Duration &amp; Scope
+                    </div>
+                    <div className="text-amber-300 font-bold text-sm">
+                      {selectedOppForDetail.project_duration || 'Ongoing Program'}
+                    </div>
+                    <div className="text-slate-400 text-[10px] font-mono">
+                      Partner: {selectedOppForDetail.partner_name || 'Zenemoo'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Unlocked WhatsApp Group for Applied Candidates */}
+                {isAlreadyApplied(selectedOppForDetail.id) ? (
+                  selectedOppForDetail.whatsapp_group_url ? (
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/15 border border-emerald-500/40 space-y-2 shadow-lg shadow-emerald-500/5">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            <MessageCircle className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Contributor Community Access Unlocked
+                            </span>
+                            <h4 className="text-sm font-bold text-white font-sans">Official Contributor WhatsApp Group</h4>
+                          </div>
+                        </div>
+
+                        <a
+                          href={selectedOppForDetail.whatsapp_group_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 shadow-md shadow-emerald-500/20 transition-transform active:scale-95 cursor-pointer"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Join WhatsApp Group</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    </div>
+                  ) : null
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-3 text-slate-400">
+                    <Lock className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="text-[11px] font-mono">
+                      Exclusive Contributor WhatsApp Group will be unlocked after submitting your application.
+                    </span>
+                  </div>
+                )}
+
+                {/* Responsibilities & Daily Tasks */}
+                {Array.isArray(selectedOppForDetail.what_you_will_do) && selectedOppForDetail.what_you_will_do.length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-cyan-400" /> Responsibilities &amp; Daily Tasks
+                    </h4>
+                    <div className="space-y-2">
+                      {selectedOppForDetail.what_you_will_do.map((task: string, idx: number) => (
+                        <div key={idx} className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+                          <div className="w-2 h-2 rounded-full bg-cyan-400 shrink-0 mt-1.5" />
+                          <span className="leading-relaxed text-slate-300">{task}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Highlights & Features */}
+                {((Array.isArray(selectedOppForDetail.features) && selectedOppForDetail.features.length > 0) ||
+                  (Array.isArray(selectedOppForDetail.project_highlights) && selectedOppForDetail.project_highlights.length > 0)) && (
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-purple-400" /> Key Highlights &amp; Features
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(selectedOppForDetail.features || selectedOppForDetail.project_highlights || []).map((feat: string, idx: number) => (
+                        <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-start gap-2.5 text-slate-300">
+                          <Sparkles className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
                           <span>{feat}</span>
-                        </li>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
-                {/* Requirements */}
-                {Array.isArray(selectedOppForDetail.requirements) && selectedOppForDetail.requirements.length > 0 && (
-                  <div className="space-y-2.5">
-                    <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Program Requirements</h4>
-                    <ul className="space-y-2">
-                      {selectedOppForDetail.requirements.map((req: string, idx: number) => (
-                        <li key={idx} className="flex items-start gap-2.5 text-slate-300">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                          <span className="leading-snug">{req}</span>
-                        </li>
-                      ))}
-                    </ul>
+                {/* Eligibility & Hardware Checklist */}
+                {(selectedOppForDetail.equipment_requirements ||
+                  selectedOppForDetail.internet_requirements ||
+                  selectedOppForDetail.experience_requirements ||
+                  (Array.isArray(selectedOppForDetail.requirements) && selectedOppForDetail.requirements.length > 0) ||
+                  (Array.isArray(selectedOppForDetail.eligibility_criteria) && selectedOppForDetail.eligibility_criteria.length > 0)) && (
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-emerald-400" /> Eligibility &amp; Hardware Checklist
+                    </h4>
+
+                    {selectedOppForDetail.equipment_requirements && (
+                      <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-mono text-xs space-y-1">
+                        <span className="font-bold text-[10px] uppercase block text-emerald-400">Required Hardware / Equipment:</span>
+                        <p className="font-sans text-slate-200">{selectedOppForDetail.equipment_requirements}</p>
+                      </div>
+                    )}
+
+                    {selectedOppForDetail.internet_requirements && (
+                      <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-mono text-xs space-y-1">
+                        <span className="font-bold text-[10px] uppercase block text-cyan-400">Internet &amp; Connectivity:</span>
+                        <p className="font-sans text-slate-200">{selectedOppForDetail.internet_requirements}</p>
+                      </div>
+                    )}
+
+                    {((Array.isArray(selectedOppForDetail.requirements) && selectedOppForDetail.requirements.length > 0) ||
+                      (Array.isArray(selectedOppForDetail.eligibility_criteria) && selectedOppForDetail.eligibility_criteria.length > 0)) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        {(selectedOppForDetail.requirements || selectedOppForDetail.eligibility_criteria || []).map((req: string, idx: number) => (
+                          <div key={idx} className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-start gap-2.5 text-slate-300">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <span className="leading-snug">{req}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Language Skills */}
+                {/* Languages Supported */}
                 {Array.isArray(selectedOppForDetail.language_skills) && selectedOppForDetail.language_skills.length > 0 && (
-                  <div className="space-y-2.5">
-                    <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Languages Supported</h4>
+                  <div className="space-y-2 pt-2">
+                    <h4 className="text-xs font-mono font-bold text-blue-300 uppercase tracking-wider flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-blue-400" /> Languages Supported
+                    </h4>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedOppForDetail.language_skills.map((lang: string, idx: number) => (
-                        <span key={idx} className="px-3 py-1 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 font-mono font-medium">
+                        <span key={idx} className="px-3 py-1 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 font-mono font-medium text-xs">
                           {lang}
                         </span>
                       ))}
@@ -511,69 +720,174 @@ export const TalentHubOpportunities: React.FC = () => {
                   </div>
                 )}
 
-                {/* External links */}
-                <div className="pt-4 border-t border-white/10 flex flex-wrap gap-3">
-                  {selectedOppForDetail.pdf_link && (
-                    <a
-                      href={selectedOppForDetail.pdf_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-mono"
-                    >
-                      <Download className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Program Document (PDF)</span>
-                    </a>
-                  )}
-                  {selectedOppForDetail.linkedin_post_url && (
-                    <a
-                      href={selectedOppForDetail.linkedin_post_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-mono"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
-                      <span>LinkedIn Post</span>
-                    </a>
-                  )}
+                {/* Candidate Benefits & Notes */}
+                {((Array.isArray(selectedOppForDetail.benefits) && selectedOppForDetail.benefits.length > 0) ||
+                  selectedOppForDetail.why_join ||
+                  selectedOppForDetail.important_notes) && (
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-xs font-mono font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
+                      <Award className="w-4 h-4 text-amber-400" /> Benefits &amp; Important Notes
+                    </h4>
+                    {Array.isArray(selectedOppForDetail.benefits) && selectedOppForDetail.benefits.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {selectedOppForDetail.benefits.map((ben: string, idx: number) => (
+                          <div key={idx} className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 flex items-center gap-2 text-slate-300">
+                            <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>{ben}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedOppForDetail.important_notes && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[11px] leading-relaxed">
+                        <span className="font-bold block">Important Note:</span>
+                        {selectedOppForDetail.important_notes}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Official Public Links & Channels */}
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <h4 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <Share2 className="w-4 h-4 text-cyan-400" /> Program Documentation &amp; Channels
+                  </h4>
+                  <div className="flex flex-wrap gap-2.5">
+                    {selectedOppForDetail.pdf_link && (
+                      <a
+                        href={selectedOppForDetail.pdf_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-xs font-bold transition-all"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Download PDF Guidelines</span>
+                        <ExternalLink className="w-3 h-3 text-purple-400" />
+                      </a>
+                    )}
+                    {selectedOppForDetail.whatsapp_channel_url && (
+                      <a
+                        href={selectedOppForDetail.whatsapp_channel_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 font-mono text-xs font-bold transition-all"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-teal-400" />
+                        <span>WhatsApp Channel</span>
+                        <ExternalLink className="w-3 h-3 text-teal-400" />
+                      </a>
+                    )}
+                    {selectedOppForDetail.telegram_url && (
+                      <a
+                        href={selectedOppForDetail.telegram_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono text-xs font-bold transition-all"
+                      >
+                        <Send className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Telegram Community</span>
+                        <ExternalLink className="w-3 h-3 text-sky-400" />
+                      </a>
+                    )}
+                    {selectedOppForDetail.linkedin_post_url && (
+                      <a
+                        href={selectedOppForDetail.linkedin_post_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 font-mono text-xs font-bold transition-all"
+                      >
+                        <Linkedin className="w-3.5 h-3.5 text-blue-400" />
+                        <span>LinkedIn Post</span>
+                        <ExternalLink className="w-3 h-3 text-blue-400" />
+                      </a>
+                    )}
+                    {selectedOppForDetail.x_post_url && (
+                      <a
+                        href={selectedOppForDetail.x_post_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/20 font-mono text-xs font-bold transition-all"
+                      >
+                        <FaXTwitter className="w-3.5 h-3.5" />
+                        <span>X Announcement</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {selectedOppForDetail.contact_support_url && (
+                      <a
+                        href={selectedOppForDetail.contact_support_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono text-xs font-bold transition-all"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Support Desk</span>
+                        <ExternalLink className="w-3 h-3 text-cyan-400" />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Modal Footer CTA */}
-              <div className="sticky bottom-0 bg-[#080d19]/95 backdrop-blur-md p-5 border-t border-white/10 flex items-center justify-between gap-4">
+              {/* Modal Footer Actions */}
+              <div className="sticky bottom-0 bg-[#080d19]/95 backdrop-blur-md p-4 sm:p-5 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 z-20">
                 <button
                   onClick={() => setSelectedOppForDetail(null)}
-                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-mono font-medium text-slate-300 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-mono font-medium text-slate-300 cursor-pointer transition-colors"
                 >
                   Close
                 </button>
 
-                {isAlreadyApplied(selectedOppForDetail.id) ? (
-                  <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-300 font-bold px-4 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Already Applied</span>
-                  </div>
-                ) : getOpportunityStatus(selectedOppForDetail) === 'open' ? (
-                  <button
-                    onClick={() => handleOpenApply(selectedOppForDetail)}
-                    className="flex-1 max-w-xs py-2.5 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-mono font-bold text-white shadow-lg shadow-cyan-500/20 transition-all text-center cursor-pointer"
-                  >
-                    Apply for this Opportunity
-                  </button>
-                ) : getOpportunityStatus(selectedOppForDetail) === 'coming_soon' ? (
-                  <button
-                    disabled
-                    className="flex-1 max-w-xs py-2.5 px-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold cursor-not-allowed"
-                  >
-                    Coming Soon
-                  </button>
-                ) : (
-                  <button
-                    disabled
-                    className="flex-1 max-w-xs py-2.5 px-5 rounded-2xl bg-slate-800/40 border border-slate-700/50 text-slate-400 text-xs font-mono font-bold cursor-not-allowed"
-                  >
-                    Applications Closed
-                  </button>
-                )}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {isAlreadyApplied(selectedOppForDetail.id) ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadAppPdf(selectedOppForDetail)}
+                        disabled={downloadingPdfId === selectedOppForDetail.id}
+                        className="py-2.5 px-4 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {downloadingPdfId === selectedOppForDetail.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Generating PDF...</span>
+                          </>
+                        ) : (
+                          <>
+                            <FileDown className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Download My Application (PDF)</span>
+                          </>
+                        )}
+                      </button>
+
+                      <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-300 font-bold px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Application Submitted</span>
+                      </div>
+                    </>
+                  ) : getOpportunityStatus(selectedOppForDetail) === 'open' ? (
+                    <button
+                      onClick={() => handleOpenApply(selectedOppForDetail)}
+                      className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-mono font-bold text-white shadow-lg shadow-cyan-500/20 transition-all text-center cursor-pointer active:scale-95"
+                    >
+                      Apply for this Opportunity
+                    </button>
+                  ) : getOpportunityStatus(selectedOppForDetail) === 'coming_soon' ? (
+                    <button
+                      disabled
+                      className="py-2.5 px-5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold cursor-not-allowed"
+                    >
+                      Coming Soon
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="py-2.5 px-5 rounded-xl bg-slate-800/40 border border-slate-700/50 text-slate-400 text-xs font-mono font-bold cursor-not-allowed"
+                    >
+                      Applications Closed
+                    </button>
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>

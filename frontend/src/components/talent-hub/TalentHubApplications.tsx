@@ -11,8 +11,10 @@ import {
   Sparkles,
   X,
   ArrowRight,
+  Download,
 } from 'lucide-react';
 import { useTalentHubAuth, ApplicationItem } from './TalentHubAuthContext';
+import { downloadApplicationPdf } from '../../services/applicationPdfService';
 
 interface TalentHubApplicationsProps {
   onNavigateOpportunities?: () => void;
@@ -23,6 +25,35 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
 }) => {
   const { applications, opportunities, isDataLoading } = useTalentHubAuth();
   const [selectedApplication, setSelectedApplication] = useState<ApplicationItem | null>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState<string | null>(null);
+
+  const handleDownloadPdf = async (app: ApplicationItem) => {
+    try {
+      setIsDownloadingPdf(app.id);
+      const opp = opportunities.find((o) => o.id === app.opportunity_id);
+      await downloadApplicationPdf({
+        applicant_id: app.applicant_id || app.id,
+        applicant_name: app.applicant_name,
+        applicant_email: app.applicant_email,
+        applicant_phone: app.applicant_phone,
+        opportunity_title: app.opportunity_title,
+        partner_name: opp?.partner_name,
+        status: app.status || 'pending',
+        created_at: app.created_at,
+        work_mode: opp?.work_mode,
+        payment_info: opp?.payment_info,
+        working_hours: opp?.working_hours,
+        answers: app.answers,
+        custom_questions: opp?.custom_questions,
+        terms_accepted: app.terms_accepted,
+        terms_accepted_at: app.terms_accepted_at,
+      });
+    } catch (err) {
+      console.error('Failed to generate application PDF:', err);
+    } finally {
+      setIsDownloadingPdf(null);
+    }
+  };
 
   const resolveQuestionLabel = (qKey: string, oppId?: string) => {
     if (!oppId || !opportunities || !Array.isArray(opportunities)) return qKey;
@@ -215,7 +246,20 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
                 </div>
 
                 {/* Right Action */}
-                <div className="shrink-0 flex items-center justify-end">
+                <div className="shrink-0 flex items-center gap-2.5 justify-end">
+                  <button
+                    onClick={() => handleDownloadPdf(app)}
+                    disabled={isDownloadingPdf === app.id}
+                    className="flex items-center gap-2 py-2.5 px-3.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-mono font-semibold text-emerald-300 border border-emerald-500/30 transition-colors cursor-pointer disabled:opacity-50"
+                    title="Download Application Form as PDF"
+                  >
+                    {isDownloadingPdf === app.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5" />
+                    )}
+                    <span className="hidden sm:inline">PDF</span>
+                  </button>
                   <button
                     onClick={() => setSelectedApplication(app)}
                     className="flex items-center gap-2 py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-xs font-mono font-semibold text-slate-200 hover:text-white border border-white/10 transition-colors cursor-pointer"
@@ -336,8 +380,19 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
               </div>
 
               {/* Modal Footer */}
-              <div className="sticky bottom-0 bg-[#080d19]/95 backdrop-blur-md p-4 border-t border-white/10 flex items-center justify-between">
-                <span className="text-[10px] font-mono text-slate-500">Read-Only Candidate Record</span>
+              <div className="sticky bottom-0 bg-[#080d19]/95 backdrop-blur-md p-4 border-t border-white/10 flex items-center justify-between gap-3">
+                <button
+                  onClick={() => handleDownloadPdf(selectedApplication)}
+                  disabled={isDownloadingPdf === selectedApplication.id}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs font-mono shadow-md shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isDownloadingPdf === selectedApplication.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  ) : (
+                    <Download className="w-4 h-4 text-slate-950" />
+                  )}
+                  <span>Download Application (PDF)</span>
+                </button>
                 <button
                   onClick={() => setSelectedApplication(null)}
                   className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-mono font-bold text-white cursor-pointer"
