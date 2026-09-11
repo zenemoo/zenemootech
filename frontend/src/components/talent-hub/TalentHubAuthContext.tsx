@@ -708,11 +708,15 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         return { success: false, error: 'Please enter a valid email address.' };
       }
 
-      console.log('[TalentHub OTP] Sending 6-digit code to email...');
+      const isAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+      const redirectUrl = isAndroid ? 'zenemoo://auth/callback' : `${window.location.origin}/talent-hub`;
+
+      console.log('[TalentHub OTP] Sending 6-digit code to email with redirectUrl:', redirectUrl);
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
           shouldCreateUser: true,
+          emailRedirectTo: redirectUrl,
         },
       });
 
