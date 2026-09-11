@@ -29,6 +29,9 @@ import {
   Calendar,
   Lock,
   ChevronDown,
+  Hash,
+  Mail,
+  Phone,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useTalentHubAuth, OpportunityItem } from './TalentHubAuthContext';
@@ -65,7 +68,10 @@ interface OpportunityReferralStat {
 
 interface ReferredApplicationItem {
   id: string;
+  applicant_id?: string;
   applicant_name: string;
+  applicant_email?: string;
+  applicant_phone?: string;
   opportunity_id: string;
   opportunity_title: string;
   status: string;
@@ -91,6 +97,7 @@ export const TalentHubReferrals: React.FC = () => {
   const [referredApplications, setReferredApplications] = useState<ReferredApplicationItem[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedOppId, setCopiedOppId] = useState<string | null>(null);
+  const [copiedAppId, setCopiedAppId] = useState<string | null>(null);
 
   // Project Referral Modal & Selected Candidate Detail State
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<{
@@ -170,6 +177,24 @@ export const TalentHubReferrals: React.FC = () => {
         });
       } catch (_) {}
       setTimeout(() => setCopiedCode(false), 2000);
+    } catch (_) {}
+  };
+
+  const handleCopyAppId = async (appId: string) => {
+    if (!appId) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(appId);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = appId;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setCopiedAppId(appId);
+      setTimeout(() => setCopiedAppId(null), 2000);
     } catch (_) {}
   };
 
@@ -354,6 +379,9 @@ export const TalentHubReferrals: React.FC = () => {
 
       return (
         (app.applicant_name || '').toLowerCase().includes(q) ||
+        (app.applicant_id || '').toLowerCase().includes(q) ||
+        (app.applicant_email || '').toLowerCase().includes(q) ||
+        (app.applicant_phone || '').toLowerCase().includes(q) ||
         (app.opportunity_title || '').toLowerCase().includes(q)
       );
     });
@@ -404,7 +432,10 @@ export const TalentHubReferrals: React.FC = () => {
       };
 
       const exportApplicants: ReferralExportApplicant[] = filteredModalApplicants.map((app) => ({
-        applicant_name: app.applicant_name,
+        applicant_id: app.applicant_id || (app.id ? `APP-2026-${app.id.substring(0, 4)}` : '-'),
+        applicant_name: app.applicant_name || '-',
+        applicant_email: app.applicant_email || '-',
+        applicant_phone: app.applicant_phone || '-',
         opportunity_title: app.opportunity_title || selectedProjectForModal.opportunity_title,
         status: app.status || 'pending',
         created_at: app.created_at,
@@ -615,7 +646,6 @@ export const TalentHubReferrals: React.FC = () => {
             {filteredProjectCards.map((project) => {
               const isOpen = project.statusCategory === 'open';
               const isComingSoon = project.statusCategory === 'coming_soon';
-              const isClosed = project.statusCategory === 'closed';
               const referralUrl = getOpportunityReferralUrl(project.opportunity_id);
 
               return (
@@ -881,7 +911,7 @@ export const TalentHubReferrals: React.FC = () => {
                       type="text"
                       value={modalSearchQuery}
                       onChange={(e) => setModalSearchQuery(e.target.value)}
-                      placeholder="Search applicant name..."
+                      placeholder="Search applicant name or ID..."
                       className="w-full pl-8 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
                     />
                   </div>
@@ -914,7 +944,7 @@ export const TalentHubReferrals: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Candidate List Table */}
+                {/* Candidate List Table with Application ID */}
                 {filteredModalApplicants.length === 0 ? (
                   <div className="text-center py-12 rounded-2xl bg-white/[0.02] border border-white/5 p-6 space-y-2">
                     <Users className="w-7 h-7 text-slate-500 mx-auto" />
@@ -931,8 +961,8 @@ export const TalentHubReferrals: React.FC = () => {
                       <table className="w-full text-left text-xs font-sans">
                         <thead className="bg-white/5 border-b border-white/10 text-[10px] font-mono uppercase text-slate-400 tracking-wider">
                           <tr>
+                            <th className="py-3 px-4">Application ID</th>
                             <th className="py-3 px-4">Applicant</th>
-                            <th className="py-3 px-4">Opportunity</th>
                             <th className="py-3 px-4">Status</th>
                             <th className="py-3 px-4">Applied Date</th>
                             <th className="py-3 px-4 text-right">Action</th>
@@ -942,6 +972,8 @@ export const TalentHubReferrals: React.FC = () => {
                           {filteredModalApplicants.map((app) => {
                             const badge = getStatusBadge(app.status);
                             const BadgeIcon = badge.icon;
+                            const appId = app.applicant_id || (app.id ? `APP-2026-${app.id.substring(0, 4)}` : 'APP-RECORD');
+                            const isCopied = copiedAppId === appId;
                             const formattedDate = app.created_at
                               ? new Date(app.created_at).toLocaleDateString('en-IN', {
                                   day: '2-digit',
@@ -956,6 +988,22 @@ export const TalentHubReferrals: React.FC = () => {
                                 onClick={() => setSelectedCandidateDetail(app)}
                                 className="hover:bg-white/5 transition-colors cursor-pointer group"
                               >
+                                <td className="py-3.5 px-4 font-mono font-bold text-cyan-300">
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <span className="tracking-wide select-all">{appId}</span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopyAppId(appId);
+                                      }}
+                                      className="p-1 rounded-md bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 transition-colors"
+                                      title="Copy Application ID"
+                                    >
+                                      {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </div>
+                                </td>
+
                                 <td className="py-3.5 px-4">
                                   <div className="flex items-center gap-2.5">
                                     <div className="w-7 h-7 rounded-full bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-300 font-bold text-xs shrink-0">
@@ -966,9 +1014,7 @@ export const TalentHubReferrals: React.FC = () => {
                                     </span>
                                   </div>
                                 </td>
-                                <td className="py-3.5 px-4 text-slate-300 font-mono text-[11px] truncate max-w-[200px]">
-                                  {app.opportunity_title || selectedProjectForModal.opportunity_title}
-                                </td>
+
                                 <td className="py-3.5 px-4">
                                   <span
                                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold uppercase tracking-wider ${badge.badgeClass}`}
@@ -977,9 +1023,11 @@ export const TalentHubReferrals: React.FC = () => {
                                     <span>{badge.label}</span>
                                   </span>
                                 </td>
+
                                 <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
                                   {formattedDate}
                                 </td>
+
                                 <td className="py-3.5 px-4 text-right">
                                   <button
                                     onClick={(e) => {
@@ -1046,6 +1094,57 @@ export const TalentHubReferrals: React.FC = () => {
               {/* Body */}
               <div className="p-6 space-y-4 text-xs font-sans">
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                  {/* Application ID with Copy Action */}
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                    <span className="text-slate-400 font-mono">Application ID</span>
+                    <div className="inline-flex items-center gap-2">
+                      <span className="font-mono font-extrabold text-cyan-300 select-all">
+                        {selectedCandidateDetail.applicant_id || (selectedCandidateDetail.id ? `APP-2026-${selectedCandidateDetail.id.substring(0, 4)}` : 'APP-RECORD')}
+                      </span>
+                      <button
+                        onClick={() => handleCopyAppId(selectedCandidateDetail.applicant_id || (selectedCandidateDetail.id ? `APP-2026-${selectedCandidateDetail.id.substring(0, 4)}` : 'APP-RECORD'))}
+                        className="py-1 px-2 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-[10px] font-mono font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        {copiedAppId === (selectedCandidateDetail.applicant_id || `APP-2026-${selectedCandidateDetail.id.substring(0, 4)}`) ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy ID</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Applicant Name */}
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                    <span className="text-slate-400 font-mono">Applicant Name</span>
+                    <span className="font-bold text-white">
+                      {selectedCandidateDetail.applicant_name || '-'}
+                    </span>
+                  </div>
+
+                  {/* Applicant Email (shown if present) */}
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                    <span className="text-slate-400 font-mono">Applicant Email</span>
+                    <span className="font-mono text-slate-200">
+                      {selectedCandidateDetail.applicant_email || '-'}
+                    </span>
+                  </div>
+
+                  {/* Applicant Contact / Phone (shown if present) */}
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                    <span className="text-slate-400 font-mono">Contact / Phone</span>
+                    <span className="font-mono text-slate-200">
+                      {selectedCandidateDetail.applicant_phone || '-'}
+                    </span>
+                  </div>
+
+                  {/* Opportunity */}
                   <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
                     <span className="text-slate-400 font-mono">Opportunity</span>
                     <span className="font-bold text-white text-right max-w-xs truncate">
@@ -1053,6 +1152,7 @@ export const TalentHubReferrals: React.FC = () => {
                     </span>
                   </div>
 
+                  {/* Application Status */}
                   <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
                     <span className="text-slate-400 font-mono">Application Status</span>
                     {(() => {
@@ -1067,6 +1167,7 @@ export const TalentHubReferrals: React.FC = () => {
                     })()}
                   </div>
 
+                  {/* Applied Date */}
                   <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
                     <span className="text-slate-400 font-mono">Applied Date</span>
                     <span className="font-mono text-slate-200">
@@ -1078,17 +1179,19 @@ export const TalentHubReferrals: React.FC = () => {
                             hour: '2-digit',
                             minute: '2-digit',
                           })
-                        : 'Recent Submission'}
+                        : '-'}
                     </span>
                   </div>
 
+                  {/* Referral Code */}
                   <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
                     <span className="text-slate-400 font-mono">Referral Code</span>
                     <span className="font-mono font-bold text-cyan-300">
-                      {selectedCandidateDetail.referral_code || referralCode}
+                      {selectedCandidateDetail.referral_code || referralCode || '-'}
                     </span>
                   </div>
 
+                  {/* Referral Source */}
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400 font-mono">Referral Source</span>
                     <span className="font-mono text-slate-300 uppercase text-[10px] px-2 py-0.5 rounded bg-white/5">
@@ -1100,7 +1203,7 @@ export const TalentHubReferrals: React.FC = () => {
                 <div className="p-3.5 rounded-xl bg-cyan-500/5 border border-cyan-500/20 flex items-start gap-2 text-[11px] text-slate-300 font-mono">
                   <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                   <span>
-                    Privacy Protected: Personal contact information (email, phone, application answers) is restricted in accordance with Zenemoo contributor data privacy policies.
+                    Referral Attribution Record: Application ID and submission details are verified by the Zenemoo Talent Network engine.
                   </span>
                 </div>
               </div>

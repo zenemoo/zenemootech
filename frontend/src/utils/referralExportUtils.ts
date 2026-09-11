@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export interface ReferralExportApplicant {
+  applicant_id?: string;
   applicant_name: string;
   opportunity_title?: string;
   status?: string;
@@ -10,9 +11,9 @@ export interface ReferralExportApplicant {
   referrer_name?: string | null;
   referrer_email?: string | null;
   referral_source?: string | null;
-  applicant_email?: string; // Only populated for Admin exports
-  applicant_phone?: string; // Only populated for Admin exports
-  admin_notes?: string;     // Only populated for Admin exports
+  applicant_email?: string;
+  applicant_phone?: string;
+  admin_notes?: string;
 }
 
 export interface ReferralExportSummary {
@@ -38,7 +39,7 @@ export function generateReferralCSV(
 ): string {
   const BOM = '\uFEFF';
   const escape = (val: any): string => {
-    if (val === null || val === undefined) return '';
+    if (val === null || val === undefined || val === '') return '-';
     const str = String(val);
     if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
@@ -68,35 +69,41 @@ export function generateReferralCSV(
   lines.push('REFERRED CANDIDATE APPLICATIONS');
 
   const headers = isAdmin
-    ? ['Applicant Name', 'Opportunity', 'Status', 'Applied Date', 'Referral Code', 'Referrer Name', 'Source', 'Applicant Email', 'Phone']
-    : ['Applicant Name', 'Opportunity', 'Application Status', 'Applied Date', 'Referral Code', 'Referral Source'];
+    ? ['Application ID', 'Applicant Name', 'Applicant Email', 'Applicant Contact / Phone', 'Opportunity / Project', 'Referrer Name', 'Referral Code', 'Application Status', 'Applied Date', 'Referral Source']
+    : ['Application ID', 'Applicant Name', 'Applicant Email', 'Applicant Contact / Phone', 'Opportunity / Project', 'Referrer Name', 'Referral Code', 'Application Status', 'Applied Date'];
 
   lines.push(headers.map(escape).join(','));
 
   applicants.forEach((app) => {
     const formattedDate = app.created_at
       ? new Date(app.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-      : 'N/A';
+      : '-';
+
+    const appId = app.applicant_id || '-';
 
     const row = isAdmin
       ? [
-          app.applicant_name,
+          appId,
+          app.applicant_name || '-',
+          app.applicant_email || '-',
+          app.applicant_phone || '-',
           app.opportunity_title || summary.opportunityTitle,
-          app.status || 'Pending',
+          app.referrer_name || summary.referrerName || '-',
+          app.referral_code || summary.referralCode || '-',
+          (app.status || 'Pending').toUpperCase(),
           formattedDate,
-          app.referral_code || summary.referralCode || 'N/A',
-          app.referrer_name || summary.referrerName || 'N/A',
           app.referral_source || 'talent_hub',
-          app.applicant_email || '',
-          app.applicant_phone || '',
         ]
       : [
-          app.applicant_name,
+          appId,
+          app.applicant_name || '-',
+          app.applicant_email || '-',
+          app.applicant_phone || '-',
           app.opportunity_title || summary.opportunityTitle,
-          app.status || 'Pending',
+          app.referrer_name || summary.referrerName || '-',
+          app.referral_code || summary.referralCode || '-',
+          (app.status || 'Pending').toUpperCase(),
           formattedDate,
-          app.referral_code || summary.referralCode || 'N/A',
-          app.referral_source || 'talent_hub',
         ];
 
     lines.push(row.map(escape).join(','));
@@ -133,8 +140,8 @@ export async function generateReferralXLSX(
     { attr: 'Report Organization', val: 'Zenemoo Tech Solutions' },
     { attr: 'Report Type', val: summary.reportType || 'Project Referral Report' },
     { attr: 'Opportunity / Project', val: summary.opportunityTitle },
-    { attr: 'Referrer Name', val: summary.referrerName || 'N/A' },
-    { attr: 'Referral Code', val: summary.referralCode || 'N/A' },
+    { attr: 'Referrer Name', val: summary.referrerName || '-' },
+    { attr: 'Referral Code', val: summary.referralCode || '-' },
     { attr: 'Generated Timestamp', val: genDate },
     { attr: 'Total Candidates Referred', val: summary.totalReferred },
     { attr: 'Applications Submitted', val: summary.totalApplications },
@@ -163,23 +170,27 @@ export async function generateReferralXLSX(
 
   const appColumns = isAdmin
     ? [
+        { header: 'Application ID', key: 'applicant_id', width: 22 },
         { header: 'Applicant Name', key: 'applicant_name', width: 26 },
-        { header: 'Opportunity', key: 'opportunity_title', width: 34 },
-        { header: 'Status', key: 'status', width: 16 },
+        { header: 'Applicant Email', key: 'applicant_email', width: 28 },
+        { header: 'Applicant Contact', key: 'applicant_phone', width: 20 },
+        { header: 'Opportunity / Project', key: 'opportunity_title', width: 34 },
+        { header: 'Application Status', key: 'status', width: 18 },
         { header: 'Applied Date', key: 'created_at', width: 18 },
-        { header: 'Referral Code', key: 'referral_code', width: 20 },
         { header: 'Referrer Name', key: 'referrer_name', width: 24 },
-        { header: 'Source', key: 'referral_source', width: 16 },
-        { header: 'Email Address', key: 'applicant_email', width: 30 },
-        { header: 'Phone Number', key: 'applicant_phone', width: 20 },
+        { header: 'Referral Code', key: 'referral_code', width: 20 },
+        { header: 'Referral Source', key: 'referral_source', width: 16 },
       ]
     : [
-        { header: 'Applicant Name', key: 'applicant_name', width: 28 },
-        { header: 'Opportunity Title', key: 'opportunity_title', width: 36 },
+        { header: 'Application ID', key: 'applicant_id', width: 22 },
+        { header: 'Applicant Name', key: 'applicant_name', width: 26 },
+        { header: 'Applicant Email', key: 'applicant_email', width: 28 },
+        { header: 'Applicant Contact', key: 'applicant_phone', width: 20 },
+        { header: 'Opportunity / Project', key: 'opportunity_title', width: 34 },
         { header: 'Application Status', key: 'status', width: 18 },
-        { header: 'Applied Date', key: 'created_at', width: 20 },
-        { header: 'Referral Code', key: 'referral_code', width: 22 },
-        { header: 'Referral Source', key: 'referral_source', width: 18 },
+        { header: 'Applied Date', key: 'created_at', width: 18 },
+        { header: 'Referrer Name', key: 'referrer_name', width: 24 },
+        { header: 'Referral Code', key: 'referral_code', width: 20 },
       ];
 
   appSheet.columns = appColumns;
@@ -193,28 +204,20 @@ export async function generateReferralXLSX(
   applicants.forEach((app, idx) => {
     const formattedDate = app.created_at
       ? new Date(app.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-      : 'N/A';
+      : '-';
 
-    const rowValues = isAdmin
-      ? {
-          applicant_name: app.applicant_name,
-          opportunity_title: app.opportunity_title || summary.opportunityTitle,
-          status: app.status ? app.status.toUpperCase() : 'PENDING',
-          created_at: formattedDate,
-          referral_code: app.referral_code || summary.referralCode || 'N/A',
-          referrer_name: app.referrer_name || summary.referrerName || 'N/A',
-          referral_source: app.referral_source || 'talent_hub',
-          applicant_email: app.applicant_email || '',
-          applicant_phone: app.applicant_phone || '',
-        }
-      : {
-          applicant_name: app.applicant_name,
-          opportunity_title: app.opportunity_title || summary.opportunityTitle,
-          status: app.status ? app.status.toUpperCase() : 'PENDING',
-          created_at: formattedDate,
-          referral_code: app.referral_code || summary.referralCode || 'N/A',
-          referral_source: app.referral_source || 'talent_hub',
-        };
+    const rowValues = {
+      applicant_id: app.applicant_id || '-',
+      applicant_name: app.applicant_name || '-',
+      applicant_email: app.applicant_email || '-',
+      applicant_phone: app.applicant_phone || '-',
+      opportunity_title: app.opportunity_title || summary.opportunityTitle,
+      status: app.status ? app.status.toUpperCase() : 'PENDING',
+      created_at: formattedDate,
+      referrer_name: app.referrer_name || summary.referrerName || '-',
+      referral_code: app.referral_code || summary.referralCode || '-',
+      referral_source: app.referral_source || 'talent_hub',
+    };
 
     const addedRow = appSheet.addRow(rowValues);
     addedRow.height = 22;
@@ -246,9 +249,8 @@ export async function generateReferralPDF(
   applicants: ReferralExportApplicant[],
   isAdmin: boolean = false
 ): Promise<ArrayBuffer> {
-  const orientation: 'portrait' | 'landscape' = isAdmin ? 'landscape' : 'portrait';
   const doc = new jsPDF({
-    orientation,
+    orientation: 'landscape',
     unit: 'mm',
     format: 'a4',
   });
@@ -290,7 +292,7 @@ export async function generateReferralPDF(
       doc.setTextColor(148, 163, 184);
       doc.setFont('helvetica', 'normal');
       const refInfo = summary.referrerName
-        ? `Referrer: ${summary.referrerName} (${summary.referralCode || 'N/A'}) • Generated: ${todayStr}`
+        ? `Referrer: ${summary.referrerName} (${summary.referralCode || '-'}) • Generated: ${todayStr}`
         : `Generated: ${todayStr}`;
       doc.text(refInfo, 12, 26);
 
@@ -356,48 +358,55 @@ export async function generateReferralPDF(
 
   // ── Applications List Table ──
   const tableHeaders = isAdmin
-    ? [['#', 'Applicant Name', 'Opportunity', 'Status', 'Applied Date', 'Referral Code', 'Referrer', 'Email']]
-    : [['#', 'Applicant Name', 'Opportunity', 'Status', 'Applied Date', 'Referral Code']];
+    ? [['#', 'Application ID', 'Applicant Name', 'Email', 'Contact', 'Opportunity', 'Status', 'Applied Date', 'Referral Code', 'Referrer']]
+    : [['#', 'Application ID', 'Applicant Name', 'Email', 'Contact', 'Opportunity', 'Status', 'Applied Date', 'Referral Code']];
 
   const tableBody = applicants.map((app, idx) => {
     const formattedDate = app.created_at
       ? new Date(app.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-      : 'N/A';
+      : '-';
+
+    const appId = app.applicant_id || '-';
 
     return isAdmin
       ? [
           String(idx + 1),
-          app.applicant_name,
+          appId,
+          app.applicant_name || '-',
+          app.applicant_email || '-',
+          app.applicant_phone || '-',
           app.opportunity_title || summary.opportunityTitle,
           (app.status || 'pending').toUpperCase(),
           formattedDate,
-          app.referral_code || summary.referralCode || 'N/A',
-          app.referrer_name || summary.referrerName || 'N/A',
-          app.applicant_email || '',
+          app.referral_code || summary.referralCode || '-',
+          app.referrer_name || summary.referrerName || '-',
         ]
       : [
           String(idx + 1),
-          app.applicant_name,
+          appId,
+          app.applicant_name || '-',
+          app.applicant_email || '-',
+          app.applicant_phone || '-',
           app.opportunity_title || summary.opportunityTitle,
           (app.status || 'pending').toUpperCase(),
           formattedDate,
-          app.referral_code || summary.referralCode || 'N/A',
+          app.referral_code || summary.referralCode || '-',
         ];
   });
 
   autoTable(doc, {
     head: tableHeaders,
-    body: tableBody.length > 0 ? tableBody : [[ '—', 'No referred candidate applications recorded yet', '', '', '', ...(isAdmin ? ['', ''] : []) ]],
+    body: tableBody.length > 0 ? tableBody : [[ '—', '—', 'No referred candidate applications recorded yet', '—', '—', '—', '—', '—', '—', ...(isAdmin ? ['—'] : []) ]],
     startY: nextStartY + 3,
     theme: 'striped',
     headStyles: {
       fillColor: [15, 23, 42],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 7.5,
+      fontSize: 7,
     },
     bodyStyles: {
-      fontSize: 7.5,
+      fontSize: 7,
       textColor: [30, 41, 59],
     },
     alternateRowStyles: {

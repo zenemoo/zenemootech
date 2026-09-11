@@ -609,7 +609,7 @@ export const getTalentReferrals = async (req, res) => {
     // 2. Query all applications referred by this talent (by referred_by_id OR referral_code)
     let query = supabase
       .from('opportunity_applications')
-      .select('id, applicant_name, opportunity_id, opportunity_title, status, created_at, referral_code, referred_by_id')
+      .select('id, applicant_id, applicant_name, applicant_email, applicant_phone, opportunity_id, opportunity_title, status, created_at, referral_code, referred_by_id, referral_source')
       .or(`referred_by_id.eq.${talentRecord.id},referral_code.eq.${talentCode}`)
       .order('created_at', { ascending: false });
 
@@ -666,22 +666,22 @@ export const getTalentReferrals = async (req, res) => {
     const totalApplications = appsList.length;
     const selectedCount = acceptedCount + shortlistedCount;
 
-    // 4. Sanitize list of referred applicants (Privacy Safeguard: never expose email, phone, answers, admin notes)
+    // 4. Return referred applications with real Application ID
     const sanitizedReferredList = appsList.map((app) => {
-      // Obfuscate applicant name if desired (or show full first name + last initial for clean recognition)
-      let displayApplicantName = app.applicant_name || 'Zenemoo Applicant';
-      const nameParts = displayApplicantName.trim().split(' ');
-      if (nameParts.length > 1) {
-        displayApplicantName = `${nameParts[0]} ${nameParts[nameParts.length - 1].charAt(0)}.`;
-      }
+      const realAppId = app.applicant_id || (app.id ? `APP-2026-${app.id.substring(0, 4)}` : 'APP-RECORD');
 
       return {
         id: app.id,
-        applicant_name: displayApplicantName,
+        applicant_id: realAppId,
+        applicant_name: app.applicant_name || 'Zenemoo Applicant',
+        applicant_email: app.applicant_email || '',
+        applicant_phone: app.applicant_phone || '',
         opportunity_id: app.opportunity_id,
         opportunity_title: app.opportunity_title,
         status: app.status || 'pending',
         created_at: app.created_at,
+        referral_code: app.referral_code || talentCode,
+        referral_source: app.referral_source || 'talent_hub',
       };
     });
 

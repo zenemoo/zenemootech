@@ -29,8 +29,10 @@ import {
   Phone,
   ShieldCheck,
   ChevronDown,
+  Copy,
+  Check,
 } from 'lucide-react';
-import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus } from '../lib/opportunityApplicationStore';
+import { CandidateApplication, getStoredCandidateApplications } from '../lib/opportunityApplicationStore';
 import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
 import {
   generateReferralCSV,
@@ -66,6 +68,7 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
   } | null>(null);
 
   const [selectedAppDetail, setSelectedAppDetail] = useState<CandidateApplication | null>(null);
+  const [copiedAppId, setCopiedAppId] = useState<string | null>(null);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,6 +97,25 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleCopyAppId = async (appId: string) => {
+    if (!appId) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(appId);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = appId;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setCopiedAppId(appId);
+      if (showToast) showToast('Copied', `Application ID ${appId} copied`, 'info');
+      setTimeout(() => setCopiedAppId(null), 2000);
+    } catch (_) {}
+  };
 
   // Filter only applications that have referral attribution
   const referredApps = useMemo(() => {
@@ -295,7 +317,8 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
         (app.applicant_name || '').toLowerCase().includes(q) ||
         (app.applicant_email || '').toLowerCase().includes(q) ||
         (app.applicant_phone || '').toLowerCase().includes(q) ||
-        (app.applicant_id || '').toLowerCase().includes(q)
+        (app.applicant_id || '').toLowerCase().includes(q) ||
+        (app.id || '').toLowerCase().includes(q)
       );
     });
   }, [referrerProjectApps, statusFilter, searchQuery]);
@@ -345,15 +368,16 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
           generatedAt: new Date().toLocaleString('en-IN'),
         };
         exportApplicants = filteredReferrerApps.map((a) => ({
-          applicant_name: a.applicant_name,
+          applicant_id: a.applicant_id || (a.id ? `APP-2026-${a.id.substring(0, 4)}` : '-'),
+          applicant_name: a.applicant_name || '-',
           opportunity_title: a.opportunity_title || selectedProject.title,
           status: a.status || 'pending',
           created_at: a.created_at,
           referral_code: a.referral_code || selectedReferrer.referral_code,
           referrer_name: a.referrer_name || selectedReferrer.referrer_name,
           referral_source: a.referral_source || 'talent_hub',
-          applicant_email: a.applicant_email,
-          applicant_phone: a.applicant_phone,
+          applicant_email: a.applicant_email || '-',
+          applicant_phone: a.applicant_phone || '-',
         }));
         filenamePrefix = `Zenemoo_${selectedReferrer.referral_code}_${selectedProject.title.slice(0, 15)}`;
       } else if (selectedProject) {
@@ -370,15 +394,16 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
           generatedAt: new Date().toLocaleString('en-IN'),
         };
         exportApplicants = projApps.map((a) => ({
-          applicant_name: a.applicant_name,
+          applicant_id: a.applicant_id || (a.id ? `APP-2026-${a.id.substring(0, 4)}` : '-'),
+          applicant_name: a.applicant_name || '-',
           opportunity_title: a.opportunity_title || selectedProject.title,
           status: a.status || 'pending',
           created_at: a.created_at,
           referral_code: a.referral_code,
           referrer_name: a.referrer_name,
           referral_source: a.referral_source || 'talent_hub',
-          applicant_email: a.applicant_email,
-          applicant_phone: a.applicant_phone,
+          applicant_email: a.applicant_email || '-',
+          applicant_phone: a.applicant_phone || '-',
         }));
         filenamePrefix = `Zenemoo_Project_${selectedProject.title.slice(0, 20)}`;
       } else {
@@ -394,15 +419,16 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
           generatedAt: new Date().toLocaleString('en-IN'),
         };
         exportApplicants = referredApps.map((a) => ({
-          applicant_name: a.applicant_name,
+          applicant_id: a.applicant_id || (a.id ? `APP-2026-${a.id.substring(0, 4)}` : '-'),
+          applicant_name: a.applicant_name || '-',
           opportunity_title: a.opportunity_title,
           status: a.status || 'pending',
           created_at: a.created_at,
           referral_code: a.referral_code,
           referrer_name: a.referrer_name,
           referral_source: a.referral_source || 'talent_hub',
-          applicant_email: a.applicant_email,
-          applicant_phone: a.applicant_phone,
+          applicant_email: a.applicant_email || '-',
+          applicant_phone: a.applicant_phone || '-',
         }));
         filenamePrefix = 'Zenemoo_Master_Referral_Report';
       }
@@ -590,7 +616,7 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={
               selectedReferrer
-                ? 'Search applicant name/email...'
+                ? 'Search applicant name, ID, or email...'
                 : selectedProject
                 ? 'Search referrer name/code...'
                 : 'Search project title...'
@@ -812,7 +838,7 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
             </button>
           </div>
 
-          {/* Applications Table */}
+          {/* Applications Table with Application ID */}
           {filteredReferrerApps.length === 0 ? (
             <div className="text-center py-12 rounded-2xl bg-white/[0.02] border border-white/5 p-6 space-y-2">
               <Users className="w-7 h-7 text-slate-500 mx-auto" />
@@ -824,9 +850,10 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
                 <table className="w-full text-left text-xs font-sans">
                   <thead className="bg-white/5 border-b border-white/10 text-[10px] font-mono uppercase text-slate-400 tracking-wider">
                     <tr>
+                      <th className="py-3 px-4">Application ID</th>
                       <th className="py-3 px-4">Applicant Name</th>
                       <th className="py-3 px-4">Email</th>
-                      <th className="py-3 px-4">Phone</th>
+                      <th className="py-3 px-4">Contact</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">Applied Date</th>
                       <th className="py-3 px-4 text-right">Action</th>
@@ -836,6 +863,8 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
                     {filteredReferrerApps.map((app) => {
                       const badge = getStatusBadge(app.status || 'pending');
                       const BadgeIcon = badge.icon;
+                      const appId = app.applicant_id || (app.id ? `APP-2026-${app.id.substring(0, 4)}` : 'APP-RECORD');
+                      const isCopied = copiedAppId === appId;
                       const formattedDate = app.created_at
                         ? new Date(app.created_at).toLocaleDateString('en-IN', {
                             day: '2-digit',
@@ -850,14 +879,29 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
                           onClick={() => setSelectedAppDetail(app)}
                           className="hover:bg-white/5 transition-colors cursor-pointer group"
                         >
+                          <td className="py-3.5 px-4 font-mono font-bold text-cyan-300">
+                            <div className="inline-flex items-center gap-1.5">
+                              <span className="tracking-wide select-all">{appId}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopyAppId(appId);
+                                }}
+                                className="p-1 rounded-md bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 transition-colors"
+                                title="Copy Application ID"
+                              >
+                                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
                           <td className="py-3.5 px-4 font-semibold text-white group-hover:text-cyan-300">
                             {app.applicant_name}
                           </td>
                           <td className="py-3.5 px-4 text-slate-300 font-mono text-[11px]">
-                            {app.applicant_email}
+                            {app.applicant_email || '-'}
                           </td>
                           <td className="py-3.5 px-4 text-slate-300 font-mono text-[11px]">
-                            {app.applicant_phone}
+                            {app.applicant_phone || '-'}
                           </td>
                           <td className="py-3.5 px-4">
                             <span
@@ -911,7 +955,9 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
                     <h3 className="text-base font-bold text-white font-display">
                       {selectedAppDetail.applicant_name}
                     </h3>
-                    <p className="text-[10px] font-mono text-cyan-400">Application #{selectedAppDetail.applicant_id || selectedAppDetail.id.slice(0, 8)}</p>
+                    <p className="text-[10px] font-mono text-cyan-400">
+                      Application ID: {selectedAppDetail.applicant_id || (selectedAppDetail.id ? `APP-2026-${selectedAppDetail.id.substring(0, 4)}` : 'APP-RECORD')}
+                    </p>
                   </div>
                 </div>
 
@@ -941,30 +987,80 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
                   </div>
                 </div>
 
-                {/* Candidate Info Grid */}
+                {/* Candidate Info Grid with Application ID */}
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                  {/* Application ID with Copy */}
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <span className="text-slate-400 font-mono">Application ID:</span>
+                    <div className="inline-flex items-center gap-2">
+                      <span className="font-mono font-extrabold text-cyan-300 select-all">
+                        {selectedAppDetail.applicant_id || (selectedAppDetail.id ? `APP-2026-${selectedAppDetail.id.substring(0, 4)}` : 'APP-RECORD')}
+                      </span>
+                      <button
+                        onClick={() => handleCopyAppId(selectedAppDetail.applicant_id || (selectedAppDetail.id ? `APP-2026-${selectedAppDetail.id.substring(0, 4)}` : 'APP-RECORD'))}
+                        className="py-1 px-2 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-[10px] font-mono font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        {copiedAppId === (selectedAppDetail.applicant_id || `APP-2026-${selectedAppDetail.id.substring(0, 4)}`) ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy ID</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <span className="text-slate-400 font-mono">Applicant:</span>
+                    <span className="font-bold text-white text-right">{selectedAppDetail.applicant_name}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <span className="text-slate-400 font-mono">Email:</span>
+                    <span className="font-mono text-slate-200">{selectedAppDetail.applicant_email || '-'}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <span className="text-slate-400 font-mono">Contact / Phone:</span>
+                    <span className="font-mono text-slate-200">{selectedAppDetail.applicant_phone || '-'}</span>
+                  </div>
+
                   <div className="flex items-center justify-between border-b border-white/5 pb-2">
                     <span className="text-slate-400 font-mono">Opportunity:</span>
                     <span className="font-bold text-white text-right">{selectedAppDetail.opportunity_title}</span>
                   </div>
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400 font-mono">Email:</span>
-                    <span className="font-mono text-slate-200">{selectedAppDetail.applicant_email}</span>
-                  </div>
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                    <span className="text-slate-400 font-mono">Phone:</span>
-                    <span className="font-mono text-slate-200">{selectedAppDetail.applicant_phone}</span>
-                  </div>
+
                   <div className="flex items-center justify-between border-b border-white/5 pb-2">
                     <span className="text-slate-400 font-mono">Application Status:</span>
-                    <span className="font-mono font-bold text-cyan-300 uppercase">{selectedAppDetail.status || 'pending'}</span>
+                    {(() => {
+                      const badge = getStatusBadge(selectedAppDetail.status || 'pending');
+                      const BadgeIcon = badge.icon;
+                      return (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold uppercase tracking-wider ${badge.badgeClass}`}>
+                          <BadgeIcon className="w-3 h-3" />
+                          <span>{badge.label}</span>
+                        </span>
+                      );
+                    })()}
                   </div>
+
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400 font-mono">Submitted At:</span>
+                    <span className="text-slate-400 font-mono">Applied:</span>
                     <span className="font-mono text-slate-200">
                       {selectedAppDetail.created_at
-                        ? new Date(selectedAppDetail.created_at).toLocaleString('en-IN')
-                        : 'N/A'}
+                        ? new Date(selectedAppDetail.created_at).toLocaleString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '-'}
                     </span>
                   </div>
                 </div>
