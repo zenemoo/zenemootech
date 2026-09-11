@@ -51,6 +51,7 @@ import { ZenemooWebsiteDirectoryPage } from './components/ZenemooWebsiteDirector
 import { SupportZenemooPage } from './components/SupportZenemooPage';
 import { ZenemooPayPage } from './components/ZenemooPayPage';
 import { ZenemooReceiptVerifyPage } from './components/ZenemooReceiptVerifyPage';
+import { ZenemooApplicationVerifyPage } from './components/ZenemooApplicationVerifyPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
 import { Capacitor } from '@capacitor/core';
@@ -59,7 +60,7 @@ import { App as CapApp } from '@capacitor/app';
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | '404'
   >('home');
   const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
@@ -283,6 +284,7 @@ function AppInner() {
         | 'support-zenemoo'
         | 'pay'
         | 'receipt-verify'
+        | 'application-verify'
         | '404' = 'home';
 
       if (isSecretAdminRoute) {
@@ -574,6 +576,18 @@ function AppInner() {
         }
         setSelectedReceiptNo(decodeURIComponent(rNo || ''));
         matchedRoute = 'receipt-verify';
+      } else if (
+        path.startsWith('/verify/application') ||
+        path.startsWith('/verify-application') ||
+        path.startsWith('/application/verify') ||
+        hash.startsWith('#verify/application') ||
+        hash.startsWith('#/verify/application') ||
+        hash.startsWith('#verify-application') ||
+        hash.startsWith('#/verify-application') ||
+        hash.startsWith('#application/verify') ||
+        hash.startsWith('#/application/verify')
+      ) {
+        matchedRoute = 'application-verify';
       } else if (
         path === '/sitemap' ||
         path === '/sitemap/' ||
@@ -1038,6 +1052,14 @@ function AppInner() {
           onBackToHome={handleBackToHome}
           onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
         />
+      ) : currentRoute === 'application-verify' ? (
+        <ZenemooApplicationVerifyPage
+          onBackToHome={handleBackToHome}
+          onNavigateTalentHub={() => {
+            window.history.pushState(null, '', '/talent-hub');
+            setCurrentRoute('talent-hub');
+          }}
+        />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
@@ -1070,8 +1092,8 @@ function AppInner() {
         </div>
       )}
 
-      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt pages) */}
-      {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && (
+      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt, non-application-verify pages) */}
+      {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && currentRoute !== 'application-verify' && (
         <>
           {currentRoute !== 'zenemooai' && (
             <>

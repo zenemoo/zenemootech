@@ -21,12 +21,26 @@ export interface CandidateApplicationPdfData {
 }
 
 /**
- * Format timestamp into IST (Indian Standard Time) string: e.g. "11 Sep 2026, 10:30 PM (IST)"
+ * Sanitize text to ensure standard PDF Helvetica font does not garble characters (e.g. ₹ -> Rs.)
+ */
+export function sanitizeTextForPdf(text: any): string {
+  if (text === null || text === undefined) return '';
+  const str = String(text);
+  return str
+    .replace(/₹/g, 'Rs. ')
+    .replace(/[\u20B9]/g, 'Rs. ')
+    .replace(/[^\x00-\x7F\u00A0-\u024F]/g, ' ') // Clean out non-standard unicode that causes font corruption
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Format timestamp into IST (Indian Standard Time) string: e.g. "11 Sep 2026, 04:26 PM (IST)"
  */
 export function formatApplicationPdfDate(dateVal?: string | Date | null): string {
   if (!dateVal) return new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ' (IST)';
   const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
-  if (isNaN(d.getTime())) return String(dateVal);
+  if (isNaN(d.getTime())) return sanitizeTextForPdf(dateVal);
 
   const day = d.getDate();
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -53,12 +67,12 @@ export function formatAnswerString(value: any): string {
     return value.map((v) => formatAnswerString(v)).join(', ');
   }
   if (typeof value === 'object') {
-    if (value.label) return String(value.label);
-    if (value.value) return String(value.value);
-    if (value.name) return String(value.name);
-    return JSON.stringify(value);
+    if (value.label) return sanitizeTextForPdf(value.label);
+    if (value.value) return sanitizeTextForPdf(value.value);
+    if (value.name) return sanitizeTextForPdf(value.name);
+    return sanitizeTextForPdf(JSON.stringify(value));
   }
-  return String(value).trim();
+  return sanitizeTextForPdf(value);
 }
 
 /**
@@ -92,8 +106,9 @@ async function loadOfficialZenemooLogo(): Promise<string | null> {
 async function generateVerificationQr(dataUrl: string): Promise<string> {
   try {
     return await QRCode.toDataURL(dataUrl, {
-      width: 140,
+      width: 256,
       margin: 1,
+      errorCorrectionLevel: 'M',
       color: {
         dark: '#080d19',
         light: '#ffffff',
@@ -129,7 +144,7 @@ function drawVectorBadge(doc: jsPDF, cx: number, cy: number, radius: number, cir
 }
 
 /**
- * Generate official Candidate Application PDF with watermark, branding, and verification
+ * Generate official Candidate Application PDF with watermark, dynamic box sizing, and verified QR code
  */
 export async function generateApplicationPdf(data: CandidateApplicationPdfData): Promise<jsPDF> {
   const doc = new jsPDF({
@@ -147,16 +162,16 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-  // --- 0. BACKGROUND WATERMARK (Subtle diagonal "ZENEMOO OFFICIAL RECORD") ---
+  // --- 0. BACKGROUND WATERMARK (Subtle diagonal "ZENEMOO RECORD") ---
   doc.saveGraphicsState();
   doc.setTextColor(244, 247, 251); // Ultra faint slate-blue watermark
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(54);
+  doc.setFontSize(50);
   doc.text('ZENEMOO RECORD', 18, 140, {
     angle: 40,
     renderingMode: 'fill',
   });
-  doc.setFontSize(28);
+  doc.setFontSize(26);
   doc.text('OFFICIAL VERIFIED SUBMISSION', 20, 185, {
     angle: 40,
     renderingMode: 'fill',
@@ -210,18 +225,20 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
   doc.text('APPLICATION ID', 150, 19.5);
   doc.setTextColor(6, 182, 212);
   doc.setFontSize(9);
-  doc.text(data.applicant_id || 'APP-2026-RECORD', 150, 24.5);
+  doc.text(sanitizeTextForPdf(data.applicant_id || 'APP-2026-RECORD'), 150, 24.5);
 
   // --- 3. DOCUMENT TITLE & STATUS CARD (y: 34) ---
   const headerY = 34;
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(19);
+  doc.setFontSize(18);
   doc.text('Candidate Application Record', marginX, headerY + 6);
 
   doc.setFontSize(9.5);
   doc.setTextColor(51, 65, 85);
-  doc.text(data.opportunity_title || 'General Opportunity Program', marginX, headerY + 12);
+  const cleanTitle = sanitizeTextForPdf(data.opportunity_title || 'General Opportunity Program');
+  const titleLines = doc.splitTextToSize(cleanTitle, 115);
+  doc.text(titleLines[0] || cleanTitle, marginX, headerY + 12);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
@@ -283,44 +300,79 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
     statusBoxY + 13
   );
 
-  // --- 4. TWO-COLUMN SUMMARY CARDS (y: 56) ---
+  // --- 4. TWO-COLUMN SUMMARY CARDS (DYNAMIC HEIGHT TO PREVENT ANY TEXT OVERFLOW) ---
   const cardsY = 56;
   const colW = (contentWidth - 6) / 2; // ~88mm
+  const innerColW = colW - 8; // ~80mm usable text width inside card
 
-  // Left Card: Applicant Information
-  doc.setFillColor(248, 250, 252); // Slate-50
-  doc.setDrawColor(226, 232, 240); // Slate-200
-  doc.roundedRect(marginX, cardsY, colW, 40, 2.5, 2.5, 'FD');
+  // Sanitize text for left card
+  const nameLines = doc.splitTextToSize(sanitizeTextForPdf(data.applicant_name || '—'), innerColW);
+  const emailLines = doc.splitTextToSize(sanitizeTextForPdf(data.applicant_email || '—'), innerColW);
+  const phoneLines = doc.splitTextToSize(sanitizeTextForPdf(data.applicant_phone || '—'), innerColW);
+  const idLines = doc.splitTextToSize('Verified via Zenemoo Talent Portal', innerColW);
+
+  // Sanitize text for right card
+  const partnerLines = doc.splitTextToSize(sanitizeTextForPdf(data.partner_name || 'Zenemoo AI Solutions'), innerColW);
+  const workModeLines = doc.splitTextToSize(sanitizeTextForPdf(data.work_mode ? data.work_mode.toUpperCase() : 'REMOTE (WORK FROM HOME)'), innerColW);
+  const compLines = doc.splitTextToSize(sanitizeTextForPdf(data.payment_info || 'Standard Milestone Rates'), innerColW);
+  const hoursLines = doc.splitTextToSize(sanitizeTextForPdf(data.working_hours || 'Flexible / Task Based'), innerColW);
+
+  // Calculate required height for both cards dynamically
+  const calcCardHeight = (fields: string[][]) => {
+    let total = 9; // Header bar + top padding
+    fields.forEach((lines) => {
+      total += 3.2; // Label
+      total += lines.length * 3.4; // Values
+      total += 2.0; // Margin below row
+    });
+    return total + 2;
+  };
+
+  const leftRequiredH = calcCardHeight([nameLines, emailLines, phoneLines, idLines]);
+  const rightRequiredH = calcCardHeight([partnerLines, workModeLines, compLines, hoursLines]);
+  const cardHeight = Math.max(leftRequiredH, rightRequiredH, 44);
+
+  // Draw Left Card (Applicant Profile)
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(marginX, cardsY, colW, cardHeight, 2.5, 2.5, 'FD');
 
   doc.setFillColor(6, 182, 212);
   doc.roundedRect(marginX, cardsY, colW, 7, 2.5, 2.5, 'F');
-  doc.rect(marginX, cardsY + 4, colW, 3, 'F'); // square bottom corners
+  doc.rect(marginX, cardsY + 4, colW, 3, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.text('APPLICANT PROFILE DETAILS', marginX + 4, cardsY + 4.8);
 
-  const drawFieldRow = (label: string, val: string, x: number, y: number) => {
+  let leftCursorY = cardsY + 11.5;
+  const drawLeftField = (label: string, lines: string[]) => {
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text(label, x, y);
+    doc.setFontSize(6.8);
+    doc.text(label, marginX + 4, leftCursorY);
+    leftCursorY += 3.4;
+
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
-    doc.text(val || '—', x, y + 3.8);
+    lines.forEach((l) => {
+      doc.text(l, marginX + 4, leftCursorY);
+      leftCursorY += 3.4;
+    });
+    leftCursorY += 1.8;
   };
 
-  drawFieldRow('Full Name:', data.applicant_name, marginX + 4, cardsY + 12);
-  drawFieldRow('Registered Email:', data.applicant_email, marginX + 4, cardsY + 20.5);
-  drawFieldRow('Contact Phone:', data.applicant_phone || '—', marginX + 4, cardsY + 29);
-  drawFieldRow('Identity Verification:', 'Verified via Zenemoo Talent Portal', marginX + 4, cardsY + 37.5);
+  drawLeftField('Full Name:', nameLines);
+  drawLeftField('Registered Email:', emailLines);
+  drawLeftField('Contact Phone:', phoneLines);
+  drawLeftField('Identity Verification:', idLines);
 
-  // Right Card: Opportunity Specifications
+  // Draw Right Card (Opportunity Specifications)
   const rightCardX = marginX + colW + 6;
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(rightCardX, cardsY, colW, 40, 2.5, 2.5, 'FD');
+  doc.roundedRect(rightCardX, cardsY, colW, cardHeight, 2.5, 2.5, 'FD');
 
   doc.setFillColor(15, 23, 42);
   doc.roundedRect(rightCardX, cardsY, colW, 7, 2.5, 2.5, 'F');
@@ -330,13 +382,31 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
   doc.setFontSize(7.5);
   doc.text('PROGRAM & PARTNER SPECIFICATIONS', rightCardX + 4, cardsY + 4.8);
 
-  drawFieldRow('Enterprise Partner:', data.partner_name || 'Zenemoo AI Solutions', rightCardX + 4, cardsY + 12);
-  drawFieldRow('Work Mode / Location:', data.work_mode ? data.work_mode.toUpperCase() : 'REMOTE (WORK FROM HOME)', rightCardX + 4, cardsY + 20.5);
-  drawFieldRow('Compensation / Rate:', data.payment_info || 'Standard Project Milestone Rates', rightCardX + 4, cardsY + 29);
-  drawFieldRow('Working Commitment:', data.working_hours || 'Flexible / Task Based', rightCardX + 4, cardsY + 37.5);
+  let rightCursorY = cardsY + 11.5;
+  const drawRightField = (label: string, lines: string[]) => {
+    doc.setTextColor(100, 116, 139);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.text(label, rightCardX + 4, rightCursorY);
+    rightCursorY += 3.4;
 
-  // --- 5. QUESTIONNAIRE & RESPONSES TABLE (y: 101) ---
-  const tableStartY = 101;
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    lines.forEach((l) => {
+      doc.text(l, rightCardX + 4, rightCursorY);
+      rightCursorY += 3.4;
+    });
+    rightCursorY += 1.8;
+  };
+
+  drawRightField('Enterprise Partner:', partnerLines);
+  drawRightField('Work Mode / Location:', workModeLines);
+  drawRightField('Compensation / Rate:', compLines);
+  drawRightField('Working Commitment:', hoursLines);
+
+  // --- 5. QUESTIONNAIRE & RESPONSES TABLE (Starts dynamically after cards) ---
+  const tableStartY = cardsY + cardHeight + 6;
   const rawAnswers = data.answers || {};
   const customQuestions = Array.isArray(data.custom_questions) ? data.custom_questions : [];
 
@@ -346,7 +416,7 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
 
   if (customQuestions.length > 0) {
     customQuestions.forEach((q: any) => {
-      const qLabel = (q.label && q.label.trim()) || q.id || `Question ${itemIndex}`;
+      const qLabel = sanitizeTextForPdf((q.label && q.label.trim()) || q.id || `Question ${itemIndex}`);
       const answerVal =
         rawAnswers[qLabel] !== undefined
           ? rawAnswers[qLabel]
@@ -361,12 +431,12 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
       const isIdMatched = customQuestions.some((q) => q.id === k);
       const isLabelMatched = customQuestions.some((q) => q.label === k);
       if (!isIdMatched && !isLabelMatched) {
-        tableRows.push([String(itemIndex++), k, formatAnswerString(v)]);
+        tableRows.push([String(itemIndex++), sanitizeTextForPdf(k), formatAnswerString(v)]);
       }
     });
   } else {
     Object.entries(rawAnswers).forEach(([k, v]) => {
-      tableRows.push([String(itemIndex++), k, formatAnswerString(v)]);
+      tableRows.push([String(itemIndex++), sanitizeTextForPdf(k), formatAnswerString(v)]);
     });
   }
 
@@ -408,7 +478,7 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
 
   // Position after table
   const finalTableY = (doc as any).lastAutoTable?.finalY || 160;
-  let cursorY = finalTableY + 8;
+  let cursorY = finalTableY + 7;
 
   // If table runs close to page bottom, add page
   if (cursorY > pageHeight - 55) {
@@ -422,9 +492,9 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(marginX, cursorY, contentWidth, declBoxH, 2.5, 2.5, 'FD');
 
-  // QR Code
-  const qrUrl = `https://zenemoo.in/talent-hub/applications?id=${encodeURIComponent(data.applicant_id)}`;
-  const qrBase64 = await generateVerificationQr(qrUrl);
+  // QR Code pointing directly to verified candidate HTML record
+  const qrVerificationUrl = `https://zenemoo.in/verify/application?id=${encodeURIComponent(data.applicant_id || '')}&name=${encodeURIComponent(data.applicant_name || '')}&email=${encodeURIComponent(data.applicant_email || '')}&phone=${encodeURIComponent(data.applicant_phone || '')}&platform=${encodeURIComponent('Zenemoo Talent Hub')}&opp=${encodeURIComponent(data.opportunity_title || '')}&status=${encodeURIComponent('Verified by Zenemoo')}`;
+  const qrBase64 = await generateVerificationQr(qrVerificationUrl);
   if (qrBase64) {
     try {
       doc.addImage(qrBase64, 'PNG', marginX + 3, cursorY + 3, 28, 28, undefined, 'FAST');
@@ -459,7 +529,7 @@ export async function generateApplicationPdf(data: CandidateApplicationPdfData):
   doc.setTextColor(6, 182, 212);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
-  doc.text('Scan QR Code with any mobile camera to verify application record authenticity.', textStartX, cursorY + 27.5);
+  doc.text('Scan QR Code with any mobile camera to view verified candidate HTML record.', textStartX, cursorY + 27.5);
 
   // --- 7. FOOTER ACROSS ALL PAGES ---
   const pageCount = (doc as any).internal.getNumberOfPages();
