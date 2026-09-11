@@ -47,11 +47,20 @@ export interface CandidateApplicationsModalProps {
 }
 
 // ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // MEMOIZED CUSTOM ANSWER CHIP COMPONENT (Prevents re-renders during filter/typing)
 // ----------------------------------------------------------------------
-const CustomAnswerChip = React.memo<{ answerKey: string; val: any }>(({ answerKey, val }) => {
+const CustomAnswerChip = React.memo<{ answerKey: string; val: any; customQuestions?: any[] }>(({ answerKey, val, customQuestions }) => {
+  const resolvedKey = useMemo(() => {
+    if (customQuestions && Array.isArray(customQuestions)) {
+      const match = customQuestions.find((cq: any) => cq && (cq.id === answerKey || cq.key === answerKey));
+      if (match && match.label) return match.label.trim();
+    }
+    return answerKey;
+  }, [answerKey, customQuestions]);
+
   const displayVal = formatApplicationAnswer(val);
-  const keyLower = answerKey.toLowerCase();
+  const keyLower = resolvedKey.toLowerCase();
 
   let IconComp = FileText;
   if (keyLower.includes('time') || keyLower.includes('hour') || keyLower.includes('commitment')) {
@@ -66,7 +75,7 @@ const CustomAnswerChip = React.memo<{ answerKey: string; val: any }>(({ answerKe
     <div className="flex items-start gap-1.5 text-[11px] bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/10 text-slate-300">
       <IconComp className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
       <div className="leading-tight">
-        <span className="text-slate-400 font-semibold">{answerKey}: </span>
+        <span className="text-slate-400 font-semibold">{resolvedKey}: </span>
         <span className="text-emerald-300 font-bold">{displayVal}</span>
       </div>
     </div>
@@ -80,6 +89,7 @@ CustomAnswerChip.displayName = 'CustomAnswerChip';
 // ----------------------------------------------------------------------
 interface TableRowProps {
   app: CandidateApplication;
+  customQuestions?: any[];
   resyncingId: string | null;
   resendingEmailId: string | null;
   onView: (app: CandidateApplication) => void;
@@ -92,6 +102,7 @@ interface TableRowProps {
 
 const CandidateTableRow = React.memo<TableRowProps>(({
   app,
+  customQuestions,
   resyncingId,
   resendingEmailId,
   onView,
@@ -148,7 +159,7 @@ const CandidateTableRow = React.memo<TableRowProps>(({
         ) : (
           <div className="space-y-1.5">
             {answerEntries.slice(0, 3).map(([k, v]) => (
-              <CustomAnswerChip key={k} answerKey={k} val={v} />
+              <CustomAnswerChip key={k} answerKey={k} val={v} customQuestions={customQuestions} />
             ))}
             {answerEntries.length > 3 && (
               <button
@@ -297,6 +308,7 @@ CandidateTableRow.displayName = 'CandidateTableRow';
 // ----------------------------------------------------------------------
 const CandidateMobileCard = React.memo<TableRowProps>(({
   app,
+  customQuestions,
   resyncingId,
   resendingEmailId,
   onView,
@@ -353,39 +365,57 @@ const CandidateMobileCard = React.memo<TableRowProps>(({
         </select>
       </div>
 
-      {/* Middle: Applicant Info */}
+      {/* Applicant Name & Email */}
       <div className="space-y-1">
-        <h4 className="text-base font-bold text-white">{app.applicant_name}</h4>
-        <div className="text-xs font-mono text-cyan-300">{app.applicant_email}</div>
-        <div className="text-xs font-mono text-slate-400">{app.applicant_phone}</div>
+        <h4 className="font-bold text-white text-sm font-sans">{app.applicant_name}</h4>
+        <div className="text-cyan-300 font-mono text-xs">{app.applicant_email}</div>
+        <div className="text-slate-400 font-mono text-xs">{app.applicant_phone}</div>
       </div>
 
-      {/* Sheet Sync & Email status */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+      {/* Middle Row: Sheets Sync & Email Status */}
+      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5 font-mono text-[10px]">
         <div className="flex items-center gap-1.5">
           {app.sync_status === 'synced' ? (
-            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]">
-              Synced
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+              <CheckCircle2 className="w-3 h-3" /> Synced
+            </span>
+          ) : app.sync_status === 'failed' ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 font-bold">
+              <XCircle className="w-3 h-3" /> Failed
             </span>
           ) : (
-            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold text-[10px]">
-              {app.sync_status || 'Pending'}
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
+              <Clock className="w-3 h-3" /> Sync Pending
             </span>
           )}
+
           <button
             type="button"
             disabled={resyncingId === app.id}
             onClick={() => onSingleResync(app)}
-            className="p-1 rounded bg-white/5 text-slate-400 text-[10px] cursor-pointer"
+            className="p-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 border border-white/10 cursor-pointer"
+            title="Manual Resync"
           >
             <RefreshCw className={`w-3 h-3 ${resyncingId === app.id ? 'animate-spin text-cyan-400' : ''}`} />
           </button>
         </div>
 
         {app.status === 'accepted' && (
-          <span className="text-[10px] font-mono text-emerald-400 font-medium">
-            {app.acceptance_email_status === 'sent' ? '✓ Email Sent' : 'Email Pending'}
-          </span>
+          <div className="flex items-center gap-1 ml-auto">
+            {app.acceptance_email_status === 'sent' ? (
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Email Sent
+              </span>
+            ) : app.acceptance_email_status === 'sending' ? (
+              <span className="text-cyan-400 font-bold flex items-center gap-1">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Email Sending
+              </span>
+            ) : (
+              <span className="text-slate-400 font-medium flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-400" /> Email Pending
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -393,7 +423,7 @@ const CandidateMobileCard = React.memo<TableRowProps>(({
       {answerEntries.length > 0 && (
         <div className="space-y-1 pt-2 border-t border-white/5">
           {answerEntries.slice(0, 2).map(([k, v]) => (
-            <CustomAnswerChip key={k} answerKey={k} val={v} />
+            <CustomAnswerChip key={k} answerKey={k} val={v} customQuestions={customQuestions} />
           ))}
         </div>
       )}
@@ -1038,6 +1068,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
                     <CandidateTableRow
                       key={app.id}
                       app={app}
+                      customQuestions={selectedOpp?.custom_questions}
                       resyncingId={resyncingId}
                       resendingEmailId={resendingEmailId}
                       onView={handleView}
@@ -1076,6 +1107,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
               <CandidateMobileCard
                 key={app.id}
                 app={app}
+                customQuestions={selectedOpp?.custom_questions}
                 resyncingId={resyncingId}
                 resendingEmailId={resendingEmailId}
                 onView={handleView}
@@ -1323,14 +1355,23 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
                 {Object.entries(viewDetailApp.answers || {}).length === 0 ? (
                   <p className="text-xs font-mono text-slate-500 italic">No custom form responses recorded.</p>
                 ) : (
-                  Object.entries(viewDetailApp.answers || {}).map(([key, val]) => (
-                    <div key={key} className="bg-white/[0.03] p-3 rounded-xl border border-white/10 space-y-1">
-                      <div className="text-xs font-mono text-slate-400 font-bold">{key}</div>
-                      <div className="text-xs font-sans text-emerald-300 font-medium whitespace-pre-wrap">
-                        {formatApplicationAnswer(val)}
+                  Object.entries(viewDetailApp.answers || {}).map(([key, val]) => {
+                    let displayKey = key;
+                    if (selectedOpp?.custom_questions && Array.isArray(selectedOpp.custom_questions)) {
+                      const matched = selectedOpp.custom_questions.find(
+                        (cq: any) => cq && (cq.id === key || cq.key === key)
+                      );
+                      if (matched && matched.label) displayKey = matched.label.trim();
+                    }
+                    return (
+                      <div key={key} className="bg-white/[0.03] p-3 rounded-xl border border-white/10 space-y-1">
+                        <div className="text-xs font-mono text-slate-400 font-bold">{displayKey}</div>
+                        <div className="text-xs font-sans text-emerald-300 font-medium whitespace-pre-wrap">
+                          {formatApplicationAnswer(val)}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

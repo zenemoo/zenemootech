@@ -145,6 +145,36 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
   const applicantId = applicationRecord.applicant_id || `APP-${applicationRecord.id}`;
   const sheetTitle = sanitizeSheetName(opportunityObj?.title || applicationRecord.opportunity_title || 'General');
 
+  // Resolve answers so all keys are human-readable question text labels
+  let resolvedAnswers = { ...(applicationRecord.answers || {}) };
+  let customQuestions = opportunityObj?.custom_questions;
+
+  if (!customQuestions && applicationRecord.opportunity_id) {
+    try {
+      const { data: oppData } = await supabase
+        .from('opportunities')
+        .select('custom_questions')
+        .eq('id', applicationRecord.opportunity_id)
+        .maybeSingle();
+      if (oppData && oppData.custom_questions) {
+        customQuestions = oppData.custom_questions;
+      }
+    } catch (_) {}
+  }
+
+  if (Array.isArray(customQuestions) && customQuestions.length > 0) {
+    const normalized = {};
+    Object.entries(resolvedAnswers).forEach(([key, val]) => {
+      const matchedQ = customQuestions.find((q) => q && (q.id === key || q.key === key));
+      if (matchedQ && matchedQ.label) {
+        normalized[matchedQ.label.trim()] = val;
+      } else {
+        normalized[key] = val;
+      }
+    });
+    resolvedAnswers = normalized;
+  }
+
   // METHOD 1: Google Apps Script Web App (100% FREE - Zero Cost)
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   if (appsScriptUrl) {
@@ -163,7 +193,7 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
           applicant_phone: applicationRecord.applicant_phone,
           status: (applicationRecord.status || 'pending').toUpperCase(),
           created_at: applicationRecord.created_at || new Date().toISOString(),
-          answers: applicationRecord.answers || {},
+          answers: resolvedAnswers,
         },
       };
 
@@ -238,7 +268,7 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
 
     let currentHeaders = headerRes.data.values?.[0] || [];
 
-    const answersObj = applicationRecord.answers || {};
+    const answersObj = resolvedAnswers;
     const customQuestionKeys = Object.keys(answersObj);
 
     const defaultHeaders = ['Applicant ID', 'Applicant Name', 'Email', 'Phone'];

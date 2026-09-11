@@ -21,8 +21,20 @@ interface TalentHubApplicationsProps {
 export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
   onNavigateOpportunities,
 }) => {
-  const { applications, isDataLoading } = useTalentHubAuth();
+  const { applications, opportunities, isDataLoading } = useTalentHubAuth();
   const [selectedApplication, setSelectedApplication] = useState<ApplicationItem | null>(null);
+
+  const resolveQuestionLabel = (qKey: string, oppId?: string) => {
+    if (!oppId || !opportunities || !Array.isArray(opportunities)) return qKey;
+    const opp = opportunities.find((o) => o.id === oppId);
+    if (opp && Array.isArray(opp.custom_questions)) {
+      const matched = opp.custom_questions.find((cq: any) => cq && (cq.id === qKey || cq.key === qKey));
+      if (matched && matched.label) {
+        return matched.label.trim();
+      }
+    }
+    return qKey;
+  };
 
   // Keyboard accessibility: Close modal on Escape
   useEffect(() => {
@@ -310,7 +322,9 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
                     <div className="space-y-3">
                       {Object.entries(selectedApplication.answers).map(([q, ans], i) => (
                         <div key={i} className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
-                          <p className="text-[11px] font-mono font-bold text-slate-400">{q}</p>
+                          <p className="text-[11px] font-mono font-bold text-slate-400">
+                            {resolveQuestionLabel(q, selectedApplication.opportunity_id)}
+                          </p>
                           <div className="text-xs">{renderFormattedAnswer(ans)}</div>
                         </div>
                       ))}

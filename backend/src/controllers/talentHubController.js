@@ -17,13 +17,30 @@ const sanitizeTalentRecord = (talent) => {
 };
 
 /**
- * Sanitizes an opportunity application record.
+ * Sanitizes an opportunity application record and ensures answer keys resolve to clean question labels.
  * Strips administrative internal notes.
  */
-const sanitizeApplicationRecord = (app) => {
+const sanitizeApplicationRecord = (app, opportunitiesMap = {}) => {
   if (!app) return null;
   const sanitized = { ...app };
   delete sanitized.admin_notes;
+
+  if (sanitized.answers && typeof sanitized.answers === 'object') {
+    const customQuestions = opportunitiesMap[sanitized.opportunity_id] || [];
+    if (Array.isArray(customQuestions) && customQuestions.length > 0) {
+      const resolved = {};
+      Object.entries(sanitized.answers).forEach(([key, val]) => {
+        const matched = customQuestions.find((q) => q && (q.id === key || q.key === key));
+        if (matched && matched.label) {
+          resolved[matched.label.trim()] = val;
+        } else {
+          resolved[key] = val;
+        }
+      });
+      sanitized.answers = resolved;
+    }
+  }
+
   return sanitized;
 };
 
@@ -59,7 +76,12 @@ export const getTalentProfile = async (req, res) => {
       return res.json({
         success: true,
         registered: false,
+        isRegistered: false,
         email,
+        profile: null,
+        talent: null,
+        languages: [],
+        experiences: [],
         message: 'No Zenemoo talent registration found for this Google account',
       });
     }
@@ -83,7 +105,9 @@ export const getTalentProfile = async (req, res) => {
     return res.json({
       success: true,
       registered: true,
+      isRegistered: true,
       talent: sanitizedTalent,
+      profile: sanitizedTalent,
       languages: langRes.data || [],
       experiences: expRes.data || [],
     });
@@ -95,7 +119,7 @@ export const getTalentProfile = async (req, res) => {
 
 /**
  * GET /api/talent-hub/opportunities
- * Retrieves all opportunities (active, coming soon, closed) for talents with secure applicant counts.
+ * Retrieves all opportunities with secure applicant counts for talents.
  */
 export const getTalentOpportunities = async (req, res) => {
   try {
@@ -106,6 +130,7 @@ export const getTalentOpportunities = async (req, res) => {
     const { data: opps, error } = await supabase
       .from('opportunities')
       .select('*')
+      .in('status', ['active', 'open', 'ACTIVE', 'OPEN'])
       .order('position', { ascending: true });
 
     if (error) {
@@ -113,7 +138,7 @@ export const getTalentOpportunities = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to load opportunities' });
     }
 
-    // Securely calculate applicant count per opportunity without downloading applicant PII
+    // Calculate applicant count per opportunity
     const oppsWithCounts = await Promise.all(
       (opps || []).map(async (opp) => {
         try {
@@ -143,7 +168,7 @@ export const getTalentOpportunities = async (req, res) => {
 
 /**
  * GET /api/talent-hub/opportunities/:id
- * Retrieves details of a specific opportunity with its secure applicant count.
+ * Retrieves opportunity details for preview and application modal.
  */
 export const getTalentOpportunityById = async (req, res) => {
   try {
@@ -171,7 +196,6 @@ export const getTalentOpportunityById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Opportunity not found' });
     }
 
-    // Calculate applicant count securely
     let applicantCount = 0;
     try {
       const { count } = await supabase
@@ -220,7 +244,22 @@ export const getTalentApplications = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Failed to load your applications' });
     }
 
-    const sanitizedList = (data || []).map(sanitizeApplicationRecord);
+    // Build map of opportunity custom_questions to resolve any legacy q1, q2... answer keys
+    const oppIds = [...new Set((data || []).map((a) => a.opportunity_id).filter(Boolean))];
+    const opportunitiesMap = {};
+    if (oppIds.length > 0) {
+      try {
+        const { data: opps } = await supabase
+          .from('opportunities')
+          .select('id, custom_questions')
+          .in('id', oppIds);
+        (opps || []).forEach((opp) => {
+          opportunitiesMap[opp.id] = opp.custom_questions || [];
+        });
+      } catch (_) {}
+    }
+
+    const sanitizedList = (data || []).map((app) => sanitizeApplicationRecord(app, opportunitiesMap));
 
     return res.json({
       success: true,
@@ -266,9 +305,23 @@ export const getTalentApplicationById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Application not found or unauthorized' });
     }
 
+    const opportunitiesMap = {};
+    if (data.opportunity_id) {
+      try {
+        const { data: opp } = await supabase
+          .from('opportunities')
+          .select('id, custom_questions')
+          .eq('id', data.opportunity_id)
+          .maybeSingle();
+        if (opp) {
+          opportunitiesMap[opp.id] = opp.custom_questions || [];
+        }
+      } catch (_) {}
+    }
+
     return res.json({
       success: true,
-      data: sanitizeApplicationRecord(data),
+      data: sanitizeApplicationRecord(data, opportunitiesMap),
     });
   } catch (err) {
     console.error('[TalentHub getTalentApplicationById Exception]:', err.message);
@@ -344,20 +397,42 @@ export const submitTalentOpportunityApplication = async (req, res) => {
       });
     }
 
-    // 4. Validate custom questions if specified
-    const answers = req.body.answers || {};
+    // 4. Normalize and validate custom questions to ensure keys are human-readable question text
+    const incomingAnswers = req.body.answers || {};
     const customQuestions = Array.isArray(oppRecord.custom_questions) ? oppRecord.custom_questions : [];
-    for (const q of customQuestions) {
+    const normalizedAnswers = {};
+
+    for (let idx = 0; idx < customQuestions.length; idx++) {
+      const q = customQuestions[idx];
+      const qLabel = (q.label && q.label.trim()) || q.id || `Question ${idx + 1}`;
+      const val =
+        incomingAnswers[qLabel] !== undefined
+          ? incomingAnswers[qLabel]
+          : q.id && incomingAnswers[q.id] !== undefined
+          ? incomingAnswers[q.id]
+          : incomingAnswers[`q_${idx}`];
+
       if (q.required) {
-        const val = answers[q.id || q.label];
-        if (val === undefined || val === null || (typeof val === 'string' && !val.trim())) {
+        if (val === undefined || val === null || (typeof val === 'string' && !val.trim()) || (Array.isArray(val) && val.length === 0)) {
           return res.status(400).json({
             success: false,
-            message: `Please provide an answer for required question: "${q.label || q.id}"`,
+            message: `Please provide an answer for required question: "${qLabel}"`,
           });
         }
       }
+
+      if (val !== undefined && val !== null && val !== '') {
+        normalizedAnswers[qLabel] = val;
+      }
     }
+
+    // Preserve any answers that might have been supplied with custom keys not in custom_questions definition
+    Object.entries(incomingAnswers).forEach(([k, v]) => {
+      const isRawId = customQuestions.some((q) => q.id === k);
+      if (!isRawId && normalizedAnswers[k] === undefined && v !== undefined && v !== null && v !== '') {
+        normalizedAnswers[k] = v;
+      }
+    });
 
     // 5. Construct new application record with identity locked from talent profile
     const generatedApplicantId = `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -368,7 +443,7 @@ export const submitTalentOpportunityApplication = async (req, res) => {
       applicant_name: talentRecord.full_name || 'Zenemoo Contributor',
       applicant_email: email,
       applicant_phone: talentRecord.phone || req.body.applicant_phone || '',
-      answers,
+      answers: normalizedAnswers,
       status: 'pending', // Applicants cannot choose a status
       admin_notes: '',
       created_at: new Date().toISOString(),

@@ -97,19 +97,41 @@ export const TalentHubOpportunities: React.FC = () => {
       return;
     }
 
-    // Validate required questions
+    // Validate required questions and format answers payload with clean question text labels
     const customQuestions = Array.isArray(selectedOppForApply.custom_questions)
       ? selectedOppForApply.custom_questions
       : [];
-    for (const q of customQuestions) {
+    const formattedAnswers: Record<string, any> = {};
+
+    for (let idx = 0; idx < customQuestions.length; idx++) {
+      const q = customQuestions[idx];
+      const qLabel = (q.label && q.label.trim()) || q.id || `Question ${idx + 1}`;
+      const val =
+        answers[qLabel] !== undefined
+          ? answers[qLabel]
+          : q.id && answers[q.id] !== undefined
+          ? answers[q.id]
+          : answers[`q_${idx}`];
+
       if (q.required) {
-        const val = answers[q.id || q.label];
-        if (val === undefined || val === null || (typeof val === 'string' && !val.trim())) {
+        if (val === undefined || val === null || (typeof val === 'string' && !val.trim()) || (Array.isArray(val) && val.length === 0)) {
           setSubmitError(`Please provide an answer for required question: "${q.label || q.id}"`);
           return;
         }
       }
+
+      if (val !== undefined && val !== null && val !== '') {
+        formattedAnswers[qLabel] = val;
+      }
     }
+
+    // Preserve any custom keys not defined as standard question IDs
+    Object.entries(answers).forEach(([k, v]) => {
+      const isRawId = customQuestions.some((q: any) => q.id === k);
+      if (!isRawId && formattedAnswers[k] === undefined && v !== undefined && v !== null && v !== '') {
+        formattedAnswers[k] = v;
+      }
+    });
 
     setIsSubmitting(true);
     setSubmitError(null);
@@ -118,7 +140,7 @@ export const TalentHubOpportunities: React.FC = () => {
       const res = await talentHubApi.submitApplication(
         selectedOppForApply.id,
         {
-          answers,
+          answers: formattedAnswers,
           applicant_phone: applicantPhone || talentProfile?.phone || '',
         },
         token
@@ -676,20 +698,26 @@ export const TalentHubOpportunities: React.FC = () => {
                     {Array.isArray(selectedOppForApply.custom_questions) &&
                     selectedOppForApply.custom_questions.length > 0 ? (
                       selectedOppForApply.custom_questions.map((q: any, idx: number) => {
-                        const qId = q.id || q.label || `q_${idx}`;
+                        const qLabel = (q.label && q.label.trim()) || q.id || `Question ${idx + 1}`;
                         const isRequired = !!q.required;
+                        const currentVal =
+                          answers[qLabel] !== undefined
+                            ? answers[qLabel]
+                            : q.id && answers[q.id] !== undefined
+                            ? answers[q.id]
+                            : '';
 
                         if (q.type === 'textarea') {
                           return (
-                            <div key={qId} className="space-y-1">
+                            <div key={qLabel} className="space-y-1">
                               <label className="text-xs font-medium text-slate-300 block">
                                 {q.label} {isRequired && <span className="text-rose-400">*</span>}
                               </label>
                               <textarea
                                 rows={3}
                                 required={isRequired}
-                                value={answers[qId] || ''}
-                                onChange={(e) => handleFieldChange(qId, e.target.value)}
+                                value={currentVal}
+                                onChange={(e) => handleFieldChange(qLabel, e.target.value)}
                                 placeholder="Your answer..."
                                 className="w-full p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                               />
@@ -699,14 +727,14 @@ export const TalentHubOpportunities: React.FC = () => {
 
                         if (q.type === 'select' && Array.isArray(q.options)) {
                           return (
-                            <div key={qId} className="space-y-1">
+                            <div key={qLabel} className="space-y-1">
                               <label className="text-xs font-medium text-slate-300 block">
                                 {q.label} {isRequired && <span className="text-rose-400">*</span>}
                               </label>
                               <select
                                 required={isRequired}
-                                value={answers[qId] || ''}
-                                onChange={(e) => handleFieldChange(qId, e.target.value)}
+                                value={currentVal}
+                                onChange={(e) => handleFieldChange(qLabel, e.target.value)}
                                 className="w-full p-2.5 rounded-2xl bg-[#080d19] border border-white/10 text-xs text-white focus:outline-none focus:border-cyan-500 transition-colors"
                               >
                                 <option value="">Select an option...</option>
@@ -721,15 +749,15 @@ export const TalentHubOpportunities: React.FC = () => {
                         }
 
                         return (
-                          <div key={qId} className="space-y-1">
+                          <div key={qLabel} className="space-y-1">
                             <label className="text-xs font-medium text-slate-300 block">
                               {q.label} {isRequired && <span className="text-rose-400">*</span>}
                             </label>
                             <input
                               type={q.type || 'text'}
                               required={isRequired}
-                              value={answers[qId] || ''}
-                              onChange={(e) => handleFieldChange(qId, e.target.value)}
+                              value={currentVal}
+                              onChange={(e) => handleFieldChange(qLabel, e.target.value)}
                               placeholder="Your answer..."
                               className="w-full p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                             />
