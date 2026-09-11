@@ -255,6 +255,17 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     setIsSubmitting(true);
     setIsDuplicate(false);
 
+    // Read active referral code from URL or persistent storage
+    let activeRefCode = '';
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      activeRefCode = urlParams.get('ref') || urlParams.get('referral') || '';
+      if (!activeRefCode) {
+        activeRefCode = sessionStorage.getItem('zenemoo_active_ref') || localStorage.getItem('zenemoo_active_ref') || '';
+      }
+      activeRefCode = activeRefCode.trim().toUpperCase();
+    } catch (_) {}
+
     try {
       const result = await submitCandidateApplication({
         opportunity_id: opportunity.id,
@@ -263,6 +274,7 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
         applicant_email: applicantEmail,
         applicant_phone: applicantPhone,
         answers: customAnswers,
+        referral_code: activeRefCode || undefined,
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
         terms_version: '1.0',

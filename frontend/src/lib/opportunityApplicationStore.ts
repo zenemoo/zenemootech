@@ -19,6 +19,11 @@ export interface CandidateApplication {
   acceptance_email_sent_at?: string;
   acceptance_email_message_id?: string;
   acceptance_email_error?: string;
+  referral_code?: string | null;
+  referrer_name?: string | null;
+  referrer_email?: string | null;
+  referred_by_id?: string | null;
+  referral_source?: string | null;
   terms_accepted?: boolean;
   terms_accepted_at?: string;
   terms_version?: string;

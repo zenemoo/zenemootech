@@ -182,6 +182,13 @@ export const sendApplicationNotification = async (data = {}) => {
   const phone = data.phone || data.applicant_phone || 'Not Provided';
   const position = data.position || data.opportunity_title || 'Career Opportunity';
   const qualification = data.qualification || 'Relevant Degree / Qualification Uploaded';
+  const referralCode = data.referral_code || data.referralCode || '';
+  const referrerName = data.referrer_name || data.referrerName || '';
+
+  let referralSection = '';
+  if (referralCode || referrerName) {
+    referralSection = `\n🎁 Referral\nReferred by: ${referrerName || 'Zenemoo Contributor'} (${referralCode || 'Code Attached'})\n`;
+  }
 
   const text = `💼 ZENEMOO • NEW CAREER APPLICATION
 
@@ -201,9 +208,9 @@ ${position}
 
 🎓 Qualification
 ${qualification}
-
-📄 Resume
-Uploaded Successfully
+${referralSection}
+📄 Application Form
+Submitted Successfully
 
 ━━━━━━━━━━━━━━━━━━━━━━
 

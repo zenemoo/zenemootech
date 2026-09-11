@@ -32,6 +32,7 @@ import {
   DollarSign,
   Phone,
   Linkedin,
+  Copy,
 } from 'lucide-react';
 import { FaXTwitter, FaFacebook, FaInstagram, FaYoutube } from 'react-icons/fa6';
 import confetti from 'canvas-confetti';
@@ -44,9 +45,11 @@ export const TalentHubOpportunities: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'coming_soon' | 'closed'>('all');
 
-  // Selected opportunity for details view or apply form
+  // Selected opportunity for details view or apply form or referral modal
   const [selectedOppForDetail, setSelectedOppForDetail] = useState<OpportunityItem | null>(null);
   const [selectedOppForApply, setSelectedOppForApply] = useState<OpportunityItem | null>(null);
+  const [selectedOppForReferral, setSelectedOppForReferral] = useState<OpportunityItem | null>(null);
+  const [copiedRefLink, setCopiedRefLink] = useState(false);
 
   // Form state
   const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -188,12 +191,20 @@ export const TalentHubOpportunities: React.FC = () => {
     setIsSubmitting(true);
     setSubmitError(null);
 
+    // Read active referral code from storage if user arrived through a referral link
+    let activeRefCode = '';
+    try {
+      activeRefCode = sessionStorage.getItem('zenemoo_active_ref') || localStorage.getItem('zenemoo_active_ref') || '';
+      activeRefCode = activeRefCode.trim().toUpperCase();
+    } catch (_) {}
+
     try {
       const res = await talentHubApi.submitApplication(
         selectedOppForApply.id,
         {
           answers: formattedAnswers,
           applicant_phone: applicantPhone || talentProfile?.phone || '',
+          referral_code: activeRefCode || undefined,
         },
         token
       );
@@ -414,47 +425,58 @@ export const TalentHubOpportunities: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Action Buttons with Strict Status Enforcement */}
-                  <div className="pt-4 border-t border-white/5 flex items-center gap-2">
-                    <button
-                      onClick={() => setSelectedOppForDetail(opp)}
-                      className="flex-1 py-2.5 px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-xs font-mono font-semibold text-slate-200 hover:text-white transition-colors text-center cursor-pointer"
-                    >
-                      View Details
-                    </button>
+                  {/* Action Buttons with Strict Status Enforcement & Referral Share */}
+                  <div className="pt-4 border-t border-white/5 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedOppForDetail(opp)}
+                        className="flex-1 py-2.5 px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-xs font-mono font-semibold text-slate-200 hover:text-white transition-colors text-center cursor-pointer"
+                      >
+                        View Details
+                      </button>
 
-                    {alreadyApplied ? (
                       <button
-                        disabled
-                        className="flex-1 py-2.5 px-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-semibold cursor-default text-center flex items-center justify-center gap-1.5"
+                        onClick={() => setSelectedOppForReferral(opp)}
+                        className="py-2.5 px-3 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Refer a Friend to this opportunity"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Applied</span>
+                        <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="hidden sm:inline">Refer</span>
                       </button>
-                    ) : isOpen ? (
-                      <button
-                        onClick={() => handleOpenApply(opp)}
-                        className="flex-1 py-2.5 px-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-mono font-bold text-white shadow-md shadow-cyan-500/20 transition-all text-center cursor-pointer active:scale-95"
-                      >
-                        Apply Now
-                      </button>
-                    ) : isComingSoon ? (
-                      <button
-                        disabled
-                        className="flex-1 py-2.5 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300/90 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Coming Soon</span>
-                      </button>
-                    ) : (
-                      <button
-                        disabled
-                        className="flex-1 py-2.5 px-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 text-slate-400 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
-                      >
-                        <Ban className="w-3.5 h-3.5" />
-                        <span>Applications Closed</span>
-                      </button>
-                    )}
+
+                      {alreadyApplied ? (
+                        <button
+                          disabled
+                          className="flex-1 py-2.5 px-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-semibold cursor-default text-center flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Applied</span>
+                        </button>
+                      ) : isOpen ? (
+                        <button
+                          onClick={() => handleOpenApply(opp)}
+                          className="flex-1 py-2.5 px-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-mono font-bold text-white shadow-md shadow-cyan-500/20 transition-all text-center cursor-pointer active:scale-95"
+                        >
+                          Apply Now
+                        </button>
+                      ) : isComingSoon ? (
+                        <button
+                          disabled
+                          className="flex-1 py-2.5 px-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300/90 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>Coming Soon</span>
+                        </button>
+                      ) : (
+                        <button
+                          disabled
+                          className="flex-1 py-2.5 px-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 text-slate-400 text-xs font-mono font-semibold cursor-not-allowed text-center flex items-center justify-center gap-1.5"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>Closed</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -839,6 +861,14 @@ export const TalentHubOpportunities: React.FC = () => {
                 </button>
 
                 <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    onClick={() => setSelectedOppForReferral(selectedOppForDetail)}
+                    className="py-2.5 px-4 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Refer a Friend</span>
+                  </button>
+
                   {isAlreadyApplied(selectedOppForDetail.id) ? (
                     <>
                       <button
@@ -1116,6 +1146,129 @@ export const TalentHubOpportunities: React.FC = () => {
                   </div>
                 </form>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal 3: Refer a Friend Share Modal ── */}
+      <AnimatePresence>
+        {selectedOppForReferral && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div
+              className="fixed inset-0 bg-black/85 backdrop-blur-md"
+              onClick={() => setSelectedOppForReferral(null)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-lg bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden z-10 my-6 flex flex-col font-sans"
+            >
+              {/* Header */}
+              <div className="bg-[#080d19]/95 px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white font-display">Refer a Friend</h3>
+                    <p className="text-[11px] font-mono text-slate-400">Share opportunity with your referral link</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedOppForReferral(null)}
+                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-1">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">Target Opportunity</span>
+                  <h4 className="text-sm sm:text-base font-bold text-white font-display">{selectedOppForReferral.title}</h4>
+                  <p className="text-xs text-cyan-300 font-mono">{selectedOppForReferral.partner_name || 'Zenemoo AI Partner'}</p>
+                </div>
+
+                {/* Referral Link Box */}
+                <div>
+                  <span className="text-[11px] font-mono font-semibold text-slate-300 block mb-1.5">
+                    Your Opportunity Referral Link:
+                  </span>
+                  {(() => {
+                    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.zenemoo.in';
+                    const refCode = talentProfile?.registration_code || '';
+                    const referralUrl = `${origin}/opportunity/${selectedOppForReferral.id}?ref=${refCode}`;
+                    return (
+                      <div className="space-y-3">
+                        <div className="bg-black/60 px-3.5 py-2.5 rounded-xl border border-white/10 text-xs font-mono text-cyan-300 select-all break-all">
+                          {referralUrl}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                  await navigator.clipboard.writeText(referralUrl);
+                                }
+                                setCopiedRefLink(true);
+                                try {
+                                  confetti({ particleCount: 20, spread: 45, origin: { y: 0.8 }, colors: ['#06B6D4', '#3B82F6'] });
+                                } catch (_) {}
+                                setTimeout(() => setCopiedRefLink(false), 2000);
+                              } catch (_) {}
+                            }}
+                            className="flex-1 py-2.5 px-4 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 text-xs font-mono font-bold border border-cyan-500/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                          >
+                            {copiedRefLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                            <span>{copiedRefLink ? 'Copied Link!' : 'Copy Link'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const msg = `Zenemoo has an opportunity you may be interested in: "${selectedOppForReferral.title}".\n\nApply here with my referral link:\n${referralUrl}`;
+                              window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+                            }}
+                            className="py-2.5 px-4 rounded-xl bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] text-xs font-mono font-bold border border-[#25D366]/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                            <span>WhatsApp</span>
+                          </button>
+
+                          <button
+                            onClick={async () => {
+                              if (navigator.share) {
+                                try {
+                                  await navigator.share({
+                                    title: `Zenemoo: ${selectedOppForReferral.title}`,
+                                    text: `Apply for "${selectedOppForReferral.title}" on Zenemoo AI Contributor Network:`,
+                                    url: referralUrl,
+                                  });
+                                } catch (_) {}
+                              }
+                            }}
+                            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors cursor-pointer"
+                            title="More share options"
+                          >
+                            <Share2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/20 flex items-start gap-2 text-[11px] text-slate-300 font-mono">
+                  <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                  <span>
+                    When candidates click your link and submit their application, they will be automatically recorded under your referrals dashboard.
+                  </span>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

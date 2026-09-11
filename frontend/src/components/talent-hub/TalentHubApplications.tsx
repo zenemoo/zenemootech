@@ -357,6 +357,34 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
                   </div>
                 </div>
 
+                {/* Referral Attribution (Read-Only) */}
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">
+                    Referral Information
+                  </span>
+                  {selectedApplication.referral_code || selectedApplication.referrer_name ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <span className="text-[10px] font-mono text-slate-500 block">Referred by</span>
+                        <span className="font-semibold text-emerald-300 font-display">
+                          {selectedApplication.referrer_name || 'Zenemoo Contributor'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-mono text-slate-500 block">Referral Code</span>
+                        <span className="font-mono font-bold text-cyan-300">
+                          {selectedApplication.referral_code || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-slate-400 font-mono text-xs">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" />
+                      <span>Direct Application</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Submitted Answers - Formatted cleanly with Chips/Tags */}
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
                   <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">

@@ -18,6 +18,7 @@ import {
   Heart,
   Globe,
   Receipt,
+  Share2,
 } from 'lucide-react';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import { NotificationCenter } from '../NotificationCenter';
@@ -25,7 +26,7 @@ import { ZenemooAiDrawer } from '../ZenemooAiDrawer';
 import { SeoImage } from '../../seo/components/SeoImage';
 import { ZENEMOO_SOCIAL_LINKS } from '../SocialData';
 
-export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'support-zenemooindia' | 'support-history';
+export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'referrals' | 'support-zenemooindia' | 'support-history';
 
 interface TalentHubLayoutProps {
   currentTab: TalentHubTab;
@@ -118,6 +119,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     { id: 'profile' as const, label: 'My Profile', icon: User },
     { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
     { id: 'applications' as const, label: 'My Applications', icon: FileCheck },
+    { id: 'referrals' as const, label: 'Referrals', icon: Share2 },
   ];
 
   const handleManualRefresh = async () => {
@@ -355,6 +357,16 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                         >
                           <Briefcase className="w-3.5 h-3.5 text-blue-400" />
                           Browse Opportunities
+                        </button>
+                        <button
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            handleNavClick('referrals');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                          Refer & Earn
                         </button>
                         <button
                           onClick={() => {
@@ -624,9 +636,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         {children}
       </main>
 
-      {/* ── Dedicated Mobile Bottom Navigation Bar (5 Items: Dashboard, Profile, Opportunities, Applications, Social) ── */}
+      {/* ── Dedicated Mobile Bottom Navigation Bar (6 Items) ── */}
       <div className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-[#070b14]/95 backdrop-blur-xl border-t border-white/10 shadow-[0_-8px_25px_rgba(0,0,0,0.8)]">
-        <div className="grid grid-cols-5 h-16 items-center px-1 max-w-md mx-auto">
+        <div className="grid grid-cols-6 h-16 items-center px-1 max-w-lg mx-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -644,14 +656,14 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                     <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
                   )}
                 </div>
-                <span className={`text-[9px] mt-1 font-medium truncate max-w-[62px] ${isActive ? 'font-bold text-white' : 'text-slate-400'}`}>
+                <span className={`text-[9px] mt-1 font-medium truncate max-w-[54px] ${isActive ? 'font-bold text-white' : 'text-slate-400'}`}>
                   {item.label === 'My Applications' ? 'Applications' : item.label === 'My Profile' ? 'Profile' : item.label}
                 </span>
               </button>
             );
           })}
 
-          {/* 5th Item: Social */}
+          {/* 6th Item: Social */}
           <button
             onClick={() => setIsSocialSheetOpen(true)}
             className="flex flex-col items-center justify-center h-full py-1 text-slate-400 hover:text-cyan-300 transition-all cursor-pointer"

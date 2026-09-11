@@ -7,6 +7,7 @@ import {
   getTalentApplications,
   getTalentApplicationById,
   submitTalentOpportunityApplication,
+  getTalentReferrals,
 } from '../controllers/talentHubController.js';
 
 const router = express.Router();
@@ -27,5 +28,8 @@ router.post('/opportunities/:id/apply', submitTalentOpportunityApplication);
 // Candidate submitted applications endpoints
 router.get('/applications', getTalentApplications);
 router.get('/applications/:id', getTalentApplicationById);
+
+// Talent Referrals endpoint
+router.get('/referrals', getTalentReferrals);
 
 export default router;

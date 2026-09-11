@@ -87,7 +87,11 @@ export const talentHubApi = {
   /**
    * Submit an application for an active opportunity.
    */
-  async submitApplication(opportunityId: string, payload: { answers: Record<string, any>; applicant_phone?: string }, token: string) {
+  async submitApplication(
+    opportunityId: string,
+    payload: { answers: Record<string, any>; applicant_phone?: string; referral_code?: string; ref?: string },
+    token: string
+  ) {
     if (isInvalidToken(token)) {
       return { success: false, message: 'Missing or empty auth token' };
     }
@@ -97,6 +101,18 @@ export const talentHubApi = {
       payload,
       createAuthHeaders(token)
     );
+    return response.data;
+  },
+
+  /**
+   * Fetch authenticated talent's referral profile, statistics, opportunity referrals, and referred members list.
+   */
+  async getReferrals(token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, message: 'Missing or empty auth token' };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.get(`${baseUrl}/talent-hub/referrals`, createAuthHeaders(token));
     return response.data;
   },
 };

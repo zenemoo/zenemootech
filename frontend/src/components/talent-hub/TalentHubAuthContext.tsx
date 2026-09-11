@@ -109,6 +109,9 @@ export interface ApplicationItem {
   applicant_phone?: string;
   answers: Record<string, any>;
   status: string; // 'pending' | 'shortlisted' | 'accepted' | 'rejected'
+  referral_code?: string | null;
+  referrer_name?: string | null;
+  referral_source?: string | null;
   terms_accepted?: boolean;
   terms_accepted_at?: string;
   created_at: string;

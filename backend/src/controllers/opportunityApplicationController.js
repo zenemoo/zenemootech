@@ -280,6 +280,47 @@ export const submitApplication = async (req, res) => {
       });
     }
 
+    // SERVER-SIDE REFERRAL VALIDATION & RESOLUTION
+    let referralAttribution = {
+      referral_code: null,
+      referred_by_id: null,
+      referrer_name: null,
+      referrer_email: null,
+      referral_source: null,
+    };
+
+    const rawRefCode = (req.body.referral_code || req.body.ref || '').trim().toUpperCase();
+    if (rawRefCode) {
+      try {
+        const { data: referrerRecord } = await supabase
+          .from('talent_registrations')
+          .select('id, full_name, email, registration_code, status, is_archived')
+          .ilike('registration_code', rawRefCode)
+          .maybeSingle();
+
+        if (
+          referrerRecord &&
+          !referrerRecord.is_archived &&
+          referrerRecord.status !== 'banned' &&
+          referrerRecord.status !== 'rejected'
+        ) {
+          const referrerEmail = (referrerRecord.email || '').trim().toLowerCase();
+          // Prevent self-referral
+          if (referrerEmail !== cleanEmail) {
+            referralAttribution = {
+              referral_code: referrerRecord.registration_code || rawRefCode,
+              referred_by_id: referrerRecord.id,
+              referrer_name: referrerRecord.full_name || 'Zenemoo Contributor',
+              referrer_email: referrerEmail,
+              referral_source: req.body.referral_source || 'talent_hub',
+            };
+          }
+        }
+      } catch (refErr) {
+        console.warn('[Referral verification note]:', refErr.message);
+      }
+    }
+
     // Generate Applicant ID ONLY AFTER duplicate check passes
     const generatedApplicantId = req.body.applicant_id || `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -297,13 +338,14 @@ export const submitApplication = async (req, res) => {
       terms_version: req.body.terms_version || '1.0',
       admin_notes: '',
       sync_status: 'pending',
+      ...referralAttribution,
       created_at: new Date().toISOString(),
     };
 
     // Attempt insert into Supabase database (Source of truth)
     let { data, error } = await supabase.from('opportunity_applications').insert([newRecord]).select();
 
-    // Fallback: If Supabase schema is missing extended columns (e.g., terms_accepted or sync_status), retry with core record
+    // Fallback: If Supabase schema is missing extended columns (e.g., terms_accepted or sync_status or referral fields), retry with core record
     if (error && (error.message?.includes('schema cache') || error.message?.includes('Could not find'))) {
       console.warn('[Supabase Application Insert Schema Fallback] Extended column missing, retrying with core payload:', error.message);
       const coreRecord = {
@@ -352,6 +394,8 @@ export const submitApplication = async (req, res) => {
       applicant_phone: cleanPhone,
       opportunity_title: cleanTitle,
       qualification: answers?.qualification || answers?.degree || 'Relevant Qualification Uploaded',
+      referral_code: savedRecord.referral_code,
+      referrer_name: savedRecord.referrer_name,
     }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
 
     // Asynchronously dispatch Confirmation Email to applicant (non-blocking / fail-safe)

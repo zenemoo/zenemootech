@@ -6,6 +6,7 @@ import { TalentHubDashboard } from './TalentHubDashboard';
 import { TalentHubProfile } from './TalentHubProfile';
 import { TalentHubOpportunities } from './TalentHubOpportunities';
 import { TalentHubApplications } from './TalentHubApplications';
+import { TalentHubReferrals } from './TalentHubReferrals';
 import { TalentHubSupport } from './TalentHubSupport';
 import { TalentHubSupportHistory } from './TalentHubSupportHistory';
 
@@ -15,6 +16,7 @@ export type TalentHubSubRoute =
   | 'profile'
   | 'opportunities'
   | 'applications'
+  | 'referrals'
   | 'support-zenemooindia'
   | 'support-history'
   | 'support-zenemoo/history';
@@ -73,6 +75,7 @@ const TalentHubContent: React.FC<{
           onNavigateOpportunities={() => onChangeSubRoute('opportunities')}
         />
       )}
+      {activeTab === 'referrals' && <TalentHubReferrals />}
       {activeTab === 'support-zenemooindia' && (
         <TalentHubSupport
           onNavigateBack={() => onChangeSubRoute('dashboard')}

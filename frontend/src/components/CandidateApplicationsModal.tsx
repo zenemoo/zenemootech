@@ -146,10 +146,19 @@ const CandidateTableRow = React.memo<TableRowProps>(({
         {app.applicant_name}
       </td>
 
-      {/* Contact Info */}
+      {/* Contact Info & Referral Attribution */}
       <td className="p-4 space-y-1 text-[11px] whitespace-nowrap">
         <div className="text-cyan-300 font-mono font-medium">{app.applicant_email}</div>
         <div className="text-slate-400 font-mono">{app.applicant_phone}</div>
+        {app.referral_code ? (
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[10px]" title={`Referred by ${app.referrer_name || 'Zenemoo Contributor'}`}>
+            <span className="font-bold">Ref:</span> {app.referral_code} {app.referrer_name ? `(${app.referrer_name})` : ''}
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-1 text-slate-500 font-mono text-[10px]">
+            <span>Direct</span>
+          </div>
+        )}
       </td>
 
       {/* Custom Form Answers */}
@@ -370,6 +379,13 @@ const CandidateMobileCard = React.memo<TableRowProps>(({
         <h4 className="font-bold text-white text-sm font-sans">{app.applicant_name}</h4>
         <div className="text-cyan-300 font-mono text-xs">{app.applicant_email}</div>
         <div className="text-slate-400 font-mono text-xs">{app.applicant_phone}</div>
+        {app.referral_code ? (
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[10px]">
+            <span className="font-bold">Referred by:</span> {app.referrer_name || 'Zenemoo Contributor'} ({app.referral_code})
+          </div>
+        ) : (
+          <div className="text-slate-500 font-mono text-[10px]">Direct Application</div>
+        )}
       </div>
 
       {/* Middle Row: Sheets Sync & Email Status */}
@@ -556,8 +572,17 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
         const name = (app.applicant_name || '').toLowerCase();
         const email = (app.applicant_email || '').toLowerCase();
         const phone = (app.applicant_phone || '').toLowerCase();
+        const refCode = (app.referral_code || '').toLowerCase();
+        const refName = (app.referrer_name || '').toLowerCase();
 
-        if (!name.includes(q) && !email.includes(q) && !phone.includes(q) && !appId.includes(q)) {
+        if (
+          !name.includes(q) &&
+          !email.includes(q) &&
+          !phone.includes(q) &&
+          !appId.includes(q) &&
+          !refCode.includes(q) &&
+          !refName.includes(q)
+        ) {
           return false;
         }
       }
@@ -1331,6 +1356,16 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
               <div>
                 <span className="text-slate-400 block">Submitted On:</span>
                 <span className="text-slate-200">{viewDetailApp.created_at ? new Date(viewDetailApp.created_at).toLocaleString() : 'N/A'}</span>
+              </div>
+              <div className="sm:col-span-2 pt-2 border-t border-white/5">
+                <span className="text-slate-400 block">Referral Information:</span>
+                {viewDetailApp.referral_code || viewDetailApp.referrer_name ? (
+                  <span className="text-emerald-300 font-bold">
+                    Referred by {viewDetailApp.referrer_name || 'Zenemoo Contributor'} (Code: {viewDetailApp.referral_code || '—'}) • Source: {viewDetailApp.referral_source || 'talent_hub'}
+                  </span>
+                ) : (
+                  <span className="text-slate-400">Direct Application (No Referral)</span>
+                )}
               </div>
             </div>
 

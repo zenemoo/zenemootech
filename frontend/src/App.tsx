@@ -60,7 +60,7 @@ import { App as CapApp } from '@capacitor/app';
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | '404'
   >('home');
   const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
@@ -271,6 +271,7 @@ function AppInner() {
         | 'talent-hub-profile'
         | 'talent-hub-opportunities'
         | 'talent-hub-applications'
+        | 'talent-hub-referrals'
         | 'talent-hub-support'
         | 'talent-hub-support-history'
         | 'ai-data'
@@ -286,6 +287,17 @@ function AppInner() {
         | 'receipt-verify'
         | 'application-verify'
         | '404' = 'home';
+
+      // ── Capture Referral Code from URL parameters & persist across sessions ──
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const refParam = urlParams.get('ref') || urlParams.get('referral');
+        if (refParam && refParam.trim()) {
+          const cleanRef = refParam.trim().toUpperCase();
+          sessionStorage.setItem('zenemoo_active_ref', cleanRef);
+          localStorage.setItem('zenemoo_active_ref', cleanRef);
+        }
+      } catch (_) {}
 
       if (isSecretAdminRoute) {
         matchedRoute = 'admin';
@@ -422,6 +434,13 @@ function AppInner() {
       ) {
         matchedRoute = 'talent-hub-applications';
       } else if (
+        path === '/talent-hub/referrals' ||
+        path === '/talent-hub/referrals/' ||
+        hash === '#talent-hub/referrals' ||
+        hash === '#/talent-hub/referrals'
+      ) {
+        matchedRoute = 'talent-hub-referrals';
+      } else if (
         path === '/talent-hub' ||
         path === '/talent-hub/' ||
         hash === '#talent-hub' ||
@@ -459,11 +478,12 @@ function AppInner() {
       ) {
         matchedRoute = 'opportunities';
       } else if (path.startsWith('/opportunity/') || path.startsWith('/program/') || hash.startsWith('#opportunity/') || hash.startsWith('#program/')) {
-        const oppId = path.startsWith('/opportunity/')
+        let oppId = path.startsWith('/opportunity/')
           ? path.replace('/opportunity/', '')
           : path.startsWith('/program/')
           ? path.replace('/program/', '')
           : hash.replace('#opportunity/', '').replace('#program/', '');
+        oppId = (oppId || '').split('?')[0].split('#')[0].replace(/\/+$/, '');
         setSelectedOpportunityId(oppId || '');
         matchedRoute = 'opportunity-detail';
       } else if (path === '/ai-data' || path === '/ai-data/' || hash === '#ai-data' || hash === '#/ai-data') {
@@ -945,6 +965,7 @@ function AppInner() {
         currentRoute === 'talent-hub-profile' ||
         currentRoute === 'talent-hub-opportunities' ||
         currentRoute === 'talent-hub-applications' ||
+        currentRoute === 'talent-hub-referrals' ||
         currentRoute === 'talent-hub-support' ||
         currentRoute === 'talent-hub-support-history'
       ) ? (
@@ -958,6 +979,8 @@ function AppInner() {
               ? 'opportunities'
               : currentRoute === 'talent-hub-applications'
               ? 'applications'
+              : currentRoute === 'talent-hub-referrals'
+              ? 'referrals'
               : currentRoute === 'talent-hub-support'
               ? 'support-zenemooindia'
               : currentRoute === 'talent-hub-support-history'

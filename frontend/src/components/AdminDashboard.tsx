@@ -29,10 +29,11 @@ import { AdminNotificationCenterTab } from './AdminNotificationCenterTab';
 import { AdminEmailInboxTab } from './AdminEmailInboxTab';
 import { AdminSupportContributionsPage } from './AdminSupportContributionsPage';
 import { AdminPaymentLinksPage } from './AdminPaymentLinksPage';
+import { AdminReferralsTab } from './AdminReferralsTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
   isStandaloneEmailView?: boolean;
 }
 
@@ -224,7 +225,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2098,6 +2099,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       group: 'AI & DATA',
       items: [
         { id: 'talent-network', name: 'AI Data Network', icon: Users },
+        { id: 'referrals', name: 'Talent Referrals', icon: UserCheck },
         { id: 'datasets', name: 'Datasets', icon: Folder },
       ],
     },
@@ -4297,6 +4299,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: ZENEMOO AI DATA TALENT NETWORK */}
         {activeTab === 'talent-network' && (
           <AdminTalentNetworkTab />
+        )}
+
+        {/* TAB: TALENT REFERRALS MANAGEMENT */}
+        {activeTab === 'referrals' && (
+          <AdminReferralsTab showToast={addToast} />
         )}
 
         {/* TAB: ZENEMOO ADMIN & HR AI */}
