@@ -1,7 +1,14 @@
 import { supabase } from '../config/supabase.js';
+import { supabaseService } from '../services/supabaseService.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
 import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js';
 import { sendApplicationConfirmationEmail } from './opportunityApplicationController.js';
+import {
+  loadDiskRegistrations,
+  saveDiskRegistrations,
+} from './talentRegistrationController.js';
+
+
 
 /**
  * Sanitizes a talent registration record for user-facing exposure.
@@ -706,4 +713,376 @@ export const getTalentReferrals = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error while fetching referrals' });
   }
 };
+
+/**
+ * GET /api/talent-hub/profile-form-config
+ * Retrieves form options: dynamic supported languages from Admin directory (talent_supported_languages),
+ * available roles, capabilities, equipment options, and Indian states.
+ */
+export const getTalentProfileFormConfig = async (req, res) => {
+  try {
+    let supportedLanguages = [];
+    try {
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('talent_supported_languages')
+          .select('id, language, code, status')
+          .eq('status', 'active')
+          .order('language', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          supportedLanguages = data;
+        }
+      }
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      supported_languages: supportedLanguages || [],
+      roles: [
+        'Individual Participant',
+
+        'Coordinator',
+        'Speaker Recruiter',
+        'Singer / Vocal Artist',
+        'Recording Team',
+        'Field Agent',
+        'Vendor / Agency',
+        'Community / Organization',
+        'Other',
+      ],
+      work_capabilities: [
+        'Voice / Audio Recording',
+        'Speech Data Collection',
+        'Video Recording',
+        'Image Collection',
+        'Text Data Collection',
+        'Transcription',
+        'Translation / Localization',
+        'Data Annotation / Labeling',
+        'AI / LLM Evaluation',
+        'Human Feedback / RLHF',
+        'Search Relevance',
+        'OCR / Document Data',
+        'Field Data Collection',
+        'Participant Recruitment',
+        'Singing / Vocal Recording',
+        'Other',
+      ],
+      equipment_options: [
+        'Smartphone',
+        'Professional Microphone',
+        'USB Microphone',
+        'Headphones',
+        'Camera',
+        'Laptop/Desktop',
+        'Recording Studio',
+        'Quiet Recording Environment',
+      ],
+      recording_environments: [
+        'Professional Studio',
+        'Quiet Home/Room',
+        'Office',
+        'Outdoor',
+        'Other',
+      ],
+      internet_qualities: [
+        'Good (High speed / Broadband)',
+        'Average (Stable 4G/Mobile)',
+        'Limited',
+      ],
+      states: [
+        'Andaman and Nicobar Islands',
+        'Andhra Pradesh',
+        'Arunachal Pradesh',
+        'Assam',
+        'Bihar',
+        'Chandigarh',
+        'Chhattisgarh',
+        'Dadra and Nagar Haveli and Daman and Diu',
+        'Delhi (NCT)',
+        'Goa',
+        'Gujarat',
+        'Haryana',
+        'Himachal Pradesh',
+        'Jammu and Kashmir',
+        'Jharkhand',
+        'Karnataka',
+        'Kerala',
+        'Ladakh',
+        'Lakshadweep',
+        'Madhya Pradesh',
+        'Maharashtra',
+        'Manipur',
+        'Meghalaya',
+        'Mizoram',
+        'Nagaland',
+        'Odisha',
+        'Puducherry',
+        'Punjab',
+        'Rajasthan',
+        'Sikkim',
+        'Tamil Nadu',
+        'Telangana',
+        'Tripura',
+        'Uttar Pradesh',
+        'Uttarakhand',
+        'West Bengal',
+      ],
+    });
+  } catch (err) {
+    console.error('[TalentHub getTalentProfileFormConfig Exception]:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve profile configuration' });
+  }
+};
+
+/**
+ * PUT /api/talent-hub/profile
+ * Updates the authenticated talent's own profile in the canonical database.
+ * Strictly verifies identity, disallows restricted fields, replaces languages/experiences,
+ * and records an audit log entry in talent_admin_notes.
+ */
+export const updateTalentProfile = async (req, res) => {
+  try {
+    const email = req.talentEmail;
+    if (!email) {
+      return res.status(401).json({ success: false, message: 'Unauthenticated session email' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
+    const body = req.body || {};
+    const {
+      full_name,
+      gender,
+      phone,
+      country_code,
+      state,
+      city_district,
+      preferred_contact,
+      primary_role,
+      role_details,
+      has_previous_experience,
+      work_capabilities,
+      availability,
+      working_preference,
+      equipment_resources,
+      additional_info,
+      languages,
+      experiences,
+    } = body;
+
+    // 1. Validate required fields
+    if (!full_name || !String(full_name).trim()) {
+      return res.status(400).json({ success: false, message: 'Full name is required.' });
+    }
+    if (!phone || !String(phone).trim()) {
+      return res.status(400).json({ success: false, message: 'Phone number is required.' });
+    }
+    if (!state || !String(state).trim()) {
+      return res.status(400).json({ success: false, message: 'State selection is required.' });
+    }
+    if (!city_district || !String(city_district).trim()) {
+      return res.status(400).json({ success: false, message: 'City / District is required.' });
+    }
+    if (!primary_role || !String(primary_role).trim()) {
+      return res.status(400).json({ success: false, message: 'Primary role selection is required.' });
+    }
+
+    // 2. Load existing talent record strictly by authenticated email
+    const { data: talentRecord, error: fetchErr } = await supabase
+      .from('talent_registrations')
+      .select('*')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error('[TalentHub Update Profile Query Error]:', fetchErr.message);
+      return res.status(500).json({ success: false, message: 'Failed to access talent record.' });
+    }
+
+    // Also check disk fallback if necessary
+    const diskList = loadDiskRegistrations();
+    const diskIdx = diskList.findIndex((r) => (r.email || '').toLowerCase() === email.toLowerCase());
+    const oldRecord = talentRecord || (diskIdx !== -1 ? diskList[diskIdx] : null);
+
+    if (!oldRecord) {
+      return res.status(404).json({ success: false, message: 'Registered talent profile not found for this account.' });
+    }
+
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    const realUuid = isUuid(oldRecord.id) ? oldRecord.id : talentRecord?.id;
+
+    // 3. Track changed fields for Audit Log
+    const changedFields = [];
+    if (full_name && full_name.trim() !== (oldRecord.full_name || '').trim()) {
+      changedFields.push(`Name ("${oldRecord.full_name || ''}" -> "${full_name.trim()}")`);
+    }
+    if (phone && phone.trim() !== (oldRecord.phone || '').trim()) {
+      changedFields.push(`Phone ("${oldRecord.phone || ''}" -> "${phone.trim()}")`);
+    }
+    if (gender && gender !== oldRecord.gender) {
+      changedFields.push(`Gender ("${oldRecord.gender || ''}" -> "${gender}")`);
+    }
+    if (state && state.trim() !== (oldRecord.state || '').trim()) {
+      changedFields.push(`State ("${oldRecord.state || ''}" -> "${state.trim()}")`);
+    }
+    if (city_district && city_district.trim() !== (oldRecord.city_district || '').trim()) {
+      changedFields.push(`City ("${oldRecord.city_district || ''}" -> "${city_district.trim()}")`);
+    }
+    if (primary_role && primary_role !== oldRecord.primary_role) {
+      changedFields.push(`Role ("${oldRecord.primary_role || ''}" -> "${primary_role}")`);
+    }
+    if (Array.isArray(languages)) {
+      changedFields.push(`Languages updated (${languages.length} configured)`);
+    }
+    if (Array.isArray(experiences)) {
+      changedFields.push(`Experiences updated (${experiences.length} records)`);
+    }
+    if (work_capabilities !== undefined) {
+      changedFields.push(`Work Capabilities updated`);
+    }
+    if (availability && availability !== oldRecord.availability) {
+      changedFields.push(`Availability ("${oldRecord.availability || ''}" -> "${availability}")`);
+    }
+    if (equipment_resources !== undefined) {
+      changedFields.push(`Equipment & Resources updated`);
+    }
+    if (additional_info !== undefined) {
+      changedFields.push(`Additional Information updated`);
+    }
+
+    const timestamp = new Date().toISOString();
+
+    // 4. Construct strictly sanitized update payload - Restricted fields CANNOT be overwritten
+    const updatedDbPayload = {
+      full_name: full_name.trim(),
+      gender: gender || oldRecord.gender || 'Male',
+      phone: phone.trim(),
+      country_code: country_code ? country_code.trim() : (oldRecord.country_code || '+91'),
+      state: state.trim(),
+      city_district: city_district.trim(),
+      preferred_contact: preferred_contact || oldRecord.preferred_contact || 'WhatsApp',
+      primary_role: primary_role.trim(),
+      role_details: role_details !== undefined ? role_details : (oldRecord.role_details || {}),
+      has_previous_experience: has_previous_experience !== undefined ? Boolean(has_previous_experience) : Boolean(oldRecord.has_previous_experience),
+      work_capabilities: Array.isArray(work_capabilities) ? work_capabilities : (oldRecord.work_capabilities || []),
+      availability: availability || oldRecord.availability || 'Immediately',
+      working_preference: working_preference || oldRecord.working_preference || 'Project Basis',
+      equipment_resources: equipment_resources !== undefined ? equipment_resources : (oldRecord.equipment_resources || {}),
+      additional_info: additional_info !== undefined ? additional_info : (oldRecord.additional_info || {}),
+      updated_at: timestamp,
+    };
+
+    // 5. Update Database Record
+    if (realUuid) {
+      const { error: updateErr } = await supabase
+        .from('talent_registrations')
+        .update(updatedDbPayload)
+        .eq('id', realUuid);
+
+      if (updateErr) {
+        console.error('[TalentHub Profile Update DB Error]:', updateErr.message);
+        return res.status(500).json({ success: false, message: 'Failed to update profile record in database.' });
+      }
+
+      // 6. Update Languages Table
+      if (Array.isArray(languages)) {
+        await supabase.from('talent_languages').delete().eq('registration_id', realUuid);
+        const validLanguages = languages.filter((l) => l && (l.language || l.name));
+        if (validLanguages.length > 0) {
+          const langRows = validLanguages.map((l) => ({
+            registration_id: realUuid,
+            language: l.language || l.name,
+            proficiency: l.proficiency || 'Native',
+            speaker_availability: l.speaker_availability || l.speakerAvailability || 'I am a native speaker',
+            capacity: Number(l.capacity) || 1,
+            created_at: timestamp,
+          }));
+          await supabase.from('talent_languages').insert(langRows);
+        }
+      }
+
+      // 7. Update Experiences Table
+      if (Array.isArray(experiences)) {
+        await supabase.from('talent_experiences').delete().eq('registration_id', realUuid);
+        const validExperiences = experiences.filter((e) => e && (e.projectName || e.project_company_name || e.typeOfWork || e.type_of_work));
+        if (validExperiences.length > 0) {
+          const expRows = validExperiences.map((e) => ({
+            registration_id: realUuid,
+            project_company_name: e.projectName || e.project_company_name || '',
+            type_of_work: e.typeOfWork || e.type_of_work || '',
+            languages_used: e.languagesUsed || e.languages_used || '',
+            work_volume: e.workVolume || e.work_volume || '',
+            duration: e.duration || '',
+            description: e.description || '',
+            created_at: timestamp,
+          }));
+          await supabase.from('talent_experiences').insert(expRows);
+        }
+      }
+
+      // 8. Record Audit Log in talent_admin_notes
+      if (changedFields.length > 0) {
+        const auditLogEntry = {
+          registration_id: realUuid,
+          admin_email: 'Self (Talent)',
+          note: `[SELF-EDIT] Contributor self-updated profile: ${changedFields.join('; ')}`,
+          created_at: timestamp,
+        };
+        try {
+          await supabase.from('talent_admin_notes').insert([auditLogEntry]);
+        } catch (auditErr) {
+          console.warn('[TalentHub Audit Log Warning]:', auditErr.message);
+        }
+      }
+    }
+
+    // 9. Sync Disk Fallback
+    if (diskIdx !== -1) {
+      diskList[diskIdx] = {
+        ...diskList[diskIdx],
+        ...updatedDbPayload,
+        languages: Array.isArray(languages) ? languages : diskList[diskIdx].languages,
+        experiences: Array.isArray(experiences) ? experiences : diskList[diskIdx].experiences,
+      };
+      saveDiskRegistrations(diskList);
+    }
+
+    // 10. Fetch and return freshly updated complete profile state
+    const [freshTalent, freshLangs, freshExps] = await Promise.all([
+      supabase
+        .from('talent_registrations')
+        .select('*')
+        .ilike('email', email)
+        .maybeSingle(),
+      supabase
+        .from('talent_languages')
+        .select('id, language, proficiency, speaker_availability, capacity, created_at')
+        .eq('registration_id', realUuid || oldRecord.id)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('talent_experiences')
+        .select('id, project_company_name, type_of_work, languages_used, work_volume, duration, description, created_at')
+        .eq('registration_id', realUuid || oldRecord.id)
+        .order('created_at', { ascending: true }),
+    ]);
+
+    const sanitizedResult = sanitizeTalentRecord(freshTalent.data || { ...oldRecord, ...updatedDbPayload });
+
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully!',
+      talent: sanitizedResult,
+      profile: sanitizedResult,
+      languages: freshLangs.data || (Array.isArray(languages) ? languages : []),
+      experiences: freshExps.data || (Array.isArray(experiences) ? experiences : []),
+    });
+  } catch (err) {
+    console.error('[TalentHub updateTalentProfile Exception]:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update profile. Please try again.' });
+  }
+};
+
 

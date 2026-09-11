@@ -30,7 +30,7 @@ const formatIstDateTime = (isoDateString) => {
 };
 
 // Local disk fallback helpers
-const loadDiskRegistrations = () => {
+export const loadDiskRegistrations = () => {
   try {
     if (fs.existsSync(PERSISTENT_FILE_PATH)) {
       const data = fs.readFileSync(PERSISTENT_FILE_PATH, 'utf-8');
@@ -42,7 +42,7 @@ const loadDiskRegistrations = () => {
   return [];
 };
 
-const saveDiskRegistrations = (list) => {
+export const saveDiskRegistrations = (list) => {
   try {
     const dir = path.dirname(PERSISTENT_FILE_PATH);
     if (!fs.existsSync(dir)) {
@@ -1490,3 +1490,5 @@ export const updateAdminCandidateProfile = async (req, res) => {
     });
   }
 };
+
+

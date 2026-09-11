@@ -545,6 +545,8 @@ export const talentRegistrationApi = {
     api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
 
+
+
 // Zenemoo Scheduled Email Engine API
 export const scheduledEmailApi = {
   getScheduled: (params?: { status?: string }) => api.get('/emails/scheduled', { params }),

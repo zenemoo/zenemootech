@@ -2,6 +2,8 @@ import express from 'express';
 import { supabaseAuthMiddleware } from '../middleware/supabaseAuth.js';
 import {
   getTalentProfile,
+  getTalentProfileFormConfig,
+  updateTalentProfile,
   getTalentOpportunities,
   getTalentOpportunityById,
   getTalentApplications,
@@ -15,8 +17,11 @@ const router = express.Router();
 // All talent hub routes strictly require authenticated Supabase session
 router.use(supabaseAuthMiddleware);
 
-// Talent profile endpoint
+// Talent profile endpoints
 router.get('/me', getTalentProfile);
+router.get('/profile-form-config', getTalentProfileFormConfig);
+router.put('/profile', updateTalentProfile);
+
 
 // Opportunities endpoints
 router.get('/opportunities', getTalentOpportunities);

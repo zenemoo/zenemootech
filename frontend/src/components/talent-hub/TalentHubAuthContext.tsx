@@ -155,14 +155,16 @@ interface TalentHubAuthContextType {
   acceptedCount: number;
   activeOpportunitiesCount: number;
 
-  // Actions
   signInWithGoogle: () => Promise<void>;
   sendEmailOtp: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyEmailOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   refreshTalentHubData: (isManual?: boolean) => Promise<void>;
   mutateApplications: (newOrUpdatedApp: ApplicationItem) => void;
+  updateProfile: (payload: Record<string, any>) => Promise<{ success: boolean; message?: string; error?: string }>;
+  reloadProfile: () => Promise<void>;
 }
+
 
 export const TalentHubAuthContext = createContext<TalentHubAuthContextType | undefined>(undefined);
 
@@ -848,6 +850,37 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return s === 'active' || s === 'open';
   }).length;
 
+  const updateProfile = useCallback(
+    async (payload: Record<string, any>) => {
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        return { success: false, error: 'Unauthorized: No active session' };
+      }
+      try {
+        const res = await talentHubApi.updateProfile(payload, accessToken);
+        if (res && res.success) {
+          if (res.talent) setTalentProfile(res.talent);
+          if (res.languages) setLanguages(res.languages);
+          if (res.experiences) setExperiences(res.experiences);
+          return { success: true, message: res.message || 'Profile updated successfully!' };
+        } else {
+          return { success: false, error: res?.message || 'Failed to update profile' };
+        }
+      } catch (err: any) {
+        const msg = err.response?.data?.message || err.message || 'Failed to update profile';
+        return { success: false, error: msg };
+      }
+    },
+    [session]
+  );
+
+  const reloadProfile = useCallback(async () => {
+    const accessToken = session?.access_token;
+    if (accessToken) {
+      await loadTalentProfile(accessToken, true);
+    }
+  }, [session, loadTalentProfile]);
+
   const token = session?.access_token || null;
   const isLoading = authState === 'checkingSession';
   const isProfileLoading = authState === 'loadingProfile';
@@ -884,12 +917,15 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         signOut,
         refreshTalentHubData,
         mutateApplications,
+        updateProfile,
+        reloadProfile,
       }}
     >
       {children}
     </TalentHubAuthContext.Provider>
   );
 };
+
 
 export const useTalentHubAuth = () => {
   const context = useContext(TalentHubAuthContext);

@@ -37,6 +37,31 @@ export const talentHubApi = {
   },
 
   /**
+   * Fetch dynamic profile form configuration (dynamic questions, supported languages, role/capability options).
+   */
+  async getProfileFormConfig(token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, message: 'Missing or empty auth token' };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.get(`${baseUrl}/talent-hub/profile-form-config`, createAuthHeaders(token));
+    return response.data;
+  },
+
+  /**
+   * Update the authenticated talent's own profile.
+   */
+  async updateProfile(payload: Record<string, any>, token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, message: 'Missing or empty auth token' };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.put(`${baseUrl}/talent-hub/profile`, payload, createAuthHeaders(token));
+    return response.data;
+  },
+
+
+  /**
    * Fetch all active opportunities.
    */
   async getOpportunities(token: string) {

@@ -37,3 +37,5 @@ router.put('/admin/languages/:id', authMiddleware, updateAdminSupportedLanguage)
 router.put('/admin/update-profile/:id', authMiddleware, updateAdminCandidateProfile);
 
 export default router;
+
+
