@@ -19,6 +19,8 @@ import {
   Globe,
   Receipt,
   Share2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import { NotificationCenter } from '../NotificationCenter';
@@ -41,12 +43,23 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   onNavigateHome,
   children,
 }) => {
-  const { user, talentProfile, signOut, refreshTalentHubData, isRefreshing } = useTalentHubAuth();
+  const {
+    user,
+    talentProfile,
+    applications,
+    totalApplications,
+    opportunities,
+    activeOpportunitiesCount,
+    signOut,
+    refreshTalentHubData,
+    isRefreshing,
+  } = useTalentHubAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
   const [isSocialSheetOpen, setIsSocialSheetOpen] = useState(false);
   const [showRefreshFeedback, setShowRefreshFeedback] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Close mobile drawer and social sheet on Escape key
   useEffect(() => {
@@ -105,6 +118,13 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     };
   }, [isSocialSheetOpen]);
 
+  const handleCopyText = (text: string, fieldName: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
   const displayName =
     talentProfile?.full_name ||
     user?.user_metadata?.full_name ||
@@ -131,16 +151,17 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
   const handleNavClick = (tab: TalentHubTab) => {
     setMobileMenuOpen(false);
+    setUserMenuOpen(false);
     onNavigate(tab);
   };
 
   return (
     <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden pt-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))]">
-      {/* ── Fixed Top Navigation Header (100% Locked, Immovable, Zero Vertical/Horizontal Movement) ── */}
-      <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))] pt-[var(--sat,env(safe-area-inset-top,0px))] bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3.5 sm:px-6 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
-        <div className="max-w-7xl mx-auto h-full flex items-center justify-between gap-3 min-w-0">
+      {/* ── Fixed Top Navigation Header (Dynamic & Responsive from 320px to 4K) ── */}
+      <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+var(--sat,env(safe-area-inset-top,0px)))] pt-[var(--sat,env(safe-area-inset-top,0px))] bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-5 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
+        <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
           {/* Brand Logo & Portal Title */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
             <a
               href="/talent-hub/dashboard"
               onClick={(e) => {
@@ -149,7 +170,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               }}
               className="flex items-center gap-2 sm:gap-2.5 group focus:outline-none shrink-0"
             >
-              <div className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300 shrink-0">
+              <div className="relative h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300 shrink-0">
                 <SeoImage
                   src="/assets/logo.png"
                   alt="Zenemoo Talent Hub"
@@ -162,22 +183,22 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-sm sm:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none truncate">
+                  <span className="text-sm sm:text-base lg:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none truncate">
                     ZENEMOO
                   </span>
-                  <span className="text-[9px] sm:text-[10px] font-mono font-bold tracking-wider uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm shadow-cyan-500/10 shrink-0">
+                  <span className="text-[8.5px] sm:text-[9.5px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm shadow-cyan-500/10 shrink-0">
                     Talent Hub
                   </span>
                 </div>
-                <span className="text-[9px] font-mono text-slate-400 hidden sm:inline-block mt-0.5 tracking-tight truncate">
+                <span className="text-[9px] font-mono text-slate-400 hidden xl:inline-block mt-0.5 tracking-tight truncate">
                   AI Contributor Portal
                 </span>
               </div>
             </a>
           </div>
 
-          {/* Desktop Nav Items (xl+) */}
-          <nav className="hidden xl:flex items-center gap-1 bg-white/[0.03] p-1.5 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
+          {/* Desktop & Laptop Nav Items (lg+) */}
+          <nav className="hidden lg:flex items-center gap-1 bg-white/[0.03] p-1 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -185,7 +206,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
                     isActive
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-[0_0_12px_rgba(6,182,212,0.25)]'
                       : 'text-slate-300 hover:text-white hover:bg-white/10 font-medium border border-transparent'
@@ -198,7 +219,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             })}
             <button
               onClick={() => handleNavClick('support-zenemooindia')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer ${
                 currentTab === 'support-zenemooindia'
                   ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold shadow-[0_0_12px_rgba(244,114,182,0.25)]'
                   : 'text-pink-300 hover:text-white hover:bg-pink-500/15 font-medium border border-pink-500/20 hover:border-pink-500/40'
@@ -209,42 +230,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             </button>
           </nav>
 
-          {/* Tablet Nav Items (md to xl) */}
-          <nav className="hidden md:flex xl:hidden items-center gap-1 bg-white/[0.02] p-1 rounded-xl border border-white/5">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
-                    isActive
-                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold shadow-sm'
-                      : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent font-medium'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-300' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-            <button
-              onClick={() => handleNavClick('support-zenemooindia')}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
-                currentTab === 'support-zenemooindia'
-                  ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
-                  : 'text-pink-300 hover:text-white hover:bg-pink-500/15 border border-pink-500/20 font-medium'
-              }`}
-            >
-              <Heart className="w-3.5 h-3.5 text-pink-400" />
-              <span>Support</span>
-            </button>
-          </nav>
-
-          {/* Desktop & Tablet Action Bar */}
-          <div className="hidden md:flex items-center gap-2 sm:gap-2.5 shrink-0">
-            {/* 🔄 Manual Refresh Button */}
+          {/* Right Action Bar (Sleek, Uncrowded on All Breakpoints) */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* 🔄 Refresh Button */}
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
@@ -261,46 +249,51 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               {showRefreshFeedback ? (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="hidden lg:inline text-[11px] text-emerald-300">Updated</span>
+                  <span className="hidden xl:inline text-[11px] text-emerald-300">Updated</span>
                 </>
               ) : (
                 <>
                   <RefreshCw className={`w-4 h-4 text-cyan-400 shrink-0 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  <span className="hidden lg:inline text-[11px]">Refresh</span>
+                  <span className="hidden xl:inline text-[11px]">Refresh</span>
                 </>
               )}
             </button>
 
-            {/* Centralized Notification Center */}
+            {/* Centralized Notification Center (Always Visible) */}
             <NotificationCenter />
 
-            {/* User Profile Pill & Dropdown Menu */}
+            {/* User Profile Avatar Pill & Rich Dropdown Menu */}
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 py-1.5 px-2 sm:px-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 transition-all duration-200 focus:outline-none cursor-pointer"
+                className="group relative flex items-center gap-1.5 p-1 sm:p-1.5 rounded-full bg-white/[0.04] hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 transition-all duration-200 focus:outline-none cursor-pointer active:scale-95 shadow-sm"
                 aria-label="User Account Menu"
+                title={`Signed in as ${displayName}`}
               >
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt={displayName}
-                    className="w-7 h-7 rounded-full object-cover border border-white/20"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
-                    {displayName.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="text-left hidden md:block max-w-[120px] truncate">
-                  <p className="text-xs font-semibold text-white truncate">{displayName}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{displayEmail}</p>
+                <div className="relative shrink-0">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-2 ring-cyan-500/30 group-hover:ring-cyan-400/80 transition-all shadow-md"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-cyan-500 via-blue-600 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-md ring-2 ring-cyan-500/30 group-hover:ring-cyan-400/80 transition-all">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  {/* Subtle Online Status Dot */}
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#080912] shadow-sm" />
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 group-hover:text-cyan-300 transition-transform duration-200 hidden sm:block ${
+                    userMenuOpen ? 'rotate-180' : ''
+                  }`}
+                />
               </button>
 
-              {/* User Dropdown Menu */}
+              {/* Rich User Profile Dropdown Card */}
               <AnimatePresence>
                 {userMenuOpen && (
                   <>
@@ -310,83 +303,135 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                     />
                     <motion.div
                       id="talent-hub-user-menu"
-                      initial={{ opacity: 0, scale: 0.95, y: 5 }}
+                      initial={{ opacity: 0, scale: 0.95, y: 8 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                      className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#0a0f1d] border border-cyan-500/40 shadow-[0_12px_45px_rgba(0,0,0,0.98)] p-2 z-50 divide-y divide-white/10 text-xs"
+                      exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                      className="absolute right-0 mt-2 w-72 sm:w-80 rounded-3xl bg-[#090d1a]/98 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.95),0_0_30px_rgba(6,182,212,0.15)] p-3.5 z-50 divide-y divide-white/10 text-xs"
                     >
-                      <div className="px-3 py-2.5">
-                        <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider">Signed in as</p>
-                        <p className="text-sm font-bold text-white truncate mt-0.5">{displayName}</p>
-                        <p className="text-xs text-cyan-400 truncate mt-0.5 font-mono">{displayEmail}</p>
-                        {talentProfile?.registration_code && (
-                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/10 text-[10px] font-mono text-slate-300">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            <span>{talentProfile.registration_code}</span>
+                      {/* Top Profile Card Header */}
+                      <div className="pb-3.5 space-y-2.5">
+                        <div className="flex items-center gap-3">
+                          <div className="relative shrink-0">
+                            {avatarUrl ? (
+                              <img
+                                src={avatarUrl}
+                                alt={displayName}
+                                className="w-11 h-11 rounded-full object-cover ring-2 ring-cyan-400/50 shadow-lg shadow-cyan-500/20"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-500 via-blue-600 to-purple-600 flex items-center justify-center text-sm font-bold text-white shadow-lg ring-2 ring-cyan-400/50">
+                                {displayName.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#090d1a]" />
                           </div>
-                        )}
+
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-white truncate leading-snug">{displayName}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <p className="text-xs text-cyan-300 font-mono truncate">{displayEmail}</p>
+                              {displayEmail && (
+                                <button
+                                  onClick={() => handleCopyText(displayEmail, 'email')}
+                                  className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors shrink-0"
+                                  title="Copy email address"
+                                  aria-label="Copy email address"
+                                >
+                                  {copiedField === 'email' ? (
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status & Registration Code Badge */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono text-emerald-300">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span>Verified Talent</span>
+                          </div>
+
+                          {talentProfile?.registration_code && (
+                            <button
+                              onClick={() => handleCopyText(talentProfile.registration_code, 'reg_code')}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-cyan-500/40 text-[10px] font-mono text-slate-300 transition-all cursor-pointer group"
+                              title="Click to copy registration code"
+                            >
+                              <span className="text-slate-400">ID:</span>
+                              <span className="font-bold text-cyan-300 group-hover:text-cyan-200">
+                                {talentProfile.registration_code}
+                              </span>
+                              {copiedField === 'reg_code' ? (
+                                <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                              ) : (
+                                <Copy className="w-3 h-3 text-slate-400 group-hover:text-cyan-400 shrink-0" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Quick Summary Chips */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="p-2 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                            <p className="text-[10px] text-slate-400 uppercase font-mono">My Applications</p>
+                            <p className="text-sm font-bold text-white mt-0.5">{totalApplications ?? applications?.length ?? 0}</p>
+                          </div>
+                          <div className="p-2 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                            <p className="text-[10px] text-slate-400 uppercase font-mono">Open Projects</p>
+                            <p className="text-sm font-bold text-cyan-400 mt-0.5">{activeOpportunitiesCount || opportunities?.length || 0}</p>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="py-1">
+                      {/* Navigation Links */}
+                      <div className="py-2 space-y-0.5">
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            handleNavClick('profile');
-                          }}
+                          onClick={() => handleNavClick('profile')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                         >
                           <User className="w-3.5 h-3.5 text-cyan-400" />
-                          View My Profile
+                          <span>View My Profile</span>
                         </button>
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            handleNavClick('applications');
-                          }}
+                          onClick={() => handleNavClick('applications')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                         >
                           <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          My Applications
+                          <span>My Applications</span>
                         </button>
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            handleNavClick('opportunities');
-                          }}
+                          onClick={() => handleNavClick('opportunities')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                         >
                           <Briefcase className="w-3.5 h-3.5 text-blue-400" />
-                          Browse Opportunities
+                          <span>Browse Opportunities</span>
                         </button>
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            handleNavClick('referrals');
-                          }}
+                          onClick={() => handleNavClick('referrals')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                         >
                           <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                          Refer & Earn
+                          <span>Refer & Earn</span>
                         </button>
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            handleNavClick('support-zenemooindia');
-                          }}
+                          onClick={() => handleNavClick('support-zenemooindia')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-pink-300 hover:text-white hover:bg-pink-500/10 transition-colors cursor-pointer"
                         >
                           <Heart className="w-3.5 h-3.5 text-pink-400" />
-                          Support Zenemoo
+                          <span>Support Zenemoo</span>
                         </button>
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            handleNavClick('support-history');
-                          }}
+                          onClick={() => handleNavClick('support-history')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-cyan-300 hover:text-white hover:bg-cyan-500/10 transition-colors cursor-pointer"
                         >
                           <Receipt className="w-3.5 h-3.5 text-cyan-400" />
-                          My Support Payments
+                          <span>My Support Payments</span>
                         </button>
                         <a
                           href="/"
@@ -407,16 +452,17 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                         </a>
                       </div>
 
-                      <div className="pt-1">
+                      {/* Sign Out Action */}
+                      <div className="pt-2">
                         <button
                           onClick={() => {
                             setUserMenuOpen(false);
                             signOut();
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/15 border border-rose-500/20 transition-all cursor-pointer"
                         >
                           <LogOut className="w-3.5 h-3.5" />
-                          Sign Out
+                          <span>Sign Out</span>
                         </button>
                       </div>
                     </motion.div>
@@ -424,17 +470,11 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 )}
               </AnimatePresence>
             </div>
-          </div>
 
-          {/* Mobile Right: Notification Bell Beside Hamburger Button [🔔] [☰] */}
-          <div className="flex md:hidden items-center gap-2 shrink-0">
-            {/* 🔔 Notification Center permanently visible beside hamburger */}
-            <NotificationCenter />
-
-            {/* ☰ Hamburger Button */}
+            {/* Mobile Hamburger Drawer Trigger (lg:hidden) */}
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="p-2 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white hover:border-cyan-500/40 focus:outline-none cursor-pointer"
+              className="lg:hidden p-2 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white hover:border-cyan-500/40 focus:outline-none cursor-pointer"
               aria-label="Open navigation menu"
             >
               <Menu className="w-5 h-5 text-cyan-400" />
@@ -588,29 +628,58 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
               {/* Account / User Details Card at bottom */}
               <div className="mt-auto pt-4 border-t border-white/10 space-y-3">
-                <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10">
-                  <div className="flex items-center gap-2.5">
-                    {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt={displayName}
-                        className="w-9 h-9 rounded-full object-cover border border-white/20 shrink-0"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-cyan-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                        {displayName.charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2.5">
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={displayName}
+                          className="w-10 h-10 rounded-full object-cover border border-white/20"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
+                          {displayName.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#080d19]" />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-white truncate">{displayName}</p>
-                      <p className="text-[10px] text-cyan-400 font-mono truncate">{displayEmail}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-[10px] text-cyan-300 font-mono truncate">{displayEmail}</p>
+                        {displayEmail && (
+                          <button
+                            onClick={() => handleCopyText(displayEmail, 'drawer_email')}
+                            className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors shrink-0"
+                            title="Copy email"
+                          >
+                            {copiedField === 'drawer_email' ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
+
                   {talentProfile?.registration_code && (
-                    <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-300">
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-300">
                       <span className="text-slate-400">Reg. Code:</span>
-                      <span className="font-bold text-emerald-300">{talentProfile.registration_code}</span>
+                      <button
+                        onClick={() => handleCopyText(talentProfile.registration_code, 'drawer_reg_code')}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/40 hover:bg-black/60 border border-white/10 text-cyan-300 cursor-pointer"
+                      >
+                        <span className="font-bold">{talentProfile.registration_code}</span>
+                        {copiedField === 'drawer_reg_code' ? (
+                          <Check className="w-2.5 h-2.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-2.5 h-2.5 text-slate-400" />
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
