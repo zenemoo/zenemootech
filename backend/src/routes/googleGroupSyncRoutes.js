@@ -4,6 +4,8 @@ import {
   getEligibleCommunityEmails,
   getGoogleGroupOverview,
   getGoogleGroupMembers,
+  getGoogleGroupExclusions,
+  restoreGoogleGroupExclusion,
   triggerGoogleGroupSync,
   removeGoogleGroupMember,
 } from '../controllers/googleGroupSyncController.js';
@@ -79,6 +81,13 @@ router.get('/eligible-emails', requireSyncAuth, getEligibleCommunityEmails);
 // Member listing with sync status
 router.get('/members', requireSyncAuth, getGoogleGroupMembers);
 
+// Excluded emails listing
+router.get('/exclusions', requireSyncAuth, getGoogleGroupExclusions);
+
+// Restore excluded email (supports DELETE and POST alias)
+router.delete('/exclusions/:email', requireSyncAuth, restoreGoogleGroupExclusion);
+router.post('/exclusions/restore', requireSyncAuth, restoreGoogleGroupExclusion);
+
 // Interactive sync trigger
 router.post('/sync', requireSyncAuth, triggerGoogleGroupSync);
 
@@ -87,3 +96,4 @@ router.delete('/members/:email', requireSyncAuth, removeGoogleGroupMember);
 router.post('/members/remove', requireSyncAuth, removeGoogleGroupMember);
 
 export default router;
+

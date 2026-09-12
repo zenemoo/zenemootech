@@ -5,14 +5,17 @@
  * ============================================================================
  * 
  * DESCRIPTION:
- * 1. Web App (doPost): Secure command receiver for the Zenemoo Backend & Admin Panel
- *    - getGroupMembers : Read complete paginated member list and count
+ * 1. Web App (doGet / doPost): Secure command receiver for the Zenemoo Backend & Admin Panel
+ *    - getGroupMembers : Read complete member list and count via GroupsApp (Owner/Manager permission)
  *    - syncMembers     : Add missing community members (strictly add-only)
  *    - removeMember    : Safely remove a single specified member
  *    - healthCheck     : Diagnostic connectivity and permission verification
  * 
  * 2. Automated Job (syncGoogleGroupMembers):
  *    - Daily Time-driven trigger pull synchronization
+ * 
+ * 3. Manual Diagnostic (testGoogleGroupAccess):
+ *    - Safe standalone tester in Apps Script editor
  * 
  * SECURITY:
  * - Requires secret verification for all incoming Web App requests (GOOGLE_GROUP_SYNC_SECRET)
@@ -22,15 +25,11 @@
  * 1. Open Google Apps Script (https://script.google.com).
  * 2. Create/open the project: "Zenemoo Google Group Sync".
  * 3. Paste this code into `Code.gs`.
- * 4. Enable the Admin SDK Directory API:
- *    - Click "+" next to "Services" in the left sidebar.
- *    - Select "Admin SDK API" (Identifier: `AdminDirectory`).
- *    - Click "Add".
- * 5. Configure Script Properties (Project Settings > Script Properties):
+ * 4. Configure Script Properties (Project Settings > Script Properties):
  *    - `GOOGLE_GROUP_SYNC_SECRET` : <your-secure-sync-secret>
  *    - `GOOGLE_GROUP_EMAIL`       : zenemoocommunity@googlegroups.com
  *    - `ZENEMOO_BACKEND_URL`      : https://api.zenemoo.in/api/admin/google-group/eligible-emails
- * 6. Deploy as Web App (Deploy > New Deployment > Web App):
+ * 5. Deploy as Web App (Deploy > Manage deployments > Edit > Version: New version > Deploy):
  *    - Execute as: "Me"
  *    - Who has access: "Anyone" (Security is enforced via payload secret token)
  * ============================================================================
@@ -42,12 +41,15 @@ const CONFIG = {
   DEFAULT_GROUP_EMAIL: 'zenemoocommunity@googlegroups.com',
   DEFAULT_SECRET: '',
   MAX_ADDITIONS_PER_RUN: 100, // Safety limit per run
-  PAUSE_BETWEEN_REQUESTS_MS: 150, // Micro-delay to comply with Google Admin API rate limits
+  PAUSE_BETWEEN_REQUESTS_MS: 150, // Micro-delay to comply with rate limits
 };
 
 // Standard RFC-compliant email validation regex
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Normalizes, sanitizes, and validates an email string
+ */
 /**
  * Normalizes, sanitizes, and validates an email string
  */
@@ -74,6 +76,129 @@ function getSecret() {
 function getGroupEmail() {
   const props = PropertiesService.getScriptProperties().getProperties();
   return props.GOOGLE_GROUP_EMAIL || CONFIG.DEFAULT_GROUP_EMAIL;
+}
+
+/**
+ * ============================================================================
+ * EXCLUSION PERSISTENCE STORE (PropertiesService)
+ * Script Property: GOOGLE_GROUP_EXCLUDED_EMAILS
+ * Stored Format: JSON array of objects [ { email: "user@example.com", excludedAt: "ISO_TIMESTAMP" } ]
+ * ============================================================================
+ */
+const EXCLUSION_PROPERTY_KEY = 'GOOGLE_GROUP_EXCLUDED_EMAILS';
+
+/**
+ * Retrieves all excluded emails safely from Script Properties
+ * @returns {Array<{ email: string, excludedAt: string }>}
+ */
+function getExcludedEmails() {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(EXCLUSION_PROPERTY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const normalizedList = [];
+    const seen = new Set();
+
+    for (let i = 0; i < parsed.length; i++) {
+      const item = parsed[i];
+      let emailStr = '';
+      let dateStr = new Date().toISOString();
+
+      if (typeof item === 'string') {
+        emailStr = item;
+      } else if (item && typeof item === 'object') {
+        emailStr = item.email || '';
+        dateStr = item.excludedAt || dateStr;
+      }
+
+      const clean = normalizeEmail(emailStr);
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        normalizedList.push({
+          email: clean,
+          excludedAt: dateStr,
+        });
+      }
+    }
+    return normalizedList;
+  } catch (err) {
+    Logger.log('⚠️ Failed to read or parse GOOGLE_GROUP_EXCLUDED_EMAILS property: ' + err.toString());
+    return [];
+  }
+}
+
+/**
+ * Checks if an email is present in the persistent exclusion list
+ * @param {string} email
+ * @returns {boolean}
+ */
+function isEmailExcluded(email) {
+  const clean = normalizeEmail(email);
+  if (!clean) return false;
+  const exclusions = getExcludedEmails();
+  return exclusions.some(function (item) {
+    return item.email === clean;
+  });
+}
+
+/**
+ * Permanently adds an email to the persistent exclusion list
+ * @param {string} email
+ * @returns {boolean}
+ */
+function addExcludedEmail(email) {
+  const clean = normalizeEmail(email);
+  if (!clean) return false;
+
+  try {
+    const current = getExcludedEmails();
+    const exists = current.some(function (item) {
+      return item.email === clean;
+    });
+
+    if (!exists) {
+      current.push({
+        email: clean,
+        excludedAt: new Date().toISOString(),
+      });
+      PropertiesService.getScriptProperties().setProperty(
+        EXCLUSION_PROPERTY_KEY,
+        JSON.stringify(current)
+      );
+    }
+    return true;
+  } catch (err) {
+    Logger.log('❌ Failed to save excluded email to Script Properties: ' + err.toString());
+    return false;
+  }
+}
+
+/**
+ * Removes an email from the persistent exclusion list (Restores eligibility)
+ * @param {string} email
+ * @returns {boolean}
+ */
+function removeExcludedEmail(email) {
+  const clean = normalizeEmail(email);
+  if (!clean) return false;
+
+  try {
+    const current = getExcludedEmails();
+    const filtered = current.filter(function (item) {
+      return item.email !== clean;
+    });
+
+    PropertiesService.getScriptProperties().setProperty(
+      EXCLUSION_PROPERTY_KEY,
+      JSON.stringify(filtered)
+    );
+    return true;
+  } catch (err) {
+    Logger.log('❌ Failed to remove excluded email from Script Properties: ' + err.toString());
+    return false;
+  }
 }
 
 /**
@@ -144,6 +269,15 @@ function doPost(e) {
       case 'removeMember':
         return jsonResponse(handleRemoveMember(payload));
 
+      case 'getExclusions':
+        return jsonResponse(handleGetExclusions(payload));
+
+      case 'addExclusion':
+        return jsonResponse(handleAddExclusion(payload));
+
+      case 'removeExclusion':
+        return jsonResponse(handleRemoveExclusion(payload));
+
       case 'healthCheck':
         return jsonResponse(handleHealthCheck(payload));
 
@@ -151,7 +285,7 @@ function doPost(e) {
         return jsonResponse({
           success: false,
           code: 'UNKNOWN_ACTION',
-          message: 'Unsupported action "' + action + '". Available actions: getGroupMembers, syncMembers, removeMember, healthCheck.',
+          message: 'Unsupported action "' + action + '". Available actions: getGroupMembers, syncMembers, removeMember, getExclusions, addExclusion, removeExclusion, healthCheck.',
         });
     }
   } catch (err) {
@@ -210,12 +344,16 @@ function doGet(e) {
       return jsonResponse(handleGetGroupMembers(params));
     }
 
+    if (action === 'getExclusions') {
+      return jsonResponse(handleGetExclusions(params));
+    }
+
     if (action === 'healthCheck') {
       return jsonResponse(handleHealthCheck(params));
     }
 
     // Explicitly prohibit mutating actions over GET
-    if (action === 'syncMembers' || action === 'removeMember') {
+    if (action === 'syncMembers' || action === 'removeMember' || action === 'addExclusion' || action === 'removeExclusion') {
       return jsonResponse({
         success: false,
         code: 'METHOD_NOT_ALLOWED',
@@ -226,7 +364,7 @@ function doGet(e) {
     return jsonResponse({
       success: false,
       code: 'UNKNOWN_ACTION',
-      message: 'Unsupported GET action "' + action + '". Supported read actions: getGroupMembers, healthCheck.',
+      message: 'Unsupported GET action "' + action + '". Supported read actions: getGroupMembers, getExclusions, healthCheck.',
     });
   } catch (err) {
     Logger.log('❌ Uncaught doGet exception: ' + err.toString());
@@ -238,42 +376,59 @@ function doGet(e) {
   }
 }
 
-
 /**
  * ACTION 1: getGroupMembers
- * Lists all members from the Google Group with full pagination support
+ * Lists all members from the Google Group using GroupsApp (Owner/Manager permission)
  */
 function handleGetGroupMembers(payload) {
   const groupEmail = payload.groupEmail || getGroupEmail();
-  const members = [];
-  let pageToken = null;
 
   try {
-    do {
-      const listParams = {
-        groupKey: groupEmail,
-        maxResults: 200,
+    const group = GroupsApp.getGroupByEmail(groupEmail);
+    if (!group) {
+      return {
+        success: false,
+        code: 'GROUP_NOT_FOUND',
+        groupEmail: groupEmail,
+        message: 'Google Group not found or not accessible by this Google account: ' + groupEmail,
+        members: [],
+        count: 0,
       };
-      if (pageToken) listParams.pageToken = pageToken;
+    }
 
-      const page = AdminDirectory.Members.list(groupEmail, listParams);
-      if (page.members && Array.isArray(page.members)) {
-        for (let i = 0; i < page.members.length; i++) {
-          const m = page.members[i];
-          if (m.email) {
-            members.push({
-              id: m.id || null,
-              email: m.email.trim().toLowerCase(),
-              role: m.role || 'MEMBER',
-              type: m.type || 'USER',
-              status: m.status || 'ACTIVE',
-              deliverySettings: m.delivery_settings || 'ALL_MAIL',
-            });
-          }
+    const users = group.getUsers();
+    const members = [];
+    const seen = new Set();
+
+    if (users && Array.isArray(users)) {
+      for (let i = 0; i < users.length; i++) {
+        const u = users[i];
+        const rawEmail = (u && typeof u.getEmail === 'function') ? u.getEmail() : String(u || '');
+        const cleanEmail = normalizeEmail(rawEmail);
+        if (cleanEmail && !seen.has(cleanEmail)) {
+          seen.add(cleanEmail);
+
+          let roleStr = 'MEMBER';
+          try {
+            if (typeof group.getRole === 'function') {
+              const r = group.getRole(u);
+              if (r) {
+                roleStr = String(r).toUpperCase().replace(/.*ROLE\./i, '');
+              }
+            }
+          } catch (_) {}
+
+          members.push({
+            id: null,
+            email: cleanEmail,
+            role: roleStr || 'MEMBER',
+            type: 'USER',
+            status: 'ACTIVE',
+            deliverySettings: 'ALL_MAIL',
+          });
         }
       }
-      pageToken = page.nextPageToken;
-    } while (pageToken);
+    }
 
     return {
       success: true,
@@ -285,7 +440,7 @@ function handleGetGroupMembers(payload) {
     Logger.log('❌ getGroupMembers Error: ' + err.toString());
     return {
       success: false,
-      code: 'DIRECTORY_LIST_ERROR',
+      code: 'GROUPS_APP_ERROR',
       groupEmail: groupEmail,
       message: 'Failed to retrieve group members: ' + err.message,
       members: [],
@@ -296,7 +451,8 @@ function handleGetGroupMembers(payload) {
 
 /**
  * ACTION 2: syncMembers
- * Adds provided missing email addresses into the Google Group (strictly Add-Only)
+ * Adds provided missing email addresses into the Google Group (strictly Add-Only).
+ * Automatically filters out any manually excluded emails.
  */
 function handleSyncMembers(payload) {
   const groupEmail = payload.groupEmail || getGroupEmail();
@@ -308,8 +464,18 @@ function handleSyncMembers(payload) {
 
   let addedCount = 0;
   let skippedCount = 0;
+  let excludedCount = 0;
   let failedCount = 0;
   const errors = [];
+
+  // 1. Load exclusion list
+  const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
+
+  // 2. Check if member already exists via GroupsApp
+  let group = null;
+  try {
+    group = GroupsApp.getGroupByEmail(groupEmail);
+  } catch (_) {}
 
   for (let i = 0; i < rawCandidateEmails.length; i++) {
     const clean = normalizeEmail(rawCandidateEmails[i]);
@@ -317,28 +483,47 @@ function handleSyncMembers(payload) {
       continue;
     }
 
+    // Step A: Check whether email is permanently excluded
+    if (exclusionSet.has(clean)) {
+      excludedCount++;
+      continue;
+    }
+
+    // Step B: Check if already present in Google Group
     try {
-      const memberResource = {
-        email: clean,
-        role: 'MEMBER',
-      };
+      if (group && typeof group.hasUser === 'function' && group.hasUser(clean)) {
+        skippedCount++;
+        continue;
+      }
+    } catch (_) {}
 
-      AdminDirectory.Members.insert(memberResource, groupEmail);
-      addedCount++;
+    // Step C: Attempt addition via AdminDirectory if available
+    let inserted = false;
+    try {
+      if (typeof AdminDirectory !== 'undefined' && AdminDirectory.Members && typeof AdminDirectory.Members.insert === 'function') {
+        AdminDirectory.Members.insert({ email: clean, role: 'MEMBER' }, groupEmail);
+        addedCount++;
+        inserted = true;
 
-      // Micro-pause to prevent quota rate-limit throttling
-      if (CONFIG.PAUSE_BETWEEN_REQUESTS_MS > 0) {
-        Utilities.sleep(CONFIG.PAUSE_BETWEEN_REQUESTS_MS);
+        if (CONFIG.PAUSE_BETWEEN_REQUESTS_MS > 0) {
+          Utilities.sleep(CONFIG.PAUSE_BETWEEN_REQUESTS_MS);
+        }
       }
     } catch (insertErr) {
       const errMsg = insertErr.toString();
-      // Gracefully handle duplicate/already-exists conditions (409 or memberExists)
       if (errMsg.includes('409') || errMsg.includes('already exists') || errMsg.includes('memberExists')) {
         skippedCount++;
+        inserted = true;
       } else {
         failedCount++;
         errors.push({ email: clean, error: errMsg });
+        inserted = true;
       }
+    }
+
+    if (!inserted) {
+      failedCount++;
+      errors.push({ email: clean, error: 'Direct programmatic addition requires Google Workspace Group Admin privilege or Google Groups direct member invite.' });
     }
   }
 
@@ -348,6 +533,7 @@ function handleSyncMembers(payload) {
     totalReceived: rawCandidateEmails.length,
     addedCount: addedCount,
     skippedCount: skippedCount,
+    excludedCount: excludedCount,
     failedCount: failedCount,
     errors: errors,
   };
@@ -355,7 +541,7 @@ function handleSyncMembers(payload) {
 
 /**
  * ACTION 3: removeMember
- * Removes a single specified member email from the Google Group
+ * Removes a single specified member email from the Google Group AND adds it to the exclusion list.
  */
 function handleRemoveMember(payload) {
   const groupEmail = payload.groupEmail || getGroupEmail();
@@ -369,14 +555,37 @@ function handleRemoveMember(payload) {
     };
   }
 
+  let removalSucceeded = false;
+  let removalMessage = '';
+
   try {
-    AdminDirectory.Members.delete(groupEmail, targetEmail);
-    return {
-      success: true,
-      message: 'Successfully removed member from Google Group.',
-      groupEmail: groupEmail,
-      email: targetEmail,
-    };
+    if (typeof AdminDirectory !== 'undefined' && AdminDirectory.Members && typeof AdminDirectory.Members.delete === 'function') {
+      try {
+        AdminDirectory.Members.delete(groupEmail, targetEmail);
+        removalSucceeded = true;
+        removalMessage = 'Successfully removed member from Google Group.';
+      } catch (delErr) {
+        const errStr = delErr.toString();
+        // 404 means member was already not in group -> removal goal achieved
+        if (errStr.includes('404') || errStr.includes('notFound') || errStr.includes('Resource Not Found')) {
+          removalSucceeded = true;
+          removalMessage = 'Member was already absent from Google Group.';
+        } else {
+          throw delErr;
+        }
+      }
+    } else {
+      // Fallback: If AdminDirectory is unavailable, still record the manual exclusion so they are never added by future syncs
+      addExcludedEmail(targetEmail);
+      return {
+        success: true,
+        code: 'EXCLUSION_RECORDED',
+        message: 'Direct API removal requires Google Workspace Admin. Member email has been permanently excluded from future automatic syncs. Please remove existing access from groups.google.com if still active.',
+        groupEmail: groupEmail,
+        email: targetEmail,
+        excludedFromFutureSync: true,
+      };
+    }
   } catch (err) {
     const errMsg = err.toString();
     Logger.log('❌ removeMember Error for ' + targetEmail + ': ' + errMsg);
@@ -385,30 +594,123 @@ function handleRemoveMember(payload) {
       code: 'REMOVE_FAILED',
       message: 'Failed to remove ' + targetEmail + ' from Google Group: ' + err.message,
       email: targetEmail,
+      excludedFromFutureSync: false,
     };
   }
+
+  if (removalSucceeded) {
+    // Record exclusion in persistent store
+    addExcludedEmail(targetEmail);
+    return {
+      success: true,
+      message: removalMessage + ' Excluded from future automatic synchronizations.',
+      groupEmail: groupEmail,
+      email: targetEmail,
+      excludedFromFutureSync: true,
+    };
+  }
+
+  return {
+    success: false,
+    code: 'REMOVE_INCOMPLETE',
+    message: 'Could not complete removal operation.',
+    email: targetEmail,
+    excludedFromFutureSync: false,
+  };
 }
 
 /**
- * ACTION 4: healthCheck
- * Diagnostic function to verify Admin Directory API access
+ * ACTION 4: getExclusions
+ * Retrieves all currently excluded emails
+ */
+function handleGetExclusions(payload) {
+  const exclusions = getExcludedEmails();
+  return {
+    success: true,
+    count: exclusions.length,
+    exclusions: exclusions,
+    targetGroup: getGroupEmail(),
+  };
+}
+
+/**
+ * ACTION 5: addExclusion
+ * Explicitly excludes an email from future automatic syncs without attempting deletion
+ */
+function handleAddExclusion(payload) {
+  const targetEmail = normalizeEmail(payload.email || payload.targetEmail);
+  if (!targetEmail) {
+    return {
+      success: false,
+      code: 'EMAIL_REQUIRED',
+      message: 'A valid email address is required to add an exclusion.',
+    };
+  }
+
+  const saved = addExcludedEmail(targetEmail);
+  return {
+    success: saved,
+    email: targetEmail,
+    excludedFromFutureSync: true,
+    message: saved ? 'Email added to persistent exclusion list.' : 'Failed to save exclusion.',
+  };
+}
+
+/**
+ * ACTION 6: removeExclusion
+ * Removes an email from the exclusion list (Restores automatic sync eligibility)
+ */
+function handleRemoveExclusion(payload) {
+  const targetEmail = normalizeEmail(payload.email || payload.targetEmail);
+  if (!targetEmail) {
+    return {
+      success: false,
+      code: 'EMAIL_REQUIRED',
+      message: 'A valid email address is required to restore sync eligibility.',
+    };
+  }
+
+  const removed = removeExcludedEmail(targetEmail);
+  return {
+    success: removed,
+    email: targetEmail,
+    restored: true,
+    message: removed
+      ? 'Automatic sync restored for ' + targetEmail + '. The member will be eligible to be added during subsequent synchronizations.'
+      : 'Failed to update exclusion store.',
+  };
+}
+
+/**
+ * ACTION 7: healthCheck
+ * Diagnostic function to verify GroupsApp connectivity and access
  */
 function handleHealthCheck(payload) {
   const groupEmail = payload.groupEmail || getGroupEmail();
-  let adminDirectoryConnected = false;
-  let sampleCount = 0;
 
   try {
-    const testPage = AdminDirectory.Members.list(groupEmail, { maxResults: 1 });
-    adminDirectoryConnected = true;
-    sampleCount = testPage.members ? testPage.members.length : 0;
+    const group = GroupsApp.getGroupByEmail(groupEmail);
+    if (!group) {
+      return {
+        success: false,
+        status: 'GROUP_NOT_FOUND',
+        groupEmail: groupEmail,
+        message: 'Google Group not found or not accessible by this Google account: ' + groupEmail,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    const users = group.getUsers();
+    const count = users ? users.length : 0;
+    const exclusions = getExcludedEmails();
 
     return {
       success: true,
       status: 'ONLINE',
       groupEmail: groupEmail,
-      adminDirectoryConnected: true,
-      sampleMemberFound: sampleCount > 0,
+      memberCount: count,
+      excludedCount: exclusions.length,
+      groupsAppConnected: true,
       timestamp: new Date().toISOString(),
     };
   } catch (err) {
@@ -416,8 +718,8 @@ function handleHealthCheck(payload) {
       success: false,
       status: 'DEGRADED',
       groupEmail: groupEmail,
-      adminDirectoryConnected: false,
-      message: 'Admin Directory access warning: ' + err.message,
+      groupsAppConnected: false,
+      message: 'GroupsApp access error: ' + err.message,
       timestamp: new Date().toISOString(),
     };
   }
@@ -425,7 +727,41 @@ function handleHealthCheck(payload) {
 
 /**
  * ============================================================================
- * TIME-DRIVEN STANDALONE TRIGGER FUNCTION (Preserved)
+ * SAFE MANUAL DIAGNOSTIC TEST FUNCTION
+ * ============================================================================
+ * Run this function inside the Apps Script Editor to test reading members and exclusions.
+ * Logs ONLY success/failure, group email, and member count.
+ * NEVER logs secrets or the full member list.
+ */
+function testGoogleGroupAccess() {
+  const targetGroupEmail = getGroupEmail();
+  Logger.log('====================================================');
+  Logger.log('🔍 Testing Google Group access via GroupsApp...');
+  Logger.log('   Target Group: ' + targetGroupEmail);
+
+  try {
+    const group = GroupsApp.getGroupByEmail(targetGroupEmail);
+    if (!group) {
+      Logger.log('❌ Result: Group not found or not accessible by this Google account.');
+      return;
+    }
+
+    const users = group.getUsers();
+    const exclusions = getExcludedEmails();
+    Logger.log('✅ Result: SUCCESS!');
+    Logger.log('   Group Email:    ' + targetGroupEmail);
+    Logger.log('   Member Count:   ' + (users ? users.length : 0));
+    Logger.log('   Excluded Count: ' + exclusions.length);
+    Logger.log('====================================================');
+  } catch (err) {
+    Logger.log('❌ Result: FAILED — ' + err.toString());
+    Logger.log('====================================================');
+  }
+}
+
+/**
+ * ============================================================================
+ * TIME-DRIVEN STANDALONE TRIGGER FUNCTION (Exclusion-Aware)
  * ============================================================================
  */
 function syncGoogleGroupMembers() {
@@ -474,30 +810,42 @@ function syncGoogleGroupMembers() {
     return;
   }
 
-  // 2. Read existing members
+  // 2. Read existing members via GroupsApp
   const memberResult = handleGetGroupMembers({ groupEmail: targetGroupEmail });
-  const existingSet = new Set((memberResult.members || []).map((m) => m.email));
+  const existingSet = new Set((memberResult.members || []).map(function (m) { return m.email; }));
 
-  // 3. Filter missing
+  // 3. Read exclusion list
+  const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
+
+  // 4. Filter candidate emails (must NOT be in existing group AND must NOT be excluded)
   const missing = [];
+  let skippedExcludedCount = 0;
+
   for (let i = 0; i < eligibleEmails.length; i++) {
     const clean = normalizeEmail(eligibleEmails[i]);
-    if (clean && !existingSet.has(clean)) {
+    if (!clean) continue;
+
+    if (exclusionSet.has(clean)) {
+      skippedExcludedCount++;
+      continue;
+    }
+
+    if (!existingSet.has(clean)) {
       missing.push(clean);
     }
   }
 
-  Logger.log('📊 Eligible in backend: ' + eligibleEmails.length + ' | Existing in group: ' + existingSet.size + ' | Missing to add: ' + missing.length);
+  Logger.log('📊 Eligible in backend: ' + eligibleEmails.length + ' | Existing in group: ' + existingSet.size + ' | Excluded: ' + skippedExcludedCount + ' | Missing to add: ' + missing.length);
 
   if (missing.length === 0) {
-    Logger.log('🎉 Google Group is already 100% synchronized!');
+    Logger.log('🎉 Google Group is already 100% synchronized! (Zero pending additions)');
     return;
   }
 
-  // 4. Batch add missing
+  // 5. Batch add non-excluded missing candidates
   const syncRes = handleSyncMembers({ groupEmail: targetGroupEmail, emails: missing.slice(0, CONFIG.MAX_ADDITIONS_PER_RUN) });
 
-  Logger.log('🏁 Sync Finished — Added: ' + syncRes.addedCount + ' | Skipped: ' + syncRes.skippedCount + ' | Failed: ' + syncRes.failedCount);
+  Logger.log('🏁 Sync Finished — Added: ' + syncRes.addedCount + ' | Skipped: ' + syncRes.skippedCount + ' | Excluded: ' + syncRes.excludedCount + ' | Failed: ' + syncRes.failedCount);
 }
 
 /**
@@ -520,3 +868,4 @@ function testBackendConnectivity() {
     Logger.log('Connection failed: ' + e.toString());
   }
 }
+

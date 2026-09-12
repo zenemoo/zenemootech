@@ -160,33 +160,46 @@ export const getGoogleGroupOverview = async (req, res, next) => {
   try {
     const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
 
-    // 1. Fetch Supabase eligible emails in parallel with Google Group live members
-    const [supabaseResult, appsScriptResult] = await Promise.all([
+    // 1. Fetch Supabase eligible emails in parallel with Google Group live members and persistent exclusions
+    const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
       googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
+      googleAppsScriptService.getGoogleGroupExclusions(),
     ]);
 
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
-    const groupMembers = Array.isArray(appsScriptResult.members) ? appsScriptResult.members : [];
+    const groupMembers = Array.isArray(appsScriptMembersResult.members) ? appsScriptMembersResult.members : [];
     const groupMemberEmailSet = new Set(groupMembers.map((m) => m.email.toLowerCase()));
 
-    // 2. Compute intersection (synced) and diff (pending)
+    const exclusions = Array.isArray(appsScriptExclusionsResult.exclusions) ? appsScriptExclusionsResult.exclusions : [];
+    const excludedEmailSet = new Set(
+      exclusions.map((item) => normalizeAndValidateEmail(item.email || item)).filter(Boolean)
+    );
+
+    // 2. Compute intersection (synced), excluded, and diff (pending)
     let syncedCount = 0;
+    let eligibleExcludedCount = 0;
+    let pendingSyncCount = 0;
+
     for (const email of eligibleEmailSet) {
       if (groupMemberEmailSet.has(email)) {
         syncedCount++;
+      } else if (excludedEmailSet.has(email)) {
+        eligibleExcludedCount++;
+      } else {
+        pendingSyncCount++;
       }
     }
 
     const totalEligible = eligibleEmailSet.size;
     const groupMemberCount = groupMembers.length;
-    const pendingSyncCount = Math.max(0, totalEligible - syncedCount);
+    const excludedCount = excludedEmailSet.size;
     const externalMemberCount = Math.max(0, groupMemberCount - syncedCount);
 
     // 3. Determine connection status
     let connectionStatus = 'ONLINE';
-    if (!appsScriptResult.success) {
-      connectionStatus = appsScriptResult.message?.includes('not configured') ? 'NOT_CONFIGURED' : 'DISCONNECTED';
+    if (!appsScriptMembersResult.success) {
+      connectionStatus = appsScriptMembersResult.message?.includes('not configured') ? 'NOT_CONFIGURED' : 'DISCONNECTED';
     }
 
     return res.status(200).json({
@@ -197,10 +210,12 @@ export const getGoogleGroupOverview = async (req, res, next) => {
       groupMemberCount,
       syncedCount,
       pendingSyncCount,
+      excludedCount,
+      eligibleExcludedCount,
       externalMemberCount,
       sourceBreakdown: supabaseResult.sourceBreakdown,
       lastCheckTime: new Date().toISOString(),
-      appsScriptMessage: appsScriptResult.message || null,
+      appsScriptMessage: appsScriptMembersResult.message || null,
     });
   } catch (err) {
     console.error('getGoogleGroupOverview error:', err);
@@ -249,27 +264,112 @@ export const getGoogleGroupMembers = async (req, res, next) => {
 };
 
 /**
+ * GET /api/admin/google-group/exclusions
+ * Retrieves all currently excluded emails from Google Group automatic sync
+ */
+export const getGoogleGroupExclusions = async (req, res, next) => {
+  try {
+    const result = await googleAppsScriptService.getGoogleGroupExclusions();
+    const exclusions = Array.isArray(result.exclusions) ? result.exclusions : [];
+
+    return res.status(200).json({
+      success: true,
+      count: exclusions.length,
+      exclusions: exclusions,
+    });
+  } catch (err) {
+    console.error('getGoogleGroupExclusions error:', err);
+    next(err);
+  }
+};
+
+/**
+ * DELETE /api/admin/google-group/exclusions/:email
+ * Removes an email from persistent exclusion, restoring automatic sync eligibility
+ */
+export const restoreGoogleGroupExclusion = async (req, res, next) => {
+  try {
+    const targetEmail = normalizeAndValidateEmail(req.params.email || req.body.email);
+
+    if (!targetEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid email address is required to restore sync eligibility.',
+      });
+    }
+
+    const result = await googleAppsScriptService.removeGoogleGroupExclusion(targetEmail);
+
+    if (!result || result.success === false) {
+      return res.status(500).json({
+        success: false,
+        message: result?.message || `Failed to restore sync eligibility for ${targetEmail}`,
+      });
+    }
+
+    // Log Admin Audit record
+    try {
+      if (supabase) {
+        await supabase.from('admin_audit_logs').insert([{
+          event_type: 'GOOGLE_GROUP_EXCLUSION_RESTORED',
+          email: req.user?.email || 'admin@zenemoo.in',
+          ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
+          user_agent: req.headers['user-agent'] || 'admin_dashboard',
+          details: {
+            restoredEmail: targetEmail,
+            timestamp: new Date().toISOString(),
+          },
+          created_at: new Date().toISOString(),
+        }]);
+      }
+    } catch (auditErr) {
+      console.warn('[Google Group Audit Log Warning]:', auditErr.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Automatic sync restored for ${targetEmail}. The member will be eligible to be added during subsequent synchronizations.`,
+      email: targetEmail,
+      restored: true,
+    });
+  } catch (err) {
+    console.error('restoreGoogleGroupExclusion error:', err);
+    next(err);
+  }
+};
+
+/**
  * POST /api/admin/google-group/sync
- * Triggers interactive differential sync from Admin Panel
+ * Triggers interactive differential sync from Admin Panel (Exclusion-Aware)
  */
 export const triggerGoogleGroupSync = async (req, res, next) => {
   try {
     const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
 
-    // 1. Fetch current database emails and current group members
-    const [supabaseResult, appsScriptMembersResult] = await Promise.all([
+    // 1. Fetch current database emails, current group members, and exclusions in parallel
+    const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
       googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
+      googleAppsScriptService.getGoogleGroupExclusions(),
     ]);
 
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
     const existingGroupMembers = Array.isArray(appsScriptMembersResult.members) ? appsScriptMembersResult.members : [];
     const existingGroupEmailSet = new Set(existingGroupMembers.map((m) => m.email.toLowerCase()));
 
-    // 2. Identify missing candidates
+    const exclusions = Array.isArray(appsScriptExclusionsResult.exclusions) ? appsScriptExclusionsResult.exclusions : [];
+    const excludedEmailSet = new Set(
+      exclusions.map((item) => normalizeAndValidateEmail(item.email || item)).filter(Boolean)
+    );
+
+    // 2. Filter candidate emails (Exclude both existing members AND excluded emails)
     const missingCandidates = [];
+    let excludedCount = 0;
+
     for (const email of eligibleEmailSet) {
-      if (!existingGroupEmailSet.has(email)) {
+      if (excludedEmailSet.has(email)) {
+        excludedCount++;
+      } else if (!existingGroupEmailSet.has(email)) {
         missingCandidates.push(email);
       }
     }
@@ -280,6 +380,7 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
         message: 'Google Group is already 100% up-to-date with Supabase community records.',
         totalEligible: eligibleEmailSet.size,
         alreadySynced: existingGroupMembers.length,
+        excludedCount: excludedCount,
         addedCount: 0,
         skippedCount: 0,
         failedCount: 0,
@@ -287,7 +388,7 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
       });
     }
 
-    // 3. Dispatch batch addition to Google Apps Script
+    // 3. Dispatch batch addition of non-excluded candidates to Google Apps Script
     const syncResult = await googleAppsScriptService.syncGoogleGroupMembers(targetGroupEmail, missingCandidates);
 
     // 4. Log Admin Audit record
@@ -301,6 +402,7 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
           details: {
             groupEmail: targetGroupEmail,
             totalEligible: eligibleEmailSet.size,
+            excludedCount: excludedCount,
             missingCandidates: missingCandidates.length,
             addedCount: syncResult.addedCount || 0,
             skippedCount: syncResult.skippedCount || 0,
@@ -316,9 +418,10 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: `Sync complete: Added ${syncResult.addedCount || 0} new member(s).`,
+      message: `Sync complete: Added ${syncResult.addedCount || 0} new member(s) (${excludedCount} excluded email(s) skipped).`,
       totalEligible: eligibleEmailSet.size,
       missingCount: missingCandidates.length,
+      excludedCount: excludedCount,
       addedCount: syncResult.addedCount || 0,
       skippedCount: syncResult.skippedCount || 0,
       failedCount: syncResult.failedCount || 0,
@@ -332,7 +435,7 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
 
 /**
  * DELETE /api/admin/google-group/members/:email
- * Explicitly removes a single member from the Google Group upon admin confirmation
+ * Explicitly removes a single member from the Google Group AND persists manual exclusion
  */
 export const removeGoogleGroupMember = async (req, res, next) => {
   try {
@@ -346,7 +449,7 @@ export const removeGoogleGroupMember = async (req, res, next) => {
       });
     }
 
-    // Command Google Apps Script to delete member
+    // Command Google Apps Script to delete member & add exclusion
     const result = await googleAppsScriptService.removeGoogleGroupMember(targetGroupEmail, targetEmail);
 
     if (!result || result.success === false) {
@@ -360,13 +463,14 @@ export const removeGoogleGroupMember = async (req, res, next) => {
     try {
       if (supabase) {
         await supabase.from('admin_audit_logs').insert([{
-          event_type: 'GOOGLE_GROUP_MEMBER_REMOVED',
+          event_type: 'GOOGLE_GROUP_MEMBER_REMOVED_AND_EXCLUDED',
           email: req.user?.email || 'admin@zenemoo.in',
           ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
           user_agent: req.headers['user-agent'] || 'admin_dashboard',
           details: {
             groupEmail: targetGroupEmail,
             removedMemberEmail: targetEmail,
+            excludedFromFutureSync: true,
             timestamp: new Date().toISOString(),
           },
           created_at: new Date().toISOString(),
@@ -378,11 +482,13 @@ export const removeGoogleGroupMember = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: `Successfully removed ${targetEmail} from ${targetGroupEmail}`,
+      message: `Successfully removed ${targetEmail} from ${targetGroupEmail} and excluded from future automatic sync.`,
       email: targetEmail,
+      excludedFromFutureSync: true,
     });
   } catch (err) {
     console.error('removeGoogleGroupMember error:', err);
     next(err);
   }
 };
+

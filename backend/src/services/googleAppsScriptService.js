@@ -273,6 +273,88 @@ export const googleAppsScriptService = {
     }
   },
 
+  getGoogleGroupExclusions: async () => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured', exclusions: [], count: 0 };
+    }
+
+    try {
+      const separator = targetUrl.includes('?') ? '&' : '?';
+      const requestUrl = `${targetUrl}${separator}action=getExclusions&secret=${encodeURIComponent(secret)}`;
+
+      const res = await fetch(requestUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!res.ok) {
+        return { success: false, message: `Apps Script returned HTTP ${res.status}`, exclusions: [], count: 0 };
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn('⚠️ Google Apps Script getGoogleGroupExclusions error:', err.message);
+      return { success: false, message: err.message, exclusions: [], count: 0 };
+    }
+  },
+
+  addGoogleGroupExclusion: async (targetEmail) => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured' };
+    }
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret,
+          action: 'addExclusion',
+          email: targetEmail,
+        }),
+      });
+
+      if (!res.ok) {
+        return { success: false, message: `Apps Script returned HTTP ${res.status}` };
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn('⚠️ Google Apps Script addGoogleGroupExclusion error:', err.message);
+      return { success: false, message: err.message };
+    }
+  },
+
+  removeGoogleGroupExclusion: async (targetEmail) => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured' };
+    }
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret,
+          action: 'removeExclusion',
+          email: targetEmail,
+        }),
+      });
+
+      if (!res.ok) {
+        return { success: false, message: `Apps Script returned HTTP ${res.status}` };
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn('⚠️ Google Apps Script removeGoogleGroupExclusion error:', err.message);
+      return { success: false, message: err.message };
+    }
+  },
+
   googleGroupHealthCheck: async (groupEmail) => {
     const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
     const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
@@ -299,4 +381,5 @@ export const googleAppsScriptService = {
     }
   },
 };
+
 

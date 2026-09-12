@@ -615,10 +615,15 @@ export const googleGroupApi = {
     deduplicatedGet('/admin/google-group/overview'),
   getMembers: () =>
     deduplicatedGet('/admin/google-group/members'),
+  getExclusions: () =>
+    deduplicatedGet('/admin/google-group/exclusions'),
+  restoreExclusion: (email: string) =>
+    api.delete(`/admin/google-group/exclusions/${encodeURIComponent(email)}`),
   triggerSync: () =>
     api.post('/admin/google-group/sync'),
   removeMember: (email: string) =>
     api.delete(`/admin/google-group/members/${encodeURIComponent(email)}`),
 };
+
 
 
