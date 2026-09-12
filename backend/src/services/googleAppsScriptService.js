@@ -196,14 +196,13 @@ export const googleAppsScriptService = {
     }
 
     try {
-      const res = await fetch(targetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret,
-          action: 'getGroupMembers',
-          groupEmail: groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com',
-        }),
+      const emailParam = groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+      const separator = targetUrl.includes('?') ? '&' : '?';
+      const requestUrl = `${targetUrl}${separator}action=getGroupMembers&groupEmail=${encodeURIComponent(emailParam)}&secret=${encodeURIComponent(secret)}`;
+
+      const res = await fetch(requestUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
       });
 
       if (!res.ok) {
@@ -282,14 +281,13 @@ export const googleAppsScriptService = {
     }
 
     try {
-      const res = await fetch(targetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret,
-          action: 'healthCheck',
-          groupEmail: groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com',
-        }),
+      const emailParam = groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+      const separator = targetUrl.includes('?') ? '&' : '?';
+      const requestUrl = `${targetUrl}${separator}action=healthCheck&groupEmail=${encodeURIComponent(emailParam)}&secret=${encodeURIComponent(secret)}`;
+
+      const res = await fetch(requestUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
       });
 
       if (!res.ok) {

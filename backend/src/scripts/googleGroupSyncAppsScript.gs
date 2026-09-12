@@ -166,18 +166,78 @@ function doPost(e) {
 
 /**
  * ============================================================================
- * WEB APP ENTRYPOINT (GET) — Diagnostic / ping status
+ * WEB APP ENTRYPOINT (GET) — Handles read-only requests & diagnostic status
  * ============================================================================
  */
 function doGet(e) {
-  return jsonResponse({
-    success: true,
-    service: 'Zenemoo Google Group Management Web App',
-    status: 'ONLINE',
-    targetGroup: getGroupEmail(),
-    timestamp: new Date().toISOString(),
-  });
+  try {
+    const params = (e && e.parameter) ? e.parameter : {};
+    const action = params.action || 'ping';
+
+    // Ping / diagnostic status (no secret required for simple service verification)
+    if (action === 'ping' || !params.action) {
+      return jsonResponse({
+        success: true,
+        service: 'Zenemoo Google Group Management Web App',
+        status: 'ONLINE',
+        targetGroup: getGroupEmail(),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Authenticate Secret Token for all data-fetching actions
+    const expectedSecret = getSecret();
+    const providedSecret = params.secret || params.token || params.syncSecret;
+
+    if (!expectedSecret) {
+      return jsonResponse({
+        success: false,
+        code: 'CONFIG_ERROR',
+        message: 'GOOGLE_GROUP_SYNC_SECRET is not configured in Script Properties.',
+      });
+    }
+
+    if (!providedSecret || String(providedSecret).trim() !== String(expectedSecret).trim()) {
+      return jsonResponse({
+        success: false,
+        code: 'UNAUTHORIZED',
+        message: 'Unauthorized: Invalid or missing secret token.',
+      });
+    }
+
+    // Strictly allowed READ-ONLY actions via GET
+    if (action === 'getGroupMembers') {
+      return jsonResponse(handleGetGroupMembers(params));
+    }
+
+    if (action === 'healthCheck') {
+      return jsonResponse(handleHealthCheck(params));
+    }
+
+    // Explicitly prohibit mutating actions over GET
+    if (action === 'syncMembers' || action === 'removeMember') {
+      return jsonResponse({
+        success: false,
+        code: 'METHOD_NOT_ALLOWED',
+        message: 'Mutating actions ("' + action + '") must be executed via HTTP POST.',
+      });
+    }
+
+    return jsonResponse({
+      success: false,
+      code: 'UNKNOWN_ACTION',
+      message: 'Unsupported GET action "' + action + '". Supported read actions: getGroupMembers, healthCheck.',
+    });
+  } catch (err) {
+    Logger.log('❌ Uncaught doGet exception: ' + err.toString());
+    return jsonResponse({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: 'Internal execution exception: ' + err.message,
+    });
+  }
 }
+
 
 /**
  * ACTION 1: getGroupMembers
