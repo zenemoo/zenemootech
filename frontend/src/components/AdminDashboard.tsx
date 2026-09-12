@@ -372,16 +372,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     });
   };
 
+  // Support Tickets Paginated & Filtered State
   const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [supportTicketTotalCount, setSupportTicketTotalCount] = useState<number>(0);
+  const [supportTicketOpenCount, setSupportTicketOpenCount] = useState<number>(0);
+  const [supportTicketPage, setSupportTicketPage] = useState<number>(1);
+  const [supportTicketPageSize, setSupportTicketPageSize] = useState<number>(25);
+  const [supportTicketTotalPages, setSupportTicketTotalPages] = useState<number>(1);
+  const [supportTicketStatusFilter, setSupportTicketStatusFilter] = useState<string>('all');
+  const [supportTicketCategoryFilter, setSupportTicketCategoryFilter] = useState<string>('all');
+  const [supportTicketSearch, setSupportTicketSearch] = useState<string>('');
+  const [appliedSupportTicketSearch, setAppliedSupportTicketSearch] = useState<string>('');
+  const [isLoadingSupportTickets, setIsLoadingSupportTickets] = useState<boolean>(false);
   const [supportContributionsCount, setSupportContributionsCount] = useState<number>(0);
 
-  const loadSupportTickets = async () => {
+  const loadSupportTickets = async (
+    targetPage = supportTicketPage,
+    targetPageSize = supportTicketPageSize,
+    targetStatus = supportTicketStatusFilter,
+    targetCategory = supportTicketCategoryFilter,
+    targetSearch = appliedSupportTicketSearch
+  ) => {
+    setIsLoadingSupportTickets(true);
     try {
-      const res = await supportApi.getTickets();
-      if (res.data && res.data.success && Array.isArray(res.data.data)) {
-        setSupportTickets(res.data.data);
+      const res = await supportApi.getTickets({
+        page: targetPage,
+        pageSize: targetPageSize,
+        status: targetStatus === 'all' ? undefined : targetStatus,
+        category: targetCategory === 'all' ? undefined : targetCategory,
+        search: targetSearch.trim() || undefined,
+      });
+      const resData = res.data || res;
+      if (resData && (resData.success || Array.isArray(resData.data))) {
+        const ticketList = Array.isArray(resData.data) ? resData.data : [];
+        setSupportTickets(ticketList);
+        const total = typeof resData.total === 'number' ? resData.total : (resData.pagination?.total ?? ticketList.length);
+        const open = typeof resData.openCount === 'number' ? resData.openCount : (resData.pagination?.openCount ?? ticketList.filter((t: any) => (t.status || 'Open').toLowerCase() !== 'resolved').length);
+        const totalPgs = typeof resData.totalPages === 'number' ? resData.totalPages : (resData.pagination?.totalPages ?? Math.max(1, Math.ceil(total / targetPageSize)));
+
+        setSupportTicketTotalCount(total);
+        setSupportTicketOpenCount(open);
+        setSupportTicketTotalPages(totalPgs);
+        setSupportTicketPage(targetPage);
+        setSupportTicketPageSize(targetPageSize);
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn('Failed to load support tickets:', err);
+    } finally {
+      setIsLoadingSupportTickets(false);
+    }
   };
 
   const loadSupportContributionsCount = async () => {
@@ -2122,7 +2161,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       items: [
         { id: 'support-contributions', name: 'Support Contributions', icon: CreditCard, count: supportContributionsCount },
         { id: 'payment-links', name: 'Payment Links', icon: Link2 },
-        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTickets.filter((t) => (t.status || 'Open').toLowerCase() !== 'resolved').length },
+        { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTicketOpenCount },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
         { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
       ],
@@ -5820,30 +5859,199 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB 3.6: ENTERPRISE SUPPORT TICKETS MANAGEMENT */}
         {activeTab === 'support-tickets' && (
           <div className="space-y-6">
-            <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
-                  <LifeBuoy className="w-5 h-5 text-cyan-400" /> Enterprise Support Tickets Registry
-                </h3>
-                <p className="text-xs font-mono text-slate-400 mt-1">
-                  Internal helpdesk support tickets dispatched from HR, Team Member, and Guest portals.
-                </p>
+            {/* Top Metric Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Total Support Tickets</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold text-white block">{supportTicketTotalCount}</span>
+                    <span className="text-xs font-mono text-slate-400">Registered in DB</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-cyan-400 block">Server-Side Paginated</span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <LifeBuoy className="w-5 h-5" />
+                </div>
               </div>
-              <button
-                onClick={loadSupportTickets}
-                className="px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all shrink-0"
-              >
-                <RefreshCw className="w-4 h-4" /> Refresh Tickets ({supportTickets.length})
-              </button>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Actionable / Open Tickets</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold text-amber-400 block">{supportTicketOpenCount}</span>
+                    <span className="text-xs font-mono text-slate-400">Needs Resolution</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400 block">
+                    {supportTicketTotalCount - supportTicketOpenCount} Resolved
+                  </span>
+                </div>
+                <div className="p-3.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="modern-dashboard-card p-6 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Helpdesk Engine Status</span>
+                  <span className="text-sm font-bold text-white block font-mono">Supabase "support_tickets"</span>
+                  <span className="text-[10px] font-mono text-emerald-400 block">● Live Realtime Sync Active</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadSupportTickets(supportTicketPage, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, appliedSupportTicketSearch)}
+                  disabled={isLoadingSupportTickets}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isLoadingSupportTickets ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+              </div>
             </div>
 
-            {supportTickets.length === 0 ? (
+            {/* Header & Filter Controls Bar */}
+            <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
+                    <LifeBuoy className="w-5 h-5 text-cyan-400" /> Enterprise Support Tickets Registry
+                  </h3>
+                  <p className="text-xs font-mono text-slate-400 mt-1">
+                    Internal helpdesk support tickets dispatched from HR, Team Member, and Guest portals.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-slate-400">Rows:</span>
+                  <select
+                    value={supportTicketPageSize}
+                    onChange={(e) => {
+                      const newSize = Number(e.target.value);
+                      setSupportTicketPageSize(newSize);
+                      loadSupportTickets(1, newSize, supportTicketStatusFilter, supportTicketCategoryFilter, appliedSupportTicketSearch);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.05] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value={25} className="bg-[#090d16] text-white">25 / page</option>
+                    <option value={50} className="bg-[#090d16] text-white">50 / page</option>
+                    <option value={100} className="bg-[#090d16] text-white">100 / page</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Search and Filters Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2 border-t border-white/5">
+                {/* Search input */}
+                <div className="sm:col-span-6 relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by ticket ID, sender, email, subject..."
+                    value={supportTicketSearch}
+                    onChange={(e) => setSupportTicketSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setAppliedSupportTicketSearch(supportTicketSearch);
+                        loadSupportTickets(1, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, supportTicketSearch);
+                      }
+                    }}
+                    className="w-full pl-10 pr-20 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white font-mono text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {supportTicketSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportTicketSearch('');
+                          setAppliedSupportTicketSearch('');
+                          loadSupportTickets(1, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, '');
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedSupportTicketSearch(supportTicketSearch);
+                        loadSupportTickets(1, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, supportTicketSearch);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold hover:bg-cyan-500/30 cursor-pointer"
+                    >
+                      Find
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status filter */}
+                <div className="sm:col-span-3">
+                  <select
+                    value={supportTicketStatusFilter}
+                    onChange={(e) => {
+                      const newStatus = e.target.value;
+                      setSupportTicketStatusFilter(newStatus);
+                      loadSupportTickets(1, supportTicketPageSize, newStatus, supportTicketCategoryFilter, appliedSupportTicketSearch);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="all" className="bg-[#090d16] text-white">All Statuses</option>
+                    <option value="Open" className="bg-[#090d16] text-amber-300">● Open</option>
+                    <option value="In Progress" className="bg-[#090d16] text-cyan-300">● In Progress</option>
+                    <option value="Resolved" className="bg-[#090d16] text-emerald-300">● Resolved</option>
+                  </select>
+                </div>
+
+                {/* Category filter */}
+                <div className="sm:col-span-3">
+                  <select
+                    value={supportTicketCategoryFilter}
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      setSupportTicketCategoryFilter(newCat);
+                      loadSupportTickets(1, supportTicketPageSize, supportTicketStatusFilter, newCat, appliedSupportTicketSearch);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="all" className="bg-[#090d16] text-white">All Categories</option>
+                    <option value="Technical Issue" className="bg-[#090d16] text-white">Technical Issue</option>
+                    <option value="Account Access" className="bg-[#090d16] text-white">Account Access</option>
+                    <option value="Billing & Payments" className="bg-[#090d16] text-white">Billing & Payments</option>
+                    <option value="General Inquiry" className="bg-[#090d16] text-white">General Inquiry</option>
+                    <option value="HR & Roster" className="bg-[#090d16] text-white">HR & Roster</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Tickets Grid / Empty State */}
+            {isLoadingSupportTickets ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3 font-mono">
+                <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
+                <p className="text-xs text-slate-400">Loading support tickets from Supabase...</p>
+              </div>
+            ) : supportTickets.length === 0 ? (
               <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3 font-mono">
                 <LifeBuoy className="w-10 h-10 text-slate-500 mx-auto" />
-                <h4 className="text-base font-bold text-white">No Support Tickets Logged Yet</h4>
+                <h4 className="text-base font-bold text-white">No Support Tickets Found</h4>
                 <p className="text-xs text-slate-400">
-                  Tickets submitted via the Support Portal footer helpdesk will be stored and alerted here.
+                  {appliedSupportTicketSearch || supportTicketStatusFilter !== 'all' || supportTicketCategoryFilter !== 'all'
+                    ? 'No tickets match the current search filters. Try clearing filters.'
+                    : 'Tickets submitted via the Support Portal footer helpdesk will be stored and alerted here.'}
                 </p>
+                {(appliedSupportTicketSearch || supportTicketStatusFilter !== 'all' || supportTicketCategoryFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupportTicketSearch('');
+                      setAppliedSupportTicketSearch('');
+                      setSupportTicketStatusFilter('all');
+                      setSupportTicketCategoryFilter('all');
+                      loadSupportTickets(1, supportTicketPageSize, 'all', 'all', '');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 text-xs font-mono font-bold hover:bg-cyan-500/30 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    Clear All Filters
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 font-mono">
@@ -5853,7 +6061,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 hover:border-cyan-500/30 transition-all"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="px-3 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-xs">
                           🎫 {t.ticket_id || t.id}
                         </span>
@@ -5890,12 +6098,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         Submitted by: <strong className="text-white">{t.user_name || 'Staff Member'}</strong> (<span className="text-cyan-300">{t.user_email}</span>)
                       </div>
                       <div className="font-bold text-white text-sm tracking-wide pt-1">{t.subject}</div>
-                      <div className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                      <div className="text-xs text-slate-300 bg-white/[0.02] p-3 rounded-xl border border-white/5 whitespace-pre-wrap leading-relaxed">
                         {t.message}
                       </div>
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Server-Side Pagination Bar */}
+            {supportTicketTotalCount > 0 && (
+              <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs">
+                <div className="text-slate-400">
+                  Showing <span className="text-white font-bold">{((supportTicketPage - 1) * supportTicketPageSize) + 1}</span> to <span className="text-white font-bold">{Math.min(supportTicketPage * supportTicketPageSize, supportTicketTotalCount)}</span> of <span className="text-cyan-400 font-bold">{supportTicketTotalCount}</span> total tickets
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 mr-2">
+                    Page <span className="text-white font-bold">{supportTicketPage}</span> of <span className="text-white font-bold">{supportTicketTotalPages}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => loadSupportTickets(1, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, appliedSupportTicketSearch)}
+                    disabled={supportTicketPage <= 1 || isLoadingSupportTickets}
+                    className="px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="First Page"
+                  >
+                    &laquo;
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadSupportTickets(supportTicketPage - 1, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, appliedSupportTicketSearch)}
+                    disabled={supportTicketPage <= 1 || isLoadingSupportTickets}
+                    className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadSupportTickets(supportTicketPage + 1, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, appliedSupportTicketSearch)}
+                    disabled={supportTicketPage >= supportTicketTotalPages || isLoadingSupportTickets}
+                    className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadSupportTickets(supportTicketTotalPages, supportTicketPageSize, supportTicketStatusFilter, supportTicketCategoryFilter, appliedSupportTicketSearch)}
+                    disabled={supportTicketPage >= supportTicketTotalPages || isLoadingSupportTickets}
+                    className="px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    title="Last Page"
+                  >
+                    &raquo;
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -289,7 +289,8 @@ export const emailApi = {
 export const supportApi = {
   createTicket: (data: { category: string; subject: string; message: string; user_email?: string; user_name?: string }) =>
     api.post('/support/ticket', data),
-  getTickets: () => deduplicatedGet('/support/tickets'),
+  getTickets: (params?: { page?: number; pageSize?: number; limit?: number; status?: string; category?: string; search?: string }) =>
+    deduplicatedGet('/support/tickets', params ? { params } : undefined),
   updateStatus: (id: string, status: string) => api.put(`/support/ticket/${encodeURIComponent(id)}/status`, { status }),
   getContributions: (refresh?: boolean) =>
     deduplicatedGet('/support/contributions', refresh ? { params: { refresh: 'true' } } : undefined),
@@ -435,8 +436,18 @@ export const emailInboxApi = {
     mailbox?: string;
     category?: string;
     view?: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
+    sortBy?: 'newest' | 'oldest';
+    order?: 'asc' | 'desc';
     page?: number;
+    pageSize?: number;
     limit?: number;
+    fromSender?: string;
+    toRecipient?: string;
+    subjectQuery?: string;
+    dateRange?: string;
+    hasAttachment?: string;
+    starredFilter?: string;
+    labelFilter?: string;
   }) => api.get('/emails/inbox', { params }),
   getSentEmails: (params?: {
     search?: string;
@@ -444,7 +455,10 @@ export const emailInboxApi = {
     category?: string;
     status?: string;
     view?: 'all' | 'unread' | 'starred' | 'archived' | 'trash';
+    sortBy?: 'newest' | 'oldest';
+    order?: 'asc' | 'desc';
     page?: number;
+    pageSize?: number;
     limit?: number;
   }) => api.get('/emails/sent', { params }),
   sendEmail: async (payload: {
@@ -459,6 +473,7 @@ export const emailInboxApi = {
     subject: string;
     html: string;
     text?: string;
+    attachments?: any[];
   }) => {
     const requestData = {
       ...payload,
@@ -476,7 +491,7 @@ export const emailInboxApi = {
       throw err;
     }
   },
-  getEmailById: (id: string) => api.get(`/emails/inbox/${id}`),
+  getEmailById: (id: string) => api.get(`/emails/inbox/${encodeURIComponent(id)}`),
   updateEmailState: (
     id: string,
     data: {
@@ -486,10 +501,14 @@ export const emailInboxApi = {
       is_trashed?: boolean;
       category?: string;
     }
-  ) => api.patch(`/emails/inbox/${id}`, data),
-  deleteEmail: (id: string) => api.delete(`/emails/inbox/${id}`),
+  ) => api.patch(`/emails/inbox/${encodeURIComponent(id)}`, data),
+  deleteEmail: (id: string) => api.delete(`/emails/inbox/${encodeURIComponent(id)}`),
   getAttachmentUrl: (messageId: string, attachmentId: string) =>
-    api.get(`/emails/inbox/${messageId}/attachments/${attachmentId}/url`),
+    api.get(`/emails/inbox/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/url`),
+  getAttachmentDownloadUrl: (messageId: string, attachmentId: string, preview = false) => {
+    const baseUrl = api.defaults.baseURL || '/api';
+    return `${baseUrl}/emails/inbox/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}${preview ? '?preview=1' : ''}`;
+  },
   getEmailAddresses: () => api.get('/emails/addresses'),
   getStorageUsage: () => api.get('/emails/storage-usage'),
   addEmailAddress: (data: {

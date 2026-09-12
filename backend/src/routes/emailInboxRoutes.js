@@ -10,6 +10,7 @@ import {
   ingestCloudflareEmail,
   getEmailStorageUsage,
   sendInboxEmail,
+  getAttachmentDownload,
 } from '../controllers/emailInboxController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -34,18 +35,18 @@ router.get('/addresses', verifyToken, requireRole(['admin']), getEmailAddresses)
 router.post('/addresses', verifyToken, requireRole(['admin']), addEmailAddress);
 
 // Attachment Route Handlers
+router.get('/inbox/:id/attachments/:attachmentId/preview', verifyToken, requireRole(['admin']), (req, res, next) => {
+  req.query.preview = '1';
+  return getAttachmentDownload(req, res, next);
+});
 router.get('/inbox/:id/attachments/:attachmentId/url', verifyToken, requireRole(['admin']), (req, res) => {
   res.json({
     success: true,
-    url: `/api/emails/inbox/${req.params.id}`,
-    filename: 'attachment',
+    url: `/api/emails/inbox/${req.params.id}/attachments/${encodeURIComponent(req.params.attachmentId)}`,
+    previewUrl: `/api/emails/inbox/${req.params.id}/attachments/${encodeURIComponent(req.params.attachmentId)}?preview=1`,
+    filename: req.params.attachmentId,
   });
 });
-router.get('/inbox/:id/attachments/:attachmentId', verifyToken, requireRole(['admin']), (req, res) => {
-  res.json({
-    success: true,
-    message: 'Attachment file download handler',
-  });
-});
+router.get('/inbox/:id/attachments/:attachmentId', verifyToken, requireRole(['admin']), getAttachmentDownload);
 
 export default router;

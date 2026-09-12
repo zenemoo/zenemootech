@@ -222,20 +222,44 @@ export const addEmailAddress = async (req, res, next) => {
 
 /**
  * GET /api/emails/inbox
- * Get incoming emails list with search, category, mailbox filter, view filters, and pagination
+ * Get incoming emails list with search, category, mailbox filter, view filters, sorting, and server-side pagination
  */
 export const getIncomingEmails = async (req, res, next) => {
   try {
-    const { search, mailbox, category, view, page = 1, limit = 20 } = req.query;
+    const {
+      search,
+      mailbox,
+      category,
+      view = 'all',
+      sortBy = 'newest',
+      order,
+      page = 1,
+      pageSize,
+      limit = 20,
+      fromSender,
+      toRecipient,
+      subjectQuery,
+      dateRange,
+      hasAttachment,
+      starredFilter,
+      labelFilter,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 20));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
+    const isAscending = order === 'asc' || sortBy === 'oldest';
 
     if (supabase) {
-      const listColumns = 'id, message_id, mailbox_email, sender_name, sender_email, recipient_email, reply_to, subject, snippet, category, is_read, is_starred, is_archived, is_trashed, auth_results, received_at, created_at, updated_at';
+      // Egress-safe explicit columns (DO NOT load full body_html, body_text, or raw_headers in list query)
+      const listColumns = 'id, message_id, mailbox_email, sender_name, sender_email, recipient_email, reply_to, subject, snippet, category, is_read, is_starred, is_archived, is_trashed, attachments, auth_results, received_at, created_at, updated_at';
       let query = supabase.from('incoming_email_messages').select(listColumns, { count: 'exact' });
 
       // View filters
-      if (view === 'unread') {
+      if (view === 'unread' || starredFilter === 'unread') {
         query = query.eq('is_read', false).eq('is_trashed', false);
-      } else if (view === 'starred') {
+      } else if (view === 'starred' || starredFilter === 'starred') {
         query = query.eq('is_starred', true).eq('is_trashed', false);
       } else if (view === 'archived') {
         query = query.eq('is_archived', true).eq('is_trashed', false);
@@ -245,72 +269,164 @@ export const getIncomingEmails = async (req, res, next) => {
         query = query.eq('is_trashed', false).eq('is_archived', false);
       }
 
-      if (mailbox && mailbox !== 'all') {
-        query = query.eq('mailbox_email', mailbox);
+      if (starredFilter === 'not_starred') {
+        query = query.eq('is_starred', false);
       }
 
-      if (category && category !== 'all') {
-        query = query.eq('category', category);
+      if (mailbox && mailbox !== 'all') {
+        query = query.ilike('mailbox_email', mailbox.trim());
+      }
+
+      const targetCategory = labelFilter && labelFilter !== 'all' ? labelFilter : category;
+      if (targetCategory && targetCategory !== 'all') {
+        query = query.eq('category', targetCategory.trim());
+      }
+
+      if (fromSender && fromSender.trim()) {
+        const fTerm = `%${fromSender.trim()}%`;
+        query = query.or(`sender_name.ilike.${fTerm},sender_email.ilike.${fTerm}`);
+      }
+
+      if (toRecipient && toRecipient.trim()) {
+        query = query.ilike('recipient_email', `%${toRecipient.trim()}%`);
+      }
+
+      if (subjectQuery && subjectQuery.trim()) {
+        query = query.ilike('subject', `%${subjectQuery.trim()}%`);
       }
 
       if (search && search.trim()) {
         const term = `%${search.trim()}%`;
-        query = query.or(`sender_name.ilike.${term},sender_email.ilike.${term},subject.ilike.${term},snippet.ilike.${term},mailbox_email.ilike.${term}`);
+        query = query.or(`sender_name.ilike.${term},sender_email.ilike.${term},recipient_email.ilike.${term},subject.ilike.${term},snippet.ilike.${term},mailbox_email.ilike.${term},message_id.ilike.${term}`);
       }
 
-      const pageNum = parseInt(page, 10) || 1;
-      const limitNum = parseInt(limit, 10) || 20;
-      const from = (pageNum - 1) * limitNum;
-      const to = from + limitNum - 1;
+      if (dateRange && dateRange !== 'all') {
+        const now = new Date();
+        if (dateRange === 'today') {
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+          query = query.gte('received_at', startOfDay);
+        } else if (dateRange === 'yesterday') {
+          const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString();
+          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+          query = query.gte('received_at', yesterdayStart).lt('received_at', todayStart);
+        } else if (dateRange === '7days') {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          query = query.gte('received_at', sevenDaysAgo);
+        } else if (dateRange === '30days') {
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+          query = query.gte('received_at', thirtyDaysAgo);
+        }
+      }
 
-      query = query.order('received_at', { ascending: false }).range(from, to);
+      query = query.order('received_at', { ascending: isAscending }).range(from, to);
 
-      const { data: emails, count, error } = await query;
+      // Execute paginated list query + parallel lightweight head count for unread
+      const [listResult, unreadResult] = await Promise.all([
+        query,
+        supabase
+          .from('incoming_email_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_read', false)
+          .eq('is_trashed', false)
+          .eq('is_archived', false),
+      ]);
 
-      if (!error && emails) {
+      const { data: dbEmails, count, error } = listResult;
+
+      if (!error && Array.isArray(dbEmails)) {
+        // Strip heavy base64 data from attachments in list view for zero egress waste
+        const sanitizedEmails = dbEmails.map((e) => {
+          let atts = [];
+          if (Array.isArray(e.attachments)) {
+            atts = e.attachments.map((a, idx) => ({
+              id: a.id || `att_${idx}`,
+              filename: a.filename || a.name || 'attachment',
+              contentType: a.contentType || a.type || 'application/octet-stream',
+              size: typeof a.size === 'number' ? a.size : (a.content ? Math.round(a.content.length * 0.75) : 1024),
+            }));
+          }
+          return {
+            ...e,
+            attachments: atts,
+          };
+        });
+
+        const total = typeof count === 'number' ? count : dbEmails.length;
+        const unreadTotal = typeof unreadResult.count === 'number' ? unreadResult.count : 0;
+        const totalPages = Math.max(1, Math.ceil(total / limitNum));
+
         return res.json({
           success: true,
-          emails,
-          total: count || 0,
+          emails: sanitizedEmails,
+          total,
+          unreadCount: unreadTotal,
           page: pageNum,
+          pageSize: limitNum,
           limit: limitNum,
+          totalPages,
+          pagination: {
+            page: pageNum,
+            pageSize: limitNum,
+            total,
+            unreadCount: unreadTotal,
+            totalPages,
+          },
         });
       }
     }
 
     // In-Memory Fallback
     let result = [...inMemoryEmails];
-    if (view === 'unread') result = result.filter((e) => !e.is_read && !e.is_trashed);
-    else if (view === 'starred') result = result.filter((e) => e.is_starred && !e.is_trashed);
+    if (view === 'unread' || starredFilter === 'unread') result = result.filter((e) => !e.is_read && !e.is_trashed);
+    else if (view === 'starred' || starredFilter === 'starred') result = result.filter((e) => e.is_starred && !e.is_trashed);
     else if (view === 'archived') result = result.filter((e) => e.is_archived && !e.is_trashed);
     else if (view === 'trash') result = result.filter((e) => e.is_trashed);
     else result = result.filter((e) => !e.is_trashed && !e.is_archived);
 
-    if (mailbox && mailbox !== 'all') result = result.filter((e) => e.mailbox_email === mailbox);
-    if (category && category !== 'all') result = result.filter((e) => e.category === category);
+    if (mailbox && mailbox !== 'all') result = result.filter((e) => (e.mailbox_email || '').toLowerCase() === mailbox.toLowerCase());
+    const targetCategory = labelFilter && labelFilter !== 'all' ? labelFilter : category;
+    if (targetCategory && targetCategory !== 'all') result = result.filter((e) => e.category === targetCategory);
 
     if (search && search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter(
         (e) =>
-          e.sender_name.toLowerCase().includes(q) ||
-          e.sender_email.toLowerCase().includes(q) ||
-          e.subject.toLowerCase().includes(q) ||
-          e.snippet.toLowerCase().includes(q)
+          (e.sender_name || '').toLowerCase().includes(q) ||
+          (e.sender_email || '').toLowerCase().includes(q) ||
+          (e.recipient_email || '').toLowerCase().includes(q) ||
+          (e.subject || '').toLowerCase().includes(q) ||
+          (e.snippet || '').toLowerCase().includes(q) ||
+          (e.message_id || '').toLowerCase().includes(q)
       );
     }
 
-    const pageNum = parseInt(page, 10) || 1;
-    const limitNum = parseInt(limit, 10) || 20;
-    const from = (pageNum - 1) * limitNum;
+    if (isAscending) {
+      result.sort((a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime());
+    } else {
+      result.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+    }
+
+    const total = result.length;
+    const unreadCount = inMemoryEmails.filter((e) => !e.is_read && !e.is_trashed && !e.is_archived).length;
     const sliced = result.slice(from, from + limitNum);
+    const totalPages = Math.max(1, Math.ceil(total / limitNum));
 
     return res.json({
       success: true,
       emails: sliced,
-      total: result.length,
+      total,
+      unreadCount,
       page: pageNum,
+      pageSize: limitNum,
       limit: limitNum,
+      totalPages,
+      pagination: {
+        page: pageNum,
+        pageSize: limitNum,
+        total,
+        unreadCount,
+        totalPages,
+      },
     });
   } catch (err) {
     next(err);
@@ -975,8 +1091,8 @@ export const getSentEmails = async (req, res, next) => {
       );
     }
 
-    const pageNum = parseInt(page, 10) || 1;
-    const limitNum = parseInt(limit, 10) || 20;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(req.query.pageSize || limit, 10) || 20));
     const totalCount = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
 
@@ -986,10 +1102,93 @@ export const getSentEmails = async (req, res, next) => {
     return res.json({
       success: true,
       count: totalCount,
+      total: totalCount,
       page: pageNum,
+      pageSize: limitNum,
       limit: limitNum,
       totalPages,
       emails: paginated,
+      pagination: {
+        page: pageNum,
+        pageSize: limitNum,
+        total: totalCount,
+        totalPages,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/emails/inbox/:id/attachments/:attachmentId
+ * Stream attachment download or inline preview with secure headers
+ */
+export const getAttachmentDownload = async (req, res, next) => {
+  try {
+    const { id, attachmentId } = req.params;
+    const { preview, inline } = req.query;
+    const isInline = inline === '1' || inline === 'true' || preview === '1' || preview === 'true';
+
+    let email = null;
+    if (supabase) {
+      const { data } = await supabase.from('incoming_email_messages').select('*').eq('id', id).maybeSingle();
+      email = data;
+    }
+    if (!email) {
+      email = inMemoryEmails.find((e) => e.id === id || e.message_id === id);
+    }
+    if (!email) {
+      try {
+        if (supabase) {
+          const { data: sentMsg } = await supabase.from('email_history').select('*').eq('id', id).maybeSingle();
+          if (sentMsg) {
+            email = {
+              attachments: Array.isArray(sentMsg.attachments_meta) ? sentMsg.attachments_meta : [],
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!email || !Array.isArray(email.attachments)) {
+      return res.status(404).json({ success: false, message: 'Email or attachments not found.' });
+    }
+
+    // Match attachment by id, filename, or index
+    const att = email.attachments.find((a, idx) =>
+      String(a.id) === String(attachmentId) ||
+      a.filename === attachmentId ||
+      String(idx) === String(attachmentId)
+    );
+
+    if (!att) {
+      return res.status(404).json({ success: false, message: 'Attachment not found in email.' });
+    }
+
+    const filename = att.filename || att.name || 'attachment';
+    const contentType = att.contentType || att.type || 'application/octet-stream';
+    const disposition = isInline ? 'inline' : 'attachment';
+
+    // If attachment has direct URL
+    if (att.url && typeof att.url === 'string' && (att.url.startsWith('http://') || att.url.startsWith('https://'))) {
+      return res.redirect(att.url);
+    }
+
+    // If attachment has base64 content
+    if (att.content && typeof att.content === 'string') {
+      const cleanBase64 = att.content.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+      const fileBuffer = Buffer.from(cleanBase64, 'base64');
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Length', fileBuffer.length);
+      return res.send(fileBuffer);
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: 'Attachment content is not available or has expired from cache.',
     });
   } catch (err) {
     next(err);

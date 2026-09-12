@@ -146,7 +146,8 @@ export const getSupportTickets = async (req, res, next) => {
     const from = (pageNum - 1) * limitNum;
     const to = from + limitNum - 1;
 
-    const LIST_COLUMNS = 'id, ticket_id, name, email, subject, category, priority, status, created_at, updated_at';
+    // Actual columns in Supabase support_tickets table (Zero non-existent column references!)
+    const LIST_COLUMNS = 'id, ticket_id, user_id, user_email, user_name, category, subject, message, status, created_at, updated_at';
 
     if (supabase) {
       try {
@@ -162,23 +163,41 @@ export const getSupportTickets = async (req, res, next) => {
 
         if (search && search.trim()) {
           const q = search.trim();
-          query = query.or(`ticket_id.ilike.%${q}%,name.ilike.%${q}%,email.ilike.%${q}%,subject.ilike.%${q}%`);
+          query = query.or(`ticket_id.ilike.%${q}%,user_name.ilike.%${q}%,user_email.ilike.%${q}%,subject.ilike.%${q}%,message.ilike.%${q}%`);
         }
 
         query = query.order('created_at', { ascending: false }).range(from, to);
 
-        const { data: dbTickets, count: totalCount, error } = await query;
+        // Fetch paginated records and parallel lightweight head count for unresolved tickets
+        const [pageResult, openCountResult] = await Promise.all([
+          query,
+          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).neq('status', 'Resolved'),
+        ]);
+
+        const { data: dbTickets, count: totalCount, error } = pageResult;
 
         if (!error && Array.isArray(dbTickets)) {
           const total = totalCount || dbTickets.length;
+          const openCount = typeof openCountResult.count === 'number'
+            ? openCountResult.count
+            : dbTickets.filter((t) => (t.status || '').toLowerCase() !== 'resolved').length;
+
           return res.json({
             success: true,
             count: dbTickets.length,
             total,
+            openCount,
             page: pageNum,
             pageSize: limitNum,
             totalPages: Math.max(1, Math.ceil(total / limitNum)),
             data: dbTickets,
+            pagination: {
+              page: pageNum,
+              pageSize: limitNum,
+              total,
+              openCount,
+              totalPages: Math.max(1, Math.ceil(total / limitNum)),
+            },
           });
         }
       } catch (dbErr) {
@@ -198,24 +217,34 @@ export const getSupportTickets = async (req, res, next) => {
       const q = search.toLowerCase().trim();
       filtered = filtered.filter(
         (t) =>
-          (t.name || '').toLowerCase().includes(q) ||
-          (t.email || '').toLowerCase().includes(q) ||
+          (t.user_name || t.name || '').toLowerCase().includes(q) ||
+          (t.user_email || t.email || '').toLowerCase().includes(q) ||
           (t.subject || '').toLowerCase().includes(q) ||
+          (t.message || '').toLowerCase().includes(q) ||
           (t.ticket_id || '').toLowerCase().includes(q)
       );
     }
 
     const total = filtered.length;
+    const openCount = filtered.filter((t) => (t.status || '').toLowerCase() !== 'resolved').length;
     const paginated = filtered.slice(from, to + 1);
 
     return res.json({
       success: true,
       count: paginated.length,
       total,
+      openCount,
       page: pageNum,
       pageSize: limitNum,
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
       data: paginated,
+      pagination: {
+        page: pageNum,
+        pageSize: limitNum,
+        total,
+        openCount,
+        totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      },
     });
   } catch (err) {
     next(err);
