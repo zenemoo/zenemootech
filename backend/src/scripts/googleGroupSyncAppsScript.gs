@@ -869,3 +869,114 @@ function testBackendConnectivity() {
   }
 }
 
+/**
+ * ============================================================================
+ * AUTOMATIC DAILY TRIGGER SETUP & MANAGEMENT
+ * ============================================================================
+ */
+
+/**
+ * Sets up a time-driven trigger to automatically execute syncGoogleGroupMembers()
+ * once every day. Prevents duplicate triggers and ensures exactly ONE daily trigger exists.
+ */
+function setupDailyGoogleGroupSyncTrigger() {
+  Logger.log('====================================================');
+  Logger.log('⚙️ [TRIGGER SETUP] Configuring Daily Google Group Sync Trigger...');
+  Logger.log('====================================================');
+
+  const handlerFunctionName = 'syncGoogleGroupMembers';
+  const allTriggers = ScriptApp.getProjectTriggers();
+  let existingTriggerCount = 0;
+  let activeTrigger = null;
+
+  // 1. Identify all existing triggers for syncGoogleGroupMembers
+  for (let i = 0; i < allTriggers.length; i++) {
+    const trigger = allTriggers[i];
+    if (trigger.getHandlerFunction() === handlerFunctionName) {
+      existingTriggerCount++;
+      if (!activeTrigger) {
+        activeTrigger = trigger;
+      } else {
+        // Delete redundant duplicate trigger
+        Logger.log('🧹 Removing duplicate trigger ID: ' + trigger.getUniqueId());
+        ScriptApp.deleteTrigger(trigger);
+      }
+    }
+  }
+
+  // 2. If exactly one trigger already exists, log and keep it
+  if (existingTriggerCount >= 1 && activeTrigger) {
+    Logger.log('✅ Daily sync trigger is ALREADY configured and active.');
+    Logger.log('   Handler Function: ' + handlerFunctionName);
+    Logger.log('   Trigger ID:       ' + activeTrigger.getUniqueId());
+    Logger.log('   Schedule:         Daily (every 24 hours)');
+    Logger.log('====================================================');
+    return {
+      status: 'ALREADY_EXISTS',
+      message: 'Trigger already exists and is active.',
+      triggerId: activeTrigger.getUniqueId(),
+    };
+  }
+
+  // 3. If no trigger exists, create exactly ONE daily time-driven trigger
+  try {
+    const newTrigger = ScriptApp.newTrigger(handlerFunctionName)
+      .timeBased()
+      .everyDays(1)
+      .atHour(2) // Runs daily between 2:00 AM - 3:00 AM script timezone
+      .create();
+
+    Logger.log('🎉 SUCCESS: Created 1 daily automatic sync trigger.');
+    Logger.log('   Handler Function: ' + handlerFunctionName);
+    Logger.log('   Trigger ID:       ' + newTrigger.getUniqueId());
+    Logger.log('   Schedule:         Daily (every 1 day at ~2:00 AM)');
+    Logger.log('====================================================');
+
+    return {
+      status: 'CREATED',
+      message: 'Daily sync trigger successfully created.',
+      triggerId: newTrigger.getUniqueId(),
+    };
+  } catch (err) {
+    Logger.log('❌ FAILED to create daily sync trigger: ' + err.toString());
+    Logger.log('====================================================');
+    return {
+      status: 'ERROR',
+      message: 'Failed to create trigger: ' + err.message,
+    };
+  }
+}
+
+/**
+ * Removes all active triggers for syncGoogleGroupMembers().
+ * Safe cleanup utility for administrators.
+ */
+function removeGoogleGroupSyncTriggers() {
+  Logger.log('====================================================');
+  Logger.log('🗑️ [TRIGGER CLEANUP] Removing Google Group Sync Triggers...');
+  Logger.log('====================================================');
+
+  const handlerFunctionName = 'syncGoogleGroupMembers';
+  const allTriggers = ScriptApp.getProjectTriggers();
+  let removedCount = 0;
+
+  for (let i = 0; i < allTriggers.length; i++) {
+    const trigger = allTriggers[i];
+    if (trigger.getHandlerFunction() === handlerFunctionName) {
+      const id = trigger.getUniqueId();
+      ScriptApp.deleteTrigger(trigger);
+      Logger.log('   Removed trigger ID: ' + id);
+      removedCount++;
+    }
+  }
+
+  Logger.log('✅ Cleanup complete. Total triggers removed: ' + removedCount);
+  Logger.log('====================================================');
+
+  return {
+    status: 'SUCCESS',
+    removedCount: removedCount,
+  };
+}
+
+

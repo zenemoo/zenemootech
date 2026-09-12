@@ -55,74 +55,76 @@ const addEmailToSet = (emailSet, emailValue, sourceName, breakdownCounts) => {
 /**
  * Core query engine: Aggregates eligible community emails with explicit column selection only.
  * Guaranteed zero SELECT-ALL full-table wildcards.
+ * Restricts eligibility strictly to:
+ * 1. subscribers (email)
+ * 2. talent_registrations (email)
+ * 3. opportunity_applications (applicant_email, referrer_email)
  */
 export const fetchEligibleEmailsFromSupabase = async () => {
   const emailSet = new Set();
+  const emailSourcesMap = new Map(); // normalized email -> Set<string>
   const sourceBreakdown = {
     subscribers: { totalProcessed: 0, uniqueAdded: 0 },
     talent_registrations: { totalProcessed: 0, uniqueAdded: 0 },
     opportunity_applications: { totalProcessed: 0, uniqueAdded: 0 },
-    call_bookings: { totalProcessed: 0, uniqueAdded: 0 },
-    contacts: { totalProcessed: 0, uniqueAdded: 0 },
-    talent_team_members: { totalProcessed: 0, uniqueAdded: 0 },
-    support_tickets: { totalProcessed: 0, uniqueAdded: 0 },
-    support_payments: { totalProcessed: 0, uniqueAdded: 0 },
   };
 
   if (!supabase) {
-    return { emailSet, sourceBreakdown, error: 'Supabase client not initialized' };
+    return { emailSet, emailSourcesMap, sourceBreakdown, error: 'Supabase client not initialized' };
   }
 
   const [
     subscribersRes,
     talentRes,
     applicationsRes,
-    bookingsRes,
-    contactsRes,
-    talentTeamRes,
-    supportTicketsRes,
-    supportPaymentsRes,
   ] = await Promise.allSettled([
     supabase.from('subscribers').select('email').neq('status', 'unsubscribed'),
     supabase.from('talent_registrations').select('email').eq('is_archived', false).neq('status', 'banned').neq('status', 'rejected'),
     supabase.from('opportunity_applications').select('applicant_email, referrer_email').neq('status', 'rejected'),
-    supabase.from('call_bookings').select('email').neq('status', 'cancelled').neq('status', 'no_show'),
-    supabase.from('contacts').select('email'),
-    supabase.from('talent_team_members').select('email').neq('status', 'inactive'),
-    supabase.from('support_tickets').select('user_email'),
-    supabase.from('support_payments').select('customer_email').eq('status', 'SUCCESS'),
   ]);
 
+  const addEmailWithSource = (emailValue, sourceKey, detailedLabel) => {
+    const normalized = normalizeAndValidateEmail(emailValue);
+    if (normalized) {
+      const beforeSize = emailSet.size;
+      emailSet.add(normalized);
+      if (sourceBreakdown[sourceKey]) {
+        sourceBreakdown[sourceKey].totalProcessed++;
+        if (emailSet.size > beforeSize) {
+          sourceBreakdown[sourceKey].uniqueAdded++;
+        }
+      }
+      if (!emailSourcesMap.has(normalized)) {
+        emailSourcesMap.set(normalized, new Set());
+      }
+      emailSourcesMap.get(normalized).add(detailedLabel);
+    }
+  };
+
   if (subscribersRes.status === 'fulfilled' && subscribersRes.value?.data) {
-    for (const row of subscribersRes.value.data) addEmailToSet(emailSet, row.email, 'subscribers', sourceBreakdown);
+    for (const row of subscribersRes.value.data) {
+      addEmailWithSource(row.email, 'subscribers', 'Subscribers');
+    }
   }
   if (talentRes.status === 'fulfilled' && talentRes.value?.data) {
-    for (const row of talentRes.value.data) addEmailToSet(emailSet, row.email, 'talent_registrations', sourceBreakdown);
+    for (const row of talentRes.value.data) {
+      addEmailWithSource(row.email, 'talent_registrations', 'Talent Registrations');
+    }
   }
   if (applicationsRes.status === 'fulfilled' && applicationsRes.value?.data) {
     for (const row of applicationsRes.value.data) {
-      if (row.applicant_email) addEmailToSet(emailSet, row.applicant_email, 'opportunity_applications', sourceBreakdown);
-      if (row.referrer_email) addEmailToSet(emailSet, row.referrer_email, 'opportunity_applications', sourceBreakdown);
+      if (row.applicant_email) {
+        addEmailWithSource(row.applicant_email, 'opportunity_applications', 'Opportunity Applications — Applicant');
+      }
+      if (row.referrer_email) {
+        addEmailWithSource(row.referrer_email, 'opportunity_applications', 'Opportunity Applications — Referrer');
+      }
     }
   }
-  if (bookingsRes.status === 'fulfilled' && bookingsRes.value?.data) {
-    for (const row of bookingsRes.value.data) addEmailToSet(emailSet, row.email, 'call_bookings', sourceBreakdown);
-  }
-  if (contactsRes.status === 'fulfilled' && contactsRes.value?.data) {
-    for (const row of contactsRes.value.data) addEmailToSet(emailSet, row.email, 'contacts', sourceBreakdown);
-  }
-  if (talentTeamRes.status === 'fulfilled' && talentTeamRes.value?.data) {
-    for (const row of talentTeamRes.value.data) addEmailToSet(emailSet, row.email, 'talent_team_members', sourceBreakdown);
-  }
-  if (supportTicketsRes.status === 'fulfilled' && supportTicketsRes.value?.data) {
-    for (const row of supportTicketsRes.value.data) addEmailToSet(emailSet, row.user_email, 'support_tickets', sourceBreakdown);
-  }
-  if (supportPaymentsRes.status === 'fulfilled' && supportPaymentsRes.value?.data) {
-    for (const row of supportPaymentsRes.value.data) addEmailToSet(emailSet, row.customer_email, 'support_payments', sourceBreakdown);
-  }
 
-  return { emailSet, sourceBreakdown };
+  return { emailSet, emailSourcesMap, sourceBreakdown };
 };
+
 
 /**
  * GET /api/admin/google-group/eligible-emails
@@ -231,24 +233,47 @@ export const getGoogleGroupMembers = async (req, res, next) => {
   try {
     const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
 
-    const [supabaseResult, appsScriptResult] = await Promise.all([
+    const [supabaseResult, appsScriptResult, exclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
       googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
+      googleAppsScriptService.getGoogleGroupExclusions(),
     ]);
 
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
+    const emailSourcesMap = supabaseResult.emailSourcesMap || new Map();
     const rawMembers = Array.isArray(appsScriptResult.members) ? appsScriptResult.members : [];
 
-    // Tag each member with sync origin
-    const enrichedMembers = rawMembers.map((m) => ({
-      id: m.id || null,
-      email: m.email,
-      role: m.role || 'MEMBER',
-      type: m.type || 'USER',
-      status: m.status || 'ACTIVE',
-      deliverySettings: m.deliverySettings || 'ALL_MAIL',
-      isSupabaseEligible: eligibleEmailSet.has(m.email.toLowerCase()),
-    }));
+    const rawExclusions = Array.isArray(exclusionsResult?.exclusions) ? exclusionsResult.exclusions : [];
+    const exclusionMap = new Map();
+    for (const item of rawExclusions) {
+      const email = normalizeAndValidateEmail(typeof item === 'string' ? item : item?.email);
+      if (email) {
+        exclusionMap.set(email, typeof item === 'object' && item.excludedAt ? item.excludedAt : new Date().toISOString());
+      }
+    }
+
+    // Tag each member with sync origin, approved sources, exclusion state, and metadata
+    const enrichedMembers = rawMembers.map((m) => {
+      const normEmail = normalizeAndValidateEmail(m.email) || m.email.toLowerCase();
+      const sourcesSet = emailSourcesMap.get(normEmail);
+      const sources = sourcesSet ? Array.from(sourcesSet) : [];
+      const isExcluded = exclusionMap.has(normEmail);
+      const excludedAt = exclusionMap.get(normEmail) || null;
+
+      return {
+        id: m.id || null,
+        email: m.email,
+        role: m.role || 'MEMBER',
+        type: m.type || 'USER',
+        status: m.status || 'ACTIVE',
+        deliverySettings: m.deliverySettings || 'ALL_MAIL',
+        isSupabaseEligible: eligibleEmailSet.has(normEmail),
+        sources,
+        isExcluded,
+        excludedAt,
+        joinedAt: m.joinedAt || m.createdTime || null,
+      };
+    });
 
     return res.status(200).json({
       success: true,
