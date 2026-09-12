@@ -70,7 +70,7 @@ export const getStoredCandidateApplications = async (opportunity_id?: string): P
   // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'))
   if (supabase) {
     try {
-      const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, status, email_status, acceptance_email_status, acceptance_email_sent_at, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, terms_accepted, terms_accepted_at, terms_version, admin_notes, sync_status, created_at, updated_at';
+      const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, answers, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
       let query = supabase.from('opportunity_applications').select(explicitCols).order('created_at', { ascending: false });
       if (opportunity_id) {
         query = query.eq('opportunity_id', opportunity_id);

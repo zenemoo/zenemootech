@@ -1047,8 +1047,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           await loadSubscribers();
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_applications' }, () => {
-        debounceTrigger('candidate_applications', async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opportunity_applications' }, () => {
+        debounceTrigger('opportunity_applications', async () => {
           const apps = await getStoredCandidateApplications();
           if (isMounted) setAllCandidateApps(apps);
         });
