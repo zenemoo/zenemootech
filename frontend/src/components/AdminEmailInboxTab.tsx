@@ -40,12 +40,19 @@ import {
   FileSpreadsheet,
   FileArchive,
   Image as ImageIcon,
+  MoreVertical,
+  ArrowLeft,
+  Filter,
 } from 'lucide-react';
-import DOMPurify from 'dompurify';
 import { emailInboxApi } from '../services/api';
 import { AdminEmailSettingsModal } from './AdminEmailSettingsModal';
 import { EmailComposeModal } from './EmailComposeModal';
-import { decodeMimeHeader, normalizeMojibake } from '../utils/emailEncodingHelper';
+import {
+  decodeMimeHeader,
+  normalizeMojibake,
+  normalizeEmailBody,
+  NormalizedEmailBody,
+} from '../utils/emailEncodingHelper';
 
 export interface EmailMessageRecord {
   id: string;
@@ -85,6 +92,8 @@ export interface EmailMessageRecord {
 export type InboxView =
   | { type: 'mailbox'; value: string }
   | { type: 'label'; value: string };
+
+export type MobileNavState = 'mailboxes' | 'list' | 'detail';
 
 export interface AdvancedFiltersState {
   fromSender: string;
@@ -134,103 +143,26 @@ interface AdminEmailInboxTabProps {
   onUnreadCountChange?: (count: number) => void;
 }
 
-// ============================================================================
-// DOMPURIFY SAFE EMAIL SANITIZER
-// ============================================================================
-function sanitizeEmailHtmlWithDomPurify(rawHtml: string): string {
-  if (!rawHtml) return '';
-
-  const clean = DOMPurify.sanitize(rawHtml, {
-    USE_PROFILES: { html: true },
-    ADD_ATTR: ['target', 'rel'],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
-    ALLOW_DATA_ATTR: false,
-  });
-
-  try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(clean, 'text/html');
-
-    // Force external links to open safely
-    const links = doc.querySelectorAll('a');
-    links.forEach((a) => {
-      a.setAttribute('target', '_blank');
-      a.setAttribute('rel', 'noopener noreferrer');
-      a.classList.add('text-cyan-400', 'hover:underline');
-      const href = a.getAttribute('href') || '';
-      if (/^(javascript|vbscript|data):/i.test(href)) {
-        a.setAttribute('href', '#blocked-link');
-      }
-    });
-
-    // Make all images responsive with lazy loading
-    const images = doc.querySelectorAll('img');
-    images.forEach((img) => {
-      img.style.maxWidth = '100%';
-      img.style.height = 'auto';
-      img.setAttribute('loading', 'lazy');
-      img.classList.add('rounded-lg', 'my-2');
-    });
-
-    // Wrap tables in responsive horizontal scroll wrappers
-    const tables = doc.querySelectorAll('table');
-    tables.forEach((table) => {
-      table.style.maxWidth = '100%';
-      table.style.display = 'block';
-      table.style.overflowX = 'auto';
-    });
-
-    return doc.body.innerHTML;
-  } catch (_) {
-    return clean;
-  }
-}
-
-// Convert HTML to Plain Text for quick copy
-function htmlToPlainText(html: string): string {
-  if (!html) return '';
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const breaks = doc.querySelectorAll('br');
-    breaks.forEach((b) => b.replaceWith('\n'));
-    const blockElements = doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, tr, li, blockquote');
-    blockElements.forEach((el) => el.after(doc.createTextNode('\n')));
-    return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
-  } catch (_) {
-    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-}
-
-function escapeHtml(str: string): string {
-  return (str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
 function getAttachmentIcon(contentType: string, filename: string) {
   const type = (contentType || '').toLowerCase();
   const ext = filename.split('.').pop()?.toLowerCase() || '';
 
   if (type.includes('image') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-    return <ImageIcon className="w-4 h-4 text-purple-400" />;
+    return <ImageIcon className="w-4 h-4 text-purple-400 shrink-0" />;
   }
   if (type.includes('pdf') || ext === 'pdf') {
-    return <FileText className="w-4 h-4 text-rose-400" />;
+    return <FileText className="w-4 h-4 text-rose-400 shrink-0" />;
   }
   if (type.includes('csv') || type.includes('sheet') || ['xls', 'xlsx', 'csv'].includes(ext)) {
-    return <FileSpreadsheet className="w-4 h-4 text-emerald-400" />;
+    return <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />;
   }
   if (type.includes('zip') || type.includes('tar') || ['zip', 'rar', '7z', 'gz'].includes(ext)) {
-    return <FileArchive className="w-4 h-4 text-amber-400" />;
+    return <FileArchive className="w-4 h-4 text-amber-400 shrink-0" />;
   }
   if (type.includes('json') || type.includes('javascript') || type.includes('html') || ['js', 'ts', 'json', 'py', 'html'].includes(ext)) {
-    return <FileCode className="w-4 h-4 text-cyan-400" />;
+    return <FileCode className="w-4 h-4 text-cyan-400 shrink-0" />;
   }
-  return <FileText className="w-4 h-4 text-cyan-400" />;
+  return <FileText className="w-4 h-4 text-cyan-400 shrink-0" />;
 }
 
 // Module-level persistent cache for loaded email details
@@ -249,6 +181,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
 
+  // Responsive Navigation State
+  // Mobile (<768px): 'mailboxes' -> 'list' -> 'detail'
+  // Tablet (768px-1199px): 2-columns (Sidebar + List by default; Detail opens with Back button)
+  const [mobileNavState, setMobileNavState] = useState<MobileNavState>('list');
+  const [isTabletDetailOpen, setIsTabletDetailOpen] = useState<boolean>(false);
+
   // Server-Side Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(20);
@@ -260,15 +198,14 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   const [emailsList, setEmailsList] = useState<EmailMessageRecord[]>([]);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [selectedEmailDetail, setSelectedEmailDetail] = useState<EmailMessageRecord | null>(null);
-  const [detailTab, setDetailTab] = useState<'email' | 'delivery' | 'technical'>('email');
 
   // Loading States
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isDetailLoading, setIsDetailLoading] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [showMobileDetail, setShowMobileDetail] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Advanced Filters
   const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState<boolean>(false);
@@ -321,6 +258,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       } else {
         setIsLoading(true);
       }
+      setLoadError(null);
 
       fetchStorageUsage();
 
@@ -360,7 +298,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               onUnreadCountChange(unread);
             }
 
-            // Auto-select first email if none selected
+            // Auto-select first email on desktop/laptop if none selected
             if (!selectedEmailId && list.length > 0) {
               setSelectedEmailId(list[0].id);
             }
@@ -394,8 +332,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             }
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Failed to fetch emails:', err);
+        setLoadError(err?.response?.data?.message || 'Unable to connect to email inbox service. Please retry.');
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -478,7 +417,8 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   // Handlers
   const handleSelectEmail = (email: EmailMessageRecord) => {
     setSelectedEmailId(email.id);
-    setShowMobileDetail(true);
+    setMobileNavState('detail');
+    setIsTabletDetailOpen(true);
   };
 
   const handleToggleStar = async (e: React.MouseEvent, email: EmailMessageRecord) => {
@@ -541,11 +481,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
   const handleCopyBody = () => {
     if (!selectedEmailDetail) return;
-    const text = selectedEmailDetail.body_text || htmlToPlainText(selectedEmailDetail.body_html || '');
-    navigator.clipboard.writeText(text);
+    const norm = normalizeEmailBody(selectedEmailDetail.body_text, selectedEmailDetail.body_html);
+    navigator.clipboard.writeText(norm.plainText);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
-    addToast('Copied', 'Email body copied to clipboard', 'success');
+    addToast('Copied', 'Email text copied to clipboard', 'success');
   };
 
   const handleOpenReply = (email?: EmailMessageRecord) => {
@@ -577,6 +517,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     e.preventDefault();
     setAppliedSearchQuery(searchQuery);
     setCurrentPage(1);
+    if (mobileNavState === 'mailboxes') {
+      setMobileNavState('list');
+    }
   };
 
   const handleClearSearch = () => {
@@ -591,44 +534,48 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Render Sanitize HTML
-  const sanitizedHtmlContent = useMemo(() => {
-    if (!selectedEmailDetail?.body_html) return '';
-    return sanitizeEmailHtmlWithDomPurify(selectedEmailDetail.body_html);
-  }, [selectedEmailDetail?.body_html]);
+  // Robust Presentation-Layer Email Body Normalizer & Sanitizer
+  const normalizedEmailData: NormalizedEmailBody | null = useMemo(() => {
+    if (!selectedEmailDetail) return null;
+    return normalizeEmailBody(selectedEmailDetail.body_text, selectedEmailDetail.body_html);
+  }, [selectedEmailDetail?.body_html, selectedEmailDetail?.body_text]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-full overflow-hidden">
       {/* TOP HEADER: STORAGE & METRICS BAR */}
-      <div className="glass-panel p-4 sm:p-6 rounded-3xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono">
+      <div className="glass-panel p-4 sm:p-5 rounded-3xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-            <Inbox className="w-6 h-6" />
+          <div className="p-2.5 sm:p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0">
+            <Inbox className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-white font-display">Zenemoo Enterprise Email Inbox</h3>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm sm:text-base font-bold text-white font-display truncate">
+                Zenemoo Enterprise Email Inbox
+              </h3>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold shrink-0">
                 ● Live Sync Active
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Encrypted Brevo SMTP relay &amp; Cloudflare routing gateway. Server-side paginated.
+            <p className="text-xs text-slate-400 mt-0.5 truncate">
+              Brevo SMTP relay &amp; Cloudflare routing gateway. Server-side paginated.
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <div className="px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-slate-300 flex items-center gap-2">
-            <Activity className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Storage: <strong className="text-white">{storageStats.used_formatted}</strong> / {storageStats.max_formatted}</span>
+          <div className="px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-slate-300 flex items-center gap-2 min-h-[38px]">
+            <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="truncate">
+              Storage: <strong className="text-white">{storageStats.used_formatted}</strong> / {storageStats.max_formatted}
+            </span>
           </div>
 
           <button
             type="button"
             onClick={() => fetchEmails(currentPage, false)}
             disabled={isLoading || isRefreshing}
-            className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+            className="px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50 min-h-[38px]"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -637,7 +584,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           <button
             type="button"
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-colors"
+            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
             title="Email Settings & Domain Verification"
           >
             <Settings className="w-4 h-4" />
@@ -645,16 +592,52 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         </div>
       </div>
 
-      {/* MAIN 3-COLUMN INBOX CONTAINER */}
-      <div className="glass-panel rounded-3xl border border-white/10 overflow-hidden flex flex-col md:flex-row h-[780px]">
+      {/* MAIN RESPONSIVE INBOX CONTAINER */}
+      {/* Desktop (>= 1200px): 3 Columns */}
+      {/* Tablet (768px-1199px): 2-Stage Navigation */}
+      {/* Mobile (<= 767px): 1 Column Multi-State */}
+      <div className="glass-panel rounded-3xl border border-white/10 overflow-hidden flex flex-col md:flex-row h-[780px] max-h-[88vh] relative">
+        
         {/* ========================================================================= */}
-        {/* COLUMN 1: SIDEBAR (Mailbox Accounts, Views, Labels) */}
+        {/* COLUMN 1: SIDEBAR (Mailboxes, Folders, Views, Storage) */}
+        {/* Mobile: visible when mobileNavState === 'mailboxes' */}
+        {/* Tablet: visible when !isTabletDetailOpen */}
+        {/* Desktop: always visible */}
         {/* ========================================================================= */}
         <div
-          className={`w-full md:w-56 lg:w-64 border-r border-white/10 p-4 space-y-5 overflow-y-auto shrink-0 bg-[#070a11]/60 font-mono text-xs ${
-            showMobileDetail ? 'hidden md:block' : 'block'
-          }`}
+          className={`w-full md:w-56 lg:w-64 border-r border-white/10 p-4 space-y-5 overflow-y-auto shrink-0 bg-[#070a11]/90 font-mono text-xs ${
+            mobileNavState === 'mailboxes' ? 'block' : 'hidden'
+          } ${isTabletDetailOpen ? 'md:hidden lg:block' : 'md:block'}`}
         >
+          {/* MOBILE HEADER FOR MAILBOXES VIEW */}
+          <div className="flex md:hidden items-center justify-between pb-2 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <Inbox className="w-4 h-4 text-cyan-400" />
+              <span className="font-bold text-white text-sm">Email Inboxes</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileNavState('list')}
+              className="px-2.5 py-1 rounded-xl bg-white/5 text-slate-300 text-xs font-bold"
+            >
+              View Messages &rarr;
+            </button>
+          </div>
+
+          {/* COMPOSE BUTTON */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedEmailId(null);
+              setComposeMode('reply');
+              setIsComposeOpen(true);
+            }}
+            className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all min-h-[44px]"
+          >
+            <Send className="w-4 h-4" />
+            <span>Compose Email</span>
+          </button>
+
           {/* TAB SELECTOR: INCOMING VS SENT */}
           <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.04] border border-white/10">
             <button
@@ -662,8 +645,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               onClick={() => {
                 setMailTab('incoming');
                 setCurrentPage(1);
+                setMobileNavState('list');
               }}
-              className={`flex-1 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+              className={`flex-1 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all min-h-[38px] ${
                 mailTab === 'incoming'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   : 'text-slate-400 hover:text-white'
@@ -677,8 +661,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               onClick={() => {
                 setMailTab('sent');
                 setCurrentPage(1);
+                setMobileNavState('list');
               }}
-              className={`flex-1 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+              className={`flex-1 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all min-h-[38px] ${
                 mailTab === 'sent'
                   ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                   : 'text-slate-400 hover:text-white'
@@ -689,11 +674,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             </button>
           </div>
 
-          {/* VIEWS (All, Unread, Starred, Archived, Trash) */}
+          {/* FOLDERS / VIEWS */}
           <div className="space-y-1">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block px-2">Folders</span>
             {[
-              { id: 'all', label: 'All Mail', icon: Mail },
+              { id: 'all', label: 'All Mail', icon: Mail, badge: totalCount },
               { id: 'unread', label: 'Unread', icon: CheckCircle2, badge: unreadTotalCount },
               { id: 'starred', label: 'Starred', icon: Star },
               { id: 'archived', label: 'Archived', icon: Archive },
@@ -708,8 +693,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   onClick={() => {
                     setViewFilter(v.id as any);
                     setCurrentPage(1);
+                    setMobileNavState('list');
                   }}
-                  className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                  className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs cursor-pointer transition-colors min-h-[40px] ${
                     isActive
                       ? 'bg-cyan-500/15 text-cyan-300 font-bold border border-cyan-500/20'
                       : 'text-slate-400 hover:bg-white/[0.03] hover:text-white'
@@ -720,7 +706,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     <span>{v.label}</span>
                   </div>
                   {v.badge !== undefined && v.badge > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-bold">
                       {v.badge}
                     </span>
                   )}
@@ -732,7 +718,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           {/* MAILBOX ACCOUNTS */}
           <div className="space-y-1 pt-2 border-t border-white/5">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block px-2">
-              Mailbox Inboxes
+              Mailboxes
             </span>
             {MAILBOX_LIST.map((mb) => {
               const isActive = activeSidebarView.type === 'mailbox' && activeSidebarView.value === mb.email;
@@ -743,8 +729,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   onClick={() => {
                     setActiveSidebarView({ type: 'mailbox', value: mb.email });
                     setCurrentPage(1);
+                    setMobileNavState('list');
                   }}
-                  className={`w-full px-3 py-1.5 rounded-xl flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                  className={`w-full px-3 py-2 rounded-xl flex items-center justify-between text-xs cursor-pointer transition-colors min-h-[38px] ${
                     isActive
                       ? 'bg-white/10 text-white font-bold border border-white/15'
                       : 'text-slate-400 hover:bg-white/[0.03] hover:text-white'
@@ -769,8 +756,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   onClick={() => {
                     setActiveSidebarView({ type: 'label', value: lbl.id });
                     setCurrentPage(1);
+                    setMobileNavState('list');
                   }}
-                  className={`w-full px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs cursor-pointer transition-colors ${
+                  className={`w-full px-3 py-2 rounded-xl flex items-center gap-2 text-xs cursor-pointer transition-colors min-h-[38px] ${
                     isActive
                       ? 'bg-white/10 text-white font-bold border border-white/15'
                       : 'text-slate-400 hover:bg-white/[0.03] hover:text-white'
@@ -785,23 +773,41 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         </div>
 
         {/* ========================================================================= */}
-        {/* COLUMN 2: EMAIL LIST (Search, Controls, Paginated List, Bottom Bar) */}
+        {/* COLUMN 2: EMAIL LIST (Search, Sort, Paginated List, Bottom Pagination) */}
+        {/* Mobile: visible when mobileNavState === 'list' */}
+        {/* Tablet: visible when !isTabletDetailOpen */}
+        {/* Desktop: always visible */}
         {/* ========================================================================= */}
         <div
-          className={`w-full md:w-80 lg:w-96 border-r border-white/10 flex flex-col shrink-0 bg-[#090d16]/70 ${
-            showMobileDetail ? 'hidden md:flex' : 'flex'
-          }`}
+          className={`w-full md:w-80 lg:w-96 border-r border-white/10 flex flex-col shrink-0 bg-[#090d16]/80 ${
+            mobileNavState === 'list' ? 'flex' : 'hidden'
+          } ${isTabletDetailOpen ? 'md:hidden lg:flex' : 'md:flex'}`}
         >
-          {/* SEARCH & FILTER CONTROLS BAR */}
-          <div className="p-3 border-b border-white/10 space-y-2 bg-[#070a11]/40 font-mono text-xs">
+          {/* TOP CONTROLS & SEARCH BAR */}
+          <div className="p-3 border-b border-white/10 space-y-2 bg-[#070a11]/60 font-mono text-xs">
+            {/* MOBILE BACK TO MAILBOXES BUTTON */}
+            <div className="flex md:hidden items-center justify-between pb-1">
+              <button
+                type="button"
+                onClick={() => setMobileNavState('mailboxes')}
+                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 font-bold text-xs flex items-center gap-1.5 min-h-[36px]"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Mailboxes</span>
+              </button>
+              <span className="text-[11px] text-slate-400 font-bold">
+                {activeMailbox === 'all' ? 'All Inboxes' : activeMailbox}
+              </span>
+            </div>
+
             <form onSubmit={handleSearchSubmit} className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search sender, email, subject..."
+                placeholder="Search emails, senders, or subjects..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-16 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs focus:outline-none focus:border-cyan-400"
+                className="w-full pl-8 pr-16 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white text-xs focus:outline-none focus:border-cyan-400 min-h-[38px]"
               />
               <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {searchQuery && (
@@ -815,7 +821,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 )}
                 <button
                   type="submit"
-                  className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 text-[10px] font-bold hover:bg-cyan-500/30 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 text-[10px] font-bold hover:bg-cyan-500/30 cursor-pointer min-h-[26px]"
                 >
                   Find
                 </button>
@@ -823,7 +829,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             </form>
 
             <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span>Sort:</span>
                 <select
                   value={sortBy}
@@ -831,14 +837,14 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     setSortBy(e.target.value as any);
                     setCurrentPage(1);
                   }}
-                  className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-white cursor-pointer"
+                  className="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white cursor-pointer"
                 >
                   <option value="newest" className="bg-[#090d16] text-white">Newest First</option>
                   <option value="oldest" className="bg-[#090d16] text-white">Oldest First</option>
                 </select>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span>Rows:</span>
                 <select
                   value={pageSize}
@@ -847,7 +853,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     setPageSize(newSize);
                     setCurrentPage(1);
                   }}
-                  className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-white cursor-pointer"
+                  className="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white cursor-pointer"
                 >
                   <option value={20} className="bg-[#090d16] text-white">20</option>
                   <option value={50} className="bg-[#090d16] text-white">50</option>
@@ -857,12 +863,33 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             </div>
           </div>
 
-          {/* EMAILS LIST AREA */}
+          {/* EMAIL LIST CONTENT */}
           <div className="flex-1 overflow-y-auto divide-y divide-white/5">
             {isLoading ? (
-              <div className="p-12 text-center text-slate-400 space-y-2 font-mono text-xs">
-                <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mx-auto" />
-                <p>Loading emails from Supabase...</p>
+              // SKELETON LOADERS
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4, 5].map((idx) => (
+                  <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2 animate-pulse">
+                    <div className="flex items-center justify-between">
+                      <div className="h-3.5 bg-white/10 rounded w-28" />
+                      <div className="h-2.5 bg-white/10 rounded w-12" />
+                    </div>
+                    <div className="h-3 bg-white/15 rounded w-3/4" />
+                    <div className="h-2.5 bg-white/5 rounded w-5/6" />
+                  </div>
+                ))}
+              </div>
+            ) : loadError ? (
+              <div className="p-8 text-center text-rose-400 space-y-3 font-mono text-xs">
+                <AlertCircle className="w-8 h-8 mx-auto" />
+                <p className="font-bold">{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => fetchEmails(currentPage, false)}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-xs"
+                >
+                  Retry
+                </button>
               </div>
             ) : emailsList.length === 0 ? (
               <div className="p-12 text-center text-slate-400 space-y-2 font-mono text-xs">
@@ -870,8 +897,8 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 <p className="font-bold text-white">No Emails Found</p>
                 <p className="text-[11px] text-slate-500">
                   {appliedSearchQuery || viewFilter !== 'all'
-                    ? 'No messages match current query/filter.'
-                    : 'Your mailbox is currently clear.'}
+                    ? 'No messages match your search or filter.'
+                    : 'This mailbox folder is currently clear.'}
                 </p>
               </div>
             ) : (
@@ -885,18 +912,18 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   <div
                     key={email.id}
                     onClick={() => handleSelectEmail(email)}
-                    className={`p-3 cursor-pointer transition-all ${
+                    className={`p-3 sm:p-3.5 cursor-pointer transition-all min-h-[72px] ${
                       isSelected
-                        ? 'bg-cyan-500/10 border-l-2 border-cyan-400'
-                        : 'hover:bg-white/[0.02]'
-                    } ${!email.is_read ? 'bg-white/[0.015]' : ''}`}
+                        ? 'bg-cyan-500/15 border-l-2 border-cyan-400'
+                        : 'hover:bg-white/[0.03]'
+                    } ${!email.is_read ? 'bg-white/[0.02]' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2 text-xs mb-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <button
                           type="button"
                           onClick={(e) => handleToggleStar(e, email)}
-                          className="text-slate-400 hover:text-amber-400 cursor-pointer shrink-0"
+                          className="text-slate-400 hover:text-amber-400 cursor-pointer shrink-0 p-1 -m-1"
                         >
                           <Star className={`w-3.5 h-3.5 ${email.is_starred ? 'text-amber-400 fill-amber-400' : ''}`} />
                         </button>
@@ -927,7 +954,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     <p className="text-[11px] text-slate-400 truncate line-clamp-1">{email.snippet}</p>
 
                     <div className="flex items-center gap-2 mt-2 font-mono text-[10px]">
-                      <span className="px-1.5 py-0.2 rounded bg-white/5 text-slate-400 border border-white/10">
+                      <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
                         {email.category || 'general'}
                       </span>
                       {hasAtts && (
@@ -937,7 +964,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                         </span>
                       )}
                       {!email.is_read && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 ml-auto" />
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 ml-auto" />
                       )}
                     </div>
                   </div>
@@ -948,17 +975,17 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
           {/* BOTTOM PAGINATION BAR */}
           {totalCount > 0 && (
-            <div className="p-2.5 border-t border-white/10 bg-[#070a11] flex items-center justify-between font-mono text-xs text-slate-400">
-              <span className="text-[11px]">
-                {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+            <div className="p-3 border-t border-white/10 bg-[#070a11] flex items-center justify-between font-mono text-xs text-slate-400 min-h-[46px]">
+              <span className="text-[11px] truncate">
+                Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
               </span>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage <= 1 || isLoading}
-                  className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-h-[34px] min-w-[34px] flex items-center justify-center"
                   title="Previous Page"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -972,7 +999,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage >= totalPages || isLoading}
-                  className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-h-[34px] min-w-[34px] flex items-center justify-center"
                   title="Next Page"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -983,49 +1010,59 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
         </div>
 
         {/* ========================================================================= */}
-        {/* COLUMN 3: SELECTED EMAIL DETAIL VIEW */}
+        {/* COLUMN 3: EMAIL DETAIL VIEW */}
+        {/* Mobile: visible when mobileNavState === 'detail' */}
+        {/* Tablet: visible when isTabletDetailOpen */}
+        {/* Desktop: always visible */}
         {/* ========================================================================= */}
         <div
           className={`flex-1 flex flex-col bg-[#0b0f19] overflow-hidden ${
-            showMobileDetail ? 'flex' : 'hidden md:flex'
-          }`}
+            mobileNavState === 'detail' ? 'flex' : 'hidden'
+          } ${isTabletDetailOpen ? 'md:flex' : 'md:hidden lg:flex'}`}
         >
           {selectedEmailDetail ? (
             <>
               {/* DETAIL HEADER & ACTION TOOLBAR */}
-              <div className="p-4 border-b border-white/10 bg-[#070a11]/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs">
+              <div className="p-3 sm:p-4 border-b border-white/10 bg-[#070a11]/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shrink-0">
                 <div className="flex items-center gap-2">
+                  {/* MOBILE & TABLET BACK BUTTON */}
                   <button
                     type="button"
-                    onClick={() => setShowMobileDetail(false)}
-                    className="md:hidden p-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white"
+                    onClick={() => {
+                      setMobileNavState('list');
+                      setIsTabletDetailOpen(false);
+                    }}
+                    className="lg:hidden p-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 font-bold flex items-center gap-1 min-h-[40px]"
                   >
                     <ChevronLeft className="w-4 h-4" />
+                    <span className="text-xs">Back</span>
                   </button>
 
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => handleOpenReply()}
-                      className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/10 transition-all"
+                      className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/10 transition-all min-h-[40px]"
                     >
-                      <Reply className="w-3.5 h-3.5" /> Reply
+                      <Reply className="w-3.5 h-3.5" />
+                      <span>Reply</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleOpenForward()}
-                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                      className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-1.5 cursor-pointer transition-all min-h-[40px]"
                     >
-                      <Forward className="w-3.5 h-3.5" /> Forward
+                      <Forward className="w-3.5 h-3.5" />
+                      <span>Forward</span>
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 self-end sm:self-auto">
                   <button
                     type="button"
                     onClick={() => handleToggleRead(selectedEmailDetail)}
-                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors"
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
                     title={selectedEmailDetail.is_read ? 'Mark as Unread' : 'Mark as Read'}
                   >
                     <Mail className="w-3.5 h-3.5" />
@@ -1034,7 +1071,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleArchive(selectedEmailDetail)}
-                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors"
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
                     title="Archive"
                   >
                     <Archive className="w-3.5 h-3.5" />
@@ -1043,7 +1080,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleDelete(selectedEmailDetail)}
-                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors"
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
                     title="Delete"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1052,7 +1089,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   <button
                     type="button"
                     onClick={handleCopyBody}
-                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors"
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
                     title="Copy Body"
                   >
                     {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1060,47 +1097,45 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 </div>
               </div>
 
-              {/* EMAIL SENDER & METADATA SECTION */}
-              <div className="p-4 sm:p-6 border-b border-white/10 space-y-3 bg-[#080c16]/50">
-                <h2 className="text-base sm:text-lg font-bold text-white font-display">
+              {/* EMAIL SENDER & METADATA HEADER */}
+              <div className="p-4 sm:p-5 border-b border-white/10 space-y-3 bg-[#080c16]/50 shrink-0">
+                <h2 className="text-base sm:text-lg font-bold text-white font-display break-words">
                   {decodeMimeHeader(selectedEmailDetail.subject) || '(No Subject)'}
                 </h2>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
                       {(selectedEmailDetail.sender_name || selectedEmailDetail.sender_email || 'Z')[0].toUpperCase()}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <strong className="text-white text-sm">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <strong className="text-white text-sm truncate">
                           {decodeMimeHeader(selectedEmailDetail.sender_name) || selectedEmailDetail.sender_email}
                         </strong>
-                        <span className="text-slate-400">&lt;{selectedEmailDetail.sender_email}&gt;</span>
+                        <span className="text-slate-400 text-xs truncate">&lt;{selectedEmailDetail.sender_email}&gt;</span>
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[11px] text-slate-400 truncate">
                         To: <span className="text-cyan-300">{selectedEmailDetail.recipient_email}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-[11px] text-slate-400 sm:text-right">
+                  <div className="text-[11px] text-slate-400 sm:text-right shrink-0">
                     <div>{new Date(selectedEmailDetail.received_at).toLocaleString()}</div>
-                    {selectedEmailDetail.auth_results && (
-                      <div className="flex items-center gap-2 text-[10px] text-emerald-400 pt-0.5">
-                        <ShieldCheck className="w-3 h-3" />
-                        <span>SPF: {selectedEmailDetail.auth_results.spf || 'pass'}</span>
-                        <span>&bull;</span>
-                        <span>DKIM: {selectedEmailDetail.auth_results.dkim || 'pass'}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 text-[10px] text-emerald-400 pt-0.5 sm:justify-end">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>SPF: {selectedEmailDetail.auth_results?.spf || 'pass'}</span>
+                      <span>&bull;</span>
+                      <span>DKIM: {selectedEmailDetail.auth_results?.dkim || 'pass'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* ATTACHMENTS LIST BAR */}
               {selectedEmailDetail.attachments && selectedEmailDetail.attachments.length > 0 && (
-                <div className="px-6 py-3 bg-white/[0.02] border-b border-white/10 font-mono text-xs space-y-2">
+                <div className="px-4 sm:px-6 py-3 bg-white/[0.02] border-b border-white/10 font-mono text-xs space-y-2 shrink-0">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5">
                     <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Attachments ({selectedEmailDetail.attachments.length})</span>
@@ -1109,17 +1144,21 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {selectedEmailDetail.attachments.map((att) => {
                       const downloadUrl = emailInboxApi.getAttachmentDownloadUrl(selectedEmailDetail.id, att.id || att.filename);
-                      const isPdfOrImage =
+                      const isPreviewable =
                         (att.contentType || '').includes('pdf') ||
                         (att.contentType || '').includes('image') ||
+                        (att.contentType || '').includes('text') ||
                         att.filename.endsWith('.pdf') ||
                         att.filename.endsWith('.png') ||
-                        att.filename.endsWith('.jpg');
+                        att.filename.endsWith('.jpg') ||
+                        att.filename.endsWith('.jpeg') ||
+                        att.filename.endsWith('.webp') ||
+                        att.filename.endsWith('.txt');
 
                       return (
                         <div
                           key={att.id || att.filename}
-                          className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2 hover:border-cyan-500/30 transition-all"
+                          className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2 hover:border-cyan-500/30 transition-all min-h-[48px]"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             {getAttachmentIcon(att.contentType, att.filename)}
@@ -1130,7 +1169,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                           </div>
 
                           <div className="flex items-center gap-1 shrink-0">
-                            {isPdfOrImage && (
+                            {isPreviewable && (
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1140,7 +1179,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                                     url: emailInboxApi.getAttachmentDownloadUrl(selectedEmailDetail.id, att.id || att.filename, true),
                                   })
                                 }
-                                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-cyan-300"
+                                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-cyan-300 min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer"
                                 title="Preview Attachment"
                               >
                                 <Eye className="w-3.5 h-3.5" />
@@ -1150,7 +1189,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                             <a
                               href={downloadUrl}
                               download={att.filename}
-                              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[32px] min-w-[32px] flex items-center justify-center"
                               title="Download Attachment"
                             >
                               <Download className="w-3.5 h-3.5" />
@@ -1163,23 +1202,43 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 </div>
               )}
 
-              {/* EMAIL BODY DISPLAY */}
+              {/* EMAIL BODY DISPLAY (RESPONSIVE & SANITIZED) */}
               <div className="flex-1 p-4 sm:p-6 overflow-y-auto font-sans leading-relaxed text-slate-200">
                 {isDetailLoading ? (
                   <div className="p-12 text-center text-slate-400 font-mono text-xs space-y-2">
                     <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mx-auto" />
-                    <p>Fetching complete email body...</p>
+                    <p>Loading complete email content...</p>
                   </div>
-                ) : sanitizedHtmlContent ? (
+                ) : normalizedEmailData?.isHtml && normalizedEmailData.sanitizedHtml ? (
                   <div
                     className="max-w-full overflow-x-auto [overflow-wrap:anywhere] [word-break:break-word] text-slate-200 text-sm leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: sanitizedHtmlContent }}
+                    dangerouslySetInnerHTML={{ __html: normalizedEmailData.sanitizedHtml }}
                   />
                 ) : (
                   <div className="whitespace-pre-wrap font-sans text-slate-200 text-sm leading-relaxed [overflow-wrap:anywhere] [word-break:break-word]">
-                    {selectedEmailDetail.body_text || selectedEmailDetail.snippet}
+                    {normalizedEmailData?.plainText || selectedEmailDetail.snippet}
                   </div>
                 )}
+              </div>
+
+              {/* BOTTOM ACTIONS BAR ON DETAIL (REPLY / FORWARD) */}
+              <div className="p-3 sm:p-4 bg-[#070a11]/80 border-t border-white/10 flex items-center gap-3 font-mono text-xs shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleOpenReply()}
+                  className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/10 min-h-[44px]"
+                >
+                  <Reply className="w-4 h-4" />
+                  <span>Reply</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenForward()}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-2 cursor-pointer min-h-[44px]"
+                >
+                  <Forward className="w-4 h-4" />
+                  <span>Forward</span>
+                </button>
               </div>
             </>
           ) : (
@@ -1193,12 +1252,12 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       </div>
 
       {/* EMAIL COMPOSE MODAL */}
-      {isComposeOpen && selectedEmailDetail && (
+      {isComposeOpen && (
         <EmailComposeModal
           isOpen={isComposeOpen}
           onClose={() => setIsComposeOpen(false)}
           mode={composeMode}
-          originalEmail={selectedEmailDetail}
+          originalEmail={selectedEmailDetail || undefined}
           onSendSuccess={handleSendSuccess}
           addToast={addToast}
         />
@@ -1206,20 +1265,22 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
       {/* ATTACHMENT PREVIEW MODAL */}
       {previewAttachment && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
-          <div className="bg-[#0b0f19] border border-white/15 w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono text-xs">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 animate-fade-in">
+          <div className="bg-[#0b0f19] border border-white/15 w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+            <div className="p-3 sm:p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono text-xs">
               <div className="flex items-center gap-2 text-white font-bold truncate">
-                <Eye className="w-4 h-4 text-cyan-400" />
+                <Eye className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span className="truncate">{previewAttachment.attachment.filename}</span>
-                <span className="text-slate-500 font-normal">({formatFileSize(previewAttachment.attachment.size)})</span>
+                <span className="text-slate-500 font-normal shrink-0">
+                  ({formatFileSize(previewAttachment.attachment.size)})
+                </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <a
                   href={emailInboxApi.getAttachmentDownloadUrl(previewAttachment.emailId, previewAttachment.attachment.id || previewAttachment.attachment.filename)}
                   download={previewAttachment.attachment.filename}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold flex items-center gap-1.5 text-xs hover:bg-cyan-500/30"
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold flex items-center gap-1.5 text-xs hover:bg-cyan-500/30 min-h-[36px]"
                 >
                   <Download className="w-3.5 h-3.5" /> Download
                 </a>
@@ -1227,14 +1288,14 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewAttachment(null)}
-                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[36px] min-w-[36px] flex items-center justify-center"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40 min-h-[400px]">
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40 min-h-[300px] sm:min-h-[450px]">
               {(previewAttachment.attachment.contentType || '').includes('image') ||
               ['png', 'jpg', 'jpeg', 'gif', 'webp'].some((ext) => previewAttachment.attachment.filename.endsWith(ext)) ? (
                 <img

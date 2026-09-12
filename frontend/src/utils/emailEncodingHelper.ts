@@ -1,6 +1,8 @@
 /**
- * Centralized Email Encoding & Character Normalization Helper for Zenemoo Email Inbox
+ * Centralized Email Encoding, Quoted-Printable Decoding & Content Normalization Helper
+ * Built for Zenemoo Production Email Inbox
  */
+import DOMPurify from 'dompurify';
 
 /**
  * Normalizes common Mojibake character corruptions resulting from incorrect UTF-8 / Windows-1252 / ISO-8859-1 decoding.
@@ -24,7 +26,7 @@ export function normalizeMojibake(text: string): string {
     .replace(/â€“/g, '–')
     .replace(/â€”/g, '—')
     .replace(/â€œ/g, '“')
-    .replace(/â€/g, '”')
+    .replace(/â€ /g, '”')
     .replace(/â€/g, '”')
     .replace(/â€¦/g, '…')
     .replace(/â€¢/g, '•')
@@ -48,7 +50,217 @@ export function normalizeMojibake(text: string): string {
 }
 
 /**
- * Decodes RFC 2047 MIME encoded-word strings (e.g. =?UTF-8?Q?Re:_Zenemoo_=E2=80=93_Vendor_Capabilities?= or =?UTF-8?B?...?=)
+ * Unescapes HTML entities if content was stored as &lt;html&gt; ... &lt;/html&gt;
+ */
+export function unescapeHtmlEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+/**
+ * Decodes Quoted-Printable (QP) encoded text and HTML strings.
+ * Handles =XX byte sequences, soft line breaks (=\r\n or =\n), and =3D -> =.
+ */
+export function decodeQuotedPrintable(input: string): string {
+  if (!input) return '';
+
+  // 1. Remove QP soft line breaks (=\r\n or =\n)
+  let cleaned = input.replace(/=\r?\n/g, '');
+
+  // 2. Decode multi-byte UTF-8 byte sequences encoded as =XX=XX=XX
+  // Match consecutive =XX sequences and convert byte arrays back to UTF-8
+  cleaned = cleaned.replace(/((?:=[0-9A-Fa-f]{2})+)/g, (match) => {
+    try {
+      const hexPairs = match.match(/[0-9A-Fa-f]{2}/g);
+      if (!hexPairs) return match;
+      const bytes = new Uint8Array(hexPairs.map((h) => parseInt(h, 16)));
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    } catch (_) {
+      return match;
+    }
+  });
+
+  // 3. Catch any remaining individual =3D or =20
+  cleaned = cleaned.replace(/=3D/gi, '=').replace(/=20/g, ' ').replace(/=09/g, '\t');
+
+  return cleaned;
+}
+
+/**
+ * Strips Microsoft Outlook / MSO conditional comments and XML artifacts
+ * e.g. <!--[if mso]>...<![endif]-->
+ */
+export function stripMsoArtifacts(html: string): string {
+  if (!html) return '';
+
+  return html
+    .replace(/<!--\[if\s+mso\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if\s+!mso\]><!-->([\s\S]*?)<!--<!\[endif\]-->/gi, '$1')
+    .replace(/<!--\[if\s+gt\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if\s+gte\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if\s+lt\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if\s+lte\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<o:p>[\s\S]*?<\/o:p>/gi, '')
+    .replace(/<v:[^>]*>[\s\S]*?<\/v:[^>]*>/gi, '');
+}
+
+/**
+ * Checks if a string contains HTML markup
+ */
+export function isHtmlString(str: string): boolean {
+  if (!str) return false;
+  const trimmed = str.trim();
+  if (
+    trimmed.startsWith('<!DOCTYPE') ||
+    trimmed.startsWith('<html') ||
+    trimmed.startsWith('<body') ||
+    trimmed.startsWith('<?xml')
+  ) {
+    return true;
+  }
+  // Check for common HTML tags
+  return /<([a-z][a-z0-9]*)\b[^>]*>[\s\S]*?<\/\1>/i.test(str) ||
+    /<(br|hr|img|input|link|meta)\b[^>]*\/?>/i.test(str) ||
+    /<(div|p|table|tr|td|span|h[1-6]|ul|ol|li|a)\b/i.test(str);
+}
+
+export interface NormalizedEmailBody {
+  isHtml: boolean;
+  sanitizedHtml?: string;
+  plainText: string;
+  hasQuotedPrintable: boolean;
+}
+
+/**
+ * Robust Presentation-Layer Email Normalizer:
+ * 1. Checks if body_html or body_text contains quoted-printable or HTML
+ * 2. Decodes quoted-printable =3D, =\n, etc.
+ * 3. Strips MSO artifacts
+ * 4. Sanitizes HTML with DOMPurify
+ * 5. Handles plain text with clean formatting
+ */
+export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): NormalizedEmailBody {
+  const rawHtml = (bodyHtml || '').trim();
+  const rawText = (bodyText || '').trim();
+
+  let targetContent = '';
+  let isHtml = false;
+  let hasQuotedPrintable = false;
+
+  // Check for Quoted-Printable signals (=3D, soft break =\n)
+  if (rawHtml.includes('=3D') || /=\r?\n/.test(rawHtml) || rawText.includes('=3D') || /=\r?\n/.test(rawText)) {
+    hasQuotedPrintable = true;
+  }
+
+  if (rawHtml) {
+    targetContent = rawHtml;
+    isHtml = true;
+  } else if (rawText) {
+    // If body_html is empty, inspect body_text
+    // It might be HTML or escaped HTML stored in body_text
+    let candidate = rawText;
+    if (candidate.includes('&lt;html') || candidate.includes('&lt;div') || candidate.includes('&lt;p')) {
+      candidate = unescapeHtmlEntities(candidate);
+    }
+
+    if (isHtmlString(candidate)) {
+      targetContent = candidate;
+      isHtml = true;
+    } else {
+      targetContent = rawText;
+      isHtml = false;
+    }
+  }
+
+  if (hasQuotedPrintable || targetContent.includes('=3D') || /=\r?\n/.test(targetContent)) {
+    targetContent = decodeQuotedPrintable(targetContent);
+  }
+
+  // Normalize Mojibake
+  targetContent = normalizeMojibake(targetContent);
+
+  if (isHtml) {
+    // Strip MSO Outlook conditional comments
+    targetContent = stripMsoArtifacts(targetContent);
+
+    // Sanitize with DOMPurify
+    const cleanHtml = DOMPurify.sanitize(targetContent, {
+      USE_PROFILES: { html: true },
+      ADD_ATTR: ['target', 'rel', 'style', 'class', 'align', 'valign', 'bgcolor', 'color', 'width', 'height'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link', 'applet'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
+      ALLOW_DATA_ATTR: false,
+    });
+
+    try {
+      if (typeof window !== 'undefined' && window.DOMParser) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(cleanHtml, 'text/html');
+
+        // Force external links to open safely
+        const links = doc.querySelectorAll('a');
+        links.forEach((a) => {
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener noreferrer');
+          a.classList.add('text-cyan-400', 'hover:underline');
+          const href = a.getAttribute('href') || '';
+          if (/^(javascript|vbscript|data):/i.test(href)) {
+            a.setAttribute('href', '#blocked-link');
+          }
+        });
+
+        // Make all images responsive with lazy loading & safe styling
+        const images = doc.querySelectorAll('img');
+        images.forEach((img) => {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+          img.style.objectFit = 'contain';
+          img.setAttribute('loading', 'lazy');
+          img.classList.add('rounded-lg', 'my-2', 'max-w-full');
+        });
+
+        // Wrap tables in responsive horizontal scroll wrappers
+        const tables = doc.querySelectorAll('table');
+        tables.forEach((table) => {
+          table.style.maxWidth = '100%';
+          table.style.display = 'block';
+          table.style.overflowX = 'auto';
+        });
+
+        return {
+          isHtml: true,
+          sanitizedHtml: doc.body.innerHTML,
+          plainText: doc.body.textContent || '',
+          hasQuotedPrintable,
+        };
+      }
+    } catch (_) {}
+
+    return {
+      isHtml: true,
+      sanitizedHtml: cleanHtml,
+      plainText: rawText || targetContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+      hasQuotedPrintable,
+    };
+  }
+
+  // Plain Text Content
+  return {
+    isHtml: false,
+    plainText: targetContent,
+    hasQuotedPrintable,
+  };
+}
+
+/**
+ * Decodes RFC 2047 MIME encoded-word strings (e.g. =?UTF-8?Q?...?= or =?UTF-8?B?...?=)
  */
 export function decodeMimeHeader(text: string): string {
   if (!text) return '';

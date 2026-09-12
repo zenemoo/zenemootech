@@ -244,8 +244,8 @@ const RecipientChipInput: React.FC<RecipientChipInputProps> = ({
 interface EmailComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  mode: 'reply' | 'forward';
-  originalEmail: EmailMessageRecord;
+  mode?: 'reply' | 'forward' | 'new';
+  originalEmail?: EmailMessageRecord | null;
   onSendSuccess: (sentRecord: EmailMessageRecord) => void;
   addToast: (title: string, message?: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
@@ -261,8 +261,9 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
-  const emailId = originalEmail ? originalEmail.id || originalEmail.message_id : '';
-  const draftKey = `${mode}_${emailId}`;
+  const emailId = originalEmail ? originalEmail.id || originalEmail.message_id : 'new';
+  const effectiveMode = mode || (originalEmail ? 'reply' : 'new');
+  const draftKey = `${effectiveMode}_${emailId}`;
 
   const [fromSender, setFromSenderState] = useState<string>('contact@zenemoo.in');
   const [toRecipients, setToRecipientsState] = useState<string[]>([]);
@@ -356,7 +357,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
   // Initialize or restore draft when modal opens
   useEffect(() => {
-    if (!isOpen || !originalEmail || !draftKey) return;
+    if (!isOpen || !draftKey) return;
 
     const existingDraft = composerDraftsStore[draftKey];
 
@@ -379,26 +380,29 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         editorRef.current.innerHTML = existingDraft.messageHtml || '';
       }
     } else {
-      const matchingSender = VERIFIED_SENDERS.find(
-        (s) => s.email.toLowerCase() === (originalEmail.mailbox_email || '').toLowerCase()
-      );
+      const matchingSender = originalEmail
+        ? VERIFIED_SENDERS.find((s) => s.email.toLowerCase() === (originalEmail.mailbox_email || '').toLowerCase())
+        : null;
       const initFrom = matchingSender ? matchingSender.email : 'contact@zenemoo.in';
 
       let initTo: string[] = [];
-      if (mode === 'reply') {
+      if (effectiveMode === 'reply' && originalEmail) {
         const replyEmail = originalEmail.reply_to || originalEmail.sender_email;
         if (replyEmail) initTo = [replyEmail.trim().toLowerCase()];
       }
 
-      const rawSub = originalEmail.subject || '';
-      const initSubject = mode === 'reply' ? formatReplySubject(rawSub) : formatForwardSubject(rawSub);
+      let initSubject = '';
+      if (originalEmail) {
+        const rawSub = originalEmail.subject || '';
+        initSubject = effectiveMode === 'reply' ? formatReplySubject(rawSub) : formatForwardSubject(rawSub);
+      }
 
       const defaultSig = getSignatureForSender(initFrom);
       const initSigText = defaultSig ? defaultSig.signatureText : '';
 
       // Prepare original attachments in forward mode
       let initAttachments: AttachmentFileItem[] = [];
-      if (mode === 'forward' && Array.isArray(originalEmail.attachments) && originalEmail.attachments.length > 0) {
+      if (effectiveMode === 'forward' && originalEmail && Array.isArray(originalEmail.attachments) && originalEmail.attachments.length > 0) {
         initAttachments = originalEmail.attachments.map((att, idx) => ({
           id: att.id || `orig_att_${idx}`,
           name: att.filename,
@@ -582,13 +586,15 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
     setIsSending(true);
 
-    const decodedOriginalSenderName = decodeMimeHeader(originalEmail.sender_name);
-    const decodedOriginalSubject = decodeMimeHeader(originalEmail.subject);
+    const decodedOriginalSenderName = originalEmail ? decodeMimeHeader(originalEmail.sender_name) : '';
+    const decodedOriginalSubject = originalEmail ? decodeMimeHeader(originalEmail.subject) : '';
 
-    const formattedDate = new Date(originalEmail.received_at).toLocaleString('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+    const formattedDate = originalEmail
+      ? new Date(originalEmail.received_at).toLocaleString('en-US', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        })
+      : '';
 
     // Signature formatting
     const signatureHtml = appliedSignatureText
@@ -596,14 +602,14 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       : '';
 
     let fullHtml = '';
-    if (mode === 'reply') {
+    if (effectiveMode === 'reply' && originalEmail) {
       const origSnippet = normalizeMojibake(originalEmail.body_text || originalEmail.snippet || '');
       const quotedBlock = `<br/><br/><div style="border-left: 3px solid #0891b2; padding-left: 14px; margin-top: 20px; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px;">
         <div style="font-weight: 600; color: #334155; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
         <blockquote style="margin: 0; padding: 0; color: #475569; line-height: 1.55; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
       </div>`;
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}${quotedBlock}</div>`;
-    } else {
+    } else if (effectiveMode === 'forward' && originalEmail) {
       // Forward mode
       const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap; color: #1e293b;">${escapeHtml(normalizeMojibake(originalEmail.body_text || originalEmail.snippet))}</div>`;
       const fwdHeader = `<br/><br/><div style="border-top: 1px solid #cbd5e1; padding-top: 14px; margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #334155;">
@@ -616,6 +622,9 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         <div style="color: #1e293b;">${origBody}</div>
       </div>`;
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}${fwdHeader}</div>`;
+    } else {
+      // New compose email
+      fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}</div>`;
     }
 
     try {
@@ -629,8 +638,8 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         subject,
         html: fullHtml,
         text: userPlainText || userHtml.replace(/<[^>]+>/g, ' ').trim(),
-        mode,
-        originalEmailId: originalEmail.id || originalEmail.message_id,
+        mode: effectiveMode,
+        originalEmailId: originalEmail ? originalEmail.id || originalEmail.message_id : undefined,
         attachmentCount: attachments.length,
       };
 
@@ -704,9 +713,9 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       .replace(/'/g, '&#039;');
   }
 
-  if (!isOpen || !originalEmail) return null;
+  if (!isOpen) return null;
 
-  const decodedSenderName = decodeMimeHeader(originalEmail.sender_name);
+  const decodedSenderName = originalEmail ? decodeMimeHeader(originalEmail.sender_name) : '';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto animate-fade-in">
@@ -714,15 +723,20 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         {/* MODAL HEADER */}
         <div className="p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono shrink-0">
           <div className="flex items-center gap-2 text-cyan-300 font-bold text-sm">
-            {mode === 'reply' ? (
+            {effectiveMode === 'reply' && originalEmail ? (
               <>
                 <CornerUpLeft className="w-4 h-4 text-cyan-400" />
-                <span>Reply: {decodedSenderName}</span>
+                <span>Reply: {decodedSenderName || originalEmail.sender_email}</span>
               </>
-            ) : (
+            ) : effectiveMode === 'forward' && originalEmail ? (
               <>
                 <ForwardIcon className="w-4 h-4 text-purple-400" />
                 <span>Forward Message</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 text-cyan-400" />
+                <span>New Message</span>
               </>
             )}
           </div>
