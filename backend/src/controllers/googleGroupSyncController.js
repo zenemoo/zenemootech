@@ -413,16 +413,20 @@ export const restoreGoogleGroupExclusion = async (req, res, next) => {
 
 // In-memory sync job state tracker for asynchronous background processing
 let currentSyncJob = {
-  status: 'IDLE', // 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  status: 'IDLE', // 'IDLE' | 'RUNNING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED'
   startedAt: null,
   completedAt: null,
   totalEligible: 0,
+  alreadyExisting: 0,
+  pendingBeforeSync: 0,
+  candidatesToProcess: 0,
   totalCandidates: 0,
   processedCount: 0,
   addedCount: 0,
   skippedCount: 0,
   excludedCount: 0,
   failedCount: 0,
+  remainingPending: 0,
   errors: [],
   currentBatch: 0,
   totalBatches: 0,
@@ -438,6 +442,7 @@ let currentSyncJob = {
  * 3. Never re-reads Google Group during batch loops.
  * 4. Updates existingMemberEmails locally as additions succeed.
  * 5. Aborts safely if initial member read fails.
+ * 6. Accurately tracks processed candidates, remaining pending, and failure details.
  */
 const executeBackgroundSync = async (user, targetGroupEmail) => {
   try {
@@ -475,33 +480,41 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
     }
 
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
-    const existingMemberEmails = new Set(existingGroupMembers.map((m) => m.email.toLowerCase()));
+    const existingMemberEmails = new Set(
+      existingGroupMembers.map((m) => normalizeAndValidateEmail(typeof m === 'string' ? m : m?.email)).filter(Boolean)
+    );
 
     const exclusions = Array.isArray(appsScriptExclusionsResult.exclusions) ? appsScriptExclusionsResult.exclusions : [];
     const excludedEmailSet = new Set(
-      exclusions.map((item) => normalizeAndValidateEmail(item.email || item)).filter(Boolean)
+      exclusions.map((item) => normalizeAndValidateEmail(typeof item === 'string' ? item : item?.email)).filter(Boolean)
     );
 
     // 2. Filter candidate emails (Exclude existing members in Set AND excluded emails)
     const missingCandidates = [];
-    let excludedCount = 0;
+    let eligibleExcludedCount = 0;
 
     for (const email of eligibleEmailSet) {
       if (excludedEmailSet.has(email)) {
-        excludedCount++;
+        eligibleExcludedCount++;
       } else if (!existingMemberEmails.has(email)) {
         missingCandidates.push(email);
       }
     }
 
+    const pendingBeforeSync = missingCandidates.length;
     currentSyncJob.totalEligible = eligibleEmailSet.size;
-    currentSyncJob.excludedCount = excludedCount;
     currentSyncJob.alreadyExisting = existingMemberEmails.size;
+    currentSyncJob.excludedCount = eligibleExcludedCount;
+    currentSyncJob.pendingBeforeSync = pendingBeforeSync;
 
     if (missingCandidates.length === 0) {
       currentSyncJob.status = 'COMPLETED';
       currentSyncJob.completedAt = new Date().toISOString();
-      currentSyncJob.message = 'Google Group is already 100% synchronized.';
+      currentSyncJob.processedCount = 0;
+      currentSyncJob.candidatesToProcess = 0;
+      currentSyncJob.totalCandidates = 0;
+      currentSyncJob.remainingPending = 0;
+      currentSyncJob.message = 'Google Group is already 100% synchronized (0 pending additions).';
       return;
     }
 
@@ -512,8 +525,9 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
     const totalBatches = Math.ceil(candidatesToProcess.length / BATCH_SIZE);
 
     currentSyncJob.totalCandidates = candidatesToProcess.length;
+    currentSyncJob.candidatesToProcess = candidatesToProcess.length;
     currentSyncJob.totalBatches = totalBatches;
-    currentSyncJob.message = `Processing ${candidatesToProcess.length} pending candidate(s) in ${totalBatches} batch(es)...`;
+    currentSyncJob.message = `Processing ${candidatesToProcess.length} pending candidate(s) of ${pendingBeforeSync} in ${totalBatches} batch(es)...`;
 
     for (let b = 0; b < totalBatches; b++) {
       currentSyncJob.currentBatch = b + 1;
@@ -522,7 +536,7 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
       // Process batch (Apps Script does 0 GroupsApp reads)
       const syncResult = await googleAppsScriptService.syncGoogleGroupMembers(targetGroupEmail, batchChunk);
 
-      if (syncResult) {
+      if (syncResult && syncResult.success !== false) {
         currentSyncJob.addedCount += syncResult.addedCount || 0;
         currentSyncJob.skippedCount += syncResult.skippedCount || 0;
         currentSyncJob.failedCount += syncResult.failedCount || 0;
@@ -533,16 +547,19 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
 
           // Update in-memory Set immediately so subsequent batches and states recognize them
           for (const added of syncResult.addedEmails) {
-            existingMemberEmails.add(added.toLowerCase());
-            if (!lastKnownState.members.some((m) => m.email.toLowerCase() === added.toLowerCase())) {
-              lastKnownState.members.push({
-                id: null,
-                email: added,
-                role: 'MEMBER',
-                type: 'USER',
-                status: 'ACTIVE',
-                deliverySettings: 'ALL_MAIL',
-              });
+            const cleanAdded = normalizeAndValidateEmail(added);
+            if (cleanAdded) {
+              existingMemberEmails.add(cleanAdded);
+              if (!lastKnownState.members.some((m) => normalizeAndValidateEmail(typeof m === 'string' ? m : m?.email) === cleanAdded)) {
+                lastKnownState.members.push({
+                  id: null,
+                  email: cleanAdded,
+                  role: 'MEMBER',
+                  type: 'USER',
+                  status: 'ACTIVE',
+                  deliverySettings: 'ALL_MAIL',
+                });
+              }
             }
           }
           lastKnownState.memberCount = Math.max(lastKnownState.memberCount, existingMemberEmails.size);
@@ -552,15 +569,27 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
           currentSyncJob.errors.push(...syncResult.errors);
         }
       } else {
+        const errorMsg = syncResult?.message || `Batch ${b + 1} communication timeout or error`;
         currentSyncJob.failedCount += batchChunk.length;
         currentSyncJob.processedCount += batchChunk.length;
-        currentSyncJob.errors.push({ error: `Batch ${b + 1} communication timeout or error` });
+        currentSyncJob.errors.push({ batch: b + 1, error: errorMsg });
       }
     }
 
-    currentSyncJob.status = 'COMPLETED';
     currentSyncJob.completedAt = new Date().toISOString();
-    currentSyncJob.message = `Sync complete: Added ${currentSyncJob.addedCount} new member(s) (${currentSyncJob.skippedCount} skipped, ${currentSyncJob.excludedCount} excluded).`;
+    currentSyncJob.remainingPending = Math.max(0, pendingBeforeSync - currentSyncJob.addedCount - currentSyncJob.skippedCount);
+
+    if (currentSyncJob.failedCount === 0) {
+      currentSyncJob.status = 'COMPLETED';
+      currentSyncJob.message = `Sync completed successfully: Added ${currentSyncJob.addedCount} new member(s) (${currentSyncJob.skippedCount} skipped, ${currentSyncJob.excludedCount} excluded, ${currentSyncJob.remainingPending} remaining).`;
+    } else if (currentSyncJob.addedCount > 0) {
+      currentSyncJob.status = 'PARTIAL_SUCCESS';
+      currentSyncJob.message = `Sync partially completed: Added ${currentSyncJob.addedCount} member(s), but ${currentSyncJob.failedCount} failed (${currentSyncJob.remainingPending} remaining).`;
+    } else {
+      currentSyncJob.status = 'FAILED';
+      const firstError = currentSyncJob.errors[0]?.error || currentSyncJob.errors[0]?.message || 'Member addition rejected by Google API.';
+      currentSyncJob.message = `Sync failed to add candidate members: ${firstError}`;
+    }
 
     // Log Admin Audit record
     try {
@@ -573,11 +602,14 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
           details: {
             groupEmail: targetGroupEmail,
             totalEligible: currentSyncJob.totalEligible,
+            pendingBeforeSync: currentSyncJob.pendingBeforeSync,
+            processedCount: currentSyncJob.processedCount,
             excludedCount: currentSyncJob.excludedCount,
-            totalCandidates: currentSyncJob.totalCandidates,
             addedCount: currentSyncJob.addedCount,
             skippedCount: currentSyncJob.skippedCount,
             failedCount: currentSyncJob.failedCount,
+            remainingPending: currentSyncJob.remainingPending,
+            status: currentSyncJob.status,
             timestamp: currentSyncJob.completedAt,
           },
           created_at: new Date().toISOString(),

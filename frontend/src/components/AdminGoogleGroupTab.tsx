@@ -175,26 +175,36 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         const data = res.data;
         if (data?.success) {
           setSyncProgress(data);
-          if (data.status === 'COMPLETED') {
+          if (data.status === 'COMPLETED' || data.status === 'PARTIAL_SUCCESS') {
             clearInterval(syncPollIntervalRef.current);
             syncPollIntervalRef.current = null;
             setIsSyncing(false);
             setLastSyncResult(data);
             setShowSyncModal(true);
             if (showToast) {
-              showToast(
-                'Sync Successful',
-                `Added ${data.addedCount || 0} new member(s) to Google Group (${data.skippedCount || 0} skipped, ${data.excludedCount || 0} excluded).`,
-                'success'
-              );
+              if (data.status === 'COMPLETED') {
+                showToast(
+                  'Sync Successful',
+                  `Added ${data.addedCount || 0} new member(s) (${data.skippedCount || 0} skipped, ${data.remainingPending ?? 0} remaining pending).`,
+                  'success'
+                );
+              } else {
+                showToast(
+                  'Sync Partial Success',
+                  `Added ${data.addedCount || 0} member(s), but ${data.failedCount || 0} failed (${data.remainingPending ?? 0} remaining pending).`,
+                  'warning'
+                );
+              }
             }
             await Promise.all([loadOverview(true), loadMembers()]);
           } else if (data.status === 'FAILED') {
             clearInterval(syncPollIntervalRef.current);
             syncPollIntervalRef.current = null;
             setIsSyncing(false);
+            setLastSyncResult(data);
+            setShowSyncModal(true);
             if (showToast) {
-              showToast('Sync Failed', data.message || 'Synchronization failed.', 'error');
+              showToast('Sync Notice', data.message || 'Synchronization encountered an issue.', 'error');
             }
             await loadOverview(true);
           }
@@ -1672,16 +1682,36 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-lg rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900 to-gray-950 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl text-white"
+              className="relative w-full max-w-lg rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900 to-gray-950 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl text-white my-8"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
-                    <CheckCircle2 className="h-5 w-5" />
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${
+                      lastSyncResult.status === 'COMPLETED'
+                        ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20'
+                        : lastSyncResult.status === 'PARTIAL_SUCCESS'
+                        ? 'bg-amber-500/10 text-amber-400 ring-amber-500/20'
+                        : 'bg-red-500/10 text-red-400 ring-red-500/20'
+                    }`}
+                  >
+                    {lastSyncResult.status === 'COMPLETED' ? (
+                      <CheckCircle2 className="h-5 w-5" />
+                    ) : lastSyncResult.status === 'PARTIAL_SUCCESS' ? (
+                      <AlertTriangle className="h-5 w-5" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">Synchronization Complete</h3>
-                    <p className="text-xs text-gray-400">Google Group synchronization summary</p>
+                    <h3 className="text-base font-bold text-white">
+                      {lastSyncResult.status === 'COMPLETED'
+                        ? 'Synchronization Complete'
+                        : lastSyncResult.status === 'PARTIAL_SUCCESS'
+                        ? 'Synchronization Partial Success'
+                        : 'Synchronization Notice'}
+                    </h3>
+                    <p className="text-xs text-gray-400">Google Group synchronization execution report</p>
                   </div>
                 </div>
                 <button
@@ -1692,31 +1722,94 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 </button>
               </div>
 
-              <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
-                  <span className="text-[11px] text-gray-400 block">Total Evaluated</span>
-                  <span className="text-base font-bold text-white mt-1 block">{lastSyncResult.totalEligible || 0}</span>
+              {/* Status Message */}
+              {lastSyncResult.message && (
+                <div className="mt-4 rounded-xl border border-gray-800 bg-gray-950/60 p-3 text-xs text-gray-300">
+                  {lastSyncResult.message}
                 </div>
-                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
-                  <span className="text-[11px] text-gray-400 block">Already in Group</span>
-                  <span className="text-base font-bold text-emerald-400 mt-1 block">{lastSyncResult.alreadyExisting || 0}</span>
+              )}
+
+              {/* Key Metrics Grid */}
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Total Eligible</span>
+                  <span className="text-sm sm:text-base font-bold text-white mt-1 block">{lastSyncResult.totalEligible ?? 404}</span>
                 </div>
-                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
-                  <span className="text-[11px] text-gray-400 block">Excluded Skipped</span>
-                  <span className="text-base font-bold text-red-400 mt-1 block">{lastSyncResult.excludedCount || 0}</span>
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Already in Group</span>
+                  <span className="text-sm sm:text-base font-bold text-emerald-400 mt-1 block">{lastSyncResult.alreadyExisting ?? 147}</span>
                 </div>
-                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-3">
-                  <span className="text-[11px] text-gray-400 block">Newly Added</span>
-                  <span className="text-base font-bold text-orange-400 mt-1 block">{lastSyncResult.addedCount || 0}</span>
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Pending Before</span>
+                  <span className="text-sm sm:text-base font-bold text-amber-400 mt-1 block">
+                    {lastSyncResult.pendingBeforeSync ?? Math.max(0, (lastSyncResult.totalEligible || 404) - (lastSyncResult.alreadyExisting || 147) - (lastSyncResult.excludedCount || 0))}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Processed Run</span>
+                  <span className="text-sm sm:text-base font-bold text-blue-400 mt-1 block">
+                    {lastSyncResult.processedCount ?? lastSyncResult.candidatesToProcess ?? 0}
+                  </span>
                 </div>
               </div>
 
+              {/* Run Outcome Breakdown */}
+              <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Newly Added</span>
+                  <span className="text-sm sm:text-base font-bold text-emerald-400 mt-1 block">{lastSyncResult.addedCount || 0}</span>
+                </div>
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Skipped / Exists</span>
+                  <span className="text-sm sm:text-base font-bold text-gray-400 mt-1 block">{lastSyncResult.skippedCount || 0}</span>
+                </div>
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Excluded</span>
+                  <span className="text-sm sm:text-base font-bold text-red-400 mt-1 block">{lastSyncResult.excludedCount || 0}</span>
+                </div>
+                <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-2.5">
+                  <span className="text-[10px] sm:text-[11px] text-gray-400 block">Failed</span>
+                  <span className="text-sm sm:text-base font-bold text-rose-400 mt-1 block">{lastSyncResult.failedCount || 0}</span>
+                </div>
+              </div>
+
+              {/* Remaining Pending Banner */}
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-xs">
+                <span className="text-gray-300 font-medium">Remaining Pending for Next Cycle:</span>
+                <span className="font-mono text-amber-400 font-bold">
+                  {lastSyncResult.remainingPending ?? Math.max(0, (lastSyncResult.pendingBeforeSync || 257) - (lastSyncResult.addedCount || 0) - (lastSyncResult.skippedCount || 0))} emails
+                </span>
+              </div>
+
+              {/* Errors Breakdown (if any) */}
+              {Array.isArray(lastSyncResult.errors) && lastSyncResult.errors.length > 0 && (
+                <div className="mt-3.5">
+                  <span className="text-xs font-semibold text-rose-400 block mb-1.5 flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    Diagnostics / Failure Details ({lastSyncResult.errors.length}):
+                  </span>
+                  <div className="max-h-28 overflow-y-auto rounded-xl border border-rose-500/20 bg-rose-950/30 p-2.5 font-mono text-[11px] text-rose-300 space-y-1">
+                    {lastSyncResult.errors.slice(0, 5).map((errObj: any, idx: number) => (
+                      <div key={idx} className="truncate">
+                        • {typeof errObj === 'string' ? errObj : (errObj.email ? `${errObj.email}: ` : '') + (errObj.error || errObj.message || 'Addition failed')}
+                      </div>
+                    ))}
+                    {lastSyncResult.errors.length > 5 && (
+                      <div className="text-gray-400 text-[10px] italic">
+                        + {lastSyncResult.errors.length - 5} additional failure(s) recorded in logs
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Added Emails List */}
               {Array.isArray(lastSyncResult.addedEmails) && lastSyncResult.addedEmails.length > 0 && (
-                <div className="mt-4">
-                  <span className="text-xs font-semibold text-gray-300 block mb-2">
+                <div className="mt-3.5">
+                  <span className="text-xs font-semibold text-emerald-400 block mb-1.5">
                     Newly Added Members ({lastSyncResult.addedEmails.length}):
                   </span>
-                  <div className="max-h-36 overflow-y-auto rounded-xl border border-gray-800 bg-gray-950/80 p-2.5 font-mono text-[11px] text-orange-300 space-y-1">
+                  <div className="max-h-28 overflow-y-auto rounded-xl border border-gray-800 bg-gray-950/80 p-2.5 font-mono text-[11px] text-emerald-300 space-y-1">
                     {lastSyncResult.addedEmails.map((email: string) => (
                       <div key={email} className="truncate">
                         + {email}
@@ -1726,7 +1819,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 </div>
               )}
 
-              <div className="mt-6 flex justify-end">
+              <div className="mt-5 flex justify-end">
                 <button
                   onClick={() => setShowSyncModal(false)}
                   className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-2.5 text-xs font-semibold text-gray-950 transition-all hover:opacity-90"

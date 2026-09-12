@@ -583,6 +583,8 @@ function handleSyncMembers(payload) {
     const addedEmails = [];
     const errors = [];
 
+    Logger.log('🚀 [SYNC] Received batch size: ' + rawCandidateEmails.length + ' candidate email(s) for target group.');
+
     // 1. Load exclusion list (PropertiesService - zero groups.read quota)
     const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
 
@@ -620,7 +622,8 @@ function handleSyncMembers(payload) {
           inserted = true;
         } else {
           failedCount++;
-          errors.push({ email: clean, error: errMsg });
+          const sanitizedMsg = errMsg.replace(/Bearer\s+[a-zA-Z0-9._-]+/gi, '[REDACTED]');
+          errors.push({ email: clean, error: sanitizedMsg });
           inserted = true;
         }
       }
@@ -630,6 +633,8 @@ function handleSyncMembers(payload) {
         errors.push({ email: clean, error: 'Direct programmatic addition requires Google Workspace Group Admin privilege.' });
       }
     }
+
+    Logger.log('🏁 [SYNC] Batch finished — Received: ' + rawCandidateEmails.length + ' | Added: ' + addedCount + ' | Skipped: ' + skippedCount + ' | Excluded: ' + excludedCount + ' | Failed: ' + failedCount);
 
     // 3. If members were added, update or invalidate cache so next read reflects changes
     if (addedEmails.length > 0) {
