@@ -599,6 +599,8 @@ export const getRegistrationsAdmin = async (req, res) => {
       minCapacity = '',
       status = '',
       isArchived = 'false',
+      sortField = 'created_at',
+      sortOrder = 'desc',
       page = 1,
       pageSize = 25,
       limit = 25,
@@ -693,8 +695,11 @@ export const getRegistrationsAdmin = async (req, res) => {
           }
         }
 
-        // 9. True Database Pagination Range Execution
-        query = query.order('created_at', { ascending: false }).range(from, to);
+        // 9. Server-Side Dynamic Sorting & Range Pagination Execution
+        const validSortFields = ['created_at', 'full_name', 'status', 'primary_role', 'state', 'availability'];
+        const sortColumn = validSortFields.includes(sortField) ? sortField : 'created_at';
+        const isAscending = String(sortOrder).toLowerCase() === 'asc';
+        query = query.order(sortColumn, { ascending: isAscending }).range(from, to);
 
         const { data: pageRecords, count: dbTotalCount, error: queryError } = await query;
 
@@ -793,12 +798,14 @@ export const getRegistrationsAdmin = async (req, res) => {
 
       if (supabase) {
         try {
-          const [verCountRes, pendCountRes] = await Promise.all([
+          const [verCountRes, pendCountRes, totalAllRes] = await Promise.all([
             supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('status', 'verified').eq('is_archived', false),
             supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('is_archived', false),
+            supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('is_archived', false),
           ]);
           stats.verified = verCountRes.count || 0;
           stats.pending = pendCountRes.count || 0;
+          stats.total = totalAllRes.count || (stats.verified + stats.pending);
         } catch (_) {}
       }
 

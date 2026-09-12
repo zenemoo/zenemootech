@@ -167,27 +167,65 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
   }
 };
 
-// 1. GET ALL APPLICATIONS (Filtered by opportunity_id if provided)
+// 1. GET ALL APPLICATIONS (Filtered by opportunity_id if provided with optional pagination)
 export const getApplications = async (req, res) => {
   try {
-    const { opportunity_id, include_answers } = req.query;
+    const { opportunity_id, include_answers, page, pageSize, limit, search, status } = req.query;
 
     const selectColumns = include_answers === 'false'
       ? 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at'
       : 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, answers, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
 
-    let query = supabase.from('opportunity_applications').select(selectColumns).order('created_at', { ascending: false });
-    if (opportunity_id) {
+    let query = supabase.from('opportunity_applications').select(selectColumns, { count: 'exact' }).order('created_at', { ascending: false });
+    if (opportunity_id && opportunity_id !== 'all') {
       query = query.eq('opportunity_id', opportunity_id);
     }
+    if (status && status !== 'all') {
+      query = query.ilike('status', status.trim());
+    }
+    if (search && search.trim()) {
+      const q = search.trim();
+      query = query.or(`applicant_name.ilike.%${q}%,applicant_email.ilike.%${q}%,applicant_phone.ilike.%${q}%,applicant_id.ilike.%${q}%`);
+    }
 
-    const { data, error } = await query;
+    if (page || pageSize || limit) {
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
+      const from = (pageNum - 1) * limitNum;
+      const to = from + limitNum - 1;
+      query = query.range(from, to);
+
+      const { data, count, error } = await query;
+      if (error) {
+        console.error('Supabase fetch applications error:', error.message);
+        return res.status(500).json({ error: error.message });
+      }
+
+      const total = typeof count === 'number' ? count : (data || []).length;
+      return res.json({
+        status: 'success',
+        data: data || [],
+        count: (data || []).length,
+        total,
+        page: pageNum,
+        pageSize: limitNum,
+        totalPages: Math.max(1, Math.ceil(total / limitNum)),
+        pagination: {
+          page: pageNum,
+          pageSize: limitNum,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limitNum)),
+        }
+      });
+    }
+
+    const { data, count, error } = await query;
     if (error) {
       console.error('Supabase fetch applications error:', error.message);
       return res.status(500).json({ error: error.message });
     }
 
-    return res.json({ status: 'success', data: data || [] });
+    return res.json({ status: 'success', data: data || [], total: typeof count === 'number' ? count : (data || []).length });
   } catch (err) {
     console.error('getApplications controller exception:', err.message);
     return res.status(500).json({ error: err.message });

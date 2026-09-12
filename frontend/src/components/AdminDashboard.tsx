@@ -718,10 +718,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [subSearchInput, setSubSearchInput] = useState('');
   const [appliedSubSearch, setAppliedSubSearch] = useState('');
   const [subStatusFilter, setSubStatusFilter] = useState<'all' | 'active' | 'unsubscribed'>('all');
+  const [subCurrentPage, setSubCurrentPage] = useState(1);
+  const [subPageSize, setSubPageSize] = useState(25);
+  const [subTotalCount, setSubTotalCount] = useState(0);
+  const [subActiveCount, setSubActiveCount] = useState(0);
+  const [subUnsubscribedCount, setSubUnsubscribedCount] = useState(0);
+  const [subFilteredTotal, setSubFilteredTotal] = useState(0);
+  const [subTotalPages, setSubTotalPages] = useState(1);
+  const [isSubLoading, setIsSubLoading] = useState(false);
+
+  const loadSubscribers = async (pageOverride?: number, sizeOverride?: number, statusOverride?: string, searchOverride?: string) => {
+    setIsSubLoading(true);
+    try {
+      const pageToFetch = pageOverride !== undefined ? pageOverride : subCurrentPage;
+      const sizeToFetch = sizeOverride !== undefined ? sizeOverride : subPageSize;
+      const statusToFetch = statusOverride !== undefined ? statusOverride : subStatusFilter;
+      const searchToFetch = searchOverride !== undefined ? searchOverride : appliedSubSearch;
+
+      const res = await subscriberApi.getAll({
+        page: pageToFetch,
+        pageSize: sizeToFetch,
+        status: statusToFetch === 'all' ? undefined : statusToFetch,
+        search: searchToFetch || undefined,
+      });
+
+      if (res.data && res.data.success) {
+        setSubscribers(Array.isArray(res.data.data) ? res.data.data : []);
+        setSubTotalCount(res.data.totalCount ?? res.data.total ?? 0);
+        setSubActiveCount(res.data.activeCount ?? 0);
+        setSubUnsubscribedCount(res.data.unsubscribedCount ?? 0);
+        setSubFilteredTotal(res.data.total ?? 0);
+        setSubTotalPages(res.data.totalPages ?? 1);
+        if (res.data.page) setSubCurrentPage(res.data.page);
+      } else if (res.data && Array.isArray(res.data.data)) {
+        setSubscribers(res.data.data);
+      }
+    } catch (e) {
+      console.warn('Failed to load subscribers:', e);
+    } finally {
+      setIsSubLoading(false);
+    }
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setAppliedSubSearch(subSearchInput.trim());
+      const trimmed = subSearchInput.trim();
+      if (trimmed !== appliedSubSearch) {
+        setAppliedSubSearch(trimmed);
+        setSubCurrentPage(1);
+        loadSubscribers(1, subPageSize, subStatusFilter, trimmed);
+      }
     }, 400);
     return () => clearTimeout(timer);
   }, [subSearchInput]);
@@ -734,15 +780,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const showStatus = (msg: string) => {
     setStatusMessage(msg);
     setTimeout(() => setStatusMessage(''), 3500);
-  };
-
-  const loadSubscribers = async () => {
-    try {
-      const res = await subscriberApi.getAll();
-      if (res.data && res.data.data) {
-        setSubscribers(res.data.data);
-      }
-    } catch (e) {}
   };
 
   const loadEmailHistory = async () => {
@@ -2076,7 +2113,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'email-inbox', name: 'Email Inbox', icon: Mail, count: emailInboxUnreadCount },
         { id: 'history', name: 'Message History', icon: Send, count: emailLogs.filter((log) => log.status === 'scheduled' || log.status === 'pending' || log.is_scheduled).length },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
-        { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.filter((s) => s.status === 'unsubscribed').length },
+        { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subUnsubscribedCount },
         { id: 'google-group', name: 'Google Group Management', icon: Users },
       ],
     },
@@ -5055,18 +5092,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         )}
 
         {activeTab === 'subscribers' && (() => {
-          const activeSubscribersList = subscribers.filter((s) => s.status !== 'unsubscribed');
-          const unsubscribedSubscribersList = subscribers.filter((s) => s.status === 'unsubscribed');
-          const filteredSubscribersList = subscribers.filter((s) => {
-            // Status filter check
-            if (subStatusFilter === 'active' && s.status === 'unsubscribed') return false;
-            if (subStatusFilter === 'unsubscribed' && s.status !== 'unsubscribed') return false;
-
-            // Search input query check
-            const query = (appliedSubSearch || searchQuery || '').trim().toLowerCase();
-            if (!query) return true;
-            return (s.email || '').toLowerCase().includes(query) || (s.status || '').toLowerCase().includes(query);
-          });
+          const pageActiveList = subscribers.filter((s) => s.status !== 'unsubscribed');
+          const pageUnsubList = subscribers.filter((s) => s.status === 'unsubscribed');
+          const fromRecord = subFilteredTotal === 0 ? 0 : (subCurrentPage - 1) * subPageSize + 1;
+          const toRecord = Math.min(subCurrentPage * subPageSize, subFilteredTotal);
 
           return (
             <div className="space-y-6">
@@ -5075,13 +5104,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <div className="space-y-1">
                     <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Total Subscribers</span>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-white block">{subscribers.length}</span>
-                      <span className="text-xs font-mono text-slate-400">Total</span>
+                      <span className="text-3xl font-extrabold text-white block">{subTotalCount}</span>
+                      <span className="text-xs font-mono text-slate-400">Total in DB</span>
                     </div>
                     <div className="text-[11px] font-mono flex items-center gap-2 pt-0.5">
-                      <span className="text-emerald-400 font-bold">Active: {activeSubscribersList.length}</span>
+                      <span className="text-emerald-400 font-bold">Active: {subActiveCount}</span>
                       <span className="text-slate-600">&bull;</span>
-                      <span className="text-rose-400 font-bold">Unsubscribed: {unsubscribedSubscribersList.length}</span>
+                      <span className="text-rose-400 font-bold">Unsubscribed: {subUnsubscribedCount}</span>
                     </div>
                   </div>
                   <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
@@ -5093,7 +5122,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <div className="space-y-1">
                     <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Database Storage Status</span>
                     <span className="text-sm font-bold text-white block font-mono">Supabase "subscribers"</span>
-                    <span className="text-[10px] font-mono text-emerald-400 block">Real-time connection active</span>
+                    <span className="text-[10px] font-mono text-emerald-400 block">Server-side pagination active</span>
                   </div>
                   <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                     <Cloud className="w-5 h-5" />
@@ -5107,10 +5136,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <span className="text-[10px] font-mono text-purple-400 block">Pull live submissions</span>
                   </div>
                   <button
-                    onClick={loadSubscribers}
-                    className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                    onClick={() => loadSubscribers(subCurrentPage, subPageSize, subStatusFilter, appliedSubSearch)}
+                    disabled={isSubLoading}
+                    className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-mono text-slate-300 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all disabled:opacity-50"
                   >
-                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" /> Refresh
+                    <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isSubLoading ? 'animate-spin' : ''}`} /> Refresh
                   </button>
                 </div>
               </div>
@@ -5126,33 +5156,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <button
                       type="button"
                       onClick={() => {
-                        if (!activeSubscribersList || activeSubscribersList.length === 0) {
-                          addToast('No active subscriber emails available to copy.', 'warning');
+                        if (pageActiveList.length === 0) {
+                          addToast('No active subscriber emails on current page to copy.', 'warning');
                           return;
                         }
-                        const emailList = activeSubscribersList.map((s) => s.email).filter(Boolean).join(', ');
+                        const emailList = pageActiveList.map((s) => s.email).filter(Boolean).join(', ');
                         navigator.clipboard.writeText(emailList).then(() => {
-                          addToast(`Copied ${activeSubscribersList.length} active subscriber email(s) to clipboard!`, 'success');
+                          addToast(`Copied ${pageActiveList.length} page active email(s) to clipboard!`, 'success');
                         }).catch(() => {
                           addToast('Failed to copy emails to clipboard.', 'error');
                         });
                       }}
-                      disabled={activeSubscribersList.length === 0}
+                      disabled={pageActiveList.length === 0}
                       className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Copy active subscriber emails to clipboard (comma-separated for emailing)"
+                      title="Copy current page active subscriber emails to clipboard"
                     >
                       <Copy className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Copy Active Emails ({activeSubscribersList.length})</span>
+                      <span>Copy Page Active Emails ({pageActiveList.length})</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => setIsUnsubscribeLogOpen(true)}
+                      onClick={() => {
+                        setSubStatusFilter('unsubscribed');
+                        setSubCurrentPage(1);
+                        loadSubscribers(1, subPageSize, 'unsubscribed', appliedSubSearch);
+                        setIsUnsubscribeLogOpen(true);
+                      }}
                       className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg"
                       title="View unsubscribed users log"
                     >
                       <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Unsubscribe Log ({unsubscribedSubscribersList.length})</span>
+                      <span>Unsubscribe Log ({subUnsubscribedCount})</span>
                     </button>
 
                     <ExportButton
@@ -5394,7 +5429,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <div>
                         <h3 className="text-lg font-bold font-display text-white">UNSUBSCRIBE LOG</h3>
                         <p className="text-xs font-mono text-slate-400 mt-0.5">
-                          Total Unsubscribed: <strong className="text-rose-400">{unsubscribedSubscribersList.length}</strong>
+                          Total Unsubscribed in Database: <strong className="text-rose-400">{subUnsubscribedCount}</strong>
                         </p>
                       </div>
                     </div>
@@ -5411,14 +5446,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     </div>
 
                     <div className="max-h-96 overflow-y-auto space-y-2.5 pr-1 font-mono text-xs">
-                      {unsubscribedSubscribersList.length === 0 ? (
+                      {pageUnsubList.length === 0 ? (
                         <div className="p-8 text-center text-slate-400 space-y-1">
                           <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                          <div>No unsubscribed users recorded.</div>
-                          <div className="text-[10px] text-slate-500">All subscribers are currently active!</div>
+                          <div>No unsubscribed users on current view.</div>
+                          <div className="text-[10px] text-slate-500">
+                            {subUnsubscribedCount > 0 ? `Switch to the "Unsubscribed" filter tab to view all ${subUnsubscribedCount} records.` : 'All subscribers are currently active!'}
+                          </div>
                         </div>
                       ) : (
-                        unsubscribedSubscribersList
+                        pageUnsubList
                           .filter((u) => (u.email || '').toLowerCase().includes(unsubLogSearch.toLowerCase().trim()))
                           .map((u) => (
                             <div key={u.id} className="p-3.5 rounded-xl bg-rose-500/5 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -5467,36 +5504,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <div className="flex items-center gap-1.5 font-mono text-xs overflow-x-auto pb-1 md:pb-0">
                     <button
                       type="button"
-                      onClick={() => setSubStatusFilter('all')}
+                      onClick={() => {
+                        setSubStatusFilter('all');
+                        setSubCurrentPage(1);
+                        loadSubscribers(1, subPageSize, 'all', appliedSubSearch);
+                      }}
                       className={`px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-bold shrink-0 ${
                         subStatusFilter === 'all'
                           ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-md shadow-cyan-500/10'
                           : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      All ({subscribers.length})
+                      All ({subTotalCount})
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSubStatusFilter('active')}
+                      onClick={() => {
+                        setSubStatusFilter('active');
+                        setSubCurrentPage(1);
+                        loadSubscribers(1, subPageSize, 'active', appliedSubSearch);
+                      }}
                       className={`px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-bold shrink-0 ${
                         subStatusFilter === 'active'
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-md shadow-emerald-500/10'
                           : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      Active ({activeSubscribersList.length})
+                      Active ({subActiveCount})
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSubStatusFilter('unsubscribed')}
+                      onClick={() => {
+                        setSubStatusFilter('unsubscribed');
+                        setSubCurrentPage(1);
+                        loadSubscribers(1, subPageSize, 'unsubscribed', appliedSubSearch);
+                      }}
                       className={`px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-bold shrink-0 ${
                         subStatusFilter === 'unsubscribed'
                           ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-md shadow-rose-500/10'
                           : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      Unsubscribed ({unsubscribedSubscribersList.length})
+                      Unsubscribed ({subUnsubscribedCount})
                     </button>
                   </div>
 
@@ -5504,7 +5553,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      setAppliedSubSearch(subSearchInput.trim());
+                      const query = subSearchInput.trim();
+                      setAppliedSubSearch(query);
+                      setSubCurrentPage(1);
+                      loadSubscribers(1, subPageSize, subStatusFilter, query);
                     }}
                     className="flex items-center gap-2 w-full md:w-auto"
                   >
@@ -5523,6 +5575,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           onClick={() => {
                             setSubSearchInput('');
                             setAppliedSubSearch('');
+                            setSubCurrentPage(1);
+                            loadSubscribers(1, subPageSize, subStatusFilter, '');
                           }}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-mono"
                           title="Clear search"
@@ -5557,7 +5611,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                           Status: {subStatusFilter}
                         </span>
                       )}
-                      <span className="text-slate-400">({filteredSubscribersList.length} matching)</span>
+                      <span className="text-slate-400">({subFilteredTotal} matching in DB)</span>
                     </div>
                     <button
                       type="button"
@@ -5565,6 +5619,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         setSubSearchInput('');
                         setAppliedSubSearch('');
                         setSubStatusFilter('all');
+                        setSubCurrentPage(1);
+                        loadSubscribers(1, subPageSize, 'all', '');
                       }}
                       className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer font-bold"
                     >
@@ -5575,7 +5631,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               </div>
 
               {/* Subscriber List Grid */}
-              {filteredSubscribersList.length === 0 ? (
+              {isSubLoading ? (
+                <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
+                  <RefreshCw className="w-8 h-8 text-cyan-400 mx-auto animate-spin" />
+                  <p className="text-xs font-mono text-slate-400">Loading subscribers from Supabase...</p>
+                </div>
+              ) : subscribers.length === 0 ? (
                 <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
                   <Sparkles className="w-10 h-10 text-slate-500 mx-auto" />
                   <h4 className="text-base font-bold text-white">No Matching Subscribers Found</h4>
@@ -5585,7 +5646,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredSubscribersList.map((sub) => {
+                  {subscribers.map((sub) => {
                     const isUnsub = sub.status === 'unsubscribed';
                     return (
                       <div
@@ -5597,7 +5658,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         }`}
                       >
                         <div className="space-y-1.5 min-w-0">
-                          <div className="font-mono text-xs text-white font-bold truncate">
+                          <div className="font-mono text-xs text-white font-bold truncate" title={sub.email}>
                             {sub.email}
                           </div>
 
@@ -5642,11 +5703,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                                 'Delete Newsletter Subscriber',
                                 `Are you sure you want to remove subscriber "${sub.email}"?`,
                                 async () => {
-                                  setSubscribers((prev) => prev.filter((s) => s.id !== sub.id));
                                   try {
                                     await subscriberApi.delete(sub.id);
-                                  } catch (e) {}
-                                  showStatus('Subscriber deleted!');
+                                    showStatus('Subscriber deleted!');
+                                    await loadSubscribers();
+                                  } catch (e) {
+                                    showStatus('Error deleting subscriber');
+                                  }
                                 },
                                 { confirmText: 'Yes, Remove Subscriber', intent: 'danger' }
                               );
@@ -5660,6 +5723,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Responsive Server-Side Pagination Bar */}
+              {subFilteredTotal > 0 && (
+                <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-xs">
+                  {/* Left: Record Range and Page Size */}
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 w-full md:w-auto">
+                    <span className="text-slate-400">
+                      Showing <span className="text-white font-bold">{fromRecord}</span>–
+                      <span className="text-white font-bold">{toRecord}</span> of{' '}
+                      <span className="text-cyan-400 font-bold">{subFilteredTotal}</span> subscribers
+                    </span>
+
+                    <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+                      <span className="text-slate-400">Page Size:</span>
+                      <select
+                        value={subPageSize}
+                        onChange={(e) => {
+                          const newSize = Number(e.target.value);
+                          setSubPageSize(newSize);
+                          setSubCurrentPage(1);
+                          loadSubscribers(1, newSize, subStatusFilter, appliedSubSearch);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value={25} className="bg-[#0b0f19]">25 / page</option>
+                        <option value={50} className="bg-[#0b0f19]">50 / page</option>
+                        <option value={100} className="bg-[#0b0f19]">100 / page</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Right: Previous / Page Number / Next Buttons */}
+                  <div className="flex items-center gap-2 w-full md:w-auto justify-center md:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (subCurrentPage > 1 && !isSubLoading) {
+                          const prev = subCurrentPage - 1;
+                          setSubCurrentPage(prev);
+                          loadSubscribers(prev, subPageSize, subStatusFilter, appliedSubSearch);
+                        }
+                      }}
+                      disabled={subCurrentPage <= 1 || isSubLoading}
+                      className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span className="hidden sm:inline">Previous</span>
+                    </button>
+
+                    <div className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold shrink-0">
+                      Page {subCurrentPage} of {Math.max(1, subTotalPages)}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (subCurrentPage < subTotalPages && !isSubLoading) {
+                          const next = subCurrentPage + 1;
+                          setSubCurrentPage(next);
+                          loadSubscribers(next, subPageSize, subStatusFilter, appliedSubSearch);
+                        }
+                      }}
+                      disabled={subCurrentPage >= subTotalPages || isSubLoading}
+                      className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Next Page"
+                    >
+                      <span className="hidden sm:inline">Next</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

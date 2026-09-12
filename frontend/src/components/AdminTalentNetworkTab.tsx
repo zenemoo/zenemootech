@@ -243,6 +243,7 @@ const WORK_TYPES_LIST = [
 export const AdminTalentNetworkTab: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [registrations, setRegistrations] = useState<any[]>([]);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
   const [stats, setStats] = useState<any>({
     total: 0,
     verified: 0,
@@ -267,7 +268,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
 
   // Pagination & Sorting State
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [sortField, setSortField] = useState<string>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -284,11 +285,18 @@ export const AdminTalentNetworkTab: React.FC = () => {
   const [activeMenuCandidateId, setActiveMenuCandidateId] = useState<string | null>(null);
   const [deleteConfirmCandidate, setDeleteConfirmCandidate] = useState<{ id: string; name: string } | null>(null);
 
+  // Analytics & Admin Navigation State
+  const [showAnalytics, setShowAnalytics] = useState<boolean>(false);
+  const [activeAdminTab, setActiveAdminTab] = useState<'roster' | 'analytics' | 'languages'>('roster');
+  const [editingCandidate, setEditingCandidate] = useState<any | null>(null);
+
   const fetchRegistrations = async () => {
     setLoading(true);
     try {
       const params: any = {
-        search: searchQuery,
+        page: currentPage,
+        pageSize: pageSize,
+        search: searchQuery.trim(),
         language: selectedLanguage === 'All Languages' ? '' : selectedLanguage,
         state: selectedState === 'All States' ? '' : selectedState,
         role: selectedRole === 'All Roles' ? '' : selectedRole,
@@ -297,12 +305,15 @@ export const AdminTalentNetworkTab: React.FC = () => {
         minCapacity: selectedMinCapacity === 'all' ? '' : selectedMinCapacity,
         status: selectedStatus === 'all' ? '' : selectedStatus,
         isArchived: showArchived ? 'true' : 'false',
+        sortField,
+        sortOrder,
       };
 
       const res = await talentRegistrationApi.getAdminRegistrations(params);
       if (res?.data?.success) {
         const fetchedData = res.data.data || [];
         setRegistrations(fetchedData);
+        setTotalRecords(typeof res.data.total === 'number' ? res.data.total : (res.data.count || fetchedData.length));
         if (res.data.stats) {
           setStats(res.data.stats);
         }
@@ -314,86 +325,22 @@ export const AdminTalentNetworkTab: React.FC = () => {
     }
   };
 
-  // Analytics & Admin Navigation State
-  const [allRegistrations, setAllRegistrations] = useState<any[]>([]);
-  const [showAnalytics, setShowAnalytics] = useState<boolean>(false);
-  const [activeAdminTab, setActiveAdminTab] = useState<'roster' | 'analytics' | 'languages'>('roster');
-  const [editingCandidate, setEditingCandidate] = useState<any | null>(null);
-
-  const fetchAllRegistrations = async () => {
-    try {
-      const res = await talentRegistrationApi.getAdminRegistrations({});
-      if (res?.data?.success && Array.isArray(res.data.data)) {
-        setAllRegistrations(res.data.data);
-      }
-    } catch (err) {}
-  };
-
-  // ── DYNAMICALLY DERIVED REGISTERED CANDIDATE FILTERS ──
-  const filterDataset = useMemo(() => {
-    return allRegistrations.length > 0 ? allRegistrations : registrations;
-  }, [allRegistrations, registrations]);
-
+  // Static / curated filter options (Zero full-table scans!)
   const uniqueRegisteredLanguages = useMemo(() => {
-    const set = new Set<string>();
-    filterDataset.forEach((r) => {
-      (r.languages || []).forEach((l: any) => {
-        const rawName = typeof l === 'string' ? l : (l?.language || '').trim();
-        if (rawName) {
-          const canonical = formatLanguageDisplayName(rawName);
-          set.add(canonical);
-        }
-      });
-    });
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
-    return list.length > 0 ? list : LANGUAGES_LIST.filter((l) => l !== 'All Languages');
-  }, [filterDataset]);
+    return LANGUAGES_LIST.filter((l) => l !== 'All Languages');
+  }, []);
 
   const uniqueRegisteredStates = useMemo(() => {
-    const set = new Set<string>();
-    filterDataset.forEach((r) => {
-      if (r.state && r.state.trim()) set.add(r.state.trim());
-    });
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
-    return list.length > 0 ? list : INDIAN_STATES_UT.filter((s) => s !== 'All States');
-  }, [filterDataset]);
+    return INDIAN_STATES_UT.filter((s) => s !== 'All States');
+  }, []);
 
   const uniqueRegisteredRoles = useMemo(() => {
-    const set = new Set<string>();
-    filterDataset.forEach((r) => {
-      if (r.primary_role && r.primary_role.trim()) set.add(r.primary_role.trim());
-    });
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
-    return list.length > 0 ? list : ROLES_LIST.filter((r) => r !== 'All Roles');
-  }, [filterDataset]);
+    return ROLES_LIST.filter((r) => r !== 'All Roles');
+  }, []);
 
   const uniqueRegisteredWorkTypes = useMemo(() => {
-    const set = new Set<string>();
-    filterDataset.forEach((r) => {
-      (r.work_capabilities || []).forEach((cap: string) => {
-        if (cap && cap.trim()) set.add(cap.trim());
-      });
-    });
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
-    return list.length > 0 ? list : WORK_TYPES_LIST.filter((w) => w !== 'All Work Types');
-  }, [filterDataset]);
-
-  const uniqueRegisteredAvailabilities = useMemo(() => {
-    const set = new Set<string>();
-    filterDataset.forEach((r) => {
-      if (r.availability && r.availability.trim()) set.add(r.availability.trim());
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [filterDataset]);
-
-  const uniqueRegisteredStatuses = useMemo(() => {
-    const set = new Set<string>();
-    filterDataset.forEach((r) => {
-      const st = r.status || 'pending';
-      set.add(st.toLowerCase());
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [filterDataset]);
+    return WORK_TYPES_LIST.filter((w) => w !== 'All Work Types');
+  }, []);
 
   const handleAnalyticsFilterSelect = (filterType: string, value: string) => {
     if (filterType === 'language') {
@@ -415,17 +362,16 @@ export const AdminTalentNetworkTab: React.FC = () => {
       setSelectedStatus(value);
       setActionSuccessMsg(`Filtered Talent Network by Status: ${value.toUpperCase()}`);
     }
+    setCurrentPage(1);
     setShowAnalytics(false);
     setTimeout(() => setActionSuccessMsg(''), 4000);
   };
 
   useEffect(() => {
-    fetchAllRegistrations();
-  }, []);
-
-  useEffect(() => {
     fetchRegistrations();
   }, [
+    currentPage,
+    pageSize,
     searchQuery,
     selectedLanguage,
     selectedState,
@@ -435,6 +381,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
     selectedMinCapacity,
     selectedStatus,
     showArchived,
+    sortField,
+    sortOrder,
   ]);
 
   // Reset pagination on filter change
@@ -451,196 +399,29 @@ export const AdminTalentNetworkTab: React.FC = () => {
     selectedStatus,
     showArchived,
     pageSize,
-  ]);
-
-  // Dynamic Statistics Calculation from Database Records
-  const computedStats = useMemo(() => {
-    const total = registrations.length || stats.total || 0;
-    const verified = registrations.filter((r) => r.status === 'verified').length;
-    const pending = registrations.filter((r) => r.status === 'pending' || !r.status).length;
-    const coordinators = registrations.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('coordinator') || roleStr.includes('recruiter');
-    }).length;
-    const vendors = registrations.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('vendor') || roleStr.includes('agency') || roleStr.includes('organization');
-    }).length;
-    const singers = registrations.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('singer') || roleStr.includes('vocal');
-    }).length;
-    const recordingTeams = registrations.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('recording') || roleStr.includes('team');
-    }).length;
-
-    // Unique languages count
-    const langSet = new Set<string>();
-    registrations.forEach((r) => {
-      (r.languages || []).forEach((l: any) => {
-        if (l.language) langSet.add(l.language);
-      });
-    });
-
-    return {
-      total: total || stats.total || 0,
-      verified: verified || stats.verified || 0,
-      pending: pending || stats.pending || 0,
-      coordinators: coordinators || stats.coordinators || 0,
-      vendors: vendors || stats.vendors || 0,
-      singers: singers || stats.singers || 0,
-      recordingTeams: recordingTeams || stats.recordingTeams || 0,
-      languages: langSet.size || stats.languageCoverageCount || 8,
-    };
-  }, [registrations, stats]);
-
-  // Filtered & Sorted Candidate Records
-  const filteredAndSortedCandidates = useMemo(() => {
-    let result = [...registrations];
-
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter((r) => {
-        const roleDetailsText = typeof r.role_details === 'object' ? JSON.stringify(r.role_details) : String(r.role_details || '');
-        const equipmentText = typeof r.equipment_resources === 'object' ? JSON.stringify(r.equipment_resources) : String(r.equipment_resources || '');
-        const addInfoText = typeof r.additional_info === 'object' ? JSON.stringify(r.additional_info) : String(r.additional_info || '');
-        const expList = Array.isArray(r.experiences) ? r.experiences : [];
-        const expText = expList.map((e: any) => `${e.project_company_name || e.projectName || ''} ${e.type_of_work || e.typeOfWork || ''} ${e.description || ''}`).join(' ');
-        const langList = Array.isArray(r.languages) ? r.languages : [];
-        const langText = langList.map((l: any) => typeof l === 'string' ? l : `${l.language || ''} ${l.proficiency || ''} ${l.speaker_availability || ''}`).join(' ');
-        const capsList = Array.isArray(r.work_capabilities) ? r.work_capabilities : [];
-        const capsText = capsList.join(' ');
-
-        const searchableString = `${r.full_name || ''} ${r.email || ''} ${r.phone || ''} ${r.country_code || ''} ${r.state || ''} ${r.city_district || ''} ${r.primary_role || ''} ${r.registration_code || ''} ${r.id || ''} ${roleDetailsText} ${equipmentText} ${addInfoText} ${expText} ${langText} ${capsText}`.toLowerCase();
-        return searchableString.includes(q);
-      });
-    }
-
-    // Language Filter
-    if (selectedLanguage !== 'All Languages' && selectedLanguage.toLowerCase() !== 'all') {
-      const targetLang = selectedLanguage.toLowerCase().trim();
-      result = result.filter((r) => {
-        const langList = Array.isArray(r.languages) ? r.languages : [];
-        return langList.some((l: any) => {
-          const lName = (typeof l === 'string' ? l : (l?.language || '')).toLowerCase();
-          return lName.includes(targetLang) || targetLang.includes(lName);
-        });
-      });
-    }
-
-    // State Filter
-    if (selectedState !== 'All States' && selectedState.toLowerCase() !== 'all') {
-      const targetState = selectedState.toLowerCase().replace(/\([^)]*\)/g, '').trim();
-      result = result.filter((r) => {
-        const itemState = (r.state || '').toLowerCase().trim();
-        return itemState.includes(targetState) || targetState.includes(itemState);
-      });
-    }
-
-    // Role Filter
-    if (selectedRole !== 'All Roles' && selectedRole.toLowerCase() !== 'all') {
-      const targetRole = selectedRole.toLowerCase().trim();
-      const roleTokens = targetRole.split(/[\/\s,]+/).filter((t) => t.length > 2);
-      result = result.filter((r) => {
-        const itemRole = (r.primary_role || '').toLowerCase();
-        return (
-          itemRole.includes(targetRole) ||
-          targetRole.includes(itemRole) ||
-          roleTokens.some((tok) => itemRole.includes(tok))
-        );
-      });
-    }
-
-    // Work Type Filter
-    if (selectedWorkType !== 'All Work Types' && selectedWorkType.toLowerCase() !== 'all') {
-      const wt = selectedWorkType.toLowerCase().trim();
-      const wtTokens = wt.split(/[\/\s,]+/).filter((t) => t.length > 2);
-      result = result.filter((r) => {
-        const capsList = Array.isArray(r.work_capabilities) ? r.work_capabilities : [];
-        return capsList.some((c: any) => {
-          const cStr = (typeof c === 'string' ? c : String(c)).toLowerCase();
-          return cStr.includes(wt) || wt.includes(cStr) || wtTokens.some((tok) => cStr.includes(tok));
-        });
-      });
-    }
-
-    // Availability Filter
-    if (selectedAvailability !== 'all') {
-      const targetAvail = selectedAvailability.toLowerCase().trim();
-      result = result.filter((r) => {
-        const itemAvail = (r.availability || '').toLowerCase();
-        return itemAvail.includes(targetAvail) || targetAvail.includes(itemAvail);
-      });
-    }
-
-    // Min Capacity Filter
-    if (selectedMinCapacity !== 'all' && !isNaN(Number(selectedMinCapacity))) {
-      const targetCap = Number(selectedMinCapacity);
-      result = result.filter((r) => {
-        const langList = Array.isArray(r.languages) ? r.languages : [];
-        const maxLangCap = Math.max(0, ...langList.map((l: any) => Number(l.capacity) || 1));
-        const recordCap = Number(r.capacity) || 1;
-        const effectiveCap = Math.max(maxLangCap, recordCap);
-        return effectiveCap >= targetCap;
-      });
-    }
-
-    // Status Filter
-    if (selectedStatus !== 'all') {
-      const targetStatus = selectedStatus.toLowerCase().trim();
-      result = result.filter((r) => (r.status || 'pending').toLowerCase() === targetStatus);
-    }
-
-    // Archive Filter
-    if (showArchived) {
-      result = result.filter((r) => Boolean(r.is_archived));
-    } else {
-      result = result.filter((r) => !Boolean(r.is_archived));
-    }
-
-    // Client sort
-    result.sort((a, b) => {
-      let valA = a[sortField] || '';
-      let valB = b[sortField] || '';
-
-      if (sortField === 'created_at') {
-        valA = new Date(a.created_at || 0).getTime();
-        valB = new Date(b.created_at || 0).getTime();
-      } else if (typeof valA === 'string') {
-        valA = valA.toLowerCase();
-        valB = String(valB).toLowerCase();
-      }
-
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return result;
-  }, [
-    registrations,
-    searchQuery,
-    selectedLanguage,
-    selectedState,
-    selectedRole,
-    selectedWorkType,
-    selectedAvailability,
-    selectedMinCapacity,
-    selectedStatus,
-    showArchived,
     sortField,
     sortOrder,
   ]);
 
-  // Paginated Subset
-  const paginatedCandidates = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredAndSortedCandidates.slice(startIndex, startIndex + pageSize);
-  }, [filteredAndSortedCandidates, currentPage, pageSize]);
+  // Dynamic Statistics from Database Head Counts / Stats Metadata
+  const computedStats = useMemo(() => {
+    return {
+      total: stats.total || totalRecords || 0,
+      verified: stats.verified || 0,
+      pending: stats.pending || 0,
+      coordinators: stats.coordinators || 0,
+      vendors: stats.vendors || 0,
+      singers: stats.singers || 0,
+      recordingTeams: stats.recordingTeams || 0,
+      languages: stats.languageCoverageCount || stats.languages || 8,
+    };
+  }, [stats, totalRecords]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredAndSortedCandidates.length / pageSize));
+  // Candidates on current page from server-side query
+  const paginatedCandidates = registrations;
+  const filteredAndSortedCandidates = registrations;
+
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
 
   // Active Filter Count Calculation
   const activeFiltersCount = useMemo(() => {
@@ -891,7 +672,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
 
       {showAnalytics || activeAdminTab === 'analytics' ? (
         <AdminNetworkAnalytics
-          registrations={allRegistrations.length > 0 ? allRegistrations : registrations}
+          registrations={registrations}
           onFilterSelect={handleAnalyticsFilterSelect}
           onClose={() => {
             setShowAnalytics(false);
@@ -901,7 +682,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
         />
       ) : activeAdminTab === 'languages' ? (
         <AdminLanguageManagement
-          registrations={allRegistrations.length > 0 ? allRegistrations : registrations}
+          registrations={registrations}
           onRefreshRegistrations={fetchRegistrations}
         />
       ) : (
@@ -1004,9 +785,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedLanguage(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All Languages">
-              {allRegistrations.length > 0 ? `All Languages (${uniqueRegisteredLanguages.length})` : 'All Languages'}
-            </option>
+            <option value="All Languages">All Languages</option>
             {uniqueRegisteredLanguages.map((l) => (
               <option key={l} value={l}>
                 {l}
@@ -1020,9 +799,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedState(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All States">
-              {allRegistrations.length > 0 ? `All States (${uniqueRegisteredStates.length})` : 'All States'}
-            </option>
+            <option value="All States">All States</option>
             {uniqueRegisteredStates.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -1036,9 +813,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedRole(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All Roles">
-              {allRegistrations.length > 0 ? `All Roles (${uniqueRegisteredRoles.length})` : 'All Roles'}
-            </option>
+            <option value="All Roles">All Roles</option>
             {uniqueRegisteredRoles.map((r) => (
               <option key={r} value={r}>
                 {r}
@@ -1052,9 +827,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             onChange={(e) => setSelectedWorkType(e.target.value)}
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
-            <option value="All Work Types">
-              {allRegistrations.length > 0 ? `All Work Types (${uniqueRegisteredWorkTypes.length})` : 'All Work Types'}
-            </option>
+            <option value="All Work Types">All Work Types</option>
             {uniqueRegisteredWorkTypes.map((wt) => (
               <option key={wt} value={wt}>
                 {wt}
@@ -1181,15 +954,15 @@ export const AdminTalentNetworkTab: React.FC = () => {
           <h3 className="text-white font-bold text-sm flex items-center gap-2">
             Matching Candidates
             <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs">
-              {filteredAndSortedCandidates.length}
+              {totalRecords}
             </span>
           </h3>
           <p className="text-slate-400 text-[11px] mt-0.5">
-            {filteredAndSortedCandidates.length > 0
+            {totalRecords > 0
               ? `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(
                   currentPage * pageSize,
-                  filteredAndSortedCandidates.length
-                )} of ${filteredAndSortedCandidates.length} candidates`
+                  totalRecords
+                )} of ${totalRecords} candidates`
               : '0 candidates found matching parameters'}
           </p>
         </div>
@@ -1515,13 +1288,16 @@ export const AdminTalentNetworkTab: React.FC = () => {
       </div>
 
       {/* ── 6. PAGINATION CONTROLS BAR ── */}
-      {filteredAndSortedCandidates.length > 0 && (
+      {totalRecords > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs glass-panel p-4 rounded-2xl border border-white/10">
           <div className="flex items-center gap-3 text-slate-400">
             <span>Show:</span>
             <select
               value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
               className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-white focus:outline-none cursor-pointer"
             >
               <option value={10}>10 per page</option>
@@ -1529,13 +1305,16 @@ export const AdminTalentNetworkTab: React.FC = () => {
               <option value={50}>50 per page</option>
               <option value={100}>100 per page</option>
             </select>
+            <span className="text-[11px] text-slate-500 hidden md:inline">
+              Page {currentPage} of {totalPages}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 font-bold ${
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 font-bold transition-all ${
                 currentPage === 1
                   ? 'border-white/5 text-slate-600 cursor-not-allowed'
                   : 'border-white/15 text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer'
@@ -1563,7 +1342,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 font-bold ${
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1 font-bold transition-all ${
                 currentPage === totalPages
                   ? 'border-white/5 text-slate-600 cursor-not-allowed'
                   : 'border-white/15 text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer'
@@ -2116,12 +1895,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
               setRegistrations((prev) =>
                 prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r))
               );
-              setAllRegistrations((prev) =>
-                prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r))
-              );
             }
             fetchRegistrations();
-            fetchAllRegistrations();
             setTimeout(() => setActionSuccessMsg(''), 4000);
           }}
         />
@@ -2133,7 +1908,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
         onClose={() => setIsExportModalOpen(false)}
         sectionId="talent-network"
         sectionName="AI Data Network & Resource Manager"
-        dataset={allRegistrations.length > 0 ? allRegistrations : registrations}
+        dataset={registrations}
         filteredDataset={filteredAndSortedCandidates}
         filterSummary={activeFilterSummary}
         showToast={(msg) => {

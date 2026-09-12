@@ -204,7 +204,8 @@ export const contactApi = {
 
 // Newsletter Subscriber APIs
 export const subscriberApi = {
-  getAll: () => deduplicatedGet('/subscribers'),
+  getAll: (params?: { page?: number; pageSize?: number; limit?: number; status?: string; search?: string }) =>
+    deduplicatedGet('/subscribers', { params }),
   subscribe: (email: string | string[]) => api.post('/subscribers', { email }),
   subscribeBulk: (emails: string | string[]) => api.post('/subscribers/bulk', { emails }),
   unsubscribe: (email: string) => api.post('/subscribers/unsubscribe', { email }),

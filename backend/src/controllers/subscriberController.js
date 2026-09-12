@@ -276,10 +276,22 @@ export const getSubscribers = async (req, res, next) => {
 
         query = query.order('subscribed_at', { ascending: false }).range(from, to);
 
-        const { data: dbData, count: totalCount, error } = await query;
+        // Fetch paginated rows AND lightweight count stats with head: true (zero row egress)
+        const [mainRes, activeRes, unsubscribedRes, totalAllRes] = await Promise.all([
+          query,
+          supabase.from('subscribers').select('id', { count: 'exact', head: true }).neq('status', 'unsubscribed'),
+          supabase.from('subscribers').select('id', { count: 'exact', head: true }).eq('status', 'unsubscribed'),
+          supabase.from('subscribers').select('id', { count: 'exact', head: true }),
+        ]);
+
+        const { data: dbData, count: totalFiltered, error } = mainRes;
 
         if (!error && Array.isArray(dbData)) {
-          const total = totalCount || dbData.length;
+          const total = totalFiltered ?? dbData.length;
+          const activeCount = activeRes?.count ?? 0;
+          const unsubscribedCount = unsubscribedRes?.count ?? 0;
+          const totalCount = totalAllRes?.count ?? (activeCount + unsubscribedCount);
+
           return res.json({
             success: true,
             count: dbData.length,
@@ -287,6 +299,9 @@ export const getSubscribers = async (req, res, next) => {
             page: pageNum,
             pageSize: limitNum,
             totalPages: Math.max(1, Math.ceil(total / limitNum)),
+            totalCount,
+            activeCount,
+            unsubscribedCount,
             data: dbData,
           });
         }
@@ -297,7 +312,12 @@ export const getSubscribers = async (req, res, next) => {
 
     // Fallback
     const data = await supabaseService.selectAll('subscribers', 'subscribed_at', false);
-    let filtered = Array.isArray(data) ? data : [];
+    let allRecords = Array.isArray(data) ? data : [];
+    const activeCount = allRecords.filter((s) => (s.status || '').toLowerCase() !== 'unsubscribed').length;
+    const unsubscribedCount = allRecords.filter((s) => (s.status || '').toLowerCase() === 'unsubscribed').length;
+    const totalCount = allRecords.length;
+
+    let filtered = allRecords;
     if (status && status !== 'all') {
       filtered = filtered.filter((s) => (s.status || '').toLowerCase() === status.toLowerCase());
     }
@@ -314,6 +334,9 @@ export const getSubscribers = async (req, res, next) => {
       page: pageNum,
       pageSize: limitNum,
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      totalCount,
+      activeCount,
+      unsubscribedCount,
       data: paginated,
     });
   } catch (err) {
