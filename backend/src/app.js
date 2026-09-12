@@ -34,6 +34,7 @@ import scheduledEmailRoutes from './routes/scheduledEmailRoutes.js';
 import talentHubRoutes from './routes/talentHubRoutes.js';
 import publicTeamInviteRoutes from './routes/publicTeamInviteRoutes.js';
 import adminTalentTeamsRoutes from './routes/adminTalentTeamsRoutes.js';
+import googleGroupSyncRoutes from './routes/googleGroupSyncRoutes.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -144,6 +145,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/talent-hub', talentHubRoutes);
 app.use('/api/public/team-invite', publicTeamInviteRoutes);
 app.use('/api/admin/talent-teams', adminTalentTeamsRoutes);
+app.use('/api/admin/google-group', googleGroupSyncRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);

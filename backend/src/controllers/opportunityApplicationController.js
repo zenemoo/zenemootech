@@ -220,6 +220,35 @@ export const getApplicationById = async (req, res) => {
 };
 
 // 2. SUBMIT CANDIDATE APPLICATION
+export const checkDuplicateApplication = async (req, res) => {
+  try {
+    const { opportunity_id, applicant_email } = req.query;
+    if (!opportunity_id || !applicant_email) {
+      return res.status(400).json({ success: false, message: 'opportunity_id and applicant_email are required.' });
+    }
+    const cleanEmail = String(applicant_email).trim().toLowerCase();
+    const { data, error } = await supabase
+      .from('opportunity_applications')
+      .select('id, applicant_id, status, created_at')
+      .eq('opportunity_id', opportunity_id)
+      .ilike('applicant_email', cleanEmail)
+      .limit(1);
+
+    if (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+
+    const isDuplicate = Array.isArray(data) && data.length > 0;
+    return res.json({
+      success: true,
+      isDuplicate,
+      existingApplication: isDuplicate ? data[0] : null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 export const submitApplication = async (req, res) => {
   try {
     const {
