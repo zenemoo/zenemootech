@@ -2094,13 +2094,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'call-bookings', name: 'Call Bookings', icon: Calendar, count: callBookingsActionableCount },
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.filter((o) => o.status === 'active' || (o.status as string) === 'open').length },
+        { id: 'referrals', name: 'Talent Referrals', icon: UserCheck },
       ],
     },
     {
       group: 'AI & DATA',
       items: [
         { id: 'talent-network', name: 'AI Data Network', icon: Users },
-        { id: 'referrals', name: 'Talent Referrals', icon: UserCheck },
         { id: 'talent-teams', name: 'Talent Teams', icon: Building },
         { id: 'datasets', name: 'Datasets', icon: Folder },
       ],
