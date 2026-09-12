@@ -75,13 +75,18 @@ export function normalizeMojibake(text: string): string {
 export function unescapeHtmlEntities(str: string): string {
   if (!str) return '';
   return str
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
     .replace(/&#039;/g, "'")
     .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+    .replace(/&apos;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&#60;/g, '<')
+    .replace(/&#62;/g, '>')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&'); // amp last to avoid unescaping twice
 }
 
 /**
@@ -95,7 +100,6 @@ export function decodeQuotedPrintable(input: string): string {
   let cleaned = input.replace(/=\r?\n/g, '');
 
   // 2. Decode multi-byte UTF-8 byte sequences encoded as =XX=XX=XX
-  // Match consecutive =XX sequences and convert byte arrays back to UTF-8
   cleaned = cleaned.replace(/((?:=[0-9A-Fa-f]{2})+)/g, (match) => {
     try {
       const hexPairs = match.match(/[0-9A-Fa-f]{2}/g);
@@ -107,7 +111,7 @@ export function decodeQuotedPrintable(input: string): string {
     }
   });
 
-  // 3. Catch any remaining individual =3D or =20
+  // 3. Catch any remaining individual =3D, =20, =09
   cleaned = cleaned.replace(/=3D/gi, '=').replace(/=20/g, ' ').replace(/=09/g, '\t');
 
   return cleaned;
@@ -127,28 +131,100 @@ export function stripMsoArtifacts(html: string): string {
     .replace(/<!--\[if\s+gte\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
     .replace(/<!--\[if\s+lt\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
     .replace(/<!--\[if\s+lte\s+mso\s+\d+\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if\s+[^\]]+\]>[\s\S]*?<!\[endif\]-->/gi, '')
     .replace(/<o:p>[\s\S]*?<\/o:p>/gi, '')
     .replace(/<v:[^>]*>[\s\S]*?<\/v:[^>]*>/gi, '');
 }
 
 /**
- * Checks if a string contains HTML markup
+ * Checks if a string contains HTML markup (raw or escaped)
  */
 export function isHtmlString(str: string): boolean {
   if (!str) return false;
   const trimmed = str.trim();
+
+  // Explicit DOCTYPE, html, body or XML tag starts
   if (
     trimmed.startsWith('<!DOCTYPE') ||
     trimmed.startsWith('<html') ||
     trimmed.startsWith('<body') ||
-    trimmed.startsWith('<?xml')
+    trimmed.startsWith('<?xml') ||
+    trimmed.startsWith('<!--[if') ||
+    trimmed.startsWith('&lt;html') ||
+    trimmed.startsWith('&lt;body') ||
+    trimmed.startsWith('&lt;!--[if')
   ) {
     return true;
   }
-  // Check for common HTML tags
-  return /<([a-z][a-z0-9]*)\b[^>]*>[\s\S]*?<\/\1>/i.test(str) ||
-    /<(br|hr|img|input|link|meta)\b[^>]*\/?>/i.test(str) ||
-    /<(div|p|table|tr|td|span|h[1-6]|ul|ol|li|a)\b/i.test(str);
+
+  // Check for common opening/closing HTML tags
+  const hasTagPattern =
+    /<(?:html|body|head|div|p|table|tbody|thead|tfoot|tr|td|th|h[1-6]|ul|ol|li|blockquote|img|a|span|hr|br|strong|b|em|i|u|s|font|section|header|footer|nav|article|aside|main|pre|code)\b/i.test(
+      str
+    ) ||
+    /<\/(?:div|p|table|tbody|thead|tr|td|th|h[1-6]|ul|ol|li|blockquote|a|span|strong|b|em|i|u|s|font|html|body|head|section)>/i.test(
+      str
+    ) ||
+    /<img\s+[^>]*>/i.test(str) ||
+    /<a\s+[^>]*href=/i.test(str) ||
+    /<!--\[if\s+mso/i.test(str);
+
+  if (hasTagPattern) return true;
+
+  // Check for escaped tags
+  const hasEscapedTag =
+    /&(?:lt|#60);(?:!--\[if|html|body|div|p|table|tr|td|th|h[1-6]|img|a|span|ul|ol|li|br|hr)\b/i.test(
+      str
+    );
+
+  return hasEscapedTag;
+}
+
+/**
+ * Extracts a clean plain-text preview snippet from any raw body, HTML, or snippet string.
+ * Strips HTML tags, MSO conditional comments, styles, scripts, and entities.
+ */
+export function extractCleanSnippet(raw: string, maxLength = 120): string {
+  if (!raw) return '';
+
+  let text = raw;
+
+  // 1. Decode Quoted-Printable if present
+  if (text.includes('=3D') || /=\r?\n/.test(text)) {
+    text = decodeQuotedPrintable(text);
+  }
+
+  // 2. Unescape entities if string was stored escaped
+  if (text.includes('&lt;') || text.includes('&gt;') || text.includes('&#60;')) {
+    text = unescapeHtmlEntities(text);
+  }
+
+  // 3. Strip MSO and HTML comments
+  text = stripMsoArtifacts(text);
+  text = text.replace(/<!--[\s\S]*?-->/g, ' ');
+
+  // 4. Strip <style> and <script> contents entirely
+  text = text.replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, ' ');
+  text = text.replace(/<head[\s\S]*?<\/head>/gi, ' ');
+
+  // 5. Replace block breaks with space
+  text = text.replace(/<(?:br|hr|\/p|\/div|\/tr|\/li|\/h[1-6])\s*\/?>/gi, ' ');
+
+  // 6. Strip all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
+
+  // 7. Unescape any remaining entities
+  text = unescapeHtmlEntities(text);
+
+  // 8. Normalize Mojibake
+  text = normalizeMojibake(text);
+
+  // 9. Collapse whitespace and trim
+  const clean = text.replace(/\s+/g, ' ').trim();
+
+  if (clean.length <= maxLength) return clean;
+  return clean.slice(0, maxLength).trim() + '...';
 }
 
 export interface NormalizedEmailBody {
@@ -162,7 +238,7 @@ export interface NormalizedEmailBody {
  * Robust Presentation-Layer Email Normalizer:
  * 1. Checks if body_html or body_text contains quoted-printable or HTML
  * 2. Decodes quoted-printable =3D, =\n, etc.
- * 3. Strips MSO artifacts
+ * 3. Strips MSO artifacts & Outlook conditional comments
  * 4. Sanitizes HTML with DOMPurify
  * 5. Handles plain text with clean formatting
  */
@@ -184,9 +260,16 @@ export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): Normal
     isHtml = true;
   } else if (rawText) {
     // If body_html is empty, inspect body_text
-    // It might be HTML or escaped HTML stored in body_text
+    // It might be HTML, escaped HTML, or plain text stored in body_text
     let candidate = rawText;
-    if (candidate.includes('&lt;html') || candidate.includes('&lt;div') || candidate.includes('&lt;p')) {
+    if (
+      candidate.includes('&lt;html') ||
+      candidate.includes('&lt;body') ||
+      candidate.includes('&lt;div') ||
+      candidate.includes('&lt;p') ||
+      candidate.includes('&lt;table') ||
+      candidate.includes('&lt;!--[if')
+    ) {
       candidate = unescapeHtmlEntities(candidate);
     }
 
@@ -199,6 +282,11 @@ export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): Normal
     }
   }
 
+  // If HTML is escaped inside bodyHtml (e.g. &lt;html&gt;), unescape it
+  if (isHtml && (targetContent.includes('&lt;html') || targetContent.includes('&lt;div') || targetContent.includes('&lt;body'))) {
+    targetContent = unescapeHtmlEntities(targetContent);
+  }
+
   if (hasQuotedPrintable || targetContent.includes('=3D') || /=\r?\n/.test(targetContent)) {
     targetContent = decodeQuotedPrintable(targetContent);
   }
@@ -207,14 +295,26 @@ export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): Normal
   targetContent = normalizeMojibake(targetContent);
 
   if (isHtml) {
-    // Strip MSO Outlook conditional comments
+    // Strip MSO Outlook conditional comments & tracking pixel artifacts
     targetContent = stripMsoArtifacts(targetContent);
 
     // Sanitize with DOMPurify
     const cleanHtml = DOMPurify.sanitize(targetContent, {
       USE_PROFILES: { html: true },
-      ADD_ATTR: ['target', 'rel', 'style', 'class', 'align', 'valign', 'bgcolor', 'color', 'width', 'height'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link', 'applet'],
+      ALLOWED_TAGS: [
+        'html', 'body', 'div', 'span', 'p', 'br', 'hr',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'sub', 'sup',
+        'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
+        'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
+        'img', 'a', 'font', 'center', 'section', 'header', 'footer', 'main', 'article', 'aside',
+      ],
+      ADD_ATTR: [
+        'target', 'rel', 'style', 'class', 'align', 'valign',
+        'bgcolor', 'color', 'width', 'height', 'border', 'cellpadding', 'cellspacing',
+        'alt', 'title', 'src', 'href', 'loading',
+      ],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link', 'applet', 'input', 'button', 'svg', 'math'],
       FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
       ALLOW_DATA_ATTR: false,
     });
@@ -224,7 +324,7 @@ export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): Normal
         const parser = new DOMParser();
         const doc = parser.parseFromString(cleanHtml, 'text/html');
 
-        // Force external links to open safely
+        // Force external links to open safely in new tab
         const links = doc.querySelectorAll('a');
         links.forEach((a) => {
           a.setAttribute('target', '_blank');
@@ -244,6 +344,8 @@ export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): Normal
           img.style.objectFit = 'contain';
           img.setAttribute('loading', 'lazy');
           img.classList.add('rounded-lg', 'my-2', 'max-w-full');
+          // Graceful fallback for broken images
+          img.setAttribute('onerror', "this.onerror=null;this.style.opacity='0.4';this.style.maxHeight='80px';");
         });
 
         // Normalize dark font colors so they are clearly legible against the dark UI

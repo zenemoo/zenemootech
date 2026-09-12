@@ -53,6 +53,7 @@ import {
   decodeMimeHeader,
   normalizeMojibake,
   normalizeEmailBody,
+  extractCleanSnippet,
   NormalizedEmailBody,
 } from '../utils/emailEncodingHelper';
 
@@ -223,6 +224,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     emailId: string;
     url: string;
   } | null>(null);
+
+  // Full Email Reader Modal & Recipient Popover State
+  const [isFullEmailModalOpen, setIsFullEmailModalOpen] = useState<boolean>(false);
+  const [showRecipientsPopover, setShowRecipientsPopover] = useState<boolean>(false);
+  const [showModalRecipientsPopover, setShowModalRecipientsPopover] = useState<boolean>(false);
 
   // Storage Stats State
   const [storageStats, setStorageStats] = useState<{
@@ -415,6 +421,29 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }, 30000);
     return () => clearInterval(timer);
   }, [fetchEmails, currentPage]);
+
+  // Keyboard accessibility: Close modals & popovers on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showRecipientsPopover) setShowRecipientsPopover(false);
+        if (showModalRecipientsPopover) setShowModalRecipientsPopover(false);
+        if (isFullEmailModalOpen) setIsFullEmailModalOpen(false);
+        if (previewAttachment) setPreviewAttachment(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showRecipientsPopover, showModalRecipientsPopover, isFullEmailModalOpen, previewAttachment]);
+
+  // Parse structured recipients for clean collapsing
+  const recipientList = useMemo(() => {
+    if (!selectedEmailDetail?.recipient_email) return [];
+    return selectedEmailDetail.recipient_email
+      .split(/[,;\s]+/)
+      .map((r) => r.trim().replace(/^<|>$/g, ''))
+      .filter(Boolean);
+  }, [selectedEmailDetail?.recipient_email]);
 
   // Handlers
   const handleSelectEmail = (email: EmailMessageRecord) => {
@@ -1012,7 +1041,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                       {subjectDisplay}
                     </p>
 
-                    <p className="text-[11px] text-slate-400 truncate line-clamp-1">{email.snippet}</p>
+                    <p className="text-[11px] text-slate-400 truncate line-clamp-1">
+                      {extractCleanSnippet(email.snippet || email.body_text || email.body_html || '')}
+                    </p>
 
                     <div className="flex items-center gap-2 mt-2 font-mono text-[10px]">
                       <span className="px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
@@ -1130,6 +1161,15 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 <div className="flex items-center gap-1.5 self-end sm:self-auto">
                   <button
                     type="button"
+                    onClick={() => setIsFullEmailModalOpen(true)}
+                    className="p-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center cursor-pointer"
+                    title="View Full Email (Expanded Reader)"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => handlePrintEmail()}
                     className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
                     title="Print Email"
@@ -1177,9 +1217,19 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
               {/* EMAIL SENDER & METADATA HEADER */}
               <div className="p-4 sm:p-5 border-b border-white/10 space-y-3 bg-[#080c16]/50 shrink-0">
-                <h2 className="text-base sm:text-lg font-bold text-white font-display break-words">
-                  {decodeMimeHeader(selectedEmailDetail.subject) || '(No Subject)'}
-                </h2>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-base sm:text-lg font-bold text-white font-display break-words flex-1">
+                    {decodeMimeHeader(selectedEmailDetail.subject) || '(No Subject)'}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsFullEmailModalOpen(true)}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold font-mono transition-all shrink-0 cursor-pointer"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>View Full Email</span>
+                  </button>
+                </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
                   <div className="flex items-start sm:items-center gap-3">
@@ -1193,8 +1243,57 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                         </strong>
                         <span className="text-slate-400 text-xs truncate">&lt;{selectedEmailDetail.sender_email}&gt;</span>
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate">
-                        To: <span className="text-cyan-300">{selectedEmailDetail.recipient_email}</span>
+
+                      {/* RECIPIENT COMPACT COLLAPSED DISPLAY */}
+                      <div className="text-[11px] text-slate-400 relative inline-flex items-center gap-1.5 flex-wrap mt-0.5">
+                        <span>To:</span>
+                        {recipientList.length > 0 ? (
+                          <>
+                            <span className="text-cyan-300 font-medium truncate max-w-[200px] sm:max-w-xs">
+                              {recipientList[0]}
+                            </span>
+                            {recipientList.length > 1 && (
+                              <div className="relative inline-block">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowRecipientsPopover((prev) => !prev);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-cyan-300 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  <span>+{recipientList.length - 1} more</span>
+                                  <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showRecipientsPopover ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {showRecipientsPopover && (
+                                  <div className="absolute left-0 top-full mt-1.5 z-40 p-3 rounded-2xl bg-[#090d16] border border-white/20 shadow-2xl min-w-[260px] max-w-sm space-y-2 text-xs font-mono">
+                                    <div className="flex items-center justify-between pb-1.5 border-b border-white/10 text-slate-400 font-bold text-[10px]">
+                                      <span>Recipients ({recipientList.length})</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowRecipientsPopover(false)}
+                                        className="text-slate-400 hover:text-white"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                                      {recipientList.map((rec, i) => (
+                                        <div key={i} className="text-slate-200 text-[11px] truncate flex items-center gap-2">
+                                          <span className="text-cyan-400 text-xs">•</span>
+                                          <span className="truncate">{rec}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-cyan-300">{selectedEmailDetail.recipient_email}</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1282,9 +1381,28 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
               {/* EMAIL BODY DISPLAY (RESPONSIVE & SANITIZED) */}
               <div className="flex-1 p-4 sm:p-6 overflow-y-auto font-sans leading-relaxed text-slate-100 bg-[#080c16]/30">
+                {/* PREVIEW BANNER WITH QUICK FULL-SCREEN ACTION */}
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-white/[0.03] border border-white/10 text-xs text-slate-300 mb-4 font-mono">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="text-[11px] text-slate-300">Sanitized Email Viewer</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsFullEmailModalOpen(true)}
+                    className="px-2.5 py-1 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 font-bold text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Maximize2 className="w-3 h-3" />
+                    <span>View Full Email</span>
+                  </button>
+                </div>
+
                 <style>{`
                   .zenemoo-email-renderer {
                     color: #f1f5f9 !important;
+                    overflow-wrap: anywhere;
+                    word-break: break-word;
+                    max-width: 100%;
                   }
                   .zenemoo-email-renderer,
                   .zenemoo-email-renderer p,
@@ -1301,6 +1419,8 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   .zenemoo-email-renderer h5,
                   .zenemoo-email-renderer h6 {
                     color: #f1f5f9;
+                    overflow-wrap: anywhere;
+                    word-break: break-word;
                   }
                   .zenemoo-email-renderer strong,
                   .zenemoo-email-renderer b {
@@ -1310,6 +1430,8 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   .zenemoo-email-renderer a {
                     color: #22d3ee !important;
                     text-decoration: underline;
+                    overflow-wrap: anywhere;
+                    word-break: break-all;
                   }
                   .zenemoo-email-renderer blockquote {
                     border-left: 3px solid #0891b2;
@@ -1327,6 +1449,16 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     padding-left: 20px;
                     margin: 8px 0;
                   }
+                  .zenemoo-email-renderer table {
+                    max-width: 100% !important;
+                    display: block !important;
+                    overflow-x: auto !important;
+                  }
+                  .zenemoo-email-renderer img {
+                    max-width: 100% !important;
+                    height: auto !important;
+                    object-fit: contain !important;
+                  }
                 `}</style>
                 {isDetailLoading ? (
                   <div className="p-12 text-center text-slate-400 font-mono text-xs space-y-2">
@@ -1335,7 +1467,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   </div>
                 ) : normalizedEmailData?.isHtml && normalizedEmailData.sanitizedHtml ? (
                   <div
-                    className="zenemoo-email-renderer max-w-full overflow-x-auto [overflow-wrap:anywhere] [word-break:break-word] text-slate-100 text-sm leading-relaxed"
+                    className="zenemoo-email-renderer max-w-full overflow-x-auto text-slate-100 text-sm leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: normalizedEmailData.sanitizedHtml }}
                   />
                 ) : (
@@ -1390,6 +1522,170 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           )}
         </div>
       </div>
+
+      {/* FULL-SCREEN / LARGE MODAL EMAIL READER */}
+      {isFullEmailModalOpen && selectedEmailDetail && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 backdrop-blur-md p-0 sm:p-4 lg:p-6 animate-fade-in">
+          <div className="bg-[#090d16] border border-white/15 w-full h-full sm:h-[92vh] sm:max-w-5xl sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+            {/* MODAL HEADER & TOOLBAR */}
+            <div className="p-3.5 sm:p-5 bg-[#070a11] border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center justify-center font-bold shrink-0">
+                  {(selectedEmailDetail.sender_name || selectedEmailDetail.sender_email || 'Z')[0].toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-white font-bold text-sm truncate font-display">
+                    {decodeMimeHeader(selectedEmailDetail.subject) || '(No Subject)'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {decodeMimeHeader(selectedEmailDetail.sender_name) || selectedEmailDetail.sender_email} &lt;{selectedEmailDetail.sender_email}&gt;
+                  </p>
+                </div>
+              </div>
+
+              {/* ACTION TOOLBAR */}
+              <div className="flex items-center gap-1.5 flex-wrap self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => handleOpenReply()}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1.5 text-xs cursor-pointer min-h-[36px]"
+                >
+                  <Reply className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Reply</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenReplyAll()}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold flex items-center gap-1.5 text-xs cursor-pointer min-h-[36px]"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Reply All</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenForward()}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-1.5 text-xs cursor-pointer min-h-[36px]"
+                >
+                  <Forward className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Forward</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrintEmail()}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                  title="Print Email"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFullEmailModalOpen(false)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white border border-white/15 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ml-1"
+                  title="Close Full Reader (Esc)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* METADATA BAR */}
+            <div className="px-4 sm:px-6 py-3 bg-[#080c16]/80 border-b border-white/10 font-mono text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
+              <div className="relative inline-flex items-center gap-1.5 flex-wrap">
+                <span className="text-slate-400">To:</span>
+                {recipientList.length > 0 ? (
+                  <>
+                    <span className="text-cyan-300 font-medium truncate max-w-xs">{recipientList[0]}</span>
+                    {recipientList.length > 1 && (
+                      <div className="relative inline-block">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowModalRecipientsPopover((prev) => !prev);
+                          }}
+                          className="px-1.5 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-cyan-300 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>+{recipientList.length - 1} more</span>
+                          <ChevronDown className={`w-2.5 h-2.5 ${showModalRecipientsPopover ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showModalRecipientsPopover && (
+                          <div className="absolute left-0 top-full mt-1.5 z-40 p-3 rounded-2xl bg-[#090d16] border border-white/20 shadow-2xl min-w-[260px] max-w-sm space-y-2 text-xs font-mono">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-white/10 text-slate-400 font-bold text-[10px]">
+                              <span>Recipients ({recipientList.length})</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowModalRecipientsPopover(false)}
+                                className="text-slate-400 hover:text-white"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                              {recipientList.map((rec, i) => (
+                                <div key={i} className="text-slate-200 text-[11px] truncate flex items-center gap-2">
+                                  <span className="text-cyan-400 text-xs">•</span>
+                                  <span className="truncate">{rec}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-cyan-300">{selectedEmailDetail.recipient_email}</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                <span>{new Date(selectedEmailDetail.received_at).toLocaleString()}</span>
+                <span className="text-emerald-400 flex items-center gap-1 text-[10px]">
+                  <ShieldCheck className="w-3 h-3" />
+                  SPF: {selectedEmailDetail.auth_results?.spf || 'pass'} • DKIM: {selectedEmailDetail.auth_results?.dkim || 'pass'}
+                </span>
+              </div>
+            </div>
+
+            {/* ATTACHMENTS STRIP IN MODAL (IF ANY) */}
+            {selectedEmailDetail.attachments && selectedEmailDetail.attachments.length > 0 && (
+              <div className="px-4 sm:px-6 py-2.5 bg-white/[0.02] border-b border-white/10 font-mono text-xs flex items-center gap-2 overflow-x-auto shrink-0">
+                <Paperclip className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="text-slate-400 font-bold shrink-0">Attachments:</span>
+                <div className="flex items-center gap-2">
+                  {selectedEmailDetail.attachments.map((att) => (
+                    <a
+                      key={att.id || att.filename}
+                      href={emailInboxApi.getAttachmentDownloadUrl(selectedEmailDetail.id, att.id || att.filename)}
+                      download={att.filename}
+                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] flex items-center gap-1.5 shrink-0"
+                    >
+                      {getAttachmentIcon(att.contentType, att.filename)}
+                      <span className="truncate max-w-[140px]">{att.filename}</span>
+                      <Download className="w-3 h-3 text-cyan-400 shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* FULL EMAIL SCROLLABLE BODY */}
+            <div className="flex-1 p-4 sm:p-8 overflow-y-auto bg-[#080c16]/40 font-sans leading-relaxed text-slate-100">
+              {normalizedEmailData?.isHtml && normalizedEmailData.sanitizedHtml ? (
+                <div
+                  className="zenemoo-email-renderer max-w-4xl mx-auto w-full overflow-x-auto text-slate-100 text-sm sm:text-base leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: normalizedEmailData.sanitizedHtml }}
+                />
+              ) : (
+                <div className="max-w-4xl mx-auto w-full whitespace-pre-wrap font-sans text-slate-100 text-sm sm:text-base leading-relaxed [overflow-wrap:anywhere] [word-break:break-word]">
+                  {normalizedEmailData?.plainText || selectedEmailDetail.snippet}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EMAIL COMPOSE MODAL */}
       {isComposeOpen && (
