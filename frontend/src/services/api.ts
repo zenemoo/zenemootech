@@ -621,6 +621,8 @@ export const googleGroupApi = {
     api.delete(`/admin/google-group/exclusions/${encodeURIComponent(email)}`),
   triggerSync: () =>
     api.post('/admin/google-group/sync'),
+  getSyncStatus: () =>
+    api.get('/admin/google-group/sync-status'),
   removeMember: (email: string) =>
     api.delete(`/admin/google-group/members/${encodeURIComponent(email)}`),
 };

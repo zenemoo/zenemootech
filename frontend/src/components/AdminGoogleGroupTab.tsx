@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -91,6 +91,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [isLoadingExclusions, setIsLoadingExclusions] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<any>(null);
+  const syncPollIntervalRef = useRef<any>(null);
   const [restoringEmail, setRestoringEmail] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,11 +164,67 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
   }, []);
 
+  // Poll sync status
+  const startPollingSync = useCallback(() => {
+    if (syncPollIntervalRef.current) clearInterval(syncPollIntervalRef.current);
+    setIsSyncing(true);
+
+    syncPollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await googleGroupApi.getSyncStatus();
+        const data = res.data;
+        if (data?.success) {
+          setSyncProgress(data);
+          if (data.status === 'COMPLETED') {
+            clearInterval(syncPollIntervalRef.current);
+            syncPollIntervalRef.current = null;
+            setIsSyncing(false);
+            setLastSyncResult(data);
+            setShowSyncModal(true);
+            if (showToast) {
+              showToast(
+                'Sync Successful',
+                `Added ${data.addedCount || 0} new member(s) to Google Group (${data.skippedCount || 0} skipped, ${data.excludedCount || 0} excluded).`,
+                'success'
+              );
+            }
+            await Promise.all([loadOverview(true), loadMembers()]);
+          } else if (data.status === 'FAILED') {
+            clearInterval(syncPollIntervalRef.current);
+            syncPollIntervalRef.current = null;
+            setIsSyncing(false);
+            if (showToast) {
+              showToast('Sync Failed', data.message || 'Synchronization failed.', 'error');
+            }
+            await loadOverview(true);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Sync status poll error:', err.message);
+      }
+    }, 2000);
+  }, [showToast, loadOverview, loadMembers]);
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (syncPollIntervalRef.current) clearInterval(syncPollIntervalRef.current);
+    };
+  }, []);
+
+  // Check sync status on mount & resume polling if running
   useEffect(() => {
     loadOverview();
     loadMembers();
     loadExclusions();
-  }, [loadOverview, loadMembers, loadExclusions]);
+
+    googleGroupApi.getSyncStatus().then((res) => {
+      if (res.data?.success && res.data.status === 'RUNNING') {
+        setSyncProgress(res.data);
+        startPollingSync();
+      }
+    }).catch(() => {});
+  }, [loadOverview, loadMembers, loadExclusions, startPollingSync]);
 
   // Keyboard shortcut: close modal on Escape
   useEffect(() => {
@@ -216,29 +274,22 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
       const res = await googleGroupApi.triggerSync();
       const data = res.data;
       if (data?.success) {
-        setLastSyncResult(data);
-        setShowSyncModal(true);
         if (showToast) {
-          showToast(
-            'Sync Successful',
-            `Added ${data.addedCount || 0} new member(s) to Google Group (${data.excludedCount || 0} excluded skipped).`,
-            'success'
-          );
+          showToast('Sync Started', 'Background synchronization initiated in safe batches.', 'info');
         }
-        await loadOverview(true);
-        await loadMembers();
+        startPollingSync();
       } else {
+        setIsSyncing(false);
         if (showToast) {
-          showToast('Sync Incomplete', data?.message || 'Failed to complete synchronization.', 'error');
+          showToast('Sync Error', data?.message || 'Could not start synchronization.', 'error');
         }
       }
     } catch (err: any) {
+      setIsSyncing(false);
       const msg = err.response?.data?.message || err.message;
       if (showToast) {
         showToast('Sync Failed', msg, 'error');
       }
-    } finally {
-      setIsSyncing(false);
     }
   };
 
@@ -570,11 +621,39 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
               className="flex-1 sm:flex-initial inline-flex justify-center items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 px-4 sm:px-5 py-2.5 text-xs font-semibold text-gray-950 shadow-lg shadow-orange-500/20 transition-all hover:opacity-95 hover:shadow-orange-500/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed min-h-[40px]"
             >
               <Zap className={`h-4 w-4 ${isSyncing ? 'animate-bounce' : ''}`} />
-              {isSyncing ? 'Synchronizing...' : 'Sync Now'}
+              {isSyncing
+                ? syncProgress?.totalBatches
+                  ? `Syncing (${syncProgress.currentBatch || 1}/${syncProgress.totalBatches})...`
+                  : 'Syncing...'
+                : 'Sync Now'}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Live Sync Progress Bar / Banner */}
+      {isSyncing && (
+        <div className="rounded-2xl border border-orange-500/30 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-yellow-500/10 p-3.5 sm:p-4 backdrop-blur-md w-full min-w-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3 min-w-0">
+            <RefreshCw className="h-5 w-5 text-orange-400 animate-spin shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-white">
+                {syncProgress?.message || 'Synchronization in progress in background...'}
+              </p>
+              {syncProgress?.totalCandidates > 0 && (
+                <p className="text-[11px] text-gray-300 mt-0.5">
+                  Processed {syncProgress.processedCount || 0} of {syncProgress.totalCandidates} • Added: <span className="text-emerald-400 font-medium">{syncProgress.addedCount || 0}</span> • Skipped: <span className="text-gray-400 font-medium">{syncProgress.skippedCount || 0}</span>
+                </p>
+              )}
+            </div>
+          </div>
+          {syncProgress?.totalBatches > 1 && (
+            <div className="shrink-0 text-xs font-mono font-semibold text-orange-400 bg-orange-500/10 px-3 py-1.5 rounded-xl border border-orange-500/20 self-start sm:self-auto">
+              Batch {syncProgress.currentBatch || 1} / {syncProgress.totalBatches}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 2. Key Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 w-full min-w-0">
@@ -1008,15 +1087,15 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                     {renderSourceBadge(m)}
 
                     {m.isExcluded ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 font-medium text-red-400 border border-red-500/20">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-0.5 font-medium text-red-400 border border-red-500/20">
                         <ShieldAlert className="h-3 w-3" /> Excluded
                       </span>
                     ) : m.isSupabaseEligible ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-400 border border-emerald-500/20">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-medium text-emerald-400 border border-emerald-500/20">
                         <CheckCircle2 className="h-3 w-3" /> Synced
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-gray-800 px-2 py-0.5 font-medium text-gray-400">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-gray-800 px-2.5 py-0.5 font-medium text-gray-400">
                         External User
                       </span>
                     )}

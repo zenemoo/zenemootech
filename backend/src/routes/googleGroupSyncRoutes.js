@@ -7,6 +7,7 @@ import {
   getGoogleGroupExclusions,
   restoreGoogleGroupExclusion,
   triggerGoogleGroupSync,
+  getGoogleGroupSyncStatus,
   removeGoogleGroupMember,
 } from '../controllers/googleGroupSyncController.js';
 
@@ -88,8 +89,9 @@ router.get('/exclusions', requireSyncAuth, getGoogleGroupExclusions);
 router.delete('/exclusions/:email', requireSyncAuth, restoreGoogleGroupExclusion);
 router.post('/exclusions/restore', requireSyncAuth, restoreGoogleGroupExclusion);
 
-// Interactive sync trigger
+// Interactive sync trigger & status
 router.post('/sync', requireSyncAuth, triggerGoogleGroupSync);
+router.get('/sync-status', requireSyncAuth, getGoogleGroupSyncStatus);
 
 // Remove member endpoints (supports both DELETE and POST alias)
 router.delete('/members/:email', requireSyncAuth, removeGoogleGroupMember);

@@ -363,15 +363,31 @@ export const restoreGoogleGroupExclusion = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/admin/google-group/sync
- * Triggers interactive differential sync from Admin Panel (Exclusion-Aware)
- */
-export const triggerGoogleGroupSync = async (req, res, next) => {
-  try {
-    const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+// In-memory sync job state tracker for asynchronous background processing
+let currentSyncJob = {
+  status: 'IDLE', // 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  startedAt: null,
+  completedAt: null,
+  totalEligible: 0,
+  totalCandidates: 0,
+  processedCount: 0,
+  addedCount: 0,
+  skippedCount: 0,
+  excludedCount: 0,
+  failedCount: 0,
+  errors: [],
+  currentBatch: 0,
+  totalBatches: 0,
+  addedEmails: [],
+  message: 'No active synchronization job.',
+};
 
-    // 1. Fetch current database emails, current group members, and exclusions in parallel
+/**
+ * Executes asynchronous batch synchronization in the background
+ */
+const executeBackgroundSync = async (user, targetGroupEmail) => {
+  try {
+    // 1. Fetch current eligible database emails, current group members, and exclusions
     const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
       googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
@@ -399,40 +415,73 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
       }
     }
 
+    currentSyncJob.totalEligible = eligibleEmailSet.size;
+    currentSyncJob.excludedCount = excludedCount;
+    currentSyncJob.alreadyExisting = existingGroupMembers.length;
+
     if (missingCandidates.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: 'Google Group is already 100% up-to-date with Supabase community records.',
-        totalEligible: eligibleEmailSet.size,
-        alreadySynced: existingGroupMembers.length,
-        excludedCount: excludedCount,
-        addedCount: 0,
-        skippedCount: 0,
-        failedCount: 0,
-        errors: [],
-      });
+      currentSyncJob.status = 'COMPLETED';
+      currentSyncJob.completedAt = new Date().toISOString();
+      currentSyncJob.message = 'Google Group is already 100% synchronized.';
+      return;
     }
 
-    // 3. Dispatch batch addition of non-excluded candidates to Google Apps Script
-    const syncResult = await googleAppsScriptService.syncGoogleGroupMembers(targetGroupEmail, missingCandidates);
+    // Safety limit per run: up to 100 candidates processed in safe chunks of 25
+    const MAX_SYNC_LIMIT = 100;
+    const candidatesToProcess = missingCandidates.slice(0, MAX_SYNC_LIMIT);
+    const BATCH_SIZE = 25;
+    const totalBatches = Math.ceil(candidatesToProcess.length / BATCH_SIZE);
 
-    // 4. Log Admin Audit record
+    currentSyncJob.totalCandidates = candidatesToProcess.length;
+    currentSyncJob.totalBatches = totalBatches;
+    currentSyncJob.message = `Processing ${candidatesToProcess.length} pending candidate(s) in ${totalBatches} batch(es)...`;
+
+    for (let b = 0; b < totalBatches; b++) {
+      currentSyncJob.currentBatch = b + 1;
+      const batchChunk = candidatesToProcess.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+
+      const syncResult = await googleAppsScriptService.syncGoogleGroupMembers(targetGroupEmail, batchChunk);
+
+      if (syncResult) {
+        currentSyncJob.addedCount += syncResult.addedCount || 0;
+        currentSyncJob.skippedCount += syncResult.skippedCount || 0;
+        currentSyncJob.failedCount += syncResult.failedCount || 0;
+        currentSyncJob.processedCount += batchChunk.length;
+
+        if (Array.isArray(syncResult.addedEmails)) {
+          currentSyncJob.addedEmails.push(...syncResult.addedEmails);
+        }
+        if (Array.isArray(syncResult.errors) && syncResult.errors.length > 0) {
+          currentSyncJob.errors.push(...syncResult.errors);
+        }
+      } else {
+        currentSyncJob.failedCount += batchChunk.length;
+        currentSyncJob.processedCount += batchChunk.length;
+        currentSyncJob.errors.push({ error: `Batch ${b + 1} communication timeout or error` });
+      }
+    }
+
+    currentSyncJob.status = 'COMPLETED';
+    currentSyncJob.completedAt = new Date().toISOString();
+    currentSyncJob.message = `Sync complete: Added ${currentSyncJob.addedCount} new member(s) (${currentSyncJob.skippedCount} skipped, ${currentSyncJob.excludedCount} excluded).`;
+
+    // Log Admin Audit record
     try {
       if (supabase) {
         await supabase.from('admin_audit_logs').insert([{
           event_type: 'GOOGLE_GROUP_SYNC',
-          email: req.user?.email || 'admin@zenemoo.in',
-          ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
-          user_agent: req.headers['user-agent'] || 'admin_dashboard',
+          email: user?.email || 'admin@zenemoo.in',
+          ip_address: '127.0.0.1',
+          user_agent: 'admin_dashboard',
           details: {
             groupEmail: targetGroupEmail,
-            totalEligible: eligibleEmailSet.size,
-            excludedCount: excludedCount,
-            missingCandidates: missingCandidates.length,
-            addedCount: syncResult.addedCount || 0,
-            skippedCount: syncResult.skippedCount || 0,
-            failedCount: syncResult.failedCount || 0,
-            timestamp: new Date().toISOString(),
+            totalEligible: currentSyncJob.totalEligible,
+            excludedCount: currentSyncJob.excludedCount,
+            totalCandidates: currentSyncJob.totalCandidates,
+            addedCount: currentSyncJob.addedCount,
+            skippedCount: currentSyncJob.skippedCount,
+            failedCount: currentSyncJob.failedCount,
+            timestamp: currentSyncJob.completedAt,
           },
           created_at: new Date().toISOString(),
         }]);
@@ -440,17 +489,76 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
     } catch (auditErr) {
       console.warn('[Google Group Audit Log Warning]:', auditErr.message);
     }
+  } catch (err) {
+    console.error('executeBackgroundSync error:', err);
+    currentSyncJob.status = 'FAILED';
+    currentSyncJob.completedAt = new Date().toISOString();
+    currentSyncJob.message = `Synchronization failed: ${err.message}`;
+    currentSyncJob.errors.push({ error: err.message });
+  }
+};
+
+/**
+ * GET /api/admin/google-group/sync-status
+ * Returns the current background synchronization progress and state
+ */
+export const getGoogleGroupSyncStatus = async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      ...currentSyncJob,
+    });
+  } catch (err) {
+    console.error('getGoogleGroupSyncStatus error:', err);
+    next(err);
+  }
+};
+
+/**
+ * POST /api/admin/google-group/sync
+ * Triggers interactive differential sync from Admin Panel asynchronously
+ */
+export const triggerGoogleGroupSync = async (req, res, next) => {
+  try {
+    const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+
+    // 1. Prevent duplicate concurrent sync runs
+    if (currentSyncJob.status === 'RUNNING') {
+      return res.status(200).json({
+        success: true,
+        status: 'RUNNING',
+        message: 'A Google Group synchronization job is already running in background.',
+        progress: currentSyncJob,
+      });
+    }
+
+    // 2. Initialize new job state
+    currentSyncJob = {
+      status: 'RUNNING',
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      totalEligible: 0,
+      totalCandidates: 0,
+      processedCount: 0,
+      addedCount: 0,
+      skippedCount: 0,
+      excludedCount: 0,
+      failedCount: 0,
+      errors: [],
+      currentBatch: 0,
+      totalBatches: 0,
+      addedEmails: [],
+      message: 'Synchronization started in background...',
+    };
+
+    // 3. Kick off background execution asynchronously (non-blocking)
+    executeBackgroundSync(req.user, targetGroupEmail);
 
     return res.status(200).json({
       success: true,
-      message: `Sync complete: Added ${syncResult.addedCount || 0} new member(s) (${excludedCount} excluded email(s) skipped).`,
-      totalEligible: eligibleEmailSet.size,
-      missingCount: missingCandidates.length,
-      excludedCount: excludedCount,
-      addedCount: syncResult.addedCount || 0,
-      skippedCount: syncResult.skippedCount || 0,
-      failedCount: syncResult.failedCount || 0,
-      errors: syncResult.errors || [],
+      status: 'RUNNING',
+      message: 'Google Group synchronization initiated in background.',
+      startedAt: currentSyncJob.startedAt,
     });
   } catch (err) {
     console.error('triggerGoogleGroupSync error:', err);

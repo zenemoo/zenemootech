@@ -453,90 +453,113 @@ function handleGetGroupMembers(payload) {
  * ACTION 2: syncMembers
  * Adds provided missing email addresses into the Google Group (strictly Add-Only).
  * Automatically filters out any manually excluded emails.
+ * Protected with LockService concurrency control.
  */
 function handleSyncMembers(payload) {
-  const groupEmail = payload.groupEmail || getGroupEmail();
-  const rawCandidateEmails = Array.isArray(payload.emails)
-    ? payload.emails
-    : Array.isArray(payload.members)
-    ? payload.members
-    : [];
-
-  let addedCount = 0;
-  let skippedCount = 0;
-  let excludedCount = 0;
-  let failedCount = 0;
-  const errors = [];
-
-  // 1. Load exclusion list
-  const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
-
-  // 2. Check if member already exists via GroupsApp
-  let group = null;
-  try {
-    group = GroupsApp.getGroupByEmail(groupEmail);
-  } catch (_) {}
-
-  for (let i = 0; i < rawCandidateEmails.length; i++) {
-    const clean = normalizeEmail(rawCandidateEmails[i]);
-    if (!clean) {
-      continue;
-    }
-
-    // Step A: Check whether email is permanently excluded
-    if (exclusionSet.has(clean)) {
-      excludedCount++;
-      continue;
-    }
-
-    // Step B: Check if already present in Google Group
-    try {
-      if (group && typeof group.hasUser === 'function' && group.hasUser(clean)) {
-        skippedCount++;
-        continue;
-      }
-    } catch (_) {}
-
-    // Step C: Attempt addition via AdminDirectory if available
-    let inserted = false;
-    try {
-      if (typeof AdminDirectory !== 'undefined' && AdminDirectory.Members && typeof AdminDirectory.Members.insert === 'function') {
-        AdminDirectory.Members.insert({ email: clean, role: 'MEMBER' }, groupEmail);
-        addedCount++;
-        inserted = true;
-
-        if (CONFIG.PAUSE_BETWEEN_REQUESTS_MS > 0) {
-          Utilities.sleep(CONFIG.PAUSE_BETWEEN_REQUESTS_MS);
-        }
-      }
-    } catch (insertErr) {
-      const errMsg = insertErr.toString();
-      if (errMsg.includes('409') || errMsg.includes('already exists') || errMsg.includes('memberExists')) {
-        skippedCount++;
-        inserted = true;
-      } else {
-        failedCount++;
-        errors.push({ email: clean, error: errMsg });
-        inserted = true;
-      }
-    }
-
-    if (!inserted) {
-      failedCount++;
-      errors.push({ email: clean, error: 'Direct programmatic addition requires Google Workspace Group Admin privilege or Google Groups direct member invite.' });
-    }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    return {
+      success: false,
+      code: 'SYNC_LOCKED',
+      message: 'A Google Group synchronization job is already running. Please try again shortly.',
+      addedCount: 0,
+      skippedCount: 0,
+      excludedCount: 0,
+      failedCount: 0,
+      addedEmails: [],
+      errors: [],
+    };
   }
 
-  return {
-    success: true,
-    groupEmail: groupEmail,
-    totalReceived: rawCandidateEmails.length,
-    addedCount: addedCount,
-    skippedCount: skippedCount,
-    excludedCount: excludedCount,
-    failedCount: failedCount,
-    errors: errors,
-  };
+  try {
+    const groupEmail = payload.groupEmail || getGroupEmail();
+    const rawCandidateEmails = Array.isArray(payload.emails)
+      ? payload.emails
+      : Array.isArray(payload.members)
+      ? payload.members
+      : [];
+
+    let addedCount = 0;
+    let skippedCount = 0;
+    let excludedCount = 0;
+    let failedCount = 0;
+    const addedEmails = [];
+    const errors = [];
+
+    // 1. Load exclusion list
+    const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
+
+    // 2. Check if member already exists via GroupsApp
+    let group = null;
+    try {
+      group = GroupsApp.getGroupByEmail(groupEmail);
+    } catch (_) {}
+
+    for (let i = 0; i < rawCandidateEmails.length; i++) {
+      const clean = normalizeEmail(rawCandidateEmails[i]);
+      if (!clean) {
+        continue;
+      }
+
+      // Step A: Check whether email is permanently excluded
+      if (exclusionSet.has(clean)) {
+        excludedCount++;
+        continue;
+      }
+
+      // Step B: Check if already present in Google Group
+      try {
+        if (group && typeof group.hasUser === 'function' && group.hasUser(clean)) {
+          skippedCount++;
+          continue;
+        }
+      } catch (_) {}
+
+      // Step C: Attempt addition via AdminDirectory if available
+      let inserted = false;
+      try {
+        if (typeof AdminDirectory !== 'undefined' && AdminDirectory.Members && typeof AdminDirectory.Members.insert === 'function') {
+          AdminDirectory.Members.insert({ email: clean, role: 'MEMBER' }, groupEmail);
+          addedCount++;
+          addedEmails.push(clean);
+          inserted = true;
+
+          if (CONFIG.PAUSE_BETWEEN_REQUESTS_MS > 0) {
+            Utilities.sleep(CONFIG.PAUSE_BETWEEN_REQUESTS_MS);
+          }
+        }
+      } catch (insertErr) {
+        const errMsg = insertErr.toString();
+        if (errMsg.includes('409') || errMsg.includes('already exists') || errMsg.includes('memberExists')) {
+          skippedCount++;
+          inserted = true;
+        } else {
+          failedCount++;
+          errors.push({ email: clean, error: errMsg });
+          inserted = true;
+        }
+      }
+
+      if (!inserted) {
+        failedCount++;
+        errors.push({ email: clean, error: 'Direct programmatic addition requires Google Workspace Group Admin privilege or Google Groups direct member invite.' });
+      }
+    }
+
+    return {
+      success: true,
+      groupEmail: groupEmail,
+      totalReceived: rawCandidateEmails.length,
+      addedCount: addedCount,
+      skippedCount: skippedCount,
+      excludedCount: excludedCount,
+      failedCount: failedCount,
+      addedEmails: addedEmails,
+      errors: errors,
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -765,87 +788,97 @@ function testGoogleGroupAccess() {
  * ============================================================================
  */
 function syncGoogleGroupMembers() {
-  const startTime = new Date();
-  Logger.log('====================================================');
-  Logger.log('🚀 [ZENEMOO GOOGLE GROUP SYNC] Job started at ' + startTime.toISOString());
-  Logger.log('====================================================');
-
-  const backendUrl = PropertiesService.getScriptProperties().getProperty('ZENEMOO_BACKEND_URL') || CONFIG.DEFAULT_BACKEND_URL;
-  const targetGroupEmail = getGroupEmail();
-  const syncSecret = getSecret();
-
-  if (!syncSecret) {
-    Logger.log('❌ ERROR: GOOGLE_GROUP_SYNC_SECRET is not configured in Script Properties.');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    Logger.log('⚠️ [ZENEMOO GOOGLE GROUP SYNC] Job skipped: Another synchronization task is currently holding the script lock.');
     return;
   }
 
-  // 1. Fetch eligible emails from backend
-  let eligibleEmails = [];
   try {
-    const response = UrlFetchApp.fetch(backendUrl, {
-      method: 'get',
-      headers: {
-        'x-zenemoo-sync-secret': syncSecret,
-        'Accept': 'application/json',
-      },
-      muteHttpExceptions: true,
-    });
+    const startTime = new Date();
+    Logger.log('====================================================');
+    Logger.log('🚀 [ZENEMOO GOOGLE GROUP SYNC] Job started at ' + startTime.toISOString());
+    Logger.log('====================================================');
 
-    if (response.getResponseCode() !== 200) {
-      Logger.log('❌ Backend request failed with status ' + response.getResponseCode());
+    const backendUrl = PropertiesService.getScriptProperties().getProperty('ZENEMOO_BACKEND_URL') || CONFIG.DEFAULT_BACKEND_URL;
+    const targetGroupEmail = getGroupEmail();
+    const syncSecret = getSecret();
+
+    if (!syncSecret) {
+      Logger.log('❌ ERROR: GOOGLE_GROUP_SYNC_SECRET is not configured in Script Properties.');
       return;
     }
 
-    const payload = JSON.parse(response.getContentText());
-    if (payload.success && Array.isArray(payload.emails)) {
-      eligibleEmails = payload.emails;
-    }
-  } catch (err) {
-    Logger.log('❌ Exception during backend fetch: ' + err.toString());
-    return;
-  }
+    // 1. Fetch eligible emails from backend
+    let eligibleEmails = [];
+    try {
+      const response = UrlFetchApp.fetch(backendUrl, {
+        method: 'get',
+        headers: {
+          'x-zenemoo-sync-secret': syncSecret,
+          'Accept': 'application/json',
+        },
+        muteHttpExceptions: true,
+      });
 
-  if (eligibleEmails.length === 0) {
-    Logger.log('ℹ️ No eligible emails returned. Job complete.');
-    return;
-  }
+      if (response.getResponseCode() !== 200) {
+        Logger.log('❌ Backend request failed with status ' + response.getResponseCode());
+        return;
+      }
 
-  // 2. Read existing members via GroupsApp
-  const memberResult = handleGetGroupMembers({ groupEmail: targetGroupEmail });
-  const existingSet = new Set((memberResult.members || []).map(function (m) { return m.email; }));
-
-  // 3. Read exclusion list
-  const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
-
-  // 4. Filter candidate emails (must NOT be in existing group AND must NOT be excluded)
-  const missing = [];
-  let skippedExcludedCount = 0;
-
-  for (let i = 0; i < eligibleEmails.length; i++) {
-    const clean = normalizeEmail(eligibleEmails[i]);
-    if (!clean) continue;
-
-    if (exclusionSet.has(clean)) {
-      skippedExcludedCount++;
-      continue;
+      const payload = JSON.parse(response.getContentText());
+      if (payload.success && Array.isArray(payload.emails)) {
+        eligibleEmails = payload.emails;
+      }
+    } catch (err) {
+      Logger.log('❌ Exception during backend fetch: ' + err.toString());
+      return;
     }
 
-    if (!existingSet.has(clean)) {
-      missing.push(clean);
+    if (eligibleEmails.length === 0) {
+      Logger.log('ℹ️ No eligible emails returned. Job complete.');
+      return;
     }
+
+    // 2. Read existing members via GroupsApp
+    const memberResult = handleGetGroupMembers({ groupEmail: targetGroupEmail });
+    const existingSet = new Set((memberResult.members || []).map(function (m) { return m.email; }));
+
+    // 3. Read exclusion list
+    const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
+
+    // 4. Filter candidate emails (must NOT be in existing group AND must NOT be excluded)
+    const missing = [];
+    let skippedExcludedCount = 0;
+
+    for (let i = 0; i < eligibleEmails.length; i++) {
+      const clean = normalizeEmail(eligibleEmails[i]);
+      if (!clean) continue;
+
+      if (exclusionSet.has(clean)) {
+        skippedExcludedCount++;
+        continue;
+      }
+
+      if (!existingSet.has(clean)) {
+        missing.push(clean);
+      }
+    }
+
+    Logger.log('📊 Eligible in backend: ' + eligibleEmails.length + ' | Existing in group: ' + existingSet.size + ' | Excluded: ' + skippedExcludedCount + ' | Missing to add: ' + missing.length);
+
+    if (missing.length === 0) {
+      Logger.log('🎉 Google Group is already 100% synchronized! (Zero pending additions)');
+      return;
+    }
+
+    // 5. Batch add non-excluded missing candidates
+    const syncRes = handleSyncMembers({ groupEmail: targetGroupEmail, emails: missing.slice(0, CONFIG.MAX_ADDITIONS_PER_RUN) });
+
+    Logger.log('🏁 Sync Finished — Added: ' + syncRes.addedCount + ' | Skipped: ' + syncRes.skippedCount + ' | Excluded: ' + syncRes.excludedCount + ' | Failed: ' + syncRes.failedCount);
+  } finally {
+    lock.releaseLock();
   }
-
-  Logger.log('📊 Eligible in backend: ' + eligibleEmails.length + ' | Existing in group: ' + existingSet.size + ' | Excluded: ' + skippedExcludedCount + ' | Missing to add: ' + missing.length);
-
-  if (missing.length === 0) {
-    Logger.log('🎉 Google Group is already 100% synchronized! (Zero pending additions)');
-    return;
-  }
-
-  // 5. Batch add non-excluded missing candidates
-  const syncRes = handleSyncMembers({ groupEmail: targetGroupEmail, emails: missing.slice(0, CONFIG.MAX_ADDITIONS_PER_RUN) });
-
-  Logger.log('🏁 Sync Finished — Added: ' + syncRes.addedCount + ' | Skipped: ' + syncRes.skippedCount + ' | Excluded: ' + syncRes.excludedCount + ' | Failed: ' + syncRes.failedCount);
 }
 
 /**
