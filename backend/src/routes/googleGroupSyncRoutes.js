@@ -1,6 +1,12 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { getEligibleCommunityEmails } from '../controllers/googleGroupSyncController.js';
+import {
+  getEligibleCommunityEmails,
+  getGoogleGroupOverview,
+  getGoogleGroupMembers,
+  triggerGoogleGroupSync,
+  removeGoogleGroupMember,
+} from '../controllers/googleGroupSyncController.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
@@ -50,7 +56,7 @@ export const requireSyncAuth = (req, res, next) => {
       return res.status(403).json({
         success: false,
         code: 'FORBIDDEN_INSUFFICIENT_ROLE',
-        message: '403 Access Denied: Admin authorization required to export community emails.',
+        message: '403 Access Denied: Admin authorization required to manage Google Group.',
       });
     } catch (_) {
       // Token invalid or expired
@@ -64,10 +70,20 @@ export const requireSyncAuth = (req, res, next) => {
   });
 };
 
-// GET /api/admin/google-group/eligible-emails
+// Overview dashboard metrics
+router.get('/overview', requireSyncAuth, getGoogleGroupOverview);
+
+// Pure eligible emails array (for Google Apps Script pull integration)
 router.get('/eligible-emails', requireSyncAuth, getEligibleCommunityEmails);
 
-// Alias: GET /api/admin/google-group/members
-router.get('/members', requireSyncAuth, getEligibleCommunityEmails);
+// Member listing with sync status
+router.get('/members', requireSyncAuth, getGoogleGroupMembers);
+
+// Interactive sync trigger
+router.post('/sync', requireSyncAuth, triggerGoogleGroupSync);
+
+// Remove member endpoints (supports both DELETE and POST alias)
+router.delete('/members/:email', requireSyncAuth, removeGoogleGroupMember);
+router.post('/members/remove', requireSyncAuth, removeGoogleGroupMember);
 
 export default router;

@@ -609,3 +609,16 @@ export const bookingApi = {
     api.delete(`/bookings/admin/${encodeURIComponent(id)}`),
 };
 
+// ZENEMOO Google Group Management API
+export const googleGroupApi = {
+  getOverview: () =>
+    deduplicatedGet('/admin/google-group/overview'),
+  getMembers: () =>
+    deduplicatedGet('/admin/google-group/members'),
+  triggerSync: () =>
+    api.post('/admin/google-group/sync'),
+  removeMember: (email: string) =>
+    api.delete(`/admin/google-group/members/${encodeURIComponent(email)}`),
+};
+
+

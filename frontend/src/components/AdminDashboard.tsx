@@ -31,10 +31,11 @@ import { AdminSupportContributionsPage } from './AdminSupportContributionsPage';
 import { AdminPaymentLinksPage } from './AdminPaymentLinksPage';
 import { AdminReferralsTab } from './AdminReferralsTab';
 import { AdminTalentTeamsTab } from './AdminTalentTeamsTab';
+import { AdminGoogleGroupTab } from './AdminGoogleGroupTab';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
   isStandaloneEmailView?: boolean;
 }
 
@@ -226,7 +227,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2076,6 +2077,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'history', name: 'Message History', icon: Send, count: emailLogs.filter((log) => log.status === 'scheduled' || log.status === 'pending' || log.is_scheduled).length },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
         { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subscribers.filter((s) => s.status === 'unsubscribed').length },
+        { id: 'google-group', name: 'Google Group Management', icon: Users },
       ],
     },
     {
@@ -5048,6 +5050,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         )}
 
         {/* TAB 3: NEWSLETTER SUBSCRIBERS */}
+        {activeTab === 'google-group' && (
+          <AdminGoogleGroupTab showToast={addToast} showConfirm={showConfirm} />
+        )}
+
         {activeTab === 'subscribers' && (() => {
           const activeSubscribersList = subscribers.filter((s) => s.status !== 'unsubscribed');
           const unsubscribedSubscribersList = subscribers.filter((s) => s.status === 'unsubscribed');

@@ -186,4 +186,119 @@ export const googleAppsScriptService = {
     });
     return res || { success: false, message: 'Apps Script offline' };
   },
+
+  // Google Group Management Operations
+  getGoogleGroupMembers: async (groupEmail) => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured', members: [], count: 0 };
+    }
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret,
+          action: 'getGroupMembers',
+          groupEmail: groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com',
+        }),
+      });
+
+      if (!res.ok) {
+        return { success: false, message: `Apps Script returned HTTP ${res.status}`, members: [], count: 0 };
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn('⚠️ Google Apps Script getGoogleGroupMembers error:', err.message);
+      return { success: false, message: err.message, members: [], count: 0 };
+    }
+  },
+
+  syncGoogleGroupMembers: async (groupEmail, candidateEmails = []) => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured', addedCount: 0, skippedCount: 0, failedCount: 0 };
+    }
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret,
+          action: 'syncMembers',
+          groupEmail: groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com',
+          emails: candidateEmails,
+        }),
+      });
+
+      if (!res.ok) {
+        return { success: false, message: `Apps Script returned HTTP ${res.status}`, addedCount: 0, skippedCount: 0, failedCount: 0 };
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn('⚠️ Google Apps Script syncGoogleGroupMembers error:', err.message);
+      return { success: false, message: err.message, addedCount: 0, skippedCount: 0, failedCount: 0 };
+    }
+  },
+
+  removeGoogleGroupMember: async (groupEmail, targetEmail) => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured' };
+    }
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret,
+          action: 'removeMember',
+          groupEmail: groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com',
+          email: targetEmail,
+        }),
+      });
+
+      if (!res.ok) {
+        return { success: false, message: `Apps Script returned HTTP ${res.status}` };
+      }
+      return await res.json();
+    } catch (err) {
+      console.warn('⚠️ Google Apps Script removeGoogleGroupMember error:', err.message);
+      return { success: false, message: err.message };
+    }
+  },
+
+  googleGroupHealthCheck: async (groupEmail) => {
+    const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
+    if (!targetUrl) {
+      return { success: false, status: 'NOT_CONFIGURED', message: 'Google Apps Script Web App URL is not configured' };
+    }
+
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret,
+          action: 'healthCheck',
+          groupEmail: groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com',
+        }),
+      });
+
+      if (!res.ok) {
+        return { success: false, status: 'OFFLINE', message: `Apps Script returned HTTP ${res.status}` };
+      }
+      return await res.json();
+    } catch (err) {
+      return { success: false, status: 'ERROR', message: err.message };
+    }
+  },
 };
+
