@@ -183,6 +183,8 @@ export const opportunityApi = {
 export const opportunityApplicationApi = {
   getAll: (opportunity_id?: string) => api.get('/opportunity-applications', { params: { opportunity_id } }),
   getById: (id: string) => api.get(`/opportunity-applications/${id}`),
+  checkDuplicate: (opportunity_id: string, email: string) =>
+    api.get('/opportunity-applications/check-duplicate', { params: { opportunity_id, email } }),
   submit: (data: any) => api.post('/opportunity-applications', data),
   sendConfirmation: (data: any) => api.post('/opportunity-applications/send-confirmation', data),
   resendAcceptance: (id: string) => api.post(`/opportunity-applications/${id}/resend-acceptance`),

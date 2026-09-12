@@ -143,7 +143,7 @@ export const getSingleCandidateApplicationById = async (id: string): Promise<Can
   return localList.find((a) => a.id === id) || null;
 };
 
-// Lookup existing application by opportunity_id and email in Supabase / LocalStorage
+// Lookup existing application by opportunity_id and email authoritatively in Backend / Supabase
 export const checkExistingApplication = async (
   opportunity_id: string,
   email: string
@@ -151,26 +151,58 @@ export const checkExistingApplication = async (
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!opportunity_id || !cleanEmail) return null;
 
-  // 1. Check direct Supabase database
+  // 1. Primary Check: Express API Backend (server-authoritative with zero egress overhead)
   try {
-    const { data } = await supabase
-      .from('opportunity_applications')
-      .select('*')
-      .eq('opportunity_id', opportunity_id)
-      .ilike('applicant_email', cleanEmail)
-      .limit(1);
-
-    if (data && data.length > 0) {
-      return data[0] as CandidateApplication;
+    const res = await opportunityApplicationApi.checkDuplicate(opportunity_id, cleanEmail);
+    if (res.data && res.data.success !== undefined) {
+      if (res.data.exists && res.data.application) {
+        return res.data.application as CandidateApplication;
+      } else {
+        // Authoritative NO from server: Purge any stale ghost record from localStorage
+        let localList = getLocalApplications();
+        const filtered = localList.filter(
+          (app) => !(app.opportunity_id === opportunity_id && (app.applicant_email || '').toLowerCase() === cleanEmail)
+        );
+        if (filtered.length !== localList.length) {
+          saveLocalApplications(filtered);
+        }
+        return null;
+      }
     }
-  } catch (_) {}
+  } catch (apiErr: any) {
+    console.warn('[checkDuplicate API Note, falling back to direct Supabase]:', apiErr.message);
+  }
 
-  // 2. Check LocalStorage fallback
-  const localList = getLocalApplications();
-  const found = localList.find(
-    (app) => app.opportunity_id === opportunity_id && (app.applicant_email || '').toLowerCase() === cleanEmail
-  );
-  return found || null;
+  // 2. Secondary Check: Direct Supabase database query (targeted 1-row query)
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('opportunity_applications')
+        .select('id, applicant_id, opportunity_id, applicant_email, status, created_at')
+        .eq('opportunity_id', opportunity_id)
+        .ilike('applicant_email', cleanEmail)
+        .limit(1);
+
+      if (!error && Array.isArray(data)) {
+        if (data.length > 0) {
+          return data[0] as CandidateApplication;
+        } else {
+          // Authoritative NO from Supabase: Purge any stale ghost record from localStorage
+          let localList = getLocalApplications();
+          const filtered = localList.filter(
+            (app) => !(app.opportunity_id === opportunity_id && (app.applicant_email || '').toLowerCase() === cleanEmail)
+          );
+          if (filtered.length !== localList.length) {
+            saveLocalApplications(filtered);
+          }
+          return null;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Fallback: Network failure / offline is NOT proof of existing application
+  return null;
 };
 
 // Submit candidate application directly to Supabase / Backend API with Duplicate Protection

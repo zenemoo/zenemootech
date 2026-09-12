@@ -133,17 +133,16 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     };
   }, [userMenuOpen]);
 
-  // Lock body scrolling when social sheet is open
+  // Lock body scrolling when mobile drawer or social sheet is open
   useEffect(() => {
-    if (isSocialSheetOpen) {
+    if (mobileMenuOpen || isSocialSheetOpen) {
+      const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isSocialSheetOpen]);
+  }, [mobileMenuOpen, isSocialSheetOpen]);
 
   const handleCopyText = (text: string, fieldName: string) => {
     if (!text) return;
@@ -172,6 +171,14 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     ...(hasTeamAccess ? [{ id: 'team' as const, label: 'My Team', icon: Users }] : []),
   ];
 
+  // Exactly 4 primary mobile bottom navigation destinations
+  const mobileBottomNavItems = [
+    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'profile' as const, label: 'Profile', icon: User },
+    { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
+    { id: 'applications' as const, label: 'Applications', icon: FileCheck },
+  ];
+
   const handleManualRefresh = async () => {
     if (isRefreshing) return;
     await refreshTalentHubData(true);
@@ -186,11 +193,21 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden pt-14 sm:pt-16">
-      {/* ── Fixed Top Navigation Header (Dynamic & Responsive from 320px to 4K) ── */}
-      <header className="fixed top-0 left-0 right-0 z-40 h-14 sm:h-16 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-5 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0">
-        <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto h-full flex items-center justify-between gap-2 sm:gap-4 min-w-0">
-          {/* Brand Logo & Portal Title (Mobile shows only logo, Desktop/Laptop shows full brand) */}
+    <div
+      className="min-h-screen bg-[#050508] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative w-full max-w-full min-w-0 overflow-x-hidden"
+      style={{
+        paddingTop: 'calc(3.5rem + var(--sat, env(safe-area-inset-top, 0px)))',
+      }}
+    >
+      {/* ── Fixed Top Navigation Header (Separated from System Status Bar with Safe-Area) ── */}
+      <header
+        className="fixed top-0 left-0 right-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-5 lg:px-8 shadow-xl shadow-black/40 w-full shrink-0"
+        style={{
+          paddingTop: 'var(--sat, env(safe-area-inset-top, 0px))',
+        }}
+      >
+        <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4 min-w-0">
+          {/* Brand Logo & Portal Title (Mobile shows compact logo, sm+ shows full brand) */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
             <a
               href="/talent-hub/dashboard"
@@ -199,6 +216,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 handleNavClick('dashboard');
               }}
               className="flex items-center gap-2 sm:gap-2.5 group focus:outline-none shrink-0"
+              aria-label="Zenemoo Talent Hub Dashboard"
             >
               <div className="relative h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-400/50 group-hover:scale-105 transition-all duration-300 shrink-0">
                 <SeoImage
@@ -211,7 +229,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                   fallbackSrc="/assets/logo.png"
                 />
               </div>
-              {/* Full Brand Text: Hidden on mobile phones (<640px) to prevent navbar squeeze, fully visible on tablets and laptops */}
+              {/* Full Brand Text: Hidden on mobile phones (<640px) to prevent navbar squeeze, fully visible on tablets/laptops */}
               <div className="hidden sm:flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-sm sm:text-base lg:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none truncate">
@@ -263,11 +281,11 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
           {/* Right Action Bar (Sleek, Uncrowded on All Breakpoints) */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* 🔄 Refresh Button */}
+            {/* 🔄 Refresh Button (44px touch target) */}
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
-              className={`relative p-2 sm:px-3 sm:py-2 rounded-2xl border transition-all duration-200 flex items-center gap-1.5 text-xs font-mono font-medium cursor-pointer ${
+              className={`relative p-2 sm:px-3 sm:py-2 rounded-2xl border transition-all duration-200 flex items-center gap-1.5 text-xs font-mono font-medium cursor-pointer min-w-[40px] min-h-[40px] justify-center ${
                 isRefreshing
                   ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]'
                   : showRefreshFeedback
@@ -290,14 +308,14 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
               )}
             </button>
 
-            {/* Centralized Notification Center (Always Visible) */}
+            {/* Centralized Notification Center (Always Visible in Top Bar) */}
             <NotificationCenter />
 
             {/* User Profile Avatar Pill & Rich Dropdown Menu */}
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="group relative flex items-center gap-1.5 p-1 sm:p-1.5 rounded-full bg-white/[0.04] hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 transition-all duration-200 focus:outline-none cursor-pointer active:scale-95 shadow-sm"
+                className="group relative flex items-center gap-1.5 p-1 sm:p-1.5 rounded-full bg-white/[0.04] hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 transition-all duration-200 focus:outline-none cursor-pointer active:scale-95 shadow-sm min-w-[40px] min-h-[40px] justify-center"
                 aria-label="User Account Menu"
                 title={`Signed in as ${displayName}`}
               >
@@ -324,11 +342,11 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                 />
               </button>
 
-              {/* Rich User Profile Dropdown Card (100% Solid Dark, Non-Transparent, High Contrast) */}
+              {/* Rich User Profile Dropdown Card */}
               <AnimatePresence>
                 {userMenuOpen && (
                   <>
-                    {/* Dimming Backdrop to prevent text bleed from background page */}
+                    {/* Dimming Backdrop */}
                     <div
                       className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] transition-opacity"
                       onClick={() => setUserMenuOpen(false)}
@@ -367,7 +385,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                               {displayEmail && (
                                 <button
                                   onClick={() => handleCopyText(displayEmail, 'email')}
-                                  className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors shrink-0"
+                                  className="p-1 rounded-md hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors shrink-0 cursor-pointer"
                                   title="Copy email address"
                                   aria-label="Copy email address"
                                 >
@@ -394,6 +412,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                               onClick={() => handleCopyText(talentProfile.registration_code, 'reg_code')}
                               className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-cyan-500/40 text-[10px] font-mono text-slate-300 transition-all cursor-pointer group"
                               title="Click to copy registration code"
+                              aria-label="Copy registration code"
                             >
                               <span className="text-slate-400">ID:</span>
                               <span className="font-bold text-cyan-300 group-hover:text-cyan-200">
@@ -515,8 +534,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
             {/* Mobile Hamburger Drawer Trigger (lg:hidden) */}
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white hover:border-cyan-500/40 focus:outline-none cursor-pointer"
+              className="lg:hidden p-2 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white hover:border-cyan-500/40 focus:outline-none cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center active:scale-95 transition-all"
               aria-label="Open navigation menu"
+              aria-expanded={mobileMenuOpen}
             >
               <Menu className="w-5 h-5 text-cyan-400" />
             </button>
@@ -524,217 +544,225 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
         </div>
       </header>
 
-      {/* ── Fixed Header Spacer (Removed duplicate spacer to prevent 150px+ mobile gap) ── */}
-
-      {/* ── MOBILE GLASS OVERLAY DRAWER (Sliding Overlay with Safe Area Inset) ── */}
+      {/* ── MOBILE GLASS OVERLAY DRAWER (Slides smoothly from RIGHT with Safe Area Inset) ── */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 md:hidden overflow-hidden">
-            {/* Backdrop */}
+          <div className="fixed inset-0 z-50 lg:hidden overflow-hidden">
+            {/* Dark Translucent Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/75 backdrop-blur-sm"
               onClick={() => setMobileMenuOpen(false)}
             />
 
-            {/* Sliding Glass Drawer Panel with Android Status Bar Safe Area */}
+            {/* Sliding Glass Drawer Panel (85vw max 360px) */}
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed top-0 right-0 bottom-0 w-[85%] max-w-sm bg-[#080d19]/98 backdrop-blur-2xl border-l border-cyan-500/30 shadow-2xl px-4 sm:px-5 pt-[calc(var(--sat,env(safe-area-inset-top,0px))+1.25rem)] pb-[calc(var(--sab,env(safe-area-inset-bottom,0px))+1.5rem)] flex flex-col z-50 overflow-y-auto"
+              transition={{ type: 'tween', duration: 0.24, ease: 'easeOut' }}
+              className="fixed top-0 right-0 bottom-0 w-[85vw] max-w-[360px] bg-[#080d1a]/98 backdrop-blur-2xl border-l border-cyan-500/30 shadow-[-20px_0_60px_rgba(0,0,0,0.9)] flex flex-col z-50 overflow-y-auto"
+              style={{
+                paddingTop: 'calc(var(--sat, env(safe-area-inset-top, 0px)) + 1rem)',
+                paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
+              }}
             >
               {/* Drawer Header */}
-              <div className="flex items-center justify-between pb-3.5 border-b border-white/10 shrink-0">
-                <div className="flex items-center gap-2">
-                  <div className="h-7 w-7 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[1.5px]">
+              <div className="flex items-center justify-between pb-3.5 px-4 sm:px-5 border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-purple-600 p-[1.5px] shadow-md shadow-cyan-500/20">
                     <SeoImage
                       src="/assets/logo.png"
                       alt="Zenemoo"
-                      width={28}
-                      height={28}
+                      width={32}
+                      height={32}
                       className="w-full h-full object-contain rounded-full bg-white p-0.5"
                     />
                   </div>
                   <div>
-                    <span className="text-sm font-bold text-white font-display">Talent Hub Menu</span>
+                    <span className="text-sm font-bold text-white font-display tracking-wide">Talent Hub Menu</span>
                   </div>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
-                  className="p-1.5 rounded-xl bg-white/5 text-slate-400 hover:text-white border border-white/10 cursor-pointer"
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors cursor-pointer active:scale-95"
                   aria-label="Close menu"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Primary Navigation Destinations */}
-              <div className="py-4 space-y-1.5">
-                <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider px-2 pb-1">
-                  Navigation
-                </p>
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = currentTab === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleNavClick(item.id)}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-sm shadow-cyan-500/20'
-                          : 'text-slate-300 hover:bg-white/5 border border-transparent'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Actions & Utilities Section */}
-              <div className="py-3 border-t border-white/10 space-y-2">
-                <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider px-2 pb-1">
-                  Quick Actions
-                </p>
-
-                {/* Manual Refresh in Drawer */}
-                <button
-                  onClick={handleManualRefresh}
-                  disabled={isRefreshing}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border transition-colors cursor-pointer ${
-                    showRefreshFeedback
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-white/[0.03] text-slate-200 hover:bg-white/[0.08] border-white/10'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <RefreshCw className={`w-4 h-4 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    <span>{showRefreshFeedback ? 'Data Updated!' : 'Refresh Hub Data'}</span>
-                  </div>
-                  {showRefreshFeedback && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                </button>
-
-                {/* Support Zenemoo Route */}
-                <button
-                  onClick={() => handleNavClick('support-zenemooindia')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                    currentTab === 'support-zenemooindia'
-                      ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
-                      : 'bg-pink-500/10 text-pink-300 hover:bg-pink-500/20 border border-pink-500/30'
-                  }`}
-                >
-                  <Heart className="w-4 h-4 text-pink-400" />
-                  <span>Support Zenemoo</span>
-                </button>
-
-                {/* My Support Payments Route */}
-                <button
-                  onClick={() => handleNavClick('support-history')}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                    currentTab === 'support-history'
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
-                      : 'bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30'
-                  }`}
-                >
-                  <Receipt className="w-4 h-4 text-cyan-400" />
-                  <span>My Support Payments</span>
-                </button>
-
-                {/* Back to Main Website */}
-                <a
-                  href="/"
-                  onClick={(e) => {
-                    if (onNavigateHome) {
-                      e.preventDefault();
-                      setMobileMenuOpen(false);
-                      onNavigateHome();
-                    }
-                  }}
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-white/5 border border-transparent transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Globe className="w-4 h-4 text-slate-500" />
-                    <span>Back to Main Website</span>
-                  </div>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-
-              {/* Account / User Details Card at bottom */}
-              <div className="mt-auto pt-4 border-t border-white/10 space-y-3">
-                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2.5">
-                  <div className="flex items-center gap-3">
-                    <div className="relative shrink-0">
-                      {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt={displayName}
-                          className="w-10 h-10 rounded-full object-cover border border-white/20"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
-                          {displayName.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#080d19]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-white truncate">{displayName}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <p className="text-[10px] text-cyan-300 font-mono truncate">{displayEmail}</p>
-                        {displayEmail && (
-                          <button
-                            onClick={() => handleCopyText(displayEmail, 'drawer_email')}
-                            className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors shrink-0"
-                            title="Copy email"
-                          >
-                            {copiedField === 'drawer_email' ? (
-                              <Check className="w-3 h-3 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {talentProfile?.registration_code && (
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-300">
-                      <span className="text-slate-400">Reg. Code:</span>
+              {/* Drawer Content Body */}
+              <div className="px-4 sm:px-5 flex-1 flex flex-col py-3">
+                {/* Primary Navigation Destinations (Includes Referrals & Team) */}
+                <div className="py-2 space-y-1">
+                  <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider px-2 pb-1">
+                    Navigation
+                  </p>
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = currentTab === item.id;
+                    return (
                       <button
-                        onClick={() => handleCopyText(talentProfile.registration_code, 'drawer_reg_code')}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/40 hover:bg-black/60 border border-white/10 text-cyan-300 cursor-pointer"
+                        key={item.id}
+                        onClick={() => handleNavClick(item.id)}
+                        className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                            : 'text-slate-300 hover:bg-white/5 border border-transparent'
+                        }`}
                       >
-                        <span className="font-bold">{talentProfile.registration_code}</span>
-                        {copiedField === 'drawer_reg_code' ? (
-                          <Check className="w-2.5 h-2.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-2.5 h-2.5 text-slate-400" />
-                        )}
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+                        <span>{item.label}</span>
                       </button>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
 
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    signOut();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium hover:bg-rose-500/20 transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
+                {/* Actions & Utilities Section */}
+                <div className="py-3 border-t border-white/10 space-y-1.5">
+                  <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider px-2 pb-1">
+                    Quick Actions
+                  </p>
+
+                  {/* Manual Refresh in Drawer */}
+                  <button
+                    onClick={handleManualRefresh}
+                    disabled={isRefreshing}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-mono font-medium border transition-colors cursor-pointer ${
+                      showRefreshFeedback
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-white/[0.03] text-slate-200 hover:bg-white/[0.08] border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <RefreshCw className={`w-4 h-4 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      <span>{showRefreshFeedback ? 'Data Updated!' : 'Refresh Hub Data'}</span>
+                    </div>
+                    {showRefreshFeedback && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  </button>
+
+                  {/* Support Zenemoo Route */}
+                  <button
+                    onClick={() => handleNavClick('support-zenemooindia')}
+                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                      currentTab === 'support-zenemooindia'
+                        ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
+                        : 'bg-pink-500/10 text-pink-300 hover:bg-pink-500/20 border border-pink-500/30'
+                    }`}
+                  >
+                    <Heart className="w-4 h-4 text-pink-400" />
+                    <span>Support Zenemoo</span>
+                  </button>
+
+                  {/* My Support Payments Route */}
+                  <button
+                    onClick={() => handleNavClick('support-history')}
+                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                      currentTab === 'support-history'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                        : 'bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30'
+                    }`}
+                  >
+                    <Receipt className="w-4 h-4 text-cyan-400" />
+                    <span>My Support Payments</span>
+                  </button>
+
+                  {/* Back to Main Website */}
+                  <a
+                    href="/"
+                    onClick={(e) => {
+                      if (onNavigateHome) {
+                        e.preventDefault();
+                        setMobileMenuOpen(false);
+                        onNavigateHome();
+                      }
+                    }}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-white/5 border border-transparent transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Globe className="w-4 h-4 text-slate-500" />
+                      <span>Back to Main Website</span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                {/* Account / User Details Card at bottom */}
+                <div className="mt-auto pt-4 border-t border-white/10 space-y-3">
+                  <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="relative shrink-0">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt={displayName}
+                            className="w-10 h-10 rounded-full object-cover border border-white/20"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
+                            {displayName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#080d19]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-white truncate">{displayName}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-[10px] text-cyan-300 font-mono truncate">{displayEmail}</p>
+                          {displayEmail && (
+                            <button
+                              onClick={() => handleCopyText(displayEmail, 'drawer_email')}
+                              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors shrink-0 cursor-pointer"
+                              title="Copy email"
+                              aria-label="Copy email"
+                            >
+                              {copiedField === 'drawer_email' ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {talentProfile?.registration_code && (
+                      <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-300">
+                        <span className="text-slate-400">Reg. Code:</span>
+                        <button
+                          onClick={() => handleCopyText(talentProfile.registration_code, 'drawer_reg_code')}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/40 hover:bg-black/60 border border-white/10 text-cyan-300 cursor-pointer"
+                          title="Click to copy registration code"
+                          aria-label="Copy registration code"
+                        >
+                          <span className="font-bold">{talentProfile.registration_code}</span>
+                          {copiedField === 'drawer_reg_code' ? (
+                            <Check className="w-2.5 h-2.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-2.5 h-2.5 text-slate-400" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      signOut();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium hover:bg-rose-500/20 transition-colors cursor-pointer active:scale-95"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -742,46 +770,54 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       </AnimatePresence>
 
       {/* ── Main Content Area (Compact, Snug, Perfectly Proportioned Spacing) ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-24 sm:pt-4 sm:pb-8 min-w-0 overflow-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pt-4 sm:pb-8 min-w-0 overflow-hidden">
         {children}
       </main>
 
-      {/* ── Dedicated Mobile Bottom Navigation Bar (6 Items) ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-[#070b14]/95 backdrop-blur-xl border-t border-white/10 shadow-[0_-8px_25px_rgba(0,0,0,0.8)]">
-        <div className="grid grid-cols-6 h-16 items-center px-1 max-w-lg mx-auto">
-          {navItems.map((item) => {
+      {/* ── Dedicated Mobile Bottom Navigation Bar (Exactly 4 Primary Items) ── */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-[#080d19]/95 backdrop-blur-2xl border-t border-white/10 shadow-[0_-10px_30px_rgba(0,0,0,0.85)]"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        <div className="grid grid-cols-4 h-16 items-center px-1 max-w-md mx-auto">
+          {mobileBottomNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${
-                  isActive ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
+                className={`flex flex-col items-center justify-center h-full py-1.5 px-1 transition-all duration-200 cursor-pointer relative group ${
+                  isActive ? 'text-cyan-300' : 'text-slate-400 hover:text-slate-200'
                 }`}
+                aria-label={item.label}
               >
-                <div className="relative">
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-cyan-400 scale-105' : 'text-slate-400'}`} />
+                <div
+                  className={`relative px-3 py-1 rounded-xl transition-all duration-200 ${
+                    isActive
+                      ? 'bg-cyan-500/15 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                      : 'group-hover:bg-white/5'
+                  }`}
+                >
+                  <Icon
+                    className={`w-5 h-5 transition-transform duration-200 ${
+                      isActive ? 'text-cyan-400 scale-105' : 'text-slate-400 group-hover:text-slate-200'
+                    }`}
+                  />
                   {isActive && (
                     <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
                   )}
                 </div>
-                <span className={`text-[9px] mt-1 font-medium truncate max-w-[54px] ${isActive ? 'font-bold text-white' : 'text-slate-400'}`}>
-                  {item.label === 'My Applications' ? 'Applications' : item.label === 'My Profile' ? 'Profile' : item.label}
+                <span
+                  className={`text-[10px] mt-0.5 font-medium leading-tight transition-colors truncate max-w-full ${
+                    isActive ? 'font-bold text-white' : 'text-slate-400'
+                  }`}
+                >
+                  {item.label}
                 </span>
               </button>
             );
           })}
-
-          {/* 6th Item: Social */}
-          <button
-            onClick={() => setIsSocialSheetOpen(true)}
-            className="flex flex-col items-center justify-center h-full py-1 text-slate-400 hover:text-cyan-300 transition-all cursor-pointer"
-            aria-label="Zenemoo Social Media Channels"
-          >
-            <Globe className="w-5 h-5 text-slate-400 hover:scale-105 transition-transform" />
-            <span className="text-[9px] mt-1 font-medium text-slate-400">Social</span>
-          </button>
         </div>
       </div>
 

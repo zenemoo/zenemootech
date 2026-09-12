@@ -588,6 +588,9 @@ export const deleteApplication = async (req, res) => {
     const { error } = await supabase.from('opportunity_applications').delete().eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
 
+    // Invalidate cached opportunity applicant counts
+    invalidateTalentOpportunitiesCache();
+
     return res.json({ status: 'success', message: 'Application deleted' });
   } catch (err) {
     console.error('deleteApplication controller exception:', err.message);

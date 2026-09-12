@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getApplications,
   getApplicationById,
+  checkDuplicateApplication,
   submitApplication,
   updateApplication,
   deleteApplication,
@@ -15,6 +16,7 @@ import { applicationRateLimiter } from '../middleware/rateLimiter.js';
 const router = express.Router();
 
 router.get('/', getApplications);
+router.get('/check-duplicate', checkDuplicateApplication);
 router.get('/:id', getApplicationById);
 router.post('/', applicationRateLimiter, submitApplication);
 router.post('/send-confirmation', sendConfirmationEmailEndpoint);
