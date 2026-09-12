@@ -43,6 +43,8 @@ import {
   MoreVertical,
   ArrowLeft,
   Filter,
+  Users,
+  Printer,
 } from 'lucide-react';
 import { emailInboxApi } from '../services/api';
 import { AdminEmailSettingsModal } from './AdminEmailSettingsModal';
@@ -213,7 +215,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
   // Compose Modal State
   const [isComposeOpen, setIsComposeOpen] = useState<boolean>(false);
-  const [composeMode, setComposeMode] = useState<'reply' | 'forward'>('reply');
+  const [composeMode, setComposeMode] = useState<'reply' | 'replyAll' | 'forward' | 'new'>('reply');
 
   // Attachment Preview Modal State
   const [previewAttachment, setPreviewAttachment] = useState<{
@@ -488,11 +490,70 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     addToast('Copied', 'Email text copied to clipboard', 'success');
   };
 
+  const handlePrintEmail = () => {
+    if (!selectedEmailDetail) return;
+    const printWindow = window.open('', '_blank');
+    const norm = normalizeEmailBody(selectedEmailDetail.body_text, selectedEmailDetail.body_html);
+    const subjectDisplay = decodeMimeHeader(selectedEmailDetail.subject) || '(No Subject)';
+    const senderDisplay = decodeMimeHeader(selectedEmailDetail.sender_name) || selectedEmailDetail.sender_email;
+    const dateStr = new Date(selectedEmailDetail.received_at).toLocaleString();
+
+    const escapeHtmlSimple = (str: string) =>
+      (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${escapeHtmlSimple(subjectDisplay)}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 28px; color: #1e293b; line-height: 1.6; }
+            .header { border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 20px; }
+            h1 { font-size: 20px; margin: 0 0 12px 0; color: #0f172a; }
+            .meta { font-size: 13px; color: #64748b; margin-bottom: 4px; }
+            .body { font-size: 14px; }
+            img { max-width: 100%; height: auto; }
+            table { width: 100%; border-collapse: collapse; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${escapeHtmlSimple(subjectDisplay)}</h1>
+            <div class="meta"><strong>From:</strong> ${escapeHtmlSimple(senderDisplay)} &lt;${escapeHtmlSimple(selectedEmailDetail.sender_email)}&gt;</div>
+            <div class="meta"><strong>To:</strong> ${escapeHtmlSimple(selectedEmailDetail.recipient_email)}</div>
+            <div class="meta"><strong>Date:</strong> ${dateStr}</div>
+          </div>
+          <div class="body">
+            ${norm.isHtml && norm.sanitizedHtml ? norm.sanitizedHtml : `<div style="white-space: pre-wrap;">${escapeHtmlSimple(norm.plainText)}</div>`}
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const handleOpenReply = (email?: EmailMessageRecord) => {
     const target = email || selectedEmailDetail;
     if (target) {
       setSelectedEmailId(target.id);
       setComposeMode('reply');
+      setIsComposeOpen(true);
+    }
+  };
+
+  const handleOpenReplyAll = (email?: EmailMessageRecord) => {
+    const target = email || selectedEmailDetail;
+    if (target) {
+      setSelectedEmailId(target.id);
+      setComposeMode('replyAll');
       setIsComposeOpen(true);
     }
   };
@@ -1038,19 +1099,27 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     <span className="text-xs">Back</span>
                   </button>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={() => handleOpenReply()}
-                      className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/10 transition-all min-h-[40px]"
+                      className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/10 transition-all min-h-[36px]"
                     >
                       <Reply className="w-3.5 h-3.5" />
                       <span>Reply</span>
                     </button>
                     <button
                       type="button"
+                      onClick={() => handleOpenReplyAll()}
+                      className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold flex items-center gap-1.5 cursor-pointer transition-all min-h-[36px]"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Reply All</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleOpenForward()}
-                      className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-1.5 cursor-pointer transition-all min-h-[40px]"
+                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-1.5 cursor-pointer transition-all min-h-[36px]"
                     >
                       <Forward className="w-3.5 h-3.5" />
                       <span>Forward</span>
@@ -1059,6 +1128,15 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => handlePrintEmail()}
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
+                    title="Print Email"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleToggleRead(selectedEmailDetail)}
@@ -1267,8 +1345,8 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 )}
               </div>
 
-              {/* BOTTOM ACTIONS BAR ON DETAIL (REPLY / FORWARD) */}
-              <div className="p-3 sm:p-4 bg-[#070a11]/80 border-t border-white/10 flex items-center gap-3 font-mono text-xs shrink-0">
+              {/* BOTTOM ACTIONS BAR ON DETAIL (REPLY / REPLY ALL / FORWARD / PRINT) */}
+              <div className="p-3 sm:p-4 bg-[#070a11]/80 border-t border-white/10 flex items-center gap-2.5 font-mono text-xs shrink-0 flex-wrap">
                 <button
                   type="button"
                   onClick={() => handleOpenReply()}
@@ -1279,11 +1357,27 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleOpenReplyAll()}
+                  className="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold flex items-center gap-2 cursor-pointer min-h-[44px]"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Reply All</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleOpenForward()}
                   className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold flex items-center gap-2 cursor-pointer min-h-[44px]"
                 >
                   <Forward className="w-4 h-4" />
                   <span>Forward</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrintEmail()}
+                  className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 font-bold flex items-center gap-1.5 cursor-pointer min-h-[44px] ml-auto"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print</span>
                 </button>
               </div>
             </>

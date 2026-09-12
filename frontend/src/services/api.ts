@@ -462,7 +462,7 @@ export const emailInboxApi = {
     limit?: number;
   }) => api.get('/emails/sent', { params }),
   sendEmail: async (payload: {
-    mode?: 'reply' | 'forward' | 'new';
+    mode?: 'reply' | 'replyAll' | 'forward' | 'new';
     originalEmailId?: string;
     from?: string;
     sender?: string;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X,
   Send,
@@ -22,15 +22,21 @@ import {
   RotateCcw,
   RotateCw,
   RemoveFormatting,
+  Heading1,
   Heading2,
   Heading3,
   Check,
+  Users,
+  Eye,
+  Download,
+  Info,
 } from 'lucide-react';
 import { emailApi, emailInboxApi } from '../services/api';
 import { EmailMessageRecord } from './AdminEmailInboxTab';
 import {
   decodeMimeHeader,
   normalizeMojibake,
+  normalizeEmailBody,
   formatReplySubject,
   formatForwardSubject,
   getSignatureForSender,
@@ -85,9 +91,18 @@ function isValidEmail(email: string): boolean {
 
 function parseEmailTokens(input: string): string[] {
   return input
-    .split(/[,;\s]+/)
-    .map((t) => t.trim().toLowerCase())
+    .split(/[,;\s\n\r]+/)
+    .map((t) => t.trim().toLowerCase().replace(/^[<"']+|[>"']+$/g, ''))
     .filter(Boolean);
+}
+
+function escapeHtml(str: string): string {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // ============================================================================
@@ -136,7 +151,7 @@ const RecipientChipInput: React.FC<RecipientChipInputProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';' || e.key === 'Tab') {
       e.preventDefault();
       if (inputValue.trim()) {
         addRecipients(inputValue);
@@ -239,12 +254,12 @@ const RecipientChipInput: React.FC<RecipientChipInputProps> = ({
 };
 
 // ============================================================================
-// MAIN EMAIL COMPOSE MODAL (REPLY / FORWARD / NEW)
+// MAIN EMAIL COMPOSE MODAL (REPLY / REPLY ALL / FORWARD / NEW)
 // ============================================================================
 interface EmailComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  mode?: 'reply' | 'forward' | 'new';
+  mode?: 'reply' | 'replyAll' | 'forward' | 'new';
   originalEmail?: EmailMessageRecord | null;
   onSendSuccess: (sentRecord: EmailMessageRecord) => void;
   addToast: (title: string, message?: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
@@ -261,8 +276,8 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
-  const emailId = originalEmail ? originalEmail.id || originalEmail.message_id : 'new';
   const effectiveMode = mode || (originalEmail ? 'reply' : 'new');
+  const emailId = originalEmail ? originalEmail.id || originalEmail.message_id : 'new';
   const draftKey = `${effectiveMode}_${emailId}`;
 
   const [fromSender, setFromSenderState] = useState<string>('contact@zenemoo.in');
@@ -350,10 +365,20 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     setAttachmentsState(val);
     updateDraft({ attachments: val });
   };
+  const setForwardOriginalAttachments = (val: boolean) => {
+    setForwardOriginalAttachmentsState(val);
+    updateDraft({ forwardOriginalAttachments: val });
+  };
   const setErrorMsg = (val: string | null) => {
     setErrorMsgState(val);
     updateDraft({ errorMsg: val });
   };
+
+  // Original email normalized body representation
+  const normalizedOriginalBody = useMemo(() => {
+    if (!originalEmail) return null;
+    return normalizeEmailBody(originalEmail.body_text, originalEmail.body_html);
+  }, [originalEmail?.body_text, originalEmail?.body_html]);
 
   // Initialize or restore draft when modal opens
   useEffect(() => {
@@ -386,15 +411,33 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       const initFrom = matchingSender ? matchingSender.email : 'contact@zenemoo.in';
 
       let initTo: string[] = [];
+      let initCc: string[] = [];
+      let showCcInit = false;
+
       if (effectiveMode === 'reply' && originalEmail) {
         const replyEmail = originalEmail.reply_to || originalEmail.sender_email;
         if (replyEmail) initTo = [replyEmail.trim().toLowerCase()];
+      } else if (effectiveMode === 'replyAll' && originalEmail) {
+        const replyEmail = originalEmail.reply_to || originalEmail.sender_email;
+        const allOriginalRecipients = parseEmailTokens(originalEmail.recipient_email || '');
+        const myMailbox = (originalEmail.mailbox_email || initFrom).toLowerCase();
+
+        const toSet = new Set<string>();
+        if (replyEmail) toSet.add(replyEmail.toLowerCase());
+        allOriginalRecipients.forEach((addr) => {
+          if (addr !== myMailbox && addr !== replyEmail.toLowerCase()) {
+            toSet.add(addr);
+          }
+        });
+        initTo = Array.from(toSet);
+      } else if (effectiveMode === 'forward') {
+        initTo = []; // Forward mode starts with empty recipient field for user entry
       }
 
       let initSubject = '';
       if (originalEmail) {
         const rawSub = originalEmail.subject || '';
-        initSubject = effectiveMode === 'reply' ? formatReplySubject(rawSub) : formatForwardSubject(rawSub);
+        initSubject = effectiveMode === 'forward' ? formatForwardSubject(rawSub) : formatReplySubject(rawSub);
       }
 
       const defaultSig = getSignatureForSender(initFrom);
@@ -415,8 +458,8 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       const newDraft: ComposerDraft = {
         fromSender: initFrom,
         toRecipients: initTo,
-        showCc: false,
-        ccRecipients: [],
+        showCc: showCcInit,
+        ccRecipients: initCc,
         showBcc: false,
         bccRecipients: [],
         subject: initSubject,
@@ -461,6 +504,24 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       setMessageHtml(editorRef.current.innerHTML);
     }
   }, []);
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        execFormat('bold');
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        execFormat('italic');
+      } else if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        execFormat('underline');
+      } else if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        handleOpenLinkDialog();
+      }
+    }
+  };
 
   const handleOpenLinkDialog = () => {
     const selection = window.getSelection();
@@ -579,7 +640,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     const userHtml = editorRef.current ? editorRef.current.innerHTML.trim() : messageHtml.trim();
     const userPlainText = editorRef.current ? (editorRef.current.textContent || '').trim() : '';
 
-    if (!userPlainText && mode === 'reply') {
+    if (!userPlainText && (effectiveMode === 'reply' || effectiveMode === 'replyAll')) {
       setErrorMsg('Please write a message response.');
       return;
     }
@@ -602,30 +663,44 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       : '';
 
     let fullHtml = '';
-    if (effectiveMode === 'reply' && originalEmail) {
-      const origSnippet = normalizeMojibake(originalEmail.body_text || originalEmail.snippet || '');
+    if ((effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail) {
+      const origSnippet = normalizedOriginalBody
+        ? normalizedOriginalBody.plainText || originalEmail.snippet || ''
+        : originalEmail.snippet || '';
       const quotedBlock = `<br/><br/><div style="border-left: 3px solid #0891b2; padding-left: 14px; margin-top: 20px; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px;">
         <div style="font-weight: 600; color: #334155; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
         <blockquote style="margin: 0; padding: 0; color: #475569; line-height: 1.55; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
       </div>`;
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}${quotedBlock}</div>`;
     } else if (effectiveMode === 'forward' && originalEmail) {
-      // Forward mode
-      const origBody = originalEmail.body_html || `<div style="white-space: pre-wrap; color: #1e293b;">${escapeHtml(normalizeMojibake(originalEmail.body_text || originalEmail.snippet))}</div>`;
+      // Forward mode: robust sanitized HTML preservation
+      const origContentHtml = normalizedOriginalBody
+        ? normalizedOriginalBody.isHtml && normalizedOriginalBody.sanitizedHtml
+          ? normalizedOriginalBody.sanitizedHtml
+          : `<div style="white-space: pre-wrap; font-family: sans-serif; color: #1e293b;">${escapeHtml(normalizedOriginalBody.plainText || originalEmail.snippet)}</div>`
+        : `<div style="white-space: pre-wrap; color: #1e293b;">${escapeHtml(originalEmail.snippet)}</div>`;
+
       const fwdHeader = `<br/><br/><div style="border-top: 1px solid #cbd5e1; padding-top: 14px; margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #334155;">
-        <div style="font-weight: bold; color: #0f172a; margin-bottom: 6px;">---------- Forwarded message ----------</div>
-        <div><strong>From:</strong> ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
-        <div><strong>Date:</strong> ${formattedDate}</div>
-        <div><strong>Subject:</strong> ${escapeHtml(decodedOriginalSubject)}</div>
-        <div><strong>To:</strong> ${escapeHtml(originalEmail.recipient_email)}</div>
+        <div style="font-weight: bold; color: #0f172a; margin-bottom: 8px;">---------- Forwarded message ---------</div>
+        <div style="margin-bottom: 3px;"><strong>From:</strong> ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
+        <div style="margin-bottom: 3px;"><strong>Date:</strong> ${formattedDate}</div>
+        <div style="margin-bottom: 3px;"><strong>Subject:</strong> ${escapeHtml(decodedOriginalSubject)}</div>
+        <div style="margin-bottom: 3px;"><strong>To:</strong> ${escapeHtml(originalEmail.recipient_email)}</div>
+        ${originalEmail.reply_to ? `<div style="margin-bottom: 3px;"><strong>Reply-To:</strong> ${escapeHtml(originalEmail.reply_to)}</div>` : ''}
         <br/>
-        <div style="color: #1e293b;">${origBody}</div>
+        <div style="color: #1e293b; margin-top: 8px;">${origContentHtml}</div>
       </div>`;
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}${fwdHeader}</div>`;
     } else {
       // New compose email
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}</div>`;
     }
+
+    // Filter attachments if user chose not to forward original attachments
+    const finalAttachments = attachments.filter((att) => {
+      if (att.isOriginal && !forwardOriginalAttachments) return false;
+      return true;
+    });
 
     try {
       const payload = {
@@ -640,7 +715,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         text: userPlainText || userHtml.replace(/<[^>]+>/g, ' ').trim(),
         mode: effectiveMode,
         originalEmailId: originalEmail ? originalEmail.id || originalEmail.message_id : undefined,
-        attachmentCount: attachments.length,
+        attachmentCount: finalAttachments.length,
       };
 
       let response: any;
@@ -655,9 +730,10 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       }
 
       if (response.data?.success) {
+        const modeLabel = effectiveMode === 'forward' ? 'forward' : effectiveMode === 'replyAll' ? 'reply all' : 'reply';
         addToast(
           'Email Sent',
-          `✓ Email ${mode === 'reply' ? 'reply' : 'forward'} sent successfully via Brevo.`,
+          `✓ Email ${modeLabel} sent successfully via Brevo.`,
           'success'
         );
 
@@ -681,7 +757,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           status: 'sent',
           sent_at: new Date().toISOString(),
           received_at: new Date().toISOString(),
-          attachments: attachments.map((a) => ({
+          attachments: finalAttachments.map((a) => ({
             id: a.id,
             filename: a.name,
             contentType: a.type,
@@ -704,22 +780,20 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     }
   };
 
-  function escapeHtml(str: string): string {
-    return (str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
   if (!isOpen) return null;
 
   const decodedSenderName = originalEmail ? decodeMimeHeader(originalEmail.sender_name) : '';
+  const decodedOriginalSubject = originalEmail ? decodeMimeHeader(originalEmail.subject) : '';
+  const formattedDate = originalEmail
+    ? new Date(originalEmail.received_at).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : '';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto animate-fade-in">
-      <div className="bg-[#0b0f19] border border-white/10 w-full sm:w-[740px] lg:w-[820px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[92vh] font-sans text-xs">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4 overflow-y-auto animate-fade-in">
+      <div className="bg-[#0b0f19] border border-white/10 w-full sm:w-[760px] lg:w-[860px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[92vh] font-sans text-xs">
         {/* MODAL HEADER */}
         <div className="p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono shrink-0">
           <div className="flex items-center gap-2 text-cyan-300 font-bold text-sm">
@@ -728,10 +802,15 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
                 <CornerUpLeft className="w-4 h-4 text-cyan-400" />
                 <span>Reply: {decodedSenderName || originalEmail.sender_email}</span>
               </>
+            ) : effectiveMode === 'replyAll' && originalEmail ? (
+              <>
+                <Users className="w-4 h-4 text-cyan-400" />
+                <span>Reply All: {decodedSenderName || originalEmail.sender_email}</span>
+              </>
             ) : effectiveMode === 'forward' && originalEmail ? (
               <>
                 <ForwardIcon className="w-4 h-4 text-purple-400" />
-                <span>Forward Message</span>
+                <span>Forward: {decodedOriginalSubject || '(No Subject)'}</span>
               </>
             ) : (
               <>
@@ -760,7 +839,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </div>
           )}
 
-          {/* FROM FIELD */}
+          {/* FROM SENDER FIELD */}
           <div className="flex items-center gap-3">
             <span className="w-14 text-slate-400 font-bold shrink-0">From:</span>
             <div className="flex-1 relative min-w-0">
@@ -784,7 +863,11 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             label="To"
             recipients={toRecipients}
             onChange={setToRecipients}
-            placeholder="Type recipient email and press Enter..."
+            placeholder={
+              effectiveMode === 'forward'
+                ? 'Type forwarding recipients and press Enter...'
+                : 'Type recipient email and press Enter...'
+            }
             showCcButton={!showCc}
             showBccButton={!showBcc}
             onCcClick={() => setShowCc(true)}
@@ -862,6 +945,14 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
             <button
               type="button"
+              onClick={() => execFormat('formatBlock', '<h1>')}
+              title="Heading 1"
+              className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+            >
+              <Heading1 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
               onClick={() => execFormat('formatBlock', '<h2>')}
               title="Heading 2"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -906,7 +997,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             <button
               type="button"
               onClick={handleOpenLinkDialog}
-              title="Insert Link"
+              title="Insert Link (Ctrl+K)"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-cyan-400 transition-colors cursor-pointer"
             >
               <Link2 className="w-3.5 h-3.5" />
@@ -953,13 +1044,16 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             <div
               ref={editorRef}
               contentEditable
+              onKeyDown={handleEditorKeyDown}
               onInput={() => {
                 if (editorRef.current) setMessageHtml(editorRef.current.innerHTML);
               }}
               data-placeholder={
-                mode === 'reply'
+                effectiveMode === 'forward'
+                  ? 'Type your message above forwarded content...'
+                  : effectiveMode === 'reply' || effectiveMode === 'replyAll'
                   ? 'Type your response here...'
-                  : 'Type your message above forwarded content...'
+                  : 'Compose your email message here...'
               }
               className="w-full min-h-[160px] max-h-[260px] p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-100 font-sans text-sm leading-relaxed overflow-y-auto focus:outline-none focus:border-cyan-400 focus:bg-white/[0.05] empty:before:content-[attr(data-placeholder)] empty:before:text-slate-500 empty:before:pointer-events-none"
             />
@@ -992,6 +1086,42 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             )}
           </div>
 
+          {/* GMAIL / OUTLOOK STYLE FORWARDED EMAIL PREVIEW CARD */}
+          {effectiveMode === 'forward' && originalEmail && (
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-2.5 font-mono text-xs">
+              <div className="flex items-center justify-between text-slate-400 font-bold border-b border-white/5 pb-2">
+                <div className="flex items-center gap-1.5 text-purple-300">
+                  <ForwardIcon className="w-3.5 h-3.5" />
+                  <span>Quoted Forwarded Message</span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-normal">Appended below your message</span>
+              </div>
+
+              <div className="text-[11px] text-slate-300 space-y-0.5 bg-black/20 p-2.5 rounded-xl border border-white/5">
+                <div><strong className="text-slate-400">From:</strong> {decodedSenderName} &lt;{originalEmail.sender_email}&gt;</div>
+                <div><strong className="text-slate-400">Date:</strong> {formattedDate}</div>
+                <div><strong className="text-slate-400">Subject:</strong> {decodedOriginalSubject}</div>
+                <div><strong className="text-slate-400">To:</strong> {originalEmail.recipient_email}</div>
+                {originalEmail.reply_to && <div><strong className="text-slate-400">Reply-To:</strong> {originalEmail.reply_to}</div>}
+              </div>
+
+              {/* Forward Original Attachments Toggle */}
+              {originalEmail.attachments && originalEmail.attachments.length > 0 && (
+                <div className="flex items-center justify-between pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-300 text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={forwardOriginalAttachments}
+                      onChange={(e) => setForwardOriginalAttachments(e.target.checked)}
+                      className="rounded border-white/20 bg-white/5 text-cyan-400 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Include original attachments ({originalEmail.attachments.length})</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ATTACHMENT MANAGER */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -1019,14 +1149,16 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
                 {attachments.map((att) => (
                   <div
                     key={att.id}
-                    className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2 text-xs"
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                      att.isOriginal ? 'bg-purple-500/[0.04] border-purple-500/20' : 'bg-white/[0.04] border-white/10'
+                    }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <FileText className={`w-4 h-4 shrink-0 ${att.isOriginal ? 'text-purple-400' : 'text-cyan-400'}`} />
                       <div className="min-w-0">
                         <p className="text-white truncate font-medium">{att.name}</p>
                         <p className="text-[10px] text-slate-400">
-                          {formatFileSize(att.size)} {att.isOriginal ? '• Original' : '• Added'}
+                          {formatFileSize(att.size)} {att.isOriginal ? '• Original Attachment' : '• Added Attachment'}
                         </p>
                       </div>
                     </div>
@@ -1034,6 +1166,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
                       type="button"
                       onClick={() => handleRemoveAttachment(att.id)}
                       className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer transition-colors shrink-0"
+                      title="Remove attachment"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1076,7 +1209,15 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  <span>{mode === 'reply' ? 'Send Reply' : 'Send Forward'}</span>
+                  <span>
+                    {effectiveMode === 'forward'
+                      ? 'Send Forward'
+                      : effectiveMode === 'replyAll'
+                      ? 'Send Reply All'
+                      : effectiveMode === 'reply'
+                      ? 'Send Reply'
+                      : 'Send Message'}
+                  </span>
                 </>
               )}
             </button>
