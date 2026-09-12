@@ -34,6 +34,26 @@ export function normalizeMojibake(text: string): string {
     .replace(/Â®/g, '®')
     .replace(/Â©/g, '©')
 
+    // 4-byte UTF-8 Emoji sequences corrupted by Windows-1252 / ISO-8859-1
+    .replace(/(?:ðŸ“§|ð§)\s*/g, '✉️ ')
+    .replace(/(?:ðŸ“ž|ðž)\s*/g, '📞 ')
+    .replace(/(?:ðŸŒ|ð)\s*(?=https?:|\w)/g, '🌐 ')
+    .replace(/(?:ðŸ“)\s*/g, '📄 ')
+    .replace(/(?:ðŸ‘‹)\s*/g, '👋 ')
+    .replace(/(?:ðŸ‘)\s*/g, '👍 ')
+    .replace(/(?:ðŸ¤)\s*/g, '🤝 ')
+    .replace(/(?:ðŸ’¼)\s*/g, '💼 ')
+    .replace(/(?:ðŸš€)\s*/g, '🚀 ')
+    .replace(/(?:ðŸ’¡)\s*/g, '💡 ')
+    .replace(/(?:ðŸ”¥)\s*/g, '🔥 ')
+    .replace(/âœ¨/g, '✨')
+    .replace(/âœ”/g, '✔')
+    .replace(/âœ…/g, '✅')
+    .replace(/â Œ/g, '❌')
+    .replace(/âž¡/g, '➔')
+    .replace(/âš/g, '⚡')
+    .replace(/ð/g, '')
+
     // Common Accented Latin Characters
     .replace(/Ã©/g, 'é')
     .replace(/Ã¨/g, 'è')
@@ -224,6 +244,49 @@ export function normalizeEmailBody(bodyText?: string, bodyHtml?: string): Normal
           img.style.objectFit = 'contain';
           img.setAttribute('loading', 'lazy');
           img.classList.add('rounded-lg', 'my-2', 'max-w-full');
+        });
+
+        // Normalize dark font colors so they are clearly legible against the dark UI
+        const allElements = doc.querySelectorAll('*');
+        allElements.forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          // Clean dark inline style color
+          if (htmlEl.style && htmlEl.style.color) {
+            const c = htmlEl.style.color.toLowerCase().trim();
+            if (
+              c === 'black' ||
+              c === '#000' ||
+              c === '#000000' ||
+              c === '#111' ||
+              c === '#111827' ||
+              c === '#1e293b' ||
+              c === '#222' ||
+              c === '#222222' ||
+              c === '#333' ||
+              c === '#333333' ||
+              c === '#374151' ||
+              c === '#444' ||
+              c === '#475569' ||
+              /^#(0|1|2|3|4)[0-9a-f]{2,5}$/i.test(c) ||
+              /^rgb\(\s*([0-9]{1,2}|1[0-1][0-9]|12[0-7])\s*,\s*([0-9]{1,2}|1[0-1][0-9]|12[0-7])\s*,\s*([0-9]{1,2}|1[0-1][0-9]|12[0-7])\s*\)$/i.test(c)
+            ) {
+              htmlEl.style.color = 'inherit';
+            }
+          }
+          // Remove dark color attribute (<font color="...">)
+          if (el.hasAttribute('color')) {
+            const attrColor = (el.getAttribute('color') || '').toLowerCase().trim();
+            if (
+              attrColor === 'black' ||
+              attrColor === '#000' ||
+              attrColor === '#000000' ||
+              attrColor === '#222222' ||
+              attrColor === '#333333' ||
+              /^#(0|1|2|3|4)[0-9a-f]{2,5}$/i.test(attrColor)
+            ) {
+              el.removeAttribute('color');
+            }
+          }
         });
 
         // Wrap tables in responsive horizontal scroll wrappers

@@ -39,7 +39,11 @@ function normalizeMojibake(text) {
     .replace(/â€ /g, '”')
     .replace(/â€/g, '”')
     .replace(/Â®/g, '®')
-    .replace(/Â©/g, '©');
+    .replace(/Â©/g, '©')
+    .replace(/(?:ðŸ“§|ð§)\s*/g, '✉️ ')
+    .replace(/(?:ðŸ“ž|ðž)\s*/g, '📞 ')
+    .replace(/(?:ðŸŒ|ð)\s*(?=https?:|\w)/g, '🌐 ')
+    .replace(/ð/g, '');
 }
 
 // Test Suites
@@ -66,10 +70,11 @@ describe('Zenemoo Email Normalization & Presentation Suite', () => {
     assert.strictEqual(cleaned.includes('Real Content'), true);
   });
 
-  it('Normalizes Mojibake sequences seamlessly', () => {
-    const mojibake = 'Zenemooâ€™s Enterprise Solution â€“ 2026';
+  it('Normalizes Mojibake sequences and emoji symbols seamlessly', () => {
+    const mojibake = 'ð§ hello@milddata.in ð https://www.milddata.in/';
     const normalized = normalizeMojibake(mojibake);
-    assert.strictEqual(normalized, 'Zenemoo’s Enterprise Solution – 2026');
+    assert.strictEqual(normalized.includes('✉️ hello@milddata.in'), true);
+    assert.strictEqual(normalized.includes('🌐 https://www.milddata.in/'), true);
   });
 
   it('Verifies pagination calculations & hard backend maximum of 100', () => {

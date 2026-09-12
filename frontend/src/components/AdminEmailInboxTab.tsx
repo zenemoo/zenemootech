@@ -1203,7 +1203,53 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               )}
 
               {/* EMAIL BODY DISPLAY (RESPONSIVE & SANITIZED) */}
-              <div className="flex-1 p-4 sm:p-6 overflow-y-auto font-sans leading-relaxed text-slate-200">
+              <div className="flex-1 p-4 sm:p-6 overflow-y-auto font-sans leading-relaxed text-slate-100 bg-[#080c16]/30">
+                <style>{`
+                  .zenemoo-email-renderer {
+                    color: #f1f5f9 !important;
+                  }
+                  .zenemoo-email-renderer,
+                  .zenemoo-email-renderer p,
+                  .zenemoo-email-renderer div,
+                  .zenemoo-email-renderer span,
+                  .zenemoo-email-renderer font,
+                  .zenemoo-email-renderer li,
+                  .zenemoo-email-renderer td,
+                  .zenemoo-email-renderer th,
+                  .zenemoo-email-renderer h1,
+                  .zenemoo-email-renderer h2,
+                  .zenemoo-email-renderer h3,
+                  .zenemoo-email-renderer h4,
+                  .zenemoo-email-renderer h5,
+                  .zenemoo-email-renderer h6 {
+                    color: #f1f5f9;
+                  }
+                  .zenemoo-email-renderer strong,
+                  .zenemoo-email-renderer b {
+                    color: #ffffff !important;
+                    font-weight: 700;
+                  }
+                  .zenemoo-email-renderer a {
+                    color: #22d3ee !important;
+                    text-decoration: underline;
+                  }
+                  .zenemoo-email-renderer blockquote {
+                    border-left: 3px solid #0891b2;
+                    padding-left: 12px;
+                    margin-left: 0;
+                    color: #94a3b8 !important;
+                  }
+                  .zenemoo-email-renderer ul {
+                    list-style-type: disc;
+                    padding-left: 20px;
+                    margin: 8px 0;
+                  }
+                  .zenemoo-email-renderer ol {
+                    list-style-type: decimal;
+                    padding-left: 20px;
+                    margin: 8px 0;
+                  }
+                `}</style>
                 {isDetailLoading ? (
                   <div className="p-12 text-center text-slate-400 font-mono text-xs space-y-2">
                     <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mx-auto" />
@@ -1211,11 +1257,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                   </div>
                 ) : normalizedEmailData?.isHtml && normalizedEmailData.sanitizedHtml ? (
                   <div
-                    className="max-w-full overflow-x-auto [overflow-wrap:anywhere] [word-break:break-word] text-slate-200 text-sm leading-relaxed"
+                    className="zenemoo-email-renderer max-w-full overflow-x-auto [overflow-wrap:anywhere] [word-break:break-word] text-slate-100 text-sm leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: normalizedEmailData.sanitizedHtml }}
                   />
                 ) : (
-                  <div className="whitespace-pre-wrap font-sans text-slate-200 text-sm leading-relaxed [overflow-wrap:anywhere] [word-break:break-word]">
+                  <div className="whitespace-pre-wrap font-sans text-slate-100 text-sm leading-relaxed [overflow-wrap:anywhere] [word-break:break-word]">
                     {normalizedEmailData?.plainText || selectedEmailDetail.snippet}
                   </div>
                 )}
