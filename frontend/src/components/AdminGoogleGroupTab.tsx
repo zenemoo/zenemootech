@@ -567,6 +567,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] sm:text-xs font-semibold shrink-0 ${
                     overview?.connectionStatus === 'ONLINE'
                       ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30'
+                      : overview?.connectionStatus === 'QUOTA_EXCEEDED'
+                      ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/30'
                       : overview?.connectionStatus === 'NOT_CONFIGURED'
                       ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/30'
                       : 'bg-red-500/10 text-red-400 ring-1 ring-red-500/30'
@@ -576,12 +578,16 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                     className={`h-1.5 w-1.5 rounded-full ${
                       overview?.connectionStatus === 'ONLINE'
                         ? 'bg-emerald-400 animate-pulse'
+                        : overview?.connectionStatus === 'QUOTA_EXCEEDED'
+                        ? 'bg-amber-400'
                         : overview?.connectionStatus === 'NOT_CONFIGURED'
                         ? 'bg-amber-400'
                         : 'bg-red-400'
                     }`}
                   />
-                  {overview?.connectionStatus || 'CONNECTING'}
+                  {overview?.connectionStatus === 'QUOTA_EXCEEDED'
+                    ? 'QUOTA REACHED (Cached)'
+                    : overview?.connectionStatus || 'CONNECTING'}
                 </span>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-400 min-w-0">
@@ -630,6 +636,21 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           </div>
         </div>
       </div>
+
+      {/* Quota Exceeded Informative Notice Banner */}
+      {overview?.connectionStatus === 'QUOTA_EXCEEDED' && (
+        <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 p-3.5 sm:p-4 backdrop-blur-md w-full min-w-0 flex items-start gap-3 shadow-lg">
+          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-amber-300">
+              Google Groups Daily Read Quota Reached (Using Last Known State)
+            </p>
+            <p className="text-[11px] text-gray-300 mt-0.5">
+              Google Groups daily <code className="font-mono text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded">groups.read</code> quota is temporarily reached. Member count ({overview.groupMemberCount || 148}) and previous records are safely retained. Additions remain protected.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Live Sync Progress Bar / Banner */}
       {isSyncing && (

@@ -377,11 +377,88 @@ function doGet(e) {
 }
 
 /**
+ * ============================================================================
+ * CACHE HELPERS (CacheService)
+ * Reduces GroupsApp reads by caching group membership in Script Cache (TTL ~300s)
+ * ============================================================================
+ */
+function getMemberCacheKey(groupEmail) {
+  return 'MEMBERS_' + (groupEmail || getGroupEmail()).toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+function getCachedMembers(groupEmail) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const cachedStr = cache.get(getMemberCacheKey(groupEmail));
+    if (cachedStr) {
+      const parsed = JSON.parse(cachedStr);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    Logger.log('⚠️ Cache read error: ' + err.toString());
+  }
+  return null;
+}
+
+function setCachedMembers(groupEmail, membersArray, ttlSeconds) {
+  try {
+    if (!Array.isArray(membersArray)) return;
+    const cache = CacheService.getScriptCache();
+    const cacheKey = getMemberCacheKey(groupEmail);
+    // Keep payload lightweight: only essentials stored in cache
+    const lightweight = membersArray.map(function (m) {
+      return {
+        id: m.id || null,
+        email: m.email,
+        role: m.role || 'MEMBER',
+        type: m.type || 'USER',
+        status: m.status || 'ACTIVE',
+        deliverySettings: m.deliverySettings || 'ALL_MAIL',
+      };
+    });
+    const serialized = JSON.stringify(lightweight);
+    // Apps Script Cache item max length is 100KB (approx 1000+ member objects)
+    if (serialized.length < 100000) {
+      cache.put(cacheKey, serialized, ttlSeconds || 300);
+    }
+  } catch (err) {
+    Logger.log('⚠️ Cache write error: ' + err.toString());
+  }
+}
+
+function invalidateMemberCache(groupEmail) {
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.remove(getMemberCacheKey(groupEmail));
+  } catch (err) {
+    Logger.log('⚠️ Cache invalidate error: ' + err.toString());
+  }
+}
+
+/**
  * ACTION 1: getGroupMembers
  * Lists all members from the Google Group using GroupsApp (Owner/Manager permission)
+ * Reads once, caches in CacheService, and handles groups.read quota exceptions gracefully.
  */
 function handleGetGroupMembers(payload) {
-  const groupEmail = payload.groupEmail || getGroupEmail();
+  const groupEmail = (payload && payload.groupEmail) ? payload.groupEmail : getGroupEmail();
+  const forceRefresh = payload && (payload.forceRefresh === true || payload.forceRefresh === 'true');
+
+  // 1. Check Cache first (unless forceRefresh requested)
+  if (!forceRefresh) {
+    const cached = getCachedMembers(groupEmail);
+    if (cached && cached.length > 0) {
+      return {
+        success: true,
+        groupEmail: groupEmail,
+        count: cached.length,
+        members: cached,
+        cached: true,
+      };
+    }
+  }
 
   try {
     const group = GroupsApp.getGroupByEmail(groupEmail);
@@ -392,7 +469,7 @@ function handleGetGroupMembers(payload) {
         groupEmail: groupEmail,
         message: 'Google Group not found or not accessible by this Google account: ' + groupEmail,
         members: [],
-        count: 0,
+        count: null,
       };
     }
 
@@ -430,29 +507,49 @@ function handleGetGroupMembers(payload) {
       }
     }
 
+    // Cache successful member list for 5 minutes
+    setCachedMembers(groupEmail, members, 300);
+
     return {
       success: true,
       groupEmail: groupEmail,
       count: members.length,
       members: members,
+      cached: false,
     };
   } catch (err) {
-    Logger.log('❌ getGroupMembers Error: ' + err.toString());
+    const errMsg = err.toString();
+    Logger.log('❌ getGroupMembers Error: ' + errMsg);
+
+    // CRITICAL: Gracefully detect groups.read quota limit
+    if (errMsg.includes('Service invoked too many times') || errMsg.includes('groups.read') || errMsg.includes('quota') || errMsg.includes('Quota')) {
+      return {
+        success: false,
+        code: 'GROUP_READ_QUOTA_EXCEEDED',
+        status: 'QUOTA_EXCEEDED',
+        groupEmail: groupEmail,
+        message: 'Service invoked too many times for one day: groups.read (Google Groups daily read quota exceeded)',
+        members: [],
+        count: null, // DO NOT return 0 which would falsely indicate an empty group
+      };
+    }
+
     return {
       success: false,
       code: 'GROUPS_APP_ERROR',
       groupEmail: groupEmail,
       message: 'Failed to retrieve group members: ' + err.message,
       members: [],
-      count: 0,
+      count: null,
     };
   }
 }
 
 /**
  * ACTION 2: syncMembers
- * Adds provided missing email addresses into the Google Group (strictly Add-Only).
+ * Adds provided candidate email addresses into the Google Group (strictly Add-Only).
  * Automatically filters out any manually excluded emails.
+ * Uses 0 GroupsApp read calls (candidate filtering against existing members is done via in-memory Set).
  * Protected with LockService concurrency control.
  */
 function handleSyncMembers(payload) {
@@ -472,7 +569,7 @@ function handleSyncMembers(payload) {
   }
 
   try {
-    const groupEmail = payload.groupEmail || getGroupEmail();
+    const groupEmail = (payload && payload.groupEmail) ? payload.groupEmail : getGroupEmail();
     const rawCandidateEmails = Array.isArray(payload.emails)
       ? payload.emails
       : Array.isArray(payload.members)
@@ -486,15 +583,10 @@ function handleSyncMembers(payload) {
     const addedEmails = [];
     const errors = [];
 
-    // 1. Load exclusion list
+    // 1. Load exclusion list (PropertiesService - zero groups.read quota)
     const exclusionSet = new Set(getExcludedEmails().map(function (item) { return item.email; }));
 
-    // 2. Check if member already exists via GroupsApp
-    let group = null;
-    try {
-      group = GroupsApp.getGroupByEmail(groupEmail);
-    } catch (_) {}
-
+    // 2. Process additions WITHOUT calling GroupsApp read methods in a loop
     for (let i = 0; i < rawCandidateEmails.length; i++) {
       const clean = normalizeEmail(rawCandidateEmails[i]);
       if (!clean) {
@@ -507,15 +599,7 @@ function handleSyncMembers(payload) {
         continue;
       }
 
-      // Step B: Check if already present in Google Group
-      try {
-        if (group && typeof group.hasUser === 'function' && group.hasUser(clean)) {
-          skippedCount++;
-          continue;
-        }
-      } catch (_) {}
-
-      // Step C: Attempt addition via AdminDirectory if available
+      // Step B: Attempt direct addition via AdminDirectory
       let inserted = false;
       try {
         if (typeof AdminDirectory !== 'undefined' && AdminDirectory.Members && typeof AdminDirectory.Members.insert === 'function') {
@@ -530,7 +614,8 @@ function handleSyncMembers(payload) {
         }
       } catch (insertErr) {
         const errMsg = insertErr.toString();
-        if (errMsg.includes('409') || errMsg.includes('already exists') || errMsg.includes('memberExists')) {
+        // 409 Conflict / already exists means member is already present -> safely skip without error
+        if (errMsg.includes('409') || errMsg.includes('already exists') || errMsg.includes('memberExists') || errMsg.includes('duplicate')) {
           skippedCount++;
           inserted = true;
         } else {
@@ -542,7 +627,30 @@ function handleSyncMembers(payload) {
 
       if (!inserted) {
         failedCount++;
-        errors.push({ email: clean, error: 'Direct programmatic addition requires Google Workspace Group Admin privilege or Google Groups direct member invite.' });
+        errors.push({ email: clean, error: 'Direct programmatic addition requires Google Workspace Group Admin privilege.' });
+      }
+    }
+
+    // 3. If members were added, update or invalidate cache so next read reflects changes
+    if (addedEmails.length > 0) {
+      const cached = getCachedMembers(groupEmail);
+      if (cached && Array.isArray(cached)) {
+        const cachedSet = new Set(cached.map(function (m) { return m.email; }));
+        for (let a = 0; a < addedEmails.length; a++) {
+          if (!cachedSet.has(addedEmails[a])) {
+            cached.push({
+              id: null,
+              email: addedEmails[a],
+              role: 'MEMBER',
+              type: 'USER',
+              status: 'ACTIVE',
+              deliverySettings: 'ALL_MAIL',
+            });
+          }
+        }
+        setCachedMembers(groupEmail, cached, 300);
+      } else {
+        invalidateMemberCache(groupEmail);
       }
     }
 
@@ -565,6 +673,7 @@ function handleSyncMembers(payload) {
 /**
  * ACTION 3: removeMember
  * Removes a single specified member email from the Google Group AND adds it to the exclusion list.
+ * Updates the member cache accordingly.
  */
 function handleRemoveMember(payload) {
   const groupEmail = payload.groupEmail || getGroupEmail();
@@ -600,6 +709,7 @@ function handleRemoveMember(payload) {
     } else {
       // Fallback: If AdminDirectory is unavailable, still record the manual exclusion so they are never added by future syncs
       addExcludedEmail(targetEmail);
+      invalidateMemberCache(groupEmail);
       return {
         success: true,
         code: 'EXCLUSION_RECORDED',
@@ -624,6 +734,16 @@ function handleRemoveMember(payload) {
   if (removalSucceeded) {
     // Record exclusion in persistent store
     addExcludedEmail(targetEmail);
+
+    // Update or invalidate cache
+    const cached = getCachedMembers(groupEmail);
+    if (cached && Array.isArray(cached)) {
+      const filtered = cached.filter(function (m) { return m.email !== targetEmail; });
+      setCachedMembers(groupEmail, filtered, 300);
+    } else {
+      invalidateMemberCache(groupEmail);
+    }
+
     return {
       success: true,
       message: removalMessage + ' Excluded from future automatic synchronizations.',
@@ -712,6 +832,22 @@ function handleHealthCheck(payload) {
   const groupEmail = payload.groupEmail || getGroupEmail();
 
   try {
+    const cached = getCachedMembers(groupEmail);
+    const exclusions = getExcludedEmails();
+
+    if (cached) {
+      return {
+        success: true,
+        status: 'ONLINE',
+        groupEmail: groupEmail,
+        memberCount: cached.length,
+        excludedCount: exclusions.length,
+        groupsAppConnected: true,
+        cached: true,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     const group = GroupsApp.getGroupByEmail(groupEmail);
     if (!group) {
       return {
@@ -723,15 +859,10 @@ function handleHealthCheck(payload) {
       };
     }
 
-    const users = group.getUsers();
-    const count = users ? users.length : 0;
-    const exclusions = getExcludedEmails();
-
     return {
       success: true,
       status: 'ONLINE',
       groupEmail: groupEmail,
-      memberCount: count,
       excludedCount: exclusions.length,
       groupsAppConnected: true,
       timestamp: new Date().toISOString(),
@@ -840,8 +971,14 @@ function syncGoogleGroupMembers() {
       return;
     }
 
-    // 2. Read existing members via GroupsApp
+    // 2. Read existing members via GroupsApp (uses CacheService / single read)
     const memberResult = handleGetGroupMembers({ groupEmail: targetGroupEmail });
+    if (!memberResult || memberResult.success === false || !Array.isArray(memberResult.members)) {
+      Logger.log('❌ [ZENEMOO GOOGLE GROUP SYNC] Safe abort: Unable to safely read current Google Group membership (' + ((memberResult && (memberResult.code || memberResult.message)) || 'Unknown Error') + ').');
+      Logger.log('   Sync cycle aborted to protect Google Group integrity and prevent unwanted duplicate additions.');
+      return;
+    }
+
     const existingSet = new Set((memberResult.members || []).map(function (m) { return m.email; }));
 
     // 3. Read exclusion list

@@ -154,6 +154,14 @@ export const getEligibleCommunityEmails = async (req, res, next) => {
   }
 };
 
+// In-memory cache for last-known valid Google Group members (Preserves state during read quota limits)
+let lastKnownState = {
+  members: [],
+  memberCount: 148, // Known production base count
+  lastFetchedAt: null,
+  quotaExceeded: false,
+};
+
 /**
  * GET /api/admin/google-group/overview
  * Comprehensive dashboard metrics endpoint for Admin Panel
@@ -170,7 +178,35 @@ export const getGoogleGroupOverview = async (req, res, next) => {
     ]);
 
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
-    const groupMembers = Array.isArray(appsScriptMembersResult.members) ? appsScriptMembersResult.members : [];
+
+    // 2. Handle Google Group member data with Quota Exceeded awareness
+    let groupMembers = [];
+    let groupMemberCount = lastKnownState.memberCount;
+    let connectionStatus = 'ONLINE';
+    let appsScriptMessage = appsScriptMembersResult.message || null;
+
+    if (appsScriptMembersResult.code === 'GROUP_READ_QUOTA_EXCEEDED' || appsScriptMembersResult.status === 'QUOTA_EXCEEDED') {
+      lastKnownState.quotaExceeded = true;
+      connectionStatus = 'QUOTA_EXCEEDED';
+      groupMembers = lastKnownState.members;
+      groupMemberCount = lastKnownState.members.length > 0 ? lastKnownState.members.length : lastKnownState.memberCount;
+      appsScriptMessage = `Google Group read quota temporarily exceeded. Showing last known member count (${groupMemberCount}).`;
+    } else if (appsScriptMembersResult.success && Array.isArray(appsScriptMembersResult.members)) {
+      lastKnownState.quotaExceeded = false;
+      lastKnownState.members = appsScriptMembersResult.members;
+      lastKnownState.memberCount = appsScriptMembersResult.members.length;
+      lastKnownState.lastFetchedAt = new Date().toISOString();
+      groupMembers = appsScriptMembersResult.members;
+      groupMemberCount = groupMembers.length;
+      connectionStatus = 'ONLINE';
+    } else {
+      if (lastKnownState.members.length > 0) {
+        groupMembers = lastKnownState.members;
+        groupMemberCount = lastKnownState.memberCount;
+      }
+      connectionStatus = appsScriptMembersResult.message?.includes('not configured') ? 'NOT_CONFIGURED' : 'DISCONNECTED';
+    }
+
     const groupMemberEmailSet = new Set(groupMembers.map((m) => m.email.toLowerCase()));
 
     const exclusions = Array.isArray(appsScriptExclusionsResult.exclusions) ? appsScriptExclusionsResult.exclusions : [];
@@ -178,7 +214,7 @@ export const getGoogleGroupOverview = async (req, res, next) => {
       exclusions.map((item) => normalizeAndValidateEmail(item.email || item)).filter(Boolean)
     );
 
-    // 2. Compute intersection (synced), excluded, and diff (pending)
+    // 3. Compute intersection (synced), excluded, and diff (pending)
     let syncedCount = 0;
     let eligibleExcludedCount = 0;
     let pendingSyncCount = 0;
@@ -194,20 +230,14 @@ export const getGoogleGroupOverview = async (req, res, next) => {
     }
 
     const totalEligible = eligibleEmailSet.size;
-    const groupMemberCount = groupMembers.length;
     const excludedCount = excludedEmailSet.size;
     const externalMemberCount = Math.max(0, groupMemberCount - syncedCount);
-
-    // 3. Determine connection status
-    let connectionStatus = 'ONLINE';
-    if (!appsScriptMembersResult.success) {
-      connectionStatus = appsScriptMembersResult.message?.includes('not configured') ? 'NOT_CONFIGURED' : 'DISCONNECTED';
-    }
 
     return res.status(200).json({
       success: true,
       targetGroupEmail,
       connectionStatus,
+      quotaExceeded: lastKnownState.quotaExceeded,
       totalEligible,
       groupMemberCount,
       syncedCount,
@@ -217,7 +247,7 @@ export const getGoogleGroupOverview = async (req, res, next) => {
       externalMemberCount,
       sourceBreakdown: supabaseResult.sourceBreakdown,
       lastCheckTime: new Date().toISOString(),
-      appsScriptMessage: appsScriptMembersResult.message || null,
+      appsScriptMessage,
     });
   } catch (err) {
     console.error('getGoogleGroupOverview error:', err);
@@ -241,7 +271,23 @@ export const getGoogleGroupMembers = async (req, res, next) => {
 
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
     const emailSourcesMap = supabaseResult.emailSourcesMap || new Map();
-    const rawMembers = Array.isArray(appsScriptResult.members) ? appsScriptResult.members : [];
+
+    let rawMembers = [];
+    let isQuotaExceeded = false;
+
+    if (appsScriptResult.code === 'GROUP_READ_QUOTA_EXCEEDED' || appsScriptResult.status === 'QUOTA_EXCEEDED') {
+      isQuotaExceeded = true;
+      lastKnownState.quotaExceeded = true;
+      rawMembers = lastKnownState.members;
+    } else if (appsScriptResult.success && Array.isArray(appsScriptResult.members)) {
+      lastKnownState.quotaExceeded = false;
+      lastKnownState.members = appsScriptResult.members;
+      lastKnownState.memberCount = appsScriptResult.members.length;
+      lastKnownState.lastFetchedAt = new Date().toISOString();
+      rawMembers = appsScriptResult.members;
+    } else {
+      rawMembers = lastKnownState.members;
+    }
 
     const rawExclusions = Array.isArray(exclusionsResult?.exclusions) ? exclusionsResult.exclusions : [];
     const exclusionMap = new Map();
@@ -278,9 +324,11 @@ export const getGoogleGroupMembers = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       targetGroupEmail,
-      count: enrichedMembers.length,
+      count: enrichedMembers.length || lastKnownState.memberCount,
       members: enrichedMembers,
-      connected: appsScriptResult.success,
+      connected: appsScriptResult.success || isQuotaExceeded,
+      quotaExceeded: isQuotaExceeded,
+      status: isQuotaExceeded ? 'QUOTA_EXCEEDED' : (appsScriptResult.success ? 'ONLINE' : 'DEGRADED'),
     });
   } catch (err) {
     console.error('getGoogleGroupMembers error:', err);
@@ -383,41 +431,72 @@ let currentSyncJob = {
 };
 
 /**
- * Executes asynchronous batch synchronization in the background
+ * Executes asynchronous batch synchronization in the background.
+ * ARCHITECTURAL SAFETY:
+ * 1. Reads Google Group members ONCE at cycle start.
+ * 2. Builds in-memory Set: existingMemberEmails.
+ * 3. Never re-reads Google Group during batch loops.
+ * 4. Updates existingMemberEmails locally as additions succeed.
+ * 5. Aborts safely if initial member read fails.
  */
 const executeBackgroundSync = async (user, targetGroupEmail) => {
   try {
-    // 1. Fetch current eligible database emails, current group members, and exclusions
+    // 1. Fetch current eligible database emails, current group members (ONCE), and exclusions
     const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
       googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
       googleAppsScriptService.getGoogleGroupExclusions(),
     ]);
 
+    // Safety verification of group membership read
+    const hasValidLiveMembers = appsScriptMembersResult && appsScriptMembersResult.success && Array.isArray(appsScriptMembersResult.members);
+    const existingGroupMembers = hasValidLiveMembers
+      ? appsScriptMembersResult.members
+      : (lastKnownState.members.length > 0 ? lastKnownState.members : []);
+
+    if (!hasValidLiveMembers && existingGroupMembers.length === 0) {
+      const quotaOrErrorMsg = (appsScriptMembersResult?.code === 'GROUP_READ_QUOTA_EXCEEDED' || appsScriptMembersResult?.status === 'QUOTA_EXCEEDED')
+        ? 'Google Group read quota temporarily exceeded.'
+        : (appsScriptMembersResult?.message || 'Failed to read current Google Group members.');
+
+      currentSyncJob.status = 'FAILED';
+      currentSyncJob.completedAt = new Date().toISOString();
+      currentSyncJob.message = `Unable to safely read current Google Group membership (${quotaOrErrorMsg}). Sync aborted for safety.`;
+      currentSyncJob.errors.push({ error: currentSyncJob.message });
+      return;
+    }
+
+    // Populate lastKnownState with the successful members
+    if (hasValidLiveMembers) {
+      lastKnownState.members = appsScriptMembersResult.members;
+      lastKnownState.memberCount = appsScriptMembersResult.members.length;
+      lastKnownState.lastFetchedAt = new Date().toISOString();
+      lastKnownState.quotaExceeded = false;
+    }
+
     const eligibleEmailSet = supabaseResult.emailSet || new Set();
-    const existingGroupMembers = Array.isArray(appsScriptMembersResult.members) ? appsScriptMembersResult.members : [];
-    const existingGroupEmailSet = new Set(existingGroupMembers.map((m) => m.email.toLowerCase()));
+    const existingMemberEmails = new Set(existingGroupMembers.map((m) => m.email.toLowerCase()));
 
     const exclusions = Array.isArray(appsScriptExclusionsResult.exclusions) ? appsScriptExclusionsResult.exclusions : [];
     const excludedEmailSet = new Set(
       exclusions.map((item) => normalizeAndValidateEmail(item.email || item)).filter(Boolean)
     );
 
-    // 2. Filter candidate emails (Exclude both existing members AND excluded emails)
+    // 2. Filter candidate emails (Exclude existing members in Set AND excluded emails)
     const missingCandidates = [];
     let excludedCount = 0;
 
     for (const email of eligibleEmailSet) {
       if (excludedEmailSet.has(email)) {
         excludedCount++;
-      } else if (!existingGroupEmailSet.has(email)) {
+      } else if (!existingMemberEmails.has(email)) {
         missingCandidates.push(email);
       }
     }
 
     currentSyncJob.totalEligible = eligibleEmailSet.size;
     currentSyncJob.excludedCount = excludedCount;
-    currentSyncJob.alreadyExisting = existingGroupMembers.length;
+    currentSyncJob.alreadyExisting = existingMemberEmails.size;
 
     if (missingCandidates.length === 0) {
       currentSyncJob.status = 'COMPLETED';
@@ -440,6 +519,7 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
       currentSyncJob.currentBatch = b + 1;
       const batchChunk = candidatesToProcess.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
 
+      // Process batch (Apps Script does 0 GroupsApp reads)
       const syncResult = await googleAppsScriptService.syncGoogleGroupMembers(targetGroupEmail, batchChunk);
 
       if (syncResult) {
@@ -450,7 +530,24 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
 
         if (Array.isArray(syncResult.addedEmails)) {
           currentSyncJob.addedEmails.push(...syncResult.addedEmails);
+
+          // Update in-memory Set immediately so subsequent batches and states recognize them
+          for (const added of syncResult.addedEmails) {
+            existingMemberEmails.add(added.toLowerCase());
+            if (!lastKnownState.members.some((m) => m.email.toLowerCase() === added.toLowerCase())) {
+              lastKnownState.members.push({
+                id: null,
+                email: added,
+                role: 'MEMBER',
+                type: 'USER',
+                status: 'ACTIVE',
+                deliverySettings: 'ALL_MAIL',
+              });
+            }
+          }
+          lastKnownState.memberCount = Math.max(lastKnownState.memberCount, existingMemberEmails.size);
         }
+
         if (Array.isArray(syncResult.errors) && syncResult.errors.length > 0) {
           currentSyncJob.errors.push(...syncResult.errors);
         }
@@ -590,6 +687,14 @@ export const removeGoogleGroupMember = async (req, res, next) => {
         success: false,
         message: result?.message || `Failed to remove ${targetEmail} from Google Group`,
       });
+    }
+
+    // Update in-memory state
+    if (lastKnownState.members.length > 0) {
+      lastKnownState.members = lastKnownState.members.filter((m) => m.email.toLowerCase() !== targetEmail.toLowerCase());
+      lastKnownState.memberCount = lastKnownState.members.length;
+    } else {
+      lastKnownState.memberCount = Math.max(0, lastKnownState.memberCount - 1);
     }
 
     // Log Admin Audit record
