@@ -27,6 +27,7 @@ import {
 import {
   CandidateApplication,
   getStoredCandidateApplications,
+  getSingleCandidateApplicationById,
   updateCandidateApplicationStatus,
   deleteCandidateApplication,
   resyncSingleCandidateApplication,
@@ -507,6 +508,8 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   const [resyncingId, setResyncingId] = useState<string | null>(null);
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
   const [viewDetailApp, setViewDetailApp] = useState<CandidateApplication | null>(null);
   const [editNotesApp, setEditNotesApp] = useState<CandidateApplication | null>(null);
   const [adminNoteText, setAdminNoteText] = useState('');
@@ -659,6 +662,51 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
   }, [filteredApps]);
 
   // 4. ALL useCallback HOOKS (DECLARED UNCONDITIONALLY HERE BEFORE ANY RETURN)
+  const handleRefreshApplications = useCallback(async (isSilent = false) => {
+    if (isRefreshing) return;
+    try {
+      setIsRefreshing(true);
+      if (!isSilent) {
+        showToast('Refreshing applications...', 'info');
+      }
+      const updatedList = await getStoredCandidateApplications(selectedOpp?.id, true);
+      onUpdateApps(updatedList);
+      if (!isSilent) {
+        showToast('Applications refreshed', 'success');
+      }
+    } catch (err: any) {
+      if (!isSilent) {
+        showToast(`Refresh failed: ${err.message}`, 'error');
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, selectedOpp, onUpdateApps, showToast]);
+
+  // 120s Conservative Background Polling Fallback & Visibility Handler (Active ONLY when modal is open)
+  useEffect(() => {
+    if (!isOpen || !selectedOpp) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isRefreshing) {
+        handleRefreshApplications(true);
+      }
+    }, 120000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isOpen && selectedOpp && !isRefreshing) {
+        handleRefreshApplications(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isOpen, selectedOpp, isRefreshing, handleRefreshApplications]);
+
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('all');
@@ -669,8 +717,18 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
     showToast('Filters cleared', 'info');
   }, [showToast]);
 
-  const handleView = useCallback((app: CandidateApplication) => {
+  const handleView = useCallback(async (app: CandidateApplication) => {
     setViewDetailApp(app);
+    try {
+      setLoadingDetailId(app.id);
+      const fullDetail = await getSingleCandidateApplicationById(app.id);
+      if (fullDetail) {
+        setViewDetailApp((prev) => (prev && prev.id === app.id ? fullDetail : prev));
+      }
+    } catch (_) {
+    } finally {
+      setLoadingDetailId(null);
+    }
   }, []);
 
   const handleEditNotes = useCallback((app: CandidateApplication) => {
@@ -829,6 +887,18 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Refresh Applications */}
+          <button
+            type="button"
+            disabled={isRefreshing}
+            onClick={() => handleRefreshApplications(false)}
+            className="px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 transition-all shadow-sm"
+            title="Fetch latest candidate applications and status counts from database"
+          >
+            <RefreshCw className={`w-4 h-4 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh Applications'}</span>
+          </button>
+
           {/* Open Google Sheet */}
           <a
             href="https://docs.google.com/spreadsheets/d/1TRWH_zKjTtEiUAmQSS0XsA6_OtKc57FtMaDMeoIfjMs/edit?usp=sharing"
@@ -1325,7 +1395,12 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
           <div className="bg-[#0d121f] border border-cyan-500/30 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl shadow-cyan-500/10 space-y-6 text-slate-100 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div>
-                <h3 className="text-xl font-bold font-sans text-white">{viewDetailApp.applicant_name}</h3>
+                <h3 className="text-xl font-bold font-sans text-white flex items-center gap-2">
+                  <span>{viewDetailApp.applicant_name}</span>
+                  {loadingDetailId === viewDetailApp.id && (
+                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                  )}
+                </h3>
                 <div className="text-xs font-mono text-cyan-400">
                   {viewDetailApp.applicant_id || `APP-2026-${viewDetailApp.id.substring(0, 4)}`}
                 </div>

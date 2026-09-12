@@ -53,43 +53,94 @@ const saveLocalApplications = (list: CandidateApplication[]): CandidateApplicati
   return list;
 };
 
+// In-flight request deduplication map to prevent multiple parallel network cycles
+const inFlightFetches: Map<string, Promise<CandidateApplication[]>> = new Map();
+
 // Fetch candidate applications via backend API first with explicit columns (and local fallback)
-export const getStoredCandidateApplications = async (opportunity_id?: string): Promise<CandidateApplication[]> => {
-  // 1. Primary: Use Express Backend API (pruned explicit fields, no heavy JSONB)
-  try {
-    const res = await opportunityApplicationApi.getAll(opportunity_id);
-    if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const live = res.data.data as CandidateApplication[];
-      saveLocalApplications(live);
-      return live;
-    }
-  } catch (err: any) {
-    console.warn('Backend opportunity applications fetch note. Trying fallback:', err.message);
+export const getStoredCandidateApplications = async (opportunity_id?: string, forceRefresh = false): Promise<CandidateApplication[]> => {
+  const cacheKey = opportunity_id || 'all';
+
+  if (!forceRefresh && inFlightFetches.has(cacheKey)) {
+    return inFlightFetches.get(cacheKey)!;
   }
 
-  // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'))
+  const fetchPromise = (async () => {
+    try {
+      // 1. Primary: Use Express Backend API (pruned explicit fields, low bandwidth)
+      try {
+        const res = await opportunityApplicationApi.getAll(opportunity_id);
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          const live = res.data.data as CandidateApplication[];
+          saveLocalApplications(live);
+          return live;
+        }
+      } catch (err: any) {
+        console.warn('Backend opportunity applications fetch note. Trying fallback:', err.message);
+      }
+
+      // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'))
+      if (supabase) {
+        try {
+          const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, answers, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
+          let query = supabase.from('opportunity_applications').select(explicitCols).order('created_at', { ascending: false });
+          if (opportunity_id) {
+            query = query.eq('opportunity_id', opportunity_id);
+          }
+          const { data, error } = await query;
+          if (!error && Array.isArray(data)) {
+            saveLocalApplications(data as CandidateApplication[]);
+            return data as CandidateApplication[];
+          }
+        } catch (err: any) {
+          console.warn('Direct Supabase fetch candidate applications error:', err.message);
+        }
+      }
+
+      const localList = getLocalApplications();
+      if (opportunity_id) {
+        return localList.filter((app) => app.opportunity_id === opportunity_id);
+      }
+      return localList;
+    } finally {
+      inFlightFetches.delete(cacheKey);
+    }
+  })();
+
+  inFlightFetches.set(cacheKey, fetchPromise);
+  return fetchPromise;
+};
+
+// Fetch complete details for a single application on demand (e.g., when opening details modal)
+export const getSingleCandidateApplicationById = async (id: string): Promise<CandidateApplication | null> => {
+  if (!id) return null;
+  try {
+    const res = await opportunityApplicationApi.getById(id);
+    if (res.data && res.data.data) {
+      const detailed = res.data.data as CandidateApplication;
+      // Merge into local cache
+      const localList = getLocalApplications();
+      const idx = localList.findIndex((a) => a.id === id);
+      if (idx !== -1) {
+        localList[idx] = { ...localList[idx], ...detailed };
+        saveLocalApplications(localList);
+      }
+      return detailed;
+    }
+  } catch (err: any) {
+    console.warn('Backend single application fetch note, trying Supabase direct:', err.message);
+  }
+
   if (supabase) {
     try {
-      const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, answers, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
-      let query = supabase.from('opportunity_applications').select(explicitCols).order('created_at', { ascending: false });
-      if (opportunity_id) {
-        query = query.eq('opportunity_id', opportunity_id);
+      const { data, error } = await supabase.from('opportunity_applications').select('*').eq('id', id).maybeSingle();
+      if (!error && data) {
+        return data as CandidateApplication;
       }
-      const { data, error } = await query;
-      if (!error && Array.isArray(data)) {
-        saveLocalApplications(data as CandidateApplication[]);
-        return data as CandidateApplication[];
-      }
-    } catch (err: any) {
-      console.warn('Direct Supabase fetch candidate applications error:', err.message);
-    }
+    } catch (_) {}
   }
 
   const localList = getLocalApplications();
-  if (opportunity_id) {
-    return localList.filter((app) => app.opportunity_id === opportunity_id);
-  }
-  return localList;
+  return localList.find((a) => a.id === id) || null;
 };
 
 // Lookup existing application by opportunity_id and email in Supabase / LocalStorage

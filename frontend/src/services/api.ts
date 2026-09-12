@@ -182,6 +182,7 @@ export const opportunityApi = {
 // Candidate Opportunity Applications APIs
 export const opportunityApplicationApi = {
   getAll: (opportunity_id?: string) => api.get('/opportunity-applications', { params: { opportunity_id } }),
+  getById: (id: string) => api.get(`/opportunity-applications/${id}`),
   submit: (data: any) => api.post('/opportunity-applications', data),
   sendConfirmation: (data: any) => api.post('/opportunity-applications/send-confirmation', data),
   resendAcceptance: (id: string) => api.post(`/opportunity-applications/${id}/resend-acceptance`),
