@@ -278,17 +278,21 @@ export const adminHrAiApi = {
 // Zenemoo Brevo Email Engine APIs
 export const emailApi = {
   send: (data: any) => api.post('/email/send', data, { timeout: 30000 }),
-  getHistory: (params?: {
-    page?: number;
-    pageSize?: number;
-    limit?: number;
-    status?: string;
-    search?: string;
-    dateRange?: string;
-    startDate?: string;
-    endDate?: string;
-  }) => api.get('/email/history', { params, timeout: 15000 }),
-  getHistoryById: (id: string) => api.get(`/email/history/${encodeURIComponent(id)}`, { timeout: 15000 }),
+  getHistory: (
+    params?: {
+      page?: number;
+      pageSize?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      dateRange?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+    signal?: AbortSignal
+  ) => api.get('/email/history', { params, signal, timeout: 15000 }),
+  getHistoryById: (id: string, signal?: AbortSignal) =>
+    api.get(`/email/history/${encodeURIComponent(id)}`, { signal, timeout: 15000 }),
   deleteHistory: (id: string) => api.delete(`/email/history/${encodeURIComponent(id)}`),
   getDrafts: () => api.get('/email/drafts', { timeout: 15000 }),
   saveDraft: (data: any) => api.post('/email/drafts', data, { timeout: 15000 }),

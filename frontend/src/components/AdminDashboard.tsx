@@ -101,7 +101,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   }, []);
 
   // Confirmation Helper Function
-  const showConfirm = (title: string, message: string, onConfirm: () => void, opts?: { confirmText?: string; cancelText?: string; intent?: 'danger' | 'warning' | 'info' }) => {
+  const showConfirm = useCallback((title: string, message: string, onConfirm: () => void, opts?: { confirmText?: string; cancelText?: string; intent?: 'danger' | 'warning' | 'info' }) => {
     setConfirmDialog({
       isOpen: true,
       title,
@@ -114,7 +114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         onConfirm();
       },
     });
-  };
+  }, []);
 
   // Authorized Admin Emails & Modal State
   const [authorizedEmails, setAuthorizedEmails] = useState<AuthorizedEmailAccount[]>([]);
@@ -6303,7 +6303,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   setEmailSubTab('compose');
                 }}
                 showConfirmDialog={showConfirm}
-                showToast={(title, msg, type) => addToast(title, msg, type)}
+                showToast={addToast}
               />
             )}
           </div>

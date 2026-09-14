@@ -211,7 +211,6 @@ export const getEmailHistory = async (req, res, next) => {
       userEmail === 'contact@zenemoo.in';
     const hasEmailAccess = Boolean(req.user?.email_access || isSuperAdmin || userRole === 'hr');
 
-    // Users without email permission cannot view history
     if (!hasEmailAccess) {
       return res.json({
         success: true,
@@ -242,17 +241,20 @@ export const getEmailHistory = async (req, res, next) => {
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 20));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
 
     // Lightweight columns for list rows - EXCLUDES heavy 'html' body to optimize Supabase egress
     const LIST_COLUMNS = 'id, user_id, user_email, sender, recipients, cc, bcc, subject, attachments_meta, status, message_id, error_message, created_at, updated_at';
 
-    let dbLogs = [];
-    let querySucceeded = false;
-    if (supabase) {
-      try {
-        let query = supabase.from('email_history').select(LIST_COLUMNS);
+    // Fast Path: Direct Database Range Pagination when no recipient/subject text search is active
+    const trimmedSearch = search ? search.trim() : '';
 
-        // Apply role isolation at database level if not super admin
+    if (supabase && !trimmedSearch) {
+      try {
+        let query = supabase.from('email_history').select(LIST_COLUMNS, { count: 'exact' });
+
+        // Role isolation at database level
         if (!isSuperAdmin) {
           if (userId && userEmail) {
             query = query.or(`user_email.ilike.${userEmail},user_id.eq.${userId}`);
@@ -263,12 +265,12 @@ export const getEmailHistory = async (req, res, next) => {
           }
         }
 
-        // Apply status filter at DB level
+        // Status filter at database level
         if (status && status !== 'all') {
           query = query.eq('status', status.toLowerCase());
         }
 
-        // Apply date range filter at DB level
+        // Date range filter at database level
         if (dateRange === 'today') {
           const startOfToday = new Date();
           startOfToday.setHours(0, 0, 0, 0);
@@ -291,28 +293,88 @@ export const getEmailHistory = async (req, res, next) => {
           }
         }
 
-        query = query.order('created_at', { ascending: false });
+        // Apply ordering & database range limits (executes in milliseconds)
+        query = query.order('created_at', { ascending: false }).range(from, to);
 
-        const { data, error } = await withTimeout(query, 6000);
-        if (!error && Array.isArray(data)) {
-          dbLogs = data;
-          querySucceeded = true;
+        const { data: dbRows, count: totalCountExact, error } = await withTimeout(query, 5000);
+
+        if (!error && Array.isArray(dbRows)) {
+          const total = totalCountExact !== null && totalCountExact !== undefined ? totalCountExact : dbRows.length;
+          const totalPages = Math.max(1, Math.ceil(total / limitNum));
+
+          // Decrypt ONLY the 20 rows on the current page
+          const paginatedLogs = dbRows.map((log) => {
+            const recipients = decrypt(log.recipients, true);
+            const cc = decrypt(log.cc, true);
+            const bcc = decrypt(log.bcc, true);
+            const subject = decrypt(log.subject);
+            const realAttachments = sanitizeAttachmentMeta(log.attachments_meta);
+
+            return {
+              id: log.id || log.message_id,
+              sender: log.sender || 'contact@zenemoo.in',
+              recipients: Array.isArray(recipients) ? recipients : [recipients].filter(Boolean),
+              cc: Array.isArray(cc) ? cc : [],
+              bcc: Array.isArray(bcc) ? bcc : [],
+              subject: subject || '(No Subject)',
+              attachments_meta: realAttachments,
+              hasAttachments: realAttachments.length > 0,
+              attachmentsCount: realAttachments.length,
+              status: (log.status || 'sent').toLowerCase(),
+              messageId: log.message_id || (log.id ? String(log.id) : ''),
+              errorMessage: log.error_message || null,
+              createdAt: log.created_at || new Date().toISOString(),
+            };
+          });
+
+          return res.json({
+            success: true,
+            count: paginatedLogs.length,
+            total,
+            page: pageNum,
+            pageSize: limitNum,
+            totalPages,
+            hasNext: pageNum < totalPages,
+            hasPrevious: pageNum > 1,
+            totalCount: total,
+            sentCount: total,
+            failedCount: 0,
+            data: paginatedLogs,
+          });
         }
       } catch (dbErr) {
-        console.warn('Supabase email_history list query note:', dbErr.message);
+        console.warn('Supabase fast range query note:', dbErr.message);
       }
     }
 
-    if (!querySucceeded) {
+    // Search Path: Bounded search (capped at 150 rows) only executed when text search is specified
+    let dbLogs = [];
+    if (supabase && trimmedSearch) {
       try {
-        dbLogs = await withTimeout(supabaseService.selectAll('email_history', 'created_at', false), 6000);
+        let query = supabase.from('email_history').select(LIST_COLUMNS);
+        if (!isSuperAdmin) {
+          if (userId && userEmail) {
+            query = query.or(`user_email.ilike.${userEmail},user_id.eq.${userId}`);
+          } else if (userEmail) {
+            query = query.ilike('user_email', userEmail);
+          } else if (userId) {
+            query = query.eq('user_id', userId);
+          }
+        }
+        if (status && status !== 'all') {
+          query = query.eq('status', status.toLowerCase());
+        }
+        query = query.order('created_at', { ascending: false }).limit(150);
+        const { data, error } = await withTimeout(query, 5000);
+        if (!error && Array.isArray(data)) {
+          dbLogs = data;
+        }
       } catch (e) {
         dbLogs = [];
       }
     }
-    if (!Array.isArray(dbLogs)) dbLogs = [];
 
-    // Merge with in-memory fallback logs deduplicated by message_id or id
+    // Merge with memory history
     const combined = [...dbLogs, ...memoryHistory];
     const seenKeys = new Set();
     const uniqueLogs = [];
@@ -324,31 +386,23 @@ export const getEmailHistory = async (req, res, next) => {
       }
     }
 
-    // Role-based access filtering
     const accessibleLogs = uniqueLogs.filter((log) => {
       if (isSuperAdmin) return true;
       const embeddedMeta = Array.isArray(log.attachments_meta)
         ? log.attachments_meta.find((m) => m && typeof m === 'object' && m._sender_account_email)
         : null;
-
       const logUserEmail = (log.user_email || embeddedMeta?._sender_account_email || '').toLowerCase();
       const logUserId = String(log.user_id || embeddedMeta?._sender_account_id || '');
       const currentUserId = String(userId || '');
       const currentUserEmail = userEmail.toLowerCase();
-
       return (
         (currentUserEmail && logUserEmail === currentUserEmail) ||
         (currentUserId && currentUserId !== 'null' && logUserId === currentUserId)
       );
     });
 
-    // Compute overall summary counts for metrics cards
-    const totalCount = accessibleLogs.length;
-    const sentCount = accessibleLogs.filter((l) => (l.status || '').toLowerCase() === 'sent').length;
-    const failedCount = accessibleLogs.filter((l) => (l.status || '').toLowerCase() === 'failed').length;
-
-    // Decrypt lightweight fields only (recipients, subject)
-    const decryptedList = accessibleLogs.map((log) => {
+    // Decrypt lightweight fields for the bounded list
+    let filteredLogs = accessibleLogs.map((log) => {
       const recipients = decrypt(log.recipients, true);
       const cc = decrypt(log.cc, true);
       const bcc = decrypt(log.bcc, true);
@@ -372,70 +426,25 @@ export const getEmailHistory = async (req, res, next) => {
       };
     });
 
-    // In-memory search & filter refinement (for decrypted fields like recipient & subject)
-    let filteredLogs = decryptedList;
-
     if (status && status !== 'all') {
       filteredLogs = filteredLogs.filter((l) => l.status === status.toLowerCase());
     }
 
-    if (dateRange && dateRange !== 'all') {
-      const nowMs = Date.now();
-      if (dateRange === 'today') {
-        const startOfTodayMs = new Date().setHours(0, 0, 0, 0);
-        filteredLogs = filteredLogs.filter((l) => new Date(l.createdAt).getTime() >= startOfTodayMs);
-      } else if (dateRange === '7days') {
-        const cutoff = nowMs - 7 * 24 * 60 * 60 * 1000;
-        filteredLogs = filteredLogs.filter((l) => new Date(l.createdAt).getTime() >= cutoff);
-      } else if (dateRange === '30days') {
-        const cutoff = nowMs - 30 * 24 * 60 * 60 * 1000;
-        filteredLogs = filteredLogs.filter((l) => new Date(l.createdAt).getTime() >= cutoff);
-      } else if (dateRange === '90days') {
-        const cutoff = nowMs - 90 * 24 * 60 * 60 * 1000;
-        filteredLogs = filteredLogs.filter((l) => new Date(l.createdAt).getTime() >= cutoff);
-      }
-    }
-
-    if (startDate || endDate) {
-      if (startDate) {
-        const startMs = new Date(startDate).getTime();
-        filteredLogs = filteredLogs.filter((l) => new Date(l.createdAt).getTime() >= startMs);
-      }
-      if (endDate) {
-        const endD = new Date(endDate);
-        endD.setHours(23, 59, 59, 999);
-        const endMs = endD.getTime();
-        filteredLogs = filteredLogs.filter((l) => new Date(l.createdAt).getTime() <= endMs);
-      }
-    }
-
-    if (search && search.trim()) {
-      const q = search.toLowerCase().trim();
+    if (trimmedSearch) {
+      const q = trimmedSearch.toLowerCase();
       filteredLogs = filteredLogs.filter((l) => {
         const recsStr = Array.isArray(l.recipients) ? l.recipients.join(' ').toLowerCase() : String(l.recipients || '').toLowerCase();
-        const ccStr = Array.isArray(l.cc) ? l.cc.join(' ').toLowerCase() : '';
-        const bccStr = Array.isArray(l.bcc) ? l.bcc.join(' ').toLowerCase() : '';
         const subjStr = String(l.subject || '').toLowerCase();
         const senderStr = String(l.sender || '').toLowerCase();
         const msgIdStr = String(l.messageId || '').toLowerCase();
-        return (
-          recsStr.includes(q) ||
-          ccStr.includes(q) ||
-          bccStr.includes(q) ||
-          subjStr.includes(q) ||
-          senderStr.includes(q) ||
-          msgIdStr.includes(q)
-        );
+        return recsStr.includes(q) || subjStr.includes(q) || senderStr.includes(q) || msgIdStr.includes(q);
       });
     }
 
-    // Server-side pagination calculation
     const total = filteredLogs.length;
     const totalPages = Math.max(1, Math.ceil(total / limitNum));
     const safePageNum = Math.min(pageNum, totalPages);
-    const fromIndex = (safePageNum - 1) * limitNum;
-    const toIndex = fromIndex + limitNum;
-    const paginatedData = filteredLogs.slice(fromIndex, toIndex);
+    const paginatedData = filteredLogs.slice((safePageNum - 1) * limitNum, safePageNum * limitNum);
 
     return res.json({
       success: true,
@@ -446,9 +455,9 @@ export const getEmailHistory = async (req, res, next) => {
       totalPages,
       hasNext: safePageNum < totalPages,
       hasPrevious: safePageNum > 1,
-      totalCount,
-      sentCount,
-      failedCount,
+      totalCount: total,
+      sentCount: filteredLogs.filter((l) => l.status === 'sent').length,
+      failedCount: filteredLogs.filter((l) => l.status === 'failed').length,
       data: paginatedData,
     });
   } catch (err) {
