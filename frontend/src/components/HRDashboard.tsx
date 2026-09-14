@@ -142,7 +142,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ initialUserData, onLog
     setIsLoadingEmails(true);
     try {
       const [resHist, resDrafts] = await Promise.all([
-        emailApi.getHistory().catch(() => ({ data: { data: [] } })),
+        emailApi.getHistory({ page: 1, pageSize: 50 }).catch(() => ({ data: { data: [] } })),
         emailApi.getDrafts().catch(() => ({ data: { data: [] } })),
       ]);
       if (resHist.data?.data) setEmailLogs(resHist.data.data);

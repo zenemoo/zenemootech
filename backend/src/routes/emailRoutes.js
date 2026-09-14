@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   sendEmail,
   getEmailHistory,
+  getEmailHistoryById,
   deleteEmailHistory,
   getEmailDrafts,
   saveEmailDraft,
@@ -27,6 +28,7 @@ router.post('/forward', verifyToken, requireEmailAccess, sendInboxEmail);
 router.get('/sent', verifyToken, requireEmailAccess, getSentEmails);
 router.get('/inbox', verifyToken, requireEmailAccess, getIncomingEmails);
 router.get('/history', verifyToken, requireEmailAccess, getEmailHistory);
+router.get('/history/:id', verifyToken, requireEmailAccess, getEmailHistoryById);
 router.delete('/history/:id', verifyToken, requireEmailAccess, deleteEmailHistory);
 
 router.get('/drafts', verifyToken, requireEmailAccess, getEmailDrafts);

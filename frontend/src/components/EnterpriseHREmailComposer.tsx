@@ -301,7 +301,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const loadUserHistory = async () => {
     setIsLoadingHistory(true);
     try {
-      const res = await emailApi.getHistory();
+      const res = await emailApi.getHistory({ page: 1, pageSize: 20 });
       if (res.data && res.data.success && Array.isArray(res.data.data)) {
         setHistoryLogs(res.data.data);
       }
