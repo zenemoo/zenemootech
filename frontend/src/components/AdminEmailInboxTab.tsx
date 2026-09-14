@@ -218,12 +218,21 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
   const [isComposeOpen, setIsComposeOpen] = useState<boolean>(false);
   const [composeMode, setComposeMode] = useState<'reply' | 'replyAll' | 'forward' | 'new'>('reply');
 
-  // Attachment Preview Modal State
+  // Attachment Preview & Download State (Egress Optimized Session Blob Cache)
   const [previewAttachment, setPreviewAttachment] = useState<{
     attachment: { id: string; filename: string; contentType: string; size: number };
     emailId: string;
-    url: string;
   } | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewContentType, setPreviewContentType] = useState<string>('');
+  const [previewTextContent, setPreviewTextContent] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [activeDownloadingId, setActiveDownloadingId] = useState<string | null>(null);
+  const [activePreviewingId, setActivePreviewingId] = useState<string | null>(null);
+
+  // In-memory Blob Cache across current inbox session to avoid re-downloading bytes
+  const blobCacheRef = useRef<Map<string, { blob: Blob; url: string; filename: string; contentType: string; text?: string }>>(new Map());
 
   // Full Email Reader Modal & Recipient Popover State
   const [isFullEmailModalOpen, setIsFullEmailModalOpen] = useState<boolean>(false);
@@ -243,6 +252,151 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
   const activeMailbox = activeSidebarView.type === 'mailbox' ? activeSidebarView.value : 'all';
   const activeCategory = activeSidebarView.type === 'label' ? activeSidebarView.value : 'all';
+
+  // Authenticated Attachment Preview Handler (Blob URL based)
+  const handlePreviewAttachment = useCallback(async (emailId: string, att: any) => {
+    const attachmentKey = `${emailId}_${att.id || att.filename}`;
+    setPreviewAttachment({ attachment: att, emailId });
+    setPreviewError(null);
+    setPreviewTextContent(null);
+    setActivePreviewingId(att.id || att.filename);
+
+    const cached = blobCacheRef.current.get(attachmentKey);
+    if (cached) {
+      setPreviewBlobUrl(cached.url);
+      setPreviewContentType(cached.contentType);
+      setPreviewTextContent(cached.text || null);
+      setIsPreviewLoading(false);
+      setActivePreviewingId(null);
+      return;
+    }
+
+    setIsPreviewLoading(true);
+    try {
+      const { blob, filename, contentType } = await emailInboxApi.downloadAttachmentBlob(
+        emailId,
+        att.id || att.filename,
+        true
+      );
+
+      const objectUrl = URL.createObjectURL(blob);
+      let textContent: string | undefined = undefined;
+
+      // If text/json/csv/xml, read as text for direct readable rendering
+      if (
+        contentType.includes('text') ||
+        contentType.includes('json') ||
+        contentType.includes('csv') ||
+        contentType.includes('xml') ||
+        filename.endsWith('.txt') ||
+        filename.endsWith('.json') ||
+        filename.endsWith('.csv') ||
+        filename.endsWith('.log')
+      ) {
+        try {
+          textContent = await blob.text();
+        } catch (_) {}
+      }
+
+      blobCacheRef.current.set(attachmentKey, {
+        blob,
+        url: objectUrl,
+        filename,
+        contentType,
+        text: textContent,
+      });
+
+      setPreviewBlobUrl(objectUrl);
+      setPreviewContentType(contentType);
+      setPreviewTextContent(textContent || null);
+      setPreviewError(null);
+    } catch (err: any) {
+      console.error('Attachment preview fetch failed:', err);
+      const isAuthError = err.response?.status === 401 || err.response?.data?.code === 'UNAUTHORIZED_MISSING_TOKEN';
+      const isForbidden = err.response?.status === 403;
+      const isNotFound = err.response?.status === 404;
+
+      if (isAuthError) {
+        setPreviewError('Session expired or unauthorized. Please log in again to view this encrypted attachment.');
+      } else if (isForbidden) {
+        setPreviewError('Access denied: You do not have permission to view attachments from this mailbox.');
+      } else if (isNotFound) {
+        setPreviewError('Attachment content is not available or has expired.');
+      } else {
+        setPreviewError(err.response?.data?.message || err.message || 'Unable to load attachment preview.');
+      }
+    } finally {
+      setIsPreviewLoading(false);
+      setActivePreviewingId(null);
+    }
+  }, []);
+
+  // Authenticated Attachment Download Handler
+  const handleDownloadAttachment = useCallback(async (emailId: string, att: any, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const attachmentKey = `${emailId}_${att.id || att.filename}`;
+    const targetFilename = att.filename || att.name || 'attachment';
+    setActiveDownloadingId(att.id || att.filename);
+
+    try {
+      let objectUrl: string;
+      let finalFilename = targetFilename;
+
+      const cached = blobCacheRef.current.get(attachmentKey);
+      if (cached) {
+        objectUrl = cached.url;
+        finalFilename = cached.filename || targetFilename;
+      } else {
+        const { blob, filename, contentType } = await emailInboxApi.downloadAttachmentBlob(
+          emailId,
+          att.id || att.filename,
+          false
+        );
+        objectUrl = URL.createObjectURL(blob);
+        finalFilename = filename || targetFilename;
+        blobCacheRef.current.set(attachmentKey, {
+          blob,
+          url: objectUrl,
+          filename: finalFilename,
+          contentType,
+        });
+      }
+
+      // Trigger browser download via clean ephemeral anchor element
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = finalFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      addToast('Download started', `Downloading ${finalFilename}`, 'success');
+    } catch (err: any) {
+      console.error('Attachment download failed:', err);
+      const isAuthError = err.response?.status === 401;
+      const errorMsg = isAuthError
+        ? 'Session expired. Please log in again.'
+        : (err.response?.data?.message || err.message || 'Failed to download attachment.');
+      addToast('Download Failed', errorMsg, 'error');
+    } finally {
+      setActiveDownloadingId(null);
+    }
+  }, [addToast]);
+
+  // Clean up object URLs on component unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      blobCacheRef.current.forEach((item) => {
+        try {
+          URL.revokeObjectURL(item.url);
+        } catch (_) {}
+      });
+      blobCacheRef.current.clear();
+    };
+  }, []);
 
   // Fetch Storage Usage
   const fetchStorageUsage = useCallback(async () => {
@@ -1320,17 +1474,23 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {selectedEmailDetail.attachments.map((att) => {
-                      const downloadUrl = emailInboxApi.getAttachmentDownloadUrl(selectedEmailDetail.id, att.id || att.filename);
                       const isPreviewable =
                         (att.contentType || '').includes('pdf') ||
                         (att.contentType || '').includes('image') ||
                         (att.contentType || '').includes('text') ||
+                        (att.contentType || '').includes('json') ||
+                        (att.contentType || '').includes('csv') ||
                         att.filename.endsWith('.pdf') ||
                         att.filename.endsWith('.png') ||
                         att.filename.endsWith('.jpg') ||
                         att.filename.endsWith('.jpeg') ||
                         att.filename.endsWith('.webp') ||
-                        att.filename.endsWith('.txt');
+                        att.filename.endsWith('.txt') ||
+                        att.filename.endsWith('.csv') ||
+                        att.filename.endsWith('.json');
+
+                      const isDownloading = activeDownloadingId === (att.id || att.filename);
+                      const isPreviewing = activePreviewingId === (att.id || att.filename);
 
                       return (
                         <div
@@ -1349,28 +1509,32 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                             {isPreviewable && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setPreviewAttachment({
-                                    attachment: att,
-                                    emailId: selectedEmailDetail.id,
-                                    url: emailInboxApi.getAttachmentDownloadUrl(selectedEmailDetail.id, att.id || att.filename, true),
-                                  })
-                                }
-                                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-cyan-300 min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer"
+                                disabled={isPreviewing}
+                                onClick={() => handlePreviewAttachment(selectedEmailDetail.id, att)}
+                                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-cyan-300 min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer disabled:opacity-50"
                                 title="Preview Attachment"
                               >
-                                <Eye className="w-3.5 h-3.5" />
+                                {isPreviewing ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" />
+                                )}
                               </button>
                             )}
 
-                            <a
-                              href={downloadUrl}
-                              download={att.filename}
-                              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[32px] min-w-[32px] flex items-center justify-center"
+                            <button
+                              type="button"
+                              disabled={isDownloading}
+                              onClick={(e) => handleDownloadAttachment(selectedEmailDetail.id, att, e)}
+                              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer disabled:opacity-50"
                               title="Download Attachment"
                             >
-                              <Download className="w-3.5 h-3.5" />
-                            </a>
+                              {isDownloading ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                              ) : (
+                                <Download className="w-3.5 h-3.5" />
+                              )}
+                            </button>
                           </div>
                         </div>
                       );
@@ -1654,18 +1818,52 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                 <Paperclip className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span className="text-slate-400 font-bold shrink-0">Attachments:</span>
                 <div className="flex items-center gap-2">
-                  {selectedEmailDetail.attachments.map((att) => (
-                    <a
-                      key={att.id || att.filename}
-                      href={emailInboxApi.getAttachmentDownloadUrl(selectedEmailDetail.id, att.id || att.filename)}
-                      download={att.filename}
-                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] flex items-center gap-1.5 shrink-0"
-                    >
-                      {getAttachmentIcon(att.contentType, att.filename)}
-                      <span className="truncate max-w-[140px]">{att.filename}</span>
-                      <Download className="w-3 h-3 text-cyan-400 shrink-0" />
-                    </a>
-                  ))}
+                  {selectedEmailDetail.attachments.map((att) => {
+                    const isDownloading = activeDownloadingId === (att.id || att.filename);
+                    const isPreviewable =
+                      (att.contentType || '').includes('pdf') ||
+                      (att.contentType || '').includes('image') ||
+                      (att.contentType || '').includes('text') ||
+                      att.filename.endsWith('.pdf') ||
+                      att.filename.endsWith('.png') ||
+                      att.filename.endsWith('.jpg') ||
+                      att.filename.endsWith('.jpeg') ||
+                      att.filename.endsWith('.webp') ||
+                      att.filename.endsWith('.txt');
+
+                    return (
+                      <div
+                        key={att.id || att.filename}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-white text-[11px] flex items-center gap-2 shrink-0"
+                      >
+                        {getAttachmentIcon(att.contentType, att.filename)}
+                        <span className="truncate max-w-[140px]">{att.filename}</span>
+                        {isPreviewable && (
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewAttachment(selectedEmailDetail.id, att)}
+                            className="p-0.5 text-cyan-400 hover:text-cyan-300 cursor-pointer transition-colors"
+                            title="Preview Attachment"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={isDownloading}
+                          onClick={(e) => handleDownloadAttachment(selectedEmailDetail.id, att, e)}
+                          className="p-0.5 text-slate-400 hover:text-white cursor-pointer transition-colors disabled:opacity-50"
+                          title="Download Attachment"
+                        >
+                          {isDownloading ? (
+                            <RefreshCw className="w-3 h-3 text-cyan-400 animate-spin" />
+                          ) : (
+                            <Download className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1702,8 +1900,9 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       {/* ATTACHMENT PREVIEW MODAL */}
       {previewAttachment && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 animate-fade-in">
-          <div className="bg-[#0b0f19] border border-white/15 w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
-            <div className="p-3 sm:p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono text-xs">
+          <div className="bg-[#0b0f19] border border-white/15 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="p-3.5 sm:p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono text-xs">
               <div className="flex items-center gap-2 text-white font-bold truncate">
                 <Eye className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span className="truncate">{previewAttachment.attachment.filename}</span>
@@ -1713,39 +1912,144 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={emailInboxApi.getAttachmentDownloadUrl(previewAttachment.emailId, previewAttachment.attachment.id || previewAttachment.attachment.filename)}
-                  download={previewAttachment.attachment.filename}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold flex items-center gap-1.5 text-xs hover:bg-cyan-500/30 min-h-[36px]"
+                <button
+                  type="button"
+                  disabled={activeDownloadingId === (previewAttachment.attachment.id || previewAttachment.attachment.filename)}
+                  onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                  className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold flex items-center gap-1.5 text-xs hover:bg-cyan-500/30 min-h-[36px] cursor-pointer transition-all disabled:opacity-50"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download
-                </a>
+                  {activeDownloadingId === (previewAttachment.attachment.id || previewAttachment.attachment.filename) ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>Download</span>
+                </button>
 
                 <button
                   type="button"
-                  onClick={() => setPreviewAttachment(null)}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[36px] min-w-[36px] flex items-center justify-center"
+                  onClick={() => {
+                    setPreviewAttachment(null);
+                    setPreviewBlobUrl(null);
+                    setPreviewError(null);
+                    setPreviewTextContent(null);
+                  }}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer transition-all"
+                  title="Close Preview"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40 min-h-[300px] sm:min-h-[450px]">
-              {(previewAttachment.attachment.contentType || '').includes('image') ||
-              ['png', 'jpg', 'jpeg', 'gif', 'webp'].some((ext) => previewAttachment.attachment.filename.endsWith(ext)) ? (
-                <img
-                  src={previewAttachment.url}
-                  alt={previewAttachment.attachment.filename}
-                  className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-lg"
-                />
-              ) : (
-                <iframe
-                  src={previewAttachment.url}
-                  title={previewAttachment.attachment.filename}
-                  className="w-full h-[75vh] rounded-xl border border-white/10 bg-white"
-                />
-              )}
+            {/* Body */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40 min-h-[350px] sm:min-h-[500px]">
+              {isPreviewLoading ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                  <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-white">Loading encrypted attachment...</p>
+                    <p className="text-xs font-mono text-slate-400">Decrypting authorized file from server</p>
+                  </div>
+                </div>
+              ) : previewError ? (
+                <div className="p-8 text-center max-w-md space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-base font-bold text-white">Unable to load preview</h4>
+                    <p className="text-xs font-mono text-red-300">{previewError}</p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePreviewAttachment(previewAttachment.emailId, previewAttachment.attachment)}
+                      className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                      className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-xs font-mono cursor-pointer transition-all flex items-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </button>
+                  </div>
+                </div>
+              ) : previewBlobUrl ? (
+                (() => {
+                  const isPdf =
+                    (previewContentType || '').includes('pdf') ||
+                    (previewAttachment.attachment.contentType || '').includes('pdf') ||
+                    previewAttachment.attachment.filename.toLowerCase().endsWith('.pdf');
+
+                  const isImage =
+                    (previewContentType || '').includes('image') ||
+                    (previewAttachment.attachment.contentType || '').includes('image') ||
+                    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].some((ext) =>
+                      previewAttachment.attachment.filename.toLowerCase().endsWith(ext)
+                    );
+
+                  const isText =
+                    previewTextContent !== null ||
+                    (previewContentType || '').includes('text') ||
+                    (previewContentType || '').includes('json') ||
+                    ['txt', 'json', 'csv', 'log', 'xml', 'md'].some((ext) =>
+                      previewAttachment.attachment.filename.toLowerCase().endsWith(ext)
+                    );
+
+                  if (isPdf) {
+                    return (
+                      <iframe
+                        src={previewBlobUrl}
+                        title={previewAttachment.attachment.filename}
+                        className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#0c101d]"
+                      />
+                    );
+                  }
+
+                  if (isImage) {
+                    return (
+                      <img
+                        src={previewBlobUrl}
+                        alt={previewAttachment.attachment.filename}
+                        className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl"
+                      />
+                    );
+                  }
+
+                  if (isText && previewTextContent !== null) {
+                    return (
+                      <div className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#070a11] p-4 overflow-auto font-mono text-xs text-slate-200 whitespace-pre-wrap select-text">
+                        {previewTextContent}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-8 text-center max-w-sm space-y-4">
+                      {getAttachmentIcon(previewAttachment.attachment.contentType, previewAttachment.attachment.filename)}
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-white truncate">{previewAttachment.attachment.filename}</p>
+                        <p className="text-xs font-mono text-slate-400">
+                          {formatFileSize(previewAttachment.attachment.size)} &bull; No inline preview available for this format
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                        className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 text-xs font-mono font-bold cursor-pointer transition-all inline-flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" /> Download File
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : null}
             </div>
           </div>
         </div>

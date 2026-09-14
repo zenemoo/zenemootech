@@ -523,6 +523,40 @@ export const emailInboxApi = {
     const baseUrl = api.defaults.baseURL || '/api';
     return `${baseUrl}/emails/inbox/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}${preview ? '?preview=1' : ''}`;
   },
+  downloadAttachmentBlob: async (
+    messageId: string,
+    attachmentId: string,
+    preview = false,
+    signal?: AbortSignal
+  ): Promise<{ blob: Blob; filename: string; contentType: string }> => {
+    const res = await api.get(
+      `/emails/inbox/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      {
+        params: preview ? { preview: '1' } : undefined,
+        responseType: 'blob',
+        signal,
+        timeout: 45000,
+      }
+    );
+
+    let filename = attachmentId;
+    const dispositionHeader = res.headers ? (res.headers['content-disposition'] as string | undefined) : undefined;
+    const disposition = typeof dispositionHeader === 'string' ? dispositionHeader : '';
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename\*?=['"]?(?:UTF-8'')?([^'";\r\n]+)['"]?/i);
+      if (match && match[1]) {
+        filename = decodeURIComponent(match[1].trim());
+      }
+    }
+    const contentTypeHeader = res.headers ? (res.headers['content-type'] as string | undefined) : undefined;
+    const contentType = typeof contentTypeHeader === 'string' ? contentTypeHeader : 'application/octet-stream';
+
+    return {
+      blob: res.data as Blob,
+      filename,
+      contentType,
+    };
+  },
   getEmailAddresses: () => api.get('/emails/addresses'),
   getStorageUsage: () => api.get('/emails/storage-usage'),
   addEmailAddress: (data: {

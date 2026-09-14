@@ -855,9 +855,8 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
       const trimmedPart = part.trim();
       if (!trimmedPart || trimmedPart === '--') continue;
 
-      const partSplit = trimmedPart.split(/\r?\n\r?\n/);
-      const partHeaders = partSplit[0] || '';
-      let partBody = partSplit.slice(1).join('\n\n').trim();
+      const rawPartBody = partSplit.slice(1).join('\n\n').trim();
+      let partBody = rawPartBody;
 
       const contentTypeMatch = partHeaders.match(/Content-Type:\s*([^;\r\n]+)/i);
       const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase().trim() : '';
@@ -865,26 +864,35 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
       const contentTransferEncodingMatch = partHeaders.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i);
       const encoding = contentTransferEncodingMatch ? contentTransferEncodingMatch[1].toLowerCase().trim() : '';
 
+      // Check Content-Disposition or Content-Type name for attachments
+      const filenameMatch =
+        partHeaders.match(/filename="?([^";\r\n]+)"?/i) ||
+        partHeaders.match(/name="?([^";\r\n]+)"?/i) ||
+        partHeaders.match(/filename\*=UTF-8''([^;\r\n]+)/i);
+
+      if (filenameMatch && filenameMatch[1]) {
+        const filename = decodeURIComponent(filenameMatch[1].trim());
+        const base64Content = encoding === 'base64'
+          ? rawPartBody.replace(/\s/g, '')
+          : Buffer.from(rawPartBody).toString('base64');
+        const calculatedSize = Buffer.from(base64Content, 'base64').length;
+
+        attachments.push({
+          id: `att_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          filename,
+          contentType: contentType || 'application/octet-stream',
+          size: calculatedSize,
+          content: base64Content,
+        });
+        continue;
+      }
+
       if (encoding === 'base64') {
         try {
           partBody = Buffer.from(partBody.replace(/\s/g, ''), 'base64').toString('utf8');
         } catch (_) {}
       } else if (encoding === 'quoted-printable') {
         partBody = decodeQuotedPrintable(partBody);
-      }
-
-      // Check Content-Disposition for attachments
-      const filenameMatch = partHeaders.match(/filename="?([^";\r\n]+)"?/i) || partHeaders.match(/name="?([^";\r\n]+)"?/i);
-
-      if (filenameMatch && filenameMatch[1]) {
-        const filename = filenameMatch[1].trim();
-        attachments.push({
-          id: `att_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-          filename,
-          contentType: contentType || 'application/octet-stream',
-          size: Buffer.byteLength(partBody, 'utf8'),
-        });
-        continue;
       }
 
       // Check sub-boundaries (e.g. multipart/alternative inside multipart/mixed)
@@ -1175,15 +1183,23 @@ export const getAttachmentDownload = async (req, res, next) => {
       return res.redirect(att.url);
     }
 
-    // If attachment has base64 content
-    if (att.content && typeof att.content === 'string') {
-      const cleanBase64 = att.content.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-      const fileBuffer = Buffer.from(cleanBase64, 'base64');
+    // If attachment has base64 or buffer content
+    const rawContent = att.content || att.data || att.base64 || att.pdf || att.image || att.fileBuffer;
+    if (rawContent) {
+      let fileBuffer = null;
+      if (Buffer.isBuffer(rawContent)) {
+        fileBuffer = rawContent;
+      } else if (typeof rawContent === 'string') {
+        const cleanBase64 = rawContent.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+        fileBuffer = Buffer.from(cleanBase64, 'base64');
+      }
 
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
-      res.setHeader('Content-Length', fileBuffer.length);
-      return res.send(fileBuffer);
+      if (fileBuffer) {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+        res.setHeader('Content-Length', fileBuffer.length);
+        return res.send(fileBuffer);
+      }
     }
 
     return res.status(404).json({
