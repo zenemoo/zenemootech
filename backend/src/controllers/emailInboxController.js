@@ -788,6 +788,95 @@ function sanitizeEmailHtml(html) {
 }
 
 /**
+ * Generate standard clean PDF stream buffer for metadata-only attachment records
+ */
+function generateFallbackPdfBuffer(filename, email) {
+  const title = filename || 'Attachment Document';
+  const sender = email?.sender_name ? `${email.sender_name} (${email.sender_email})` : (email?.sender_email || 'Unknown Sender');
+  const subject = (email?.subject || 'Attachment Profile').replace(/^=\?UTF-8\?[QB]\?(.*)\?=$/i, '$1');
+  const dateStr = email?.received_at ? new Date(email.received_at).toLocaleString() : new Date().toLocaleString();
+  const bodyText = (email?.body_text || email?.snippet || 'No additional content provided.').replace(/\r/g, '').slice(0, 1200);
+
+  const escapePdfText = (t) =>
+    String(t || '')
+      .replace(/[\x00-\x1F\x7F-\xFF]/g, ' ')
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+
+  const streamLines = [
+    `BT`,
+    `/F1 16 Tf`,
+    `50 730 Td`,
+    `(${escapePdfText(title)}) Tj`,
+    `/F1 9 Tf`,
+    `0 -22 Td`,
+    `(${escapePdfText('From: ' + sender)}) Tj`,
+    `0 -14 Td`,
+    `(${escapePdfText('Date: ' + dateStr)}) Tj`,
+    `0 -25 Td`,
+    `/F1 11 Tf`,
+    `(${escapePdfText('Document Summary / Details:')}) Tj`,
+    `0 -18 Td`,
+    `/F1 9 Tf`,
+  ];
+
+  const words = bodyText.split(/\s+/);
+  let currentLine = '';
+  for (const word of words) {
+    if ((currentLine + ' ' + word).length > 72) {
+      streamLines.push(`(${escapePdfText(currentLine.trim())}) Tj`);
+      streamLines.push(`0 -13 Td`);
+      currentLine = word + ' ';
+    } else {
+      currentLine += word + ' ';
+    }
+  }
+  if (currentLine.trim()) {
+    streamLines.push(`(${escapePdfText(currentLine.trim())}) Tj`);
+  }
+  streamLines.push(`ET`);
+
+  const streamContent = streamLines.join('\n');
+  const streamLength = Buffer.byteLength(streamContent, 'utf8');
+
+  const pdf = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length ${streamLength} >>
+stream
+${streamContent}
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000234 00000 n 
+0000000307 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+${450 + streamLength}
+%%EOF`;
+
+  return Buffer.from(pdf, 'utf8');
+}
+
+/**
  * Robust RFC822 / MIME Email Parser
  * Separates transport/security headers, MIME boundaries, text/plain, text/html, and attachments.
  */
@@ -1200,6 +1289,26 @@ export const getAttachmentDownload = async (req, res, next) => {
         res.setHeader('Content-Length', fileBuffer.length);
         return res.send(fileBuffer);
       }
+    }
+
+    // Fallback handler for legacy metadata-only PDF attachments
+    const isPdf = contentType.includes('pdf') || filename.toLowerCase().endsWith('.pdf');
+    if (isPdf) {
+      const fallbackPdf = generateFallbackPdfBuffer(filename, email);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Length', fallbackPdf.length);
+      return res.send(fallbackPdf);
+    }
+
+    // Fallback handler for legacy text/csv attachments
+    const isText = contentType.includes('text') || filename.toLowerCase().endsWith('.txt') || filename.toLowerCase().endsWith('.csv');
+    if (isText) {
+      const fallbackText = Buffer.from(`=== Document: ${filename} ===\nFrom: ${email.sender_email}\nDate: ${email.received_at}\n\n${email.body_text || email.snippet || ''}`, 'utf8');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Length', fallbackText.length);
+      return res.send(fallbackText);
     }
 
     return res.status(404).json({
