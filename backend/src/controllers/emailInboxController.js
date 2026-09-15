@@ -944,6 +944,8 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
       const trimmedPart = part.trim();
       if (!trimmedPart || trimmedPart === '--') continue;
 
+      const partSplit = trimmedPart.split(/\r?\n\r?\n/);
+      const partHeaders = partSplit[0] || '';
       const rawPartBody = partSplit.slice(1).join('\n\n').trim();
       let partBody = rawPartBody;
 
