@@ -97,9 +97,13 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
 
   // Loading States
   const [isLoadingOverview, setIsLoadingOverview] = useState(true);
-  const [isLoadingPending, setIsLoadingPending] = useState(false);
-  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isInitialLoadingPending, setIsInitialLoadingPending] = useState(true);
+  const [isFetchingPending, setIsFetchingPending] = useState(false);
+  const [isInitialLoadingMembers, setIsInitialLoadingMembers] = useState(true);
+  const [isFetchingMembers, setIsFetchingMembers] = useState(false);
   const [isLoadingExclusions, setIsLoadingExclusions] = useState(false);
+
+  // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<any>(null);
   const syncPollIntervalRef = useRef<any>(null);
@@ -107,6 +111,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
 
   // Pending Candidates State (Server-Side Paginated - 10 per page)
   const [pendingCandidates, setPendingCandidates] = useState<PendingCandidate[]>([]);
+  const [pendingPage, setPendingPage] = useState(1);
+  const pendingPageRef = useRef(1);
   const [pendingPagination, setPendingPagination] = useState<PaginationState>({
     page: 1,
     pageSize: 10,
@@ -116,10 +122,14 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     hasPrevious: false,
   });
   const [pendingSearch, setPendingSearch] = useState('');
+  const pendingSearchRef = useRef('');
+  const pendingRequestIdRef = useRef(0);
   const [copiedBatch, setCopiedBatch] = useState(false);
 
   // Group Members State (Server-Side Paginated)
   const [members, setMembers] = useState<GoogleGroupMember[]>([]);
+  const [membersPage, setMembersPage] = useState(1);
+  const membersPageRef = useRef(1);
   const [membersPagination, setMembersPagination] = useState<PaginationState>({
     page: 1,
     pageSize: 10,
@@ -129,7 +139,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     hasPrevious: false,
   });
   const [membersSearch, setMembersSearch] = useState('');
+  const membersSearchRef = useRef('');
   const [originFilter, setOriginFilter] = useState<'all' | 'synced' | 'external'>('all');
+  const originFilterRef = useRef<'all' | 'synced' | 'external'>('all');
+  const membersRequestIdRef = useRef(0);
 
   // Exclusions State
   const [exclusions, setExclusions] = useState<GoogleGroupExclusion[]>([]);
@@ -146,6 +159,27 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
   // Member Details Modal State
   const [selectedMember, setSelectedMember] = useState<GoogleGroupMember | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    pendingPageRef.current = pendingPage;
+  }, [pendingPage]);
+
+  useEffect(() => {
+    pendingSearchRef.current = pendingSearch;
+  }, [pendingSearch]);
+
+  useEffect(() => {
+    membersPageRef.current = membersPage;
+  }, [membersPage]);
+
+  useEffect(() => {
+    membersSearchRef.current = membersSearch;
+  }, [membersSearch]);
+
+  useEffect(() => {
+    originFilterRef.current = originFilter;
+  }, [originFilter]);
 
   // Target group URL
   const targetGroupEmail = overview?.targetGroupEmail || 'zenemoocommunity@googlegroups.com';
@@ -170,52 +204,81 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
   }, [showToast]);
 
-  // 2. Load Pending Candidates (Server-Side 10 per page)
-  const loadPending = useCallback(async (pageToLoad = 1, forceRefresh = false, searchStr = '') => {
-    setIsLoadingPending(true);
+  // 2. Load Pending Candidates (Server-Side 10 per page, Protected Against Race Conditions)
+  const loadPending = useCallback(async (pageToLoad?: number, forceRefresh = false, searchStr?: string) => {
+    const targetPage = typeof pageToLoad === 'number' ? pageToLoad : pendingPageRef.current;
+    const targetSearch = typeof searchStr === 'string' ? searchStr : pendingSearchRef.current;
+    const requestId = ++pendingRequestIdRef.current;
+
+    setIsFetchingPending(true);
     try {
       const res = await googleGroupApi.getPendingMembers({
-        page: pageToLoad,
+        page: targetPage,
         pageSize: 10,
-        search: searchStr,
+        search: targetSearch,
         forceRefresh,
       });
+
+      // Ignore stale responses if a newer request was dispatched
+      if (requestId !== pendingRequestIdRef.current) return;
+
       if (res.data?.success) {
         setPendingCandidates(res.data.data || []);
         if (res.data.pagination) {
           setPendingPagination(res.data.pagination);
+          // If page was clamped or adjusted, sync state
+          setPendingPage(res.data.pagination.page);
         }
       }
     } catch (err: any) {
       console.warn('Failed to load pending members:', err.message);
+      if (showToast) {
+        showToast('Pending Members Note', 'Could not refresh pending list.', 'info');
+      }
     } finally {
-      setIsLoadingPending(false);
+      if (requestId === pendingRequestIdRef.current) {
+        setIsFetchingPending(false);
+        setIsInitialLoadingPending(false);
+      }
     }
-  }, []);
+  }, [showToast]);
 
-  // 3. Load Live Members (Server-Side Paginated)
-  const loadMembers = useCallback(async (pageToLoad = 1, forceRefresh = false, searchStr = '', filterVal = originFilter) => {
-    setIsLoadingMembers(true);
+  // 3. Load Live Members (Server-Side Paginated, Protected Against Race Conditions)
+  const loadMembers = useCallback(async (pageToLoad?: number, forceRefresh = false, searchStr?: string, filterVal?: 'all' | 'synced' | 'external') => {
+    const targetPage = typeof pageToLoad === 'number' ? pageToLoad : membersPageRef.current;
+    const targetSearch = typeof searchStr === 'string' ? searchStr : membersSearchRef.current;
+    const targetFilter = filterVal || originFilterRef.current;
+    const requestId = ++membersRequestIdRef.current;
+
+    setIsFetchingMembers(true);
     try {
       const res = await googleGroupApi.getMembers({
-        page: pageToLoad,
-        pageSize: membersPagination.pageSize,
-        search: searchStr,
-        originFilter: filterVal,
+        page: targetPage,
+        pageSize: 10,
+        search: targetSearch,
+        originFilter: targetFilter,
         forceRefresh,
       });
+
+      // Ignore stale responses if a newer request was dispatched
+      if (requestId !== membersRequestIdRef.current) return;
+
       if (res.data?.success) {
         setMembers(res.data.members || []);
         if (res.data.pagination) {
           setMembersPagination(res.data.pagination);
+          setMembersPage(res.data.pagination.page);
         }
       }
     } catch (err: any) {
       console.warn('Failed to load Google Group members:', err.message);
     } finally {
-      setIsLoadingMembers(false);
+      if (requestId === membersRequestIdRef.current) {
+        setIsFetchingMembers(false);
+        setIsInitialLoadingMembers(false);
+      }
     }
-  }, [originFilter, membersPagination.pageSize]);
+  }, []);
 
   // 4. Load Exclusions List
   const loadExclusions = useCallback(async () => {
@@ -232,15 +295,15 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
   }, []);
 
-  // 5. Global Refresh Action (Forces fresh read from Google Groups)
+  // 5. Global Refresh Action (Forces fresh read while PRESERVING current page)
   const handleGlobalRefresh = async () => {
     if (showToast) {
       showToast('Refreshing Group', 'Fetching live membership and reconciling with Supabase...', 'info');
     }
     await Promise.all([
       loadOverview(false, true),
-      loadPending(pendingPagination.page, true, pendingSearch),
-      loadMembers(membersPagination.page, true, membersSearch, originFilter),
+      loadPending(pendingPageRef.current, true, pendingSearchRef.current),
+      loadMembers(membersPageRef.current, true, membersSearchRef.current, originFilterRef.current),
       loadExclusions(),
     ]);
     if (showToast) {
@@ -280,10 +343,11 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 );
               }
             }
+            // Preserve current active pages after sync completes
             await Promise.all([
               loadOverview(true, true),
-              loadPending(1, true, pendingSearch),
-              loadMembers(1, true, membersSearch, originFilter),
+              loadPending(pendingPageRef.current, true, pendingSearchRef.current),
+              loadMembers(membersPageRef.current, true, membersSearchRef.current, originFilterRef.current),
             ]);
           } else if (data.status === 'FAILED') {
             clearInterval(syncPollIntervalRef.current);
@@ -301,7 +365,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         console.warn('Sync status poll error:', err.message);
       }
     }, 2000);
-  }, [showToast, loadOverview, loadPending, loadMembers, pendingSearch, membersSearch, originFilter]);
+  }, [showToast, loadOverview, loadPending, loadMembers]);
 
   // Clean up interval on unmount
   useEffect(() => {
@@ -310,7 +374,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     };
   }, []);
 
-  // Initial load
+  // Initial load ON MOUNT ONLY (Zero dependency loop)
   useEffect(() => {
     loadOverview();
     loadPending(1);
@@ -323,7 +387,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         startPollingSync();
       }
     }).catch(() => {});
-  }, [loadOverview, loadPending, loadMembers, loadExclusions, startPollingSync]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keyboard shortcut: close modal on Escape
   useEffect(() => {
@@ -364,7 +429,23 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
   };
 
-  // Trigger Differential Sync (Sync Page or Batch)
+  // Page Navigation Handlers for Pending
+  const handlePendingPageChange = (newPage: number) => {
+    const clamped = Math.max(1, Math.min(newPage, pendingPagination.totalPages || 1));
+    if (clamped === pendingPage && !isFetchingPending) return;
+    setPendingPage(clamped);
+    loadPending(clamped, false, pendingSearchRef.current);
+  };
+
+  // Page Navigation Handlers for Members
+  const handleMembersPageChange = (newPage: number) => {
+    const clamped = Math.max(1, Math.min(newPage, membersPagination.totalPages || 1));
+    if (clamped === membersPage && !isFetchingMembers) return;
+    setMembersPage(clamped);
+    loadMembers(clamped, false, membersSearchRef.current, originFilterRef.current);
+  };
+
+  // Trigger Differential Sync (Sync Page - exactly 10 visible candidates)
   const handleTriggerSync = async (specificEmails?: string[]) => {
     setIsSyncing(true);
     try {
@@ -380,7 +461,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
       const data = res.data;
       if (data?.success) {
         if (showToast) {
-          showToast('Sync Started', 'Background synchronization initiated in safe batches of 10.', 'info');
+          showToast('Sync Started', 'Background synchronization initiated in safe batch.', 'info');
         }
         startPollingSync();
       } else {
@@ -409,7 +490,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           }
           await Promise.all([
             loadOverview(true, true),
-            loadMembers(membersPagination.page, true, membersSearch, originFilter),
+            loadMembers(membersPageRef.current, true, membersSearchRef.current, originFilterRef.current),
             loadExclusions(),
           ]);
           if (selectedMember && selectedMember.email.toLowerCase() === memberEmail.toLowerCase()) {
@@ -461,7 +542,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           }
           await Promise.all([
             loadOverview(true, true),
-            loadPending(1, true, pendingSearch),
+            loadPending(pendingPageRef.current, true, pendingSearchRef.current),
             loadExclusions(),
           ]);
         } else {
@@ -650,11 +731,11 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full md:w-auto mt-2 md:mt-0 min-w-0">
             <button
               onClick={handleGlobalRefresh}
-              disabled={isLoadingOverview || isLoadingPending || isLoadingMembers}
+              disabled={isLoadingOverview || isFetchingPending || isFetchingMembers}
               className="flex-1 sm:flex-initial inline-flex justify-center items-center gap-2 rounded-xl border border-gray-700/80 bg-gray-800/80 px-3.5 sm:px-4 py-2.5 text-xs font-medium text-gray-200 transition-all hover:border-gray-600 hover:bg-gray-700/80 hover:text-white disabled:opacity-50 min-h-[40px]"
               title="Query real Google Group membership and recalculate pending members"
             >
-              <RefreshCw className={`h-4 w-4 ${isLoadingOverview || isLoadingPending || isLoadingMembers ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${isLoadingOverview || isFetchingPending || isFetchingMembers ? 'animate-spin' : ''}`} />
               Refresh Group
             </button>
 
@@ -871,6 +952,9 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400">
                     {pendingPagination.total} people waiting to join
                   </span>
+                  {isFetchingPending && (
+                    <RefreshCw className="h-3.5 w-3.5 text-amber-400 animate-spin" />
+                  )}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
                   Page {pendingPagination.page} of {pendingPagination.totalPages} • Showing{' '}
@@ -925,8 +1009,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 placeholder="Filter pending by email or source..."
                 value={pendingSearch}
                 onChange={(e) => {
-                  setPendingSearch(e.target.value);
-                  loadPending(1, false, e.target.value);
+                  const val = e.target.value;
+                  setPendingSearch(val);
+                  setPendingPage(1);
+                  loadPending(1, false, val);
                 }}
                 className="w-full rounded-xl border border-gray-800 bg-gray-950/70 pl-10 pr-8 py-2 text-xs text-white placeholder-gray-500 transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
@@ -934,6 +1020,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 <button
                   onClick={() => {
                     setPendingSearch('');
+                    setPendingPage(1);
                     loadPending(1, false, '');
                   }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
@@ -944,7 +1031,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
             </div>
           </div>
 
-          {/* Desktop Table View */}
+          {/* Desktop Table View (Keeps rows visible during page navigation with smooth opacity) */}
           <div className="hidden md:block overflow-x-auto min-w-0">
             <table className="w-full text-left text-xs">
               <thead className="border-b border-gray-800 bg-gray-950/50 text-gray-400">
@@ -956,8 +1043,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <th className="px-5 py-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/60">
-                {isLoadingPending ? (
+              <tbody className={`divide-y divide-gray-800/60 transition-opacity duration-200 ${isFetchingPending ? 'opacity-60' : 'opacity-100'}`}>
+                {isInitialLoadingPending ? (
                   <tr>
                     <td colSpan={5} className="py-12 text-center text-gray-500">
                       <div className="flex flex-col items-center justify-center gap-2">
@@ -1031,8 +1118,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           </div>
 
           {/* Mobile Card List View */}
-          <div className="block md:hidden divide-y divide-gray-800/60">
-            {isLoadingPending ? (
+          <div className={`block md:hidden divide-y divide-gray-800/60 transition-opacity duration-200 ${isFetchingPending ? 'opacity-60' : 'opacity-100'}`}>
+            {isInitialLoadingPending ? (
               <div className="py-12 text-center text-gray-500">
                 <div className="flex flex-col items-center justify-center gap-2">
                   <RefreshCw className="h-6 w-6 animate-spin text-amber-400" />
@@ -1093,9 +1180,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => loadPending(Math.max(1, pendingPagination.page - 1), false, pendingSearch)}
-                disabled={!pendingPagination.hasPrevious}
-                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                onClick={() => handlePendingPageChange(pendingPagination.page - 1)}
+                disabled={!pendingPagination.hasPrevious || isFetchingPending}
+                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed min-w-[32px] min-h-[32px] flex items-center justify-center transition-colors"
+                title="Previous page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -1103,9 +1191,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 {pendingPagination.page} / {pendingPagination.totalPages}
               </span>
               <button
-                onClick={() => loadPending(Math.min(pendingPagination.totalPages, pendingPagination.page + 1), false, pendingSearch)}
-                disabled={!pendingPagination.hasNext}
-                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                onClick={() => handlePendingPageChange(pendingPagination.page + 1)}
+                disabled={!pendingPagination.hasNext || isFetchingPending}
+                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed min-w-[32px] min-h-[32px] flex items-center justify-center transition-colors"
+                title="Next page"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -1128,8 +1217,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   placeholder="Search by email, role, status, or source..."
                   value={membersSearch}
                   onChange={(e) => {
-                    setMembersSearch(e.target.value);
-                    loadMembers(1, false, e.target.value, originFilter);
+                    const val = e.target.value;
+                    setMembersSearch(val);
+                    setMembersPage(1);
+                    loadMembers(1, false, val, originFilter);
                   }}
                   className="w-full rounded-xl border border-gray-800 bg-gray-950/70 pl-10 pr-8 py-2 text-xs text-white placeholder-gray-500 transition-colors focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -1137,6 +1228,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <button
                     onClick={() => {
                       setMembersSearch('');
+                      setMembersPage(1);
                       loadMembers(1, false, '', originFilter);
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
@@ -1152,6 +1244,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <button
                     onClick={() => {
                       setOriginFilter('all');
+                      setMembersPage(1);
                       loadMembers(1, false, membersSearch, 'all');
                     }}
                     className={`flex-1 sm:flex-initial rounded-lg px-2.5 sm:px-3 py-1 text-xs font-medium transition-colors text-center ${
@@ -1165,6 +1258,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <button
                     onClick={() => {
                       setOriginFilter('synced');
+                      setMembersPage(1);
                       loadMembers(1, false, membersSearch, 'synced');
                     }}
                     className={`flex-1 sm:flex-initial rounded-lg px-2.5 sm:px-3 py-1 text-xs font-medium transition-colors text-center ${
@@ -1178,6 +1272,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <button
                     onClick={() => {
                       setOriginFilter('external');
+                      setMembersPage(1);
                       loadMembers(1, false, membersSearch, 'external');
                     }}
                     className={`flex-1 sm:flex-initial rounded-lg px-2.5 sm:px-3 py-1 text-xs font-medium transition-colors text-center ${
@@ -1215,8 +1310,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <th className="px-5 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/60">
-                {isLoadingMembers ? (
+              <tbody className={`divide-y divide-gray-800/60 transition-opacity duration-200 ${isFetchingMembers ? 'opacity-60' : 'opacity-100'}`}>
+                {isInitialLoadingMembers ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-gray-500">
                       <div className="flex flex-col items-center justify-center gap-2">
@@ -1340,8 +1435,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           </div>
 
           {/* Mobile Card List View */}
-          <div className="block md:hidden divide-y divide-gray-800/60">
-            {isLoadingMembers ? (
+          <div className={`block md:hidden divide-y divide-gray-800/60 transition-opacity duration-200 ${isFetchingMembers ? 'opacity-60' : 'opacity-100'}`}>
+            {isInitialLoadingMembers ? (
               <div className="py-12 text-center text-gray-500">
                 <div className="flex flex-col items-center justify-center gap-2">
                   <RefreshCw className="h-6 w-6 animate-spin text-orange-400" />
@@ -1427,9 +1522,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => loadMembers(Math.max(1, membersPagination.page - 1), false, membersSearch, originFilter)}
-                disabled={!membersPagination.hasPrevious}
-                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                onClick={() => handleMembersPageChange(membersPagination.page - 1)}
+                disabled={!membersPagination.hasPrevious || isFetchingMembers}
+                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed min-w-[32px] min-h-[32px] flex items-center justify-center transition-colors"
+                title="Previous page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -1437,9 +1533,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 {membersPagination.page} / {membersPagination.totalPages}
               </span>
               <button
-                onClick={() => loadMembers(Math.min(membersPagination.totalPages, membersPagination.page + 1), false, membersSearch, originFilter)}
-                disabled={!membersPagination.hasNext}
-                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 min-w-[32px] min-h-[32px] flex items-center justify-center"
+                onClick={() => handleMembersPageChange(membersPagination.page + 1)}
+                disabled={!membersPagination.hasNext || isFetchingMembers}
+                className="rounded-lg border border-gray-800 bg-gray-950 p-1.5 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed min-w-[32px] min-h-[32px] flex items-center justify-center transition-colors"
+                title="Next page"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -1687,7 +1784,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
               <div className="mt-5 flex items-center justify-between gap-2.5 pt-4 border-t border-gray-800/80">
                 <button
                   onClick={() => handleRemoveMember(selectedMember.email)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3.5 py-2 text-xs font-semibold text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3.5 py-2 text-xs font-semibold text-red-400 hover:border-red-500/40 hover:bg-red-500/20 transition-colors"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Remove & Exclude
