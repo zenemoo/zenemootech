@@ -121,6 +121,16 @@ const DEFAULT_VERIFIED_ADDRESSES = [
 const inMemoryAddresses = [...DEFAULT_VERIFIED_ADDRESSES];
 const inMemoryEmails = [];
 
+// Server-side response cache for storage usage to eliminate redundant Supabase PostgREST egress
+let cachedStorageUsage = null;
+let lastStorageCalculationTime = 0;
+const STORAGE_USAGE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
+
+export const invalidateStorageStatsCache = () => {
+  cachedStorageUsage = null;
+  lastStorageCalculationTime = 0;
+};
+
 /**
  * Auto-categorize email content based on keywords and recipient mailbox
  */
@@ -530,6 +540,7 @@ export const deleteIncomingEmail = async (req, res, next) => {
         .eq('id', id);
 
       if (!error) {
+        invalidateStorageStatsCache();
         return res.json({ success: true, message: 'Email permanently deleted.' });
       }
     }
@@ -539,6 +550,7 @@ export const deleteIncomingEmail = async (req, res, next) => {
       inMemoryEmails.splice(idx, 1);
     }
 
+    invalidateStorageStatsCache();
     return res.json({ success: true, message: 'Email permanently deleted.' });
   } catch (err) {
     next(err);
@@ -659,6 +671,7 @@ export const ingestCloudflareEmail = async (req, res, next) => {
     }
 
     inMemoryEmails.unshift(emailRow);
+    invalidateStorageStatsCache();
 
     // 3. Dispatch Admin Notification (STRICTLY ADMIN ONLY)
     sendZenemooNotification({
@@ -689,22 +702,34 @@ export const ingestCloudflareEmail = async (req, res, next) => {
 /**
  * GET /api/emails/storage-usage
  * Calculate live real email database & attachment storage space usage from Supabase
+ * Egress-Optimized: Uses in-memory server cache (5m TTL) and lightweight metadata query (zero body_html, zero body_text)
  */
 export const getEmailStorageUsage = async (req, res, next) => {
   try {
+    const forceRefresh = req.query.refresh === 'true' || req.query.force === 'true';
+    const now = Date.now();
+
+    // 1. Return cached storage statistics if still within TTL and not forced
+    if (!forceRefresh && cachedStorageUsage && (now - lastStorageCalculationTime < STORAGE_USAGE_CACHE_TTL_MS)) {
+      return res.json(cachedStorageUsage);
+    }
+
     let totalBytes = 0;
     const MAX_STORAGE_BYTES = 524288000; // 500 MB (Supabase DB free allocation)
+    const ESTIMATED_AVG_EMAIL_TEXT_BYTES = 12 * 1024; // ~12 KB average structured email metadata + text + HTML markup
 
     if (supabase) {
-      const { data: messages, error } = await supabase
+      // Egress-safe lightweight query: NEVER download body_text or body_html for storage calculation
+      const { data: messages, count: exactCount, error } = await supabase
         .from('incoming_email_messages')
-        .select('subject, body_text, body_html, attachments');
+        .select('id, attachments', { count: 'exact' });
 
       if (!error && Array.isArray(messages)) {
-        messages.forEach((msg) => {
-          const textLength = (msg.subject || '').length + (msg.body_text || '').length + (msg.body_html || '').length;
-          totalBytes += (textLength * 2);
+        const msgCount = typeof exactCount === 'number' ? exactCount : messages.length;
+        totalBytes += msgCount * ESTIMATED_AVG_EMAIL_TEXT_BYTES;
 
+        // Add exact attachment bytes from lightweight metadata
+        messages.forEach((msg) => {
           if (Array.isArray(msg.attachments)) {
             msg.attachments.forEach((att) => {
               if (att && typeof att.size === 'number') {
@@ -715,10 +740,9 @@ export const getEmailStorageUsage = async (req, res, next) => {
         });
       }
     } else {
+      const msgCount = inMemoryEmails.length;
+      totalBytes += msgCount * ESTIMATED_AVG_EMAIL_TEXT_BYTES;
       inMemoryEmails.forEach((msg) => {
-        const textLength = (msg.subject || '').length + (msg.body_text || '').length + (msg.body_html || '').length;
-        totalBytes += (textLength * 2);
-
         if (Array.isArray(msg.attachments)) {
           msg.attachments.forEach((att) => {
             if (att && typeof att.size === 'number') {
@@ -741,14 +765,19 @@ export const getEmailStorageUsage = async (req, res, next) => {
     const rawPercentage = (totalBytes / MAX_STORAGE_BYTES) * 100;
     const percentage = totalBytes > 0 ? Math.min(100, Math.max(0.1, rawPercentage)).toFixed(1) : '0.0';
 
-    return res.json({
+    const responsePayload = {
       success: true,
       used_bytes: totalBytes,
       max_bytes: MAX_STORAGE_BYTES,
       used_formatted: usedFormatted,
       max_formatted: '500 MB',
       percentage: parseFloat(percentage),
-    });
+    };
+
+    cachedStorageUsage = responsePayload;
+    lastStorageCalculationTime = now;
+
+    return res.json(responsePayload);
   } catch (err) {
     next(err);
   }
