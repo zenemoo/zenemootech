@@ -9,7 +9,7 @@ export interface CandidateApplication {
   applicant_name: string;
   applicant_email: string;
   applicant_phone: string;
-  answers: Record<string, any>;
+  answers?: Record<string, any>;
   status: 'pending' | 'shortlisted' | 'accepted' | 'rejected';
   admin_notes?: string;
   sync_status?: 'synced' | 'pending' | 'failed' | string;
@@ -68,7 +68,10 @@ export const getStoredCandidateApplications = async (opportunity_id?: string, fo
     try {
       // 1. Primary: Use Express Backend API (pruned explicit fields, low bandwidth)
       try {
-        const res = await opportunityApplicationApi.getAll(opportunity_id);
+        const res = await opportunityApplicationApi.getAll({
+          opportunity_id: opportunity_id || undefined,
+          include_answers: false,
+        });
         if (res.data && res.data.data && Array.isArray(res.data.data)) {
           const live = res.data.data as CandidateApplication[];
           saveLocalApplications(live);
@@ -78,10 +81,10 @@ export const getStoredCandidateApplications = async (opportunity_id?: string, fo
         console.warn('Backend opportunity applications fetch note. Trying fallback:', err.message);
       }
 
-      // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'))
+      // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'), answers omitted for list)
       if (supabase) {
         try {
-          const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, answers, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
+          const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
           let query = supabase.from('opportunity_applications').select(explicitCols).order('created_at', { ascending: false });
           if (opportunity_id) {
             query = query.eq('opportunity_id', opportunity_id);

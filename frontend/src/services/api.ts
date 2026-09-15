@@ -180,8 +180,34 @@ export const opportunityApi = {
 };
 
 // Candidate Opportunity Applications APIs
+export interface OpportunityApplicationQueryParams {
+  opportunity_id?: string;
+  page?: number;
+  pageSize?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  include_answers?: boolean | string;
+}
+
 export const opportunityApplicationApi = {
-  getAll: (opportunity_id?: string) => api.get('/opportunity-applications', { params: { opportunity_id } }),
+  getAll: (params?: string | OpportunityApplicationQueryParams) => {
+    const queryParams: Record<string, any> = {};
+    if (typeof params === 'string') {
+      if (params) queryParams.opportunity_id = params;
+    } else if (params && typeof params === 'object') {
+      if (params.opportunity_id !== undefined && params.opportunity_id !== null) queryParams.opportunity_id = params.opportunity_id;
+      if (params.page !== undefined && params.page !== null) queryParams.page = params.page;
+      if (params.pageSize !== undefined && params.pageSize !== null) queryParams.pageSize = params.pageSize;
+      if (params.limit !== undefined && params.limit !== null) queryParams.limit = params.limit;
+      if (params.search !== undefined && params.search !== null && params.search !== '') queryParams.search = params.search;
+      if (params.status !== undefined && params.status !== null && params.status !== '') queryParams.status = params.status;
+      if (params.include_answers !== undefined && params.include_answers !== null) {
+        queryParams.include_answers = String(params.include_answers);
+      }
+    }
+    return api.get('/opportunity-applications', { params: queryParams });
+  },
   getById: (id: string) => api.get(`/opportunity-applications/${id}`),
   checkDuplicate: (opportunity_id: string, email: string) =>
     api.get('/opportunity-applications/check-duplicate', { params: { opportunity_id, email } }),
