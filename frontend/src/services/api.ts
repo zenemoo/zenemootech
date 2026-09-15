@@ -679,16 +679,18 @@ export const bookingApi = {
 
 // ZENEMOO Google Group Management API
 export const googleGroupApi = {
-  getOverview: () =>
-    deduplicatedGet('/admin/google-group/overview'),
-  getMembers: () =>
-    deduplicatedGet('/admin/google-group/members'),
+  getOverview: (params?: { forceRefresh?: boolean }) =>
+    api.get('/admin/google-group/overview', { params }),
+  getPendingMembers: (params?: { page?: number; pageSize?: number; search?: string; forceRefresh?: boolean }) =>
+    api.get('/admin/google-group/pending', { params }),
+  getMembers: (params?: { page?: number; pageSize?: number; search?: string; originFilter?: string; forceRefresh?: boolean }) =>
+    api.get('/admin/google-group/members', { params }),
   getExclusions: () =>
     deduplicatedGet('/admin/google-group/exclusions'),
   restoreExclusion: (email: string) =>
     api.delete(`/admin/google-group/exclusions/${encodeURIComponent(email)}`),
-  triggerSync: () =>
-    api.post('/admin/google-group/sync'),
+  triggerSync: (data?: { limit?: number; emails?: string[] }) =>
+    api.post('/admin/google-group/sync', data),
   getSyncStatus: () =>
     api.get('/admin/google-group/sync-status'),
   removeMember: (email: string) =>

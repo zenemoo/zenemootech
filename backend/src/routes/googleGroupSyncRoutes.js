@@ -4,6 +4,7 @@ import {
   getEligibleCommunityEmails,
   getGoogleGroupOverview,
   getGoogleGroupMembers,
+  getPendingCommunityEmails,
   getGoogleGroupExclusions,
   restoreGoogleGroupExclusion,
   triggerGoogleGroupSync,
@@ -81,6 +82,9 @@ router.get('/eligible-emails', requireSyncAuth, getEligibleCommunityEmails);
 
 // Member listing with sync status
 router.get('/members', requireSyncAuth, getGoogleGroupMembers);
+
+// Pending candidate emails with server-side pagination (10 per page)
+router.get('/pending', requireSyncAuth, getPendingCommunityEmails);
 
 // Excluded emails listing
 router.get('/exclusions', requireSyncAuth, getGoogleGroupExclusions);

@@ -188,7 +188,7 @@ export const googleAppsScriptService = {
   },
 
   // Google Group Management Operations
-  getGoogleGroupMembers: async (groupEmail) => {
+  getGoogleGroupMembers: async (groupEmail, forceRefresh = false) => {
     const targetUrl = process.env.GOOGLE_GROUP_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
     const secret = process.env.GOOGLE_GROUP_SYNC_SECRET || APPS_SCRIPT_SECRET;
     if (!targetUrl) {
@@ -198,7 +198,8 @@ export const googleAppsScriptService = {
     try {
       const emailParam = groupEmail || process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
       const separator = targetUrl.includes('?') ? '&' : '?';
-      const requestUrl = `${targetUrl}${separator}action=getGroupMembers&groupEmail=${encodeURIComponent(emailParam)}&secret=${encodeURIComponent(secret)}`;
+      const refreshParam = forceRefresh ? '&forceRefresh=true' : '';
+      const requestUrl = `${targetUrl}${separator}action=getGroupMembers&groupEmail=${encodeURIComponent(emailParam)}&secret=${encodeURIComponent(secret)}${refreshParam}`;
 
       const res = await fetch(requestUrl, {
         method: 'GET',

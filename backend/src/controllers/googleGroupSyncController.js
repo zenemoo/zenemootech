@@ -169,11 +169,12 @@ let lastKnownState = {
 export const getGoogleGroupOverview = async (req, res, next) => {
   try {
     const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
 
     // 1. Fetch Supabase eligible emails in parallel with Google Group live members and persistent exclusions
     const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
-      googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
+      googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail, forceRefresh),
       googleAppsScriptService.getGoogleGroupExclusions(),
     ]);
 
@@ -207,11 +208,13 @@ export const getGoogleGroupOverview = async (req, res, next) => {
       connectionStatus = appsScriptMembersResult.message?.includes('not configured') ? 'NOT_CONFIGURED' : 'DISCONNECTED';
     }
 
-    const groupMemberEmailSet = new Set(groupMembers.map((m) => m.email.toLowerCase()));
+    const groupMemberEmailSet = new Set(
+      groupMembers.map((m) => normalizeAndValidateEmail(typeof m === 'string' ? m : m?.email)).filter(Boolean)
+    );
 
     const exclusions = Array.isArray(appsScriptExclusionsResult.exclusions) ? appsScriptExclusionsResult.exclusions : [];
     const excludedEmailSet = new Set(
-      exclusions.map((item) => normalizeAndValidateEmail(item.email || item)).filter(Boolean)
+      exclusions.map((item) => normalizeAndValidateEmail(typeof item === 'string' ? item : item?.email)).filter(Boolean)
     );
 
     // 3. Compute intersection (synced), excluded, and diff (pending)
@@ -256,16 +259,132 @@ export const getGoogleGroupOverview = async (req, res, next) => {
 };
 
 /**
+ * GET /api/admin/google-group/pending
+ * Server-side paginated list of eligible candidates pending addition into Google Group
+ * Returns 10 records per page by default to strictly protect Supabase egress & bandwidth
+ */
+export const getPendingCommunityEmails = async (req, res, next) => {
+  try {
+    const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
+
+    // Parse pagination parameters
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize, 10) || 10));
+    const searchQuery = (req.query.search || '').trim().toLowerCase();
+
+    // 1. Fetch eligible emails (strictly explicit columns) in parallel with group members and exclusions
+    const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
+      fetchEligibleEmailsFromSupabase(),
+      googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail, forceRefresh),
+      googleAppsScriptService.getGoogleGroupExclusions(),
+    ]);
+
+    const eligibleEmailSet = supabaseResult.emailSet || new Set();
+    const emailSourcesMap = supabaseResult.emailSourcesMap || new Map();
+
+    // 2. Resolve live or last known Google Group members
+    let groupMembers = [];
+    if (appsScriptMembersResult.success && Array.isArray(appsScriptMembersResult.members)) {
+      lastKnownState.quotaExceeded = false;
+      lastKnownState.members = appsScriptMembersResult.members;
+      lastKnownState.memberCount = appsScriptMembersResult.members.length;
+      lastKnownState.lastFetchedAt = new Date().toISOString();
+      groupMembers = appsScriptMembersResult.members;
+    } else if (appsScriptMembersResult.code === 'GROUP_READ_QUOTA_EXCEEDED' || appsScriptMembersResult.status === 'QUOTA_EXCEEDED') {
+      lastKnownState.quotaExceeded = true;
+      groupMembers = lastKnownState.members;
+    } else {
+      groupMembers = lastKnownState.members;
+    }
+
+    const groupMemberEmailSet = new Set(
+      groupMembers.map((m) => normalizeAndValidateEmail(typeof m === 'string' ? m : m?.email)).filter(Boolean)
+    );
+
+    const exclusions = Array.isArray(appsScriptExclusionsResult?.exclusions) ? appsScriptExclusionsResult.exclusions : [];
+    const excludedEmailSet = new Set(
+      exclusions.map((item) => normalizeAndValidateEmail(typeof item === 'string' ? item : item?.email)).filter(Boolean)
+    );
+
+    // 3. Compute pending candidates list
+    const allPending = [];
+    for (const email of eligibleEmailSet) {
+      if (!groupMemberEmailSet.has(email) && !excludedEmailSet.has(email)) {
+        const sourcesSet = emailSourcesMap.get(email);
+        const sources = sourcesSet ? Array.from(sourcesSet) : [];
+        allPending.push({
+          email,
+          sources,
+        });
+      }
+    }
+
+    // Sort alphabetically by email for stable pagination
+    allPending.sort((a, b) => a.email.localeCompare(b.email));
+
+    // 4. Apply search filter if provided
+    let filteredPending = allPending;
+    if (searchQuery) {
+      filteredPending = allPending.filter((item) => {
+        return (
+          item.email.includes(searchQuery) ||
+          item.sources.some((s) => s.toLowerCase().includes(searchQuery))
+        );
+      });
+    }
+
+    // 5. Server-side pagination slice
+    const total = filteredPending.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const clampedPage = Math.min(page, totalPages);
+    const startIndex = (clampedPage - 1) * pageSize;
+    const paginatedData = filteredPending.slice(startIndex, startIndex + pageSize);
+
+    return res.status(200).json({
+      success: true,
+      data: paginatedData,
+      pagination: {
+        page: clampedPage,
+        pageSize,
+        total,
+        totalPages,
+        hasNext: clampedPage < totalPages,
+        hasPrevious: clampedPage > 1,
+      },
+      summary: {
+        totalEligible: eligibleEmailSet.size,
+        alreadyInGroup: groupMemberEmailSet.size,
+        excluded: excludedEmailSet.size,
+        pending: allPending.length,
+      },
+      targetGroupEmail,
+      quotaExceeded: lastKnownState.quotaExceeded,
+    });
+  } catch (err) {
+    console.error('getPendingCommunityEmails error:', err);
+    next(err);
+  }
+};
+
+/**
  * GET /api/admin/google-group/members
- * Searchable, tagged member list endpoint for Admin Panel
+ * Searchable, tagged member list endpoint for Admin Panel with server-side pagination
  */
 export const getGoogleGroupMembers = async (req, res, next) => {
   try {
     const targetGroupEmail = process.env.GOOGLE_GROUP_EMAIL || 'zenemoocommunity@googlegroups.com';
+    const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
+
+    // Parse pagination parameters
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 10));
+    const searchQuery = (req.query.search || '').trim().toLowerCase();
+    const originFilter = (req.query.originFilter || req.query.filter || 'all').toLowerCase();
 
     const [supabaseResult, appsScriptResult, exclusionsResult] = await Promise.all([
       fetchEligibleEmailsFromSupabase(),
-      googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail),
+      googleAppsScriptService.getGoogleGroupMembers(targetGroupEmail, forceRefresh),
       googleAppsScriptService.getGoogleGroupExclusions(),
     ]);
 
@@ -321,11 +440,46 @@ export const getGoogleGroupMembers = async (req, res, next) => {
       };
     });
 
+    // Apply filtering
+    let filteredMembers = enrichedMembers;
+    if (originFilter === 'synced') {
+      filteredMembers = filteredMembers.filter((m) => m.isSupabaseEligible);
+    } else if (originFilter === 'external') {
+      filteredMembers = filteredMembers.filter((m) => !m.isSupabaseEligible);
+    }
+
+    if (searchQuery) {
+      filteredMembers = filteredMembers.filter((m) => {
+        const matchesEmail = m.email.toLowerCase().includes(searchQuery);
+        const matchesRole = (m.role || '').toLowerCase().includes(searchQuery);
+        const matchesStatus = (m.status || '').toLowerCase().includes(searchQuery);
+        const matchesDelivery = (m.deliverySettings || '').toLowerCase().includes(searchQuery);
+        const matchesSources = (m.sources || []).some((s) => s.toLowerCase().includes(searchQuery));
+        return matchesEmail || matchesRole || matchesStatus || matchesDelivery || matchesSources;
+      });
+    }
+
+    // Server-side pagination
+    const total = filteredMembers.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const clampedPage = Math.min(page, totalPages);
+    const startIndex = (clampedPage - 1) * pageSize;
+    const paginatedMembers = filteredMembers.slice(startIndex, startIndex + pageSize);
+
     return res.status(200).json({
       success: true,
       targetGroupEmail,
-      count: enrichedMembers.length || lastKnownState.memberCount,
-      members: enrichedMembers,
+      count: total,
+      totalCount: enrichedMembers.length || lastKnownState.memberCount,
+      members: paginatedMembers,
+      pagination: {
+        page: clampedPage,
+        pageSize,
+        total,
+        totalPages,
+        hasNext: clampedPage < totalPages,
+        hasPrevious: clampedPage > 1,
+      },
       connected: appsScriptResult.success || isQuotaExceeded,
       quotaExceeded: isQuotaExceeded,
       status: isQuotaExceeded ? 'QUOTA_EXCEEDED' : (appsScriptResult.success ? 'ONLINE' : 'DEGRADED'),
@@ -444,7 +598,7 @@ let currentSyncJob = {
  * 5. Aborts safely if initial member read fails.
  * 6. Accurately tracks processed candidates, remaining pending, and failure details.
  */
-const executeBackgroundSync = async (user, targetGroupEmail) => {
+const executeBackgroundSync = async (user, targetGroupEmail, options = {}) => {
   try {
     // 1. Fetch current eligible database emails, current group members (ONCE), and exclusions
     const [supabaseResult, appsScriptMembersResult, appsScriptExclusionsResult] = await Promise.all([
@@ -518,10 +672,20 @@ const executeBackgroundSync = async (user, targetGroupEmail) => {
       return;
     }
 
-    // Safety limit per run: up to 100 candidates processed in safe chunks of 25
-    const MAX_SYNC_LIMIT = 100;
-    const candidatesToProcess = missingCandidates.slice(0, MAX_SYNC_LIMIT);
-    const BATCH_SIZE = 25;
+    // Safety limit per run: safe chunks of 10 candidates per batch
+    const candidateLimit = (options && options.limit) ? Math.min(100, Math.max(1, parseInt(options.limit, 10))) : 100;
+    let candidatesToProcess = missingCandidates.slice(0, candidateLimit);
+
+    // If explicit emails were supplied in options (e.g. current 10 visible page candidates), prioritize them
+    if (options && Array.isArray(options.emails) && options.emails.length > 0) {
+      const explicitSet = new Set(options.emails.map((e) => normalizeAndValidateEmail(e)).filter(Boolean));
+      const filteredExplicit = missingCandidates.filter((e) => explicitSet.has(e));
+      if (filteredExplicit.length > 0) {
+        candidatesToProcess = filteredExplicit.slice(0, 10);
+      }
+    }
+
+    const BATCH_SIZE = 10;
     const totalBatches = Math.ceil(candidatesToProcess.length / BATCH_SIZE);
 
     currentSyncJob.totalCandidates = candidatesToProcess.length;
@@ -681,7 +845,11 @@ export const triggerGoogleGroupSync = async (req, res, next) => {
     };
 
     // 3. Kick off background execution asynchronously (non-blocking)
-    executeBackgroundSync(req.user, targetGroupEmail);
+    const syncOptions = {
+      limit: req.body?.limit,
+      emails: req.body?.emails,
+    };
+    executeBackgroundSync(req.user, targetGroupEmail, syncOptions);
 
     return res.status(200).json({
       success: true,
