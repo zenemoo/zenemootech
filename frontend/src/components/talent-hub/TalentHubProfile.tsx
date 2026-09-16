@@ -183,14 +183,20 @@ export const TalentHubProfile: React.FC = () => {
               </p>
             </div>
             <div>
-              <span className="text-slate-500 uppercase tracking-wider text-[10px] font-mono">State</span>
+              <span className="text-slate-500 uppercase tracking-wider text-[10px] font-mono">Country / Region</span>
+              <p className="text-sm font-medium text-slate-200 mt-0.5">{talentProfile.country || 'India'}</p>
+            </div>
+            <div>
+              <span className="text-slate-500 uppercase tracking-wider text-[10px] font-mono">
+                {(talentProfile.country || 'India').toLowerCase() === 'india' ? 'State / UT' : 'State / Province / Region'}
+              </span>
               <p className="text-sm font-medium text-slate-200 mt-0.5">{talentProfile.state || '—'}</p>
             </div>
             <div>
-              <span className="text-slate-500 uppercase tracking-wider text-[10px] font-mono">City / District</span>
+              <span className="text-slate-500 uppercase tracking-wider text-[10px] font-mono">City / District / Locality</span>
               <p className="text-sm font-medium text-slate-200 mt-0.5">{talentProfile.city_district || '—'}</p>
             </div>
-            <div className="sm:col-span-2">
+            <div>
               <span className="text-slate-500 uppercase tracking-wider text-[10px] font-mono">Preferred Contact Channel</span>
               <p className="text-sm font-medium text-slate-200 mt-0.5">{talentProfile.preferred_contact || 'WhatsApp'}</p>
             </div>

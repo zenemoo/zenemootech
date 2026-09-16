@@ -15,6 +15,7 @@ import {
   Save,
 } from 'lucide-react';
 import { talentRegistrationApi } from '../services/api';
+import { COUNTRIES, getCountryByName } from '../utils/countryData';
 
 interface AdminCandidateEditModalProps {
   candidate: any;
@@ -30,6 +31,8 @@ export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = (
   const [fullName, setFullName] = useState<string>(candidate.full_name || '');
   const [email, setEmail] = useState<string>(candidate.email || '');
   const [phone, setPhone] = useState<string>(candidate.phone || '');
+  const [country, setCountry] = useState<string>(candidate.country || 'India');
+  const [customCountryName, setCustomCountryName] = useState<string>('');
   const [countryCode, setCountryCode] = useState<string>(candidate.country_code || '+91');
   const [gender, setGender] = useState<string>(candidate.gender || 'Male');
   const [state, setState] = useState<string>(candidate.state || '');
@@ -38,6 +41,17 @@ export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = (
   const [primaryRole, setPrimaryRole] = useState<string>(candidate.primary_role || 'Individual Participant');
   const [availability, setAvailability] = useState<string>(candidate.availability || 'Immediately');
   const [workingPreference, setWorkingPreference] = useState<string>(candidate.working_preference || 'Project Basis');
+
+  const handleCountryChange = (selectedCountryName: string) => {
+    setCountry(selectedCountryName);
+    if (selectedCountryName === 'Other') {
+      return;
+    }
+    const found = getCountryByName(selectedCountryName);
+    if (found && found.dialCode) {
+      setCountryCode(found.dialCode);
+    }
+  };
 
   // Work capabilities string list
   const [workCapabilities, setWorkCapabilities] = useState<string[]>(candidate.work_capabilities || []);
@@ -85,10 +99,12 @@ export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = (
     setErrorMsg('');
 
     try {
+      const resolvedCountry = country === 'Other' ? customCountryName.trim() : country.trim();
       const payload = {
         full_name: fullName.trim(),
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
+        country: resolvedCountry,
         country_code: countryCode.trim(),
         gender,
         state: state.trim(),
@@ -204,21 +220,53 @@ export const AdminCandidateEditModal: React.FC<AdminCandidateEditModalProps> = (
               </div>
 
               <div className="space-y-1">
-                <label className="text-slate-400 block text-[11px]">State *</label>
+                <label className="text-slate-400 block text-[11px]">Country / Region *</label>
+                <select
+                  value={country}
+                  onChange={(e) => handleCountryChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.name}>
+                      {c.flag} {c.name} {c.dialCode ? `(${c.dialCode})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {country === 'Other' && (
+                <div className="space-y-1">
+                  <label className="text-slate-400 block text-[11px]">Custom Country Name *</label>
+                  <input
+                    type="text"
+                    value={customCountryName}
+                    onChange={(e) => setCustomCountryName(e.target.value)}
+                    placeholder="Enter country name"
+                    className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-slate-400 block text-[11px]">
+                  {country === 'India' ? 'State / UT' : 'State / Province / Region'}
+                </label>
                 <input
                   type="text"
                   value={state}
                   onChange={(e) => setState(e.target.value)}
+                  placeholder={country === 'India' ? 'e.g. Odisha' : 'e.g. California, Gyeonggi-do'}
                   className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-slate-400 block text-[11px]">City / District *</label>
+                <label className="text-slate-400 block text-[11px]">City / District / Locality *</label>
                 <input
                   type="text"
                   value={cityDistrict}
                   onChange={(e) => setCityDistrict(e.target.value)}
+                  placeholder="e.g. Bhubaneswar, Los Angeles"
                   className="w-full px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400"
                 />
               </div>

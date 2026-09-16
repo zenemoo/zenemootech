@@ -910,6 +910,7 @@ export const updateTalentProfile = async (req, res) => {
       full_name,
       gender,
       phone,
+      country = 'India',
       country_code,
       state,
       city_district,
@@ -926,6 +927,9 @@ export const updateTalentProfile = async (req, res) => {
       experiences,
     } = body;
 
+    const normalizedCountry = (country || 'India').trim();
+    const isIndia = normalizedCountry.toLowerCase() === 'india';
+
     // 1. Validate required fields
     if (!full_name || !String(full_name).trim()) {
       return res.status(400).json({ success: false, message: 'Full name is required.' });
@@ -933,11 +937,11 @@ export const updateTalentProfile = async (req, res) => {
     if (!phone || !String(phone).trim()) {
       return res.status(400).json({ success: false, message: 'Phone number is required.' });
     }
-    if (!state || !String(state).trim()) {
-      return res.status(400).json({ success: false, message: 'State selection is required.' });
+    if (isIndia && (!state || !String(state).trim())) {
+      return res.status(400).json({ success: false, message: 'State selection is required for India.' });
     }
     if (!city_district || !String(city_district).trim()) {
-      return res.status(400).json({ success: false, message: 'City / District is required.' });
+      return res.status(400).json({ success: false, message: 'City / District / Locality is required.' });
     }
     if (!primary_role || !String(primary_role).trim()) {
       return res.status(400).json({ success: false, message: 'Primary role selection is required.' });
@@ -975,10 +979,13 @@ export const updateTalentProfile = async (req, res) => {
     if (phone && phone.trim() !== (oldRecord.phone || '').trim()) {
       changedFields.push(`Phone ("${oldRecord.phone || ''}" -> "${phone.trim()}")`);
     }
+    if (normalizedCountry !== (oldRecord.country || 'India')) {
+      changedFields.push(`Country ("${oldRecord.country || 'India'}" -> "${normalizedCountry}")`);
+    }
     if (gender && gender !== oldRecord.gender) {
       changedFields.push(`Gender ("${oldRecord.gender || ''}" -> "${gender}")`);
     }
-    if (state && state.trim() !== (oldRecord.state || '').trim()) {
+    if (state !== undefined && state.trim() !== (oldRecord.state || '').trim()) {
       changedFields.push(`State ("${oldRecord.state || ''}" -> "${state.trim()}")`);
     }
     if (city_district && city_district.trim() !== (oldRecord.city_district || '').trim()) {
@@ -1013,8 +1020,9 @@ export const updateTalentProfile = async (req, res) => {
       full_name: full_name.trim(),
       gender: gender || oldRecord.gender || 'Male',
       phone: phone.trim(),
+      country: normalizedCountry,
       country_code: country_code ? country_code.trim() : (oldRecord.country_code || '+91'),
-      state: state.trim(),
+      state: state !== undefined ? state.trim() : (oldRecord.state || ''),
       city_district: city_district.trim(),
       preferred_contact: preferred_contact || oldRecord.preferred_contact || 'WhatsApp',
       primary_role: primary_role.trim(),

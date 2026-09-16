@@ -74,11 +74,13 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'registration_code', label: 'Registration ID' },
       { key: 'full_name', label: 'Candidate Name' },
       { key: 'email', label: 'Email Address' },
+      { key: 'country', label: 'Country / Region' },
+      { key: 'country_code', label: 'Country Code' },
       { key: 'phone', label: 'Phone Number' },
       { key: 'primary_role', label: 'Primary Role' },
       { key: 'languages', label: 'Languages & Capacity' },
-      { key: 'state', label: 'State' },
-      { key: 'city_district', label: 'City / District' },
+      { key: 'state', label: 'State / Province' },
+      { key: 'city_district', label: 'City / District / Locality' },
       { key: 'work_capabilities', label: 'Work Capabilities' },
       { key: 'availability', label: 'Availability' },
       { key: 'capacity', label: 'Capacity' },
@@ -100,11 +102,13 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'registration_code', label: 'Registration ID' },
       { key: 'full_name', label: 'Candidate Name' },
       { key: 'email', label: 'Email' },
+      { key: 'country', label: 'Country' },
+      { key: 'country_code', label: 'Code' },
       { key: 'phone', label: 'Phone' },
       { key: 'primary_role', label: 'Role' },
       { key: 'languages', label: 'Languages' },
-      { key: 'state', label: 'State' },
-      { key: 'city_district', label: 'City / District' },
+      { key: 'state', label: 'State / Province' },
+      { key: 'city_district', label: 'City / District / Locality' },
       { key: 'work_capabilities', label: 'Work Capabilities' },
       { key: 'availability', label: 'Availability' },
       { key: 'status', label: 'Status' },
@@ -118,11 +122,13 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'registration_code', label: 'Registration ID' },
       { key: 'full_name', label: 'Candidate Name' },
       { key: 'email', label: 'Email' },
+      { key: 'country', label: 'Country' },
+      { key: 'country_code', label: 'Country Code' },
       { key: 'phone', label: 'Phone' },
       { key: 'primary_role', label: 'Role' },
       { key: 'languages', label: 'Languages' },
-      { key: 'state', label: 'State' },
-      { key: 'city_district', label: 'City / District' },
+      { key: 'state', label: 'State / Province' },
+      { key: 'city_district', label: 'City / District / Locality' },
       { key: 'work_capabilities', label: 'Work Capabilities' },
       { key: 'availability', label: 'Availability' },
       { key: 'capacity', label: 'Capacity' },
@@ -318,11 +324,22 @@ export function formatFieldValue(row: Record<string, any>, colKey: string): stri
       val = row.sync_status || row.sheet_sync || 'synced';
     } else if (colKey === 'work_capabilities') {
       val = row.work_capabilities || row.workCapabilities;
+    } else if (colKey === 'country') {
+      val = row.country || 'India';
+    } else if (colKey === 'country_code') {
+      val = row.country_code || row.countryCode || '+91';
     } else if (colKey === 'city_district') {
-      val = [row.city, row.district].filter(Boolean).join(', ');
+      val = [row.city, row.district].filter(Boolean).join(', ') || row.city_district;
     } else if (colKey === 'location') {
-      val = [row.city_district || row.city, row.state].filter(Boolean).join(', ');
+      val = [row.city_district || row.city, row.state, row.country || 'India'].filter(Boolean).join(', ');
     }
+  }
+
+  if (colKey === 'country' && (val === undefined || val === null || val === '')) {
+    val = 'India';
+  }
+  if (colKey === 'country_code' && (val === undefined || val === null || val === '')) {
+    val = '+91';
   }
 
   if (val === undefined || val === null) return '';

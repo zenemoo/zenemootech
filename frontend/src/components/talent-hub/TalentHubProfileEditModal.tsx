@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import { talentHubApi } from '../../services/talentHubApi';
+import { COUNTRIES, getCountryByName } from '../../utils/countryData';
 
 interface TalentHubProfileEditModalProps {
   onClose: () => void;
@@ -123,10 +124,25 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
   const [fullName, setFullName] = useState<string>(talentProfile?.full_name || '');
   const [gender, setGender] = useState<string>(talentProfile?.gender || 'Male');
   const [phone, setPhone] = useState<string>(talentProfile?.phone || '');
+  const [country, setCountry] = useState<string>(talentProfile?.country || 'India');
+  const [customCountryName, setCustomCountryName] = useState<string>('');
   const [countryCode, setCountryCode] = useState<string>(talentProfile?.country_code || '+91');
   const [state, setState] = useState<string>(talentProfile?.state || '');
   const [cityDistrict, setCityDistrict] = useState<string>(talentProfile?.city_district || '');
   const [preferredContact, setPreferredContact] = useState<string>(talentProfile?.preferred_contact || 'WhatsApp');
+
+  const handleCountryChange = (selectedCountryName: string) => {
+    setCountry(selectedCountryName);
+    if (selectedCountryName === 'Other') {
+      setState('');
+      return;
+    }
+    const found = getCountryByName(selectedCountryName);
+    if (found && found.dialCode) {
+      setCountryCode(found.dialCode);
+    }
+    setState('');
+  };
 
   // Form State: Professional
   const [primaryRole, setPrimaryRole] = useState<string>(talentProfile?.primary_role || 'Individual Participant');
@@ -469,14 +485,17 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
     if (!fullName.trim()) {
       return triggerValidationError('Full Name is required.', 'edit-field-fullName', 'personal');
     }
+    if (country === 'Other' && !customCountryName.trim()) {
+      return triggerValidationError('Country Name is required.', 'edit-field-customCountry', 'personal');
+    }
     if (!phone.trim()) {
       return triggerValidationError('Phone number is required.', 'edit-field-phone', 'personal');
     }
-    if (!state.trim()) {
-      return triggerValidationError('State is required.', 'edit-field-state', 'personal');
+    if (country === 'India' && !state.trim()) {
+      return triggerValidationError('State selection is required for India.', 'edit-field-state', 'personal');
     }
     if (!cityDistrict.trim()) {
-      return triggerValidationError('City / District is required.', 'edit-field-city', 'personal');
+      return triggerValidationError('City / District / Locality is required.', 'edit-field-city', 'personal');
     }
     if (!primaryRole.trim()) {
       return triggerValidationError('Primary Role is required.', 'edit-field-role', 'professional');
@@ -510,10 +529,12 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
     setIsSaving(true);
 
     try {
+      const resolvedCountry = country === 'Other' ? customCountryName.trim() : country.trim();
       const payload = {
         full_name: fullName.trim(),
         gender,
         phone: phone.trim(),
+        country: resolvedCountry,
         country_code: countryCode.trim(),
         state: state.trim(),
         city_district: cityDistrict.trim(),
@@ -832,17 +853,53 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                         </select>
                       </div>
 
-                      {/* State */}
+                      {/* Country / Region */}
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="text-slate-300 font-bold block text-xs">Country / Region *</label>
+                        <select
+                          value={country}
+                          onChange={(e) => handleCountryChange(e.target.value)}
+                          className="w-full px-3.5 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                        >
+                          {COUNTRIES.map((c) => (
+                            <option key={c.code} value={c.name}>
+                              {c.flag} {c.name} {c.dialCode ? `(${c.dialCode})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {country === 'Other' && (
+                        <div id="edit-field-customCountry" className="space-y-1 sm:col-span-2">
+                          <label className="text-slate-300 font-bold block text-xs">Country Name *</label>
+                          <input
+                            type="text"
+                            value={customCountryName}
+                            onChange={(e) => setCustomCountryName(e.target.value)}
+                            placeholder="Enter your country name"
+                            className="w-full px-3.5 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                      )}
+
+                      {/* State / Province / Region */}
                       <div id="edit-field-state" className="space-y-1">
-                        <label className="text-slate-300 font-bold block text-xs">State / UT *</label>
-                        {indianStates.length > 0 ? (
+                        <label className="text-slate-300 font-bold block text-xs">
+                          {country === 'India' ? 'State / UT *' : 'State / Province / Region (Optional)'}
+                        </label>
+                        {country === 'India' ? (
                           <select
                             value={state}
                             onChange={(e) => setState(e.target.value)}
                             className="w-full px-3.5 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
                           >
                             <option value="">Select State</option>
-                            {indianStates.map((s) => (
+                            {(indianStates.length > 0 ? indianStates : [
+                              'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Delhi (NCT)', 'Goa',
+                              'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jammu and Kashmir', 'Jharkhand', 'Karnataka', 'Kerala',
+                              'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+                              'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal'
+                            ]).map((s) => (
                               <option key={s} value={s}>
                                 {s}
                               </option>
@@ -853,20 +910,20 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                             type="text"
                             value={state}
                             onChange={(e) => setState(e.target.value)}
-                            placeholder="e.g. Odisha, Karnataka"
+                            placeholder="Enter state, province, or region"
                             className="w-full px-3.5 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
                           />
                         )}
                       </div>
 
-                      {/* City / District */}
+                      {/* City / District / Locality */}
                       <div id="edit-field-city" className="space-y-1">
-                        <label className="text-slate-300 font-bold block text-xs">City / District *</label>
+                        <label className="text-slate-300 font-bold block text-xs">City / District / Locality *</label>
                         <input
                           type="text"
                           value={cityDistrict}
                           onChange={(e) => setCityDistrict(e.target.value)}
-                          placeholder="e.g. Bhubaneswar, Bangalore"
+                          placeholder="e.g. Bhubaneswar, London, Seoul"
                           className="w-full px-3.5 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400"
                         />
                       </div>

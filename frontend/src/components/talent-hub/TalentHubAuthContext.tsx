@@ -13,6 +13,7 @@ export interface TalentProfile {
   gender: string;
   email: string;
   phone: string;
+  country?: string;
   country_code: string;
   state: string;
   city_district: string;

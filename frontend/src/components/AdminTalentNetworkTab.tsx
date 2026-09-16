@@ -47,6 +47,7 @@ import { AdminLanguageManagement } from './AdminLanguageManagement';
 import { AdminCandidateEditModal } from './AdminCandidateEditModal';
 import { ExportModal } from './ExportModal';
 import { formatLanguageDisplayName, normalizeLanguageKey } from '../utils/languageUtils';
+import { COUNTRIES } from '../utils/countryData';
 
 const INDIAN_STATES_UT = [
   'All States',
@@ -258,6 +259,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('All Languages');
+  const [selectedCountry, setSelectedCountry] = useState<string>('All Countries');
   const [selectedState, setSelectedState] = useState<string>('All States');
   const [selectedRole, setSelectedRole] = useState<string>('All Roles');
   const [selectedWorkType, setSelectedWorkType] = useState<string>('All Work Types');
@@ -298,6 +300,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
         pageSize: pageSize,
         search: searchQuery.trim(),
         language: selectedLanguage === 'All Languages' ? '' : selectedLanguage,
+        country: selectedCountry === 'All Countries' ? '' : selectedCountry,
         state: selectedState === 'All States' ? '' : selectedState,
         role: selectedRole === 'All Roles' ? '' : selectedRole,
         workType: selectedWorkType === 'All Work Types' ? '' : selectedWorkType,
@@ -793,6 +796,20 @@ export const AdminTalentNetworkTab: React.FC = () => {
             ))}
           </select>
 
+          {/* Country Selector */}
+          <select
+            value={selectedCountry}
+            onChange={(e) => setSelectedCountry(e.target.value)}
+            className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+          >
+            <option value="All Countries">All Countries</option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.name}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </select>
+
           {/* State Selector */}
           <select
             value={selectedState}
@@ -1111,8 +1128,8 @@ export const AdminTalentNetworkTab: React.FC = () => {
                         </td>
 
                         <td className="p-4 text-[11px]">
-                          <div>{item.state}</div>
-                          <div className="text-slate-500">{item.city_district}</div>
+                          <div className="font-semibold text-white">{item.country || 'India'}</div>
+                          <div className="text-slate-400">{[item.city_district, item.state].filter(Boolean).join(', ') || '—'}</div>
                         </td>
 
                         <td className="p-4 text-[11px]">
@@ -1460,8 +1477,9 @@ export const AdminTalentNetworkTab: React.FC = () => {
                   <div>Gender: <span className="text-cyan-300 font-bold">{selectedCandidate.gender || 'Male'}</span></div>
                   <div>Email Address: <span className="text-white font-bold">{selectedCandidate.email}</span></div>
                   <div>Phone / WhatsApp: <span className="text-cyan-300 font-bold">{selectedCandidate.country_code || '+91'} {selectedCandidate.phone}</span></div>
-                  <div>State / UT: <span className="text-white font-bold">{selectedCandidate.state}</span></div>
-                  <div>City / District: <span className="text-white font-bold">{selectedCandidate.city_district}</span></div>
+                  <div>Country: <span className="text-white font-bold">{selectedCandidate.country || 'India'}</span></div>
+                  <div>State / Province: <span className="text-white font-bold">{selectedCandidate.state || '—'}</span></div>
+                  <div>City / District: <span className="text-white font-bold">{selectedCandidate.city_district || '—'}</span></div>
                   <div>Preferred Contact: <span className="text-emerald-400 font-bold">{selectedCandidate.preferred_contact}</span></div>
                   <div>Registration Date: <span className="text-slate-300 font-bold">{selectedCandidate.created_at ? new Date(selectedCandidate.created_at).toLocaleDateString('en-IN') : 'N/A'}</span></div>
                 </div>

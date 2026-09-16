@@ -32,6 +32,7 @@ import { talentRegistrationApi } from '../services/api';
 import { SeoImage } from '../seo/components/SeoImage';
 import { TurnstileWidget } from './TurnstileWidget';
 import { ZenemooSupportPortalModal } from './ZenemooFooterModals';
+import { COUNTRIES, getCountryByName } from '../utils/countryData';
 
 interface ZenemooTalentRegistrationPageProps {
   onBack?: () => void;
@@ -321,11 +322,33 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
   const [fullName, setFullName] = useState<string>('');
   const [gender, setGender] = useState<string>('Male');
   const [email, setEmail] = useState<string>('');
+  const [country, setCountry] = useState<string>('India');
+  const [customCountryName, setCustomCountryName] = useState<string>('');
   const [countryCode, setCountryCode] = useState<string>('+91');
+  const [countrySearchQuery, setCountrySearchQuery] = useState<string>('');
+  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState<boolean>(false);
   const [phone, setPhone] = useState<string>('');
   const [state, setState] = useState<string>('');
   const [cityDistrict, setCityDistrict] = useState<string>('');
   const [preferredContact, setPreferredContact] = useState<string>('WhatsApp');
+
+  const handleSelectCountry = (selectedCountryName: string) => {
+    setCountry(selectedCountryName);
+    setIsCountryDropdownOpen(false);
+    setCountrySearchQuery('');
+
+    if (selectedCountryName === 'Other') {
+      setState('');
+      return;
+    }
+
+    const found = getCountryByName(selectedCountryName);
+    if (found && found.dialCode) {
+      setCountryCode(found.dialCode);
+    }
+    // Clear state when switching country
+    setState('');
+  };
 
   // Step 2: Languages & Searchable Multi-Select
   const [selectedLanguageList, setSelectedLanguageList] = useState<string[]>([]);
@@ -498,17 +521,20 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
       if (!fullName.trim()) {
         return triggerValidationError('Please enter your full name.', 'field-fullName');
       }
+      if (country === 'Other' && !customCountryName.trim()) {
+        return triggerValidationError('Please enter your country name.', 'field-customCountryName');
+      }
       if (!email.trim() || !email.includes('@')) {
         return triggerValidationError('Please enter a valid email address.', 'field-email');
       }
       if (!phone.trim()) {
         return triggerValidationError('Please enter your WhatsApp / Phone number.', 'field-phone');
       }
-      if (!state.trim()) {
-        return triggerValidationError('Please select your state.', 'field-state');
+      if (country === 'India' && !state.trim()) {
+        return triggerValidationError('Please select your state / UT.', 'field-state');
       }
       if (!cityDistrict.trim()) {
-        return triggerValidationError('Please enter your city / district.', 'field-cityDistrict');
+        return triggerValidationError('Please enter your city / district / locality.', 'field-cityDistrict');
       }
     }
 
@@ -597,11 +623,13 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
 
     setIsSubmitting(true);
     try {
+      const resolvedCountry = country === 'Other' ? customCountryName.trim() : country.trim();
       const payload = {
         fullName,
         gender,
         email,
         phone,
+        country: resolvedCountry,
         countryCode,
         state,
         cityDistrict,
@@ -921,6 +949,102 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                     </div>
                   </div>
 
+                  {/* Country / Region Selector */}
+                  <div className="space-y-2 relative">
+                    <label className="text-slate-300 font-bold flex items-center justify-between">
+                      <span>Country / Region *</span>
+                      <span className="text-[10px] text-cyan-400 font-normal">Global Support</span>
+                    </label>
+
+                    <div className="relative">
+                      <button
+                        id="field-country"
+                        type="button"
+                        onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+                        className={`w-full px-4 py-3 rounded-xl bg-black/80 border text-white flex items-center justify-between font-mono text-xs focus:outline-none transition-all cursor-pointer ${
+                          highlightedFieldId === 'field-country'
+                            ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                            : 'border-white/15 hover:border-white/30 focus:border-cyan-400'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <span>{COUNTRIES.find((c) => c.name === country)?.flag || '🌐'}</span>
+                          <span className="font-semibold text-white">{country}</span>
+                          {country !== 'Other' && (
+                            <span className="text-cyan-400 text-[11px]">
+                              ({COUNTRIES.find((c) => c.name === country)?.dialCode || countryCode})
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-slate-400 text-[10px]">▼</span>
+                      </button>
+
+                      {isCountryDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#0c101a] border border-cyan-500/30 rounded-2xl shadow-2xl p-2 max-h-64 flex flex-col space-y-2 backdrop-blur-xl">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="text"
+                              value={countrySearchQuery}
+                              onChange={(e) => setCountrySearchQuery(e.target.value)}
+                              placeholder="Search country or code..."
+                              className="w-full pl-8 pr-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                              autoFocus
+                            />
+                          </div>
+
+                          <div className="overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                            {COUNTRIES.filter((c) => {
+                              const q = countrySearchQuery.toLowerCase().trim();
+                              if (!q) return true;
+                              return (
+                                c.name.toLowerCase().includes(q) ||
+                                c.dialCode.toLowerCase().includes(q) ||
+                                c.code.toLowerCase().includes(q)
+                              );
+                            }).map((c) => (
+                              <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => handleSelectCountry(c.name)}
+                                className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between text-xs transition-all cursor-pointer ${
+                                  country === c.name
+                                    ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
+                                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                }`}
+                              >
+                                <span className="flex items-center gap-2 truncate">
+                                  <span>{c.flag}</span>
+                                  <span className="truncate">{c.name}</span>
+                                </span>
+                                <span className="text-[11px] font-mono text-slate-400 ml-2 shrink-0">{c.dialCode}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Custom Country Name if Other is selected */}
+                  {country === 'Other' && (
+                    <div className="space-y-2">
+                      <label className="text-slate-300 font-bold block">Country Name *</label>
+                      <input
+                        id="field-customCountryName"
+                        type="text"
+                        placeholder="Enter your country name"
+                        value={customCountryName}
+                        onChange={(e) => setCustomCountryName(e.target.value)}
+                        className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
+                          highlightedFieldId === 'field-customCountryName'
+                            ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                            : 'border-white/15 focus:border-cyan-400'
+                        }`}
+                      />
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <label className="text-slate-300 font-bold block">Email Address *</label>
                     <input
@@ -940,23 +1064,17 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                   <div className="space-y-2">
                     <label className="text-slate-300 font-bold block">WhatsApp / Phone Number *</label>
                     <div className="flex gap-2">
-                      <select
+                      <input
+                        type="text"
                         value={countryCode}
                         onChange={(e) => setCountryCode(e.target.value)}
-                        className="px-3 py-3 rounded-xl bg-black/80 border border-white/15 text-cyan-300 font-mono focus:outline-none focus:border-cyan-400 shrink-0"
-                      >
-                        <option value="+91">🇮🇳 +91</option>
-                        <option value="+1">🇺🇸 +1</option>
-                        <option value="+44">🇬🇧 +44</option>
-                        <option value="+971">🇦🇪 +971</option>
-                        <option value="+880">🇧🇩 +880</option>
-                        <option value="+977">🇳🇵 +977</option>
-                        <option value="+94">🇱🇰 +94</option>
-                      </select>
+                        placeholder="+91"
+                        className="w-20 px-2 py-3 rounded-xl bg-black/80 border border-white/15 text-cyan-300 font-mono text-center font-bold focus:outline-none focus:border-cyan-400 shrink-0"
+                      />
                       <input
                         id="field-phone"
                         type="tel"
-                        placeholder="9876543210"
+                        placeholder="e.g. 9876543210"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
@@ -968,33 +1086,54 @@ export const ZenemooTalentRegistrationPage: React.FC<ZenemooTalentRegistrationPa
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-slate-300 font-bold block">State *</label>
-                    <select
-                      id="field-state"
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      className={`w-full px-4 py-3 rounded-xl bg-black/80 border text-white focus:outline-none transition-all ${
-                        highlightedFieldId === 'field-state'
-                          ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
-                          : 'border-white/15 focus:border-cyan-400'
-                      }`}
-                    >
-                      <option value="">-- Select Indian State / UT --</option>
-                      {INDIAN_STATES_UT.map((st) => (
-                        <option key={st} value={st}>
-                          {st}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* State / Province / Region - Conditional on Country */}
+                  {country === 'India' ? (
+                    <div className="space-y-2">
+                      <label className="text-slate-300 font-bold block">State / UT *</label>
+                      <select
+                        id="field-state"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className={`w-full px-4 py-3 rounded-xl bg-black/80 border text-white focus:outline-none transition-all ${
+                          highlightedFieldId === 'field-state'
+                            ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                            : 'border-white/15 focus:border-cyan-400'
+                        }`}
+                      >
+                        <option value="">-- Select Indian State / UT --</option>
+                        {INDIAN_STATES_UT.map((st) => (
+                          <option key={st} value={st}>
+                            {st}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="text-slate-300 font-bold block">
+                        State / Province / Region <span className="text-slate-500 font-normal">(Optional)</span>
+                      </label>
+                      <input
+                        id="field-state"
+                        type="text"
+                        placeholder="Enter your state, province, region, or equivalent"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${
+                          highlightedFieldId === 'field-state'
+                            ? 'border-red-500 ring-2 ring-red-500/40 bg-red-950/20'
+                            : 'border-white/15 focus:border-cyan-400'
+                        }`}
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-2">
-                    <label className="text-slate-300 font-bold block">City / District *</label>
+                    <label className="text-slate-300 font-bold block">City / District / Locality *</label>
                     <input
                       id="field-cityDistrict"
                       type="text"
-                      placeholder="e.g. Cuttack / Bhubaneswar / Hyderabad"
+                      placeholder="Enter your city, district, or local area"
                       value={cityDistrict}
                       onChange={(e) => setCityDistrict(e.target.value)}
                       className={`w-full px-4 py-3 rounded-xl bg-black/60 border text-white placeholder-slate-500 focus:outline-none transition-all ${

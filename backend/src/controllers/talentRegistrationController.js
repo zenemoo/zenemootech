@@ -88,6 +88,7 @@ export const registerTalent = async (req, res) => {
       gender = 'Male',
       email,
       phone,
+      country = 'India',
       countryCode = '+91',
       state,
       cityDistrict,
@@ -105,6 +106,9 @@ export const registerTalent = async (req, res) => {
       experiences = [],
     } = req.body;
 
+    const normalizedCountry = (country || 'India').trim();
+    const isIndia = normalizedCountry.toLowerCase() === 'india';
+
     // Required Field Validations
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ success: false, message: 'Full name is required.' });
@@ -118,11 +122,11 @@ export const registerTalent = async (req, res) => {
     if (!phone || !phone.trim()) {
       return res.status(400).json({ success: false, message: 'WhatsApp / Phone number is required.' });
     }
-    if (!state || !state.trim()) {
-      return res.status(400).json({ success: false, message: 'State selection is required.' });
+    if (isIndia && (!state || !state.trim())) {
+      return res.status(400).json({ success: false, message: 'State selection is required for India.' });
     }
     if (!cityDistrict || !cityDistrict.trim()) {
-      return res.status(400).json({ success: false, message: 'City / District is required.' });
+      return res.status(400).json({ success: false, message: 'City / District / Locality is required.' });
     }
     if (!primaryRole || !primaryRole.trim()) {
       return res.status(400).json({ success: false, message: 'Primary role selection is required.' });
@@ -186,8 +190,9 @@ export const registerTalent = async (req, res) => {
       gender: gender.trim(),
       email: normalizedEmail,
       phone: phone.trim(),
-      country_code: countryCode.trim(),
-      state: state.trim(),
+      country: normalizedCountry,
+      country_code: countryCode ? countryCode.trim() : '+91',
+      state: state ? state.trim() : '',
       city_district: cityDistrict.trim(),
       preferred_contact: preferredContact,
       primary_role: primaryRole,
@@ -227,6 +232,7 @@ export const registerTalent = async (req, res) => {
         gender: registrationRecord.gender,
         email: registrationRecord.email,
         phone: registrationRecord.phone,
+        country: registrationRecord.country,
         country_code: registrationRecord.country_code,
         state: registrationRecord.state,
         city_district: registrationRecord.city_district,
@@ -403,8 +409,8 @@ export const registerTalent = async (req, res) => {
                         <td style="padding:6px 0; color:#0284c7; font-weight:700;">${primaryRole}</td>
                       </tr>
                       <tr>
-                        <td style="padding:6px 0; color:#64748b; font-weight:600;">Location:</td>
-                        <td style="padding:6px 0; color:#0f172a; font-weight:700;">${state.trim()}, ${cityDistrict.trim()}</td>
+                        <td width="38%" style="padding:6px 0; color:#64748b; font-weight:600;">Location:</td>
+                        <td style="padding:6px 0; color:#0f172a; font-weight:700;">${[cityDistrict.trim(), state ? state.trim() : '', normalizedCountry].filter(Boolean).join(', ')}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0; color:#64748b; font-weight:600;">Languages:</td>
@@ -591,6 +597,7 @@ export const getRegistrationsAdmin = async (req, res) => {
     const {
       search = '',
       language = '',
+      country = '',
       state = '',
       city = '',
       role = '',
@@ -611,7 +618,7 @@ export const getRegistrationsAdmin = async (req, res) => {
     const from = (pageNum - 1) * limitNum;
     const to = from + limitNum - 1;
 
-    const EXPLICIT_COLUMNS = 'id, registration_code, full_name, gender, email, phone, country_code, state, city_district, preferred_contact, primary_role, availability, working_preference, status, internal_notes, internal_scoring, is_archived, created_at, updated_at, work_capabilities';
+    const EXPLICIT_COLUMNS = 'id, registration_code, full_name, gender, email, phone, country, country_code, state, city_district, preferred_contact, primary_role, availability, working_preference, status, internal_notes, internal_scoring, is_archived, created_at, updated_at, work_capabilities';
 
     let finalItems = [];
     let totalCount = 0;
@@ -631,6 +638,11 @@ export const getRegistrationsAdmin = async (req, res) => {
         // 2. Status Filter (Database-side)
         if (status && status.trim().length > 0 && status.toLowerCase() !== 'all') {
           query = query.ilike('status', status.trim());
+        }
+
+        // 2B. Country Filter (Database-side)
+        if (country && country.trim().length > 0 && country.toLowerCase() !== 'all' && country.toLowerCase() !== 'all countries') {
+          query = query.ilike('country', `%${country.trim()}%`);
         }
 
         // 3. State Filter (Database-side)
@@ -657,7 +669,7 @@ export const getRegistrationsAdmin = async (req, res) => {
         // 7. Search Filter (Database-side multi-column search)
         if (search && search.trim().length > 0) {
           const q = search.trim();
-          query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,city_district.ilike.%${q}%,registration_code.ilike.%${q}%,primary_role.ilike.%${q}%`);
+          query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,country.ilike.%${q}%,state.ilike.%${q}%,city_district.ilike.%${q}%,registration_code.ilike.%${q}%,primary_role.ilike.%${q}%`);
         }
 
         // 8. Language Filter (Targeted ID pre-filter via talent_languages)
@@ -726,6 +738,8 @@ export const getRegistrationsAdmin = async (req, res) => {
             const candidateLangs = pageLanguages.filter((l) => String(l.registration_id) === String(reg.id));
             return {
               ...reg,
+              country: reg.country || 'India',
+              country_code: reg.country_code || '+91',
               languages: candidateLangs.length > 0 ? candidateLangs : (Array.isArray(reg.languages) ? reg.languages : []),
               experiences: Array.isArray(reg.experiences) ? reg.experiences : [],
             };
@@ -750,9 +764,13 @@ export const getRegistrationsAdmin = async (req, res) => {
           if ((item.status || 'pending').toLowerCase() !== status.toLowerCase().trim()) return false;
         }
 
+        if (country && country.trim() && country.toLowerCase() !== 'all' && country.toLowerCase() !== 'all countries') {
+          if (!(item.country || 'India').toLowerCase().includes(country.toLowerCase().trim())) return false;
+        }
+
         if (search && search.trim()) {
           const q = search.toLowerCase().trim();
-          const text = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.city_district || ''} ${item.registration_code || ''}`.toLowerCase();
+          const text = `${item.full_name || ''} ${item.email || ''} ${item.phone || ''} ${item.country || 'India'} ${item.state || ''} ${item.city_district || ''} ${item.registration_code || ''}`.toLowerCase();
           if (!text.includes(q)) return false;
         }
 
@@ -778,7 +796,11 @@ export const getRegistrationsAdmin = async (req, res) => {
       });
 
       totalCount = filtered.length;
-      finalItems = filtered.slice(from, to + 1);
+      finalItems = filtered.slice(from, to + 1).map((item) => ({
+        ...item,
+        country: item.country || 'India',
+        country_code: item.country_code || '+91',
+      }));
     }
 
     // Cached Summary Statistics calculation (60s TTL, zero full-table egress per list call)
@@ -879,6 +901,12 @@ export const getRegistrationByIdAdmin = async (req, res) => {
     if (!record) {
       return res.status(404).json({ success: false, message: 'Talent registration record not found.' });
     }
+
+    record = {
+      ...record,
+      country: record.country || 'India',
+      country_code: record.country_code || '+91',
+    };
 
     return res.status(200).json({ success: true, data: record });
   } catch (err) {
@@ -981,8 +1009,10 @@ export const exportRegistrationsAdmin = async (req, res) => {
       'Full Name',
       'Email',
       'Phone',
-      'State',
-      'City/District',
+      'Country',
+      'Country Code',
+      'State / Province',
+      'City / District / Locality',
       'Preferred Contact',
       'Role',
       'Languages & Capacity',
@@ -1002,7 +1032,9 @@ export const exportRegistrationsAdmin = async (req, res) => {
         `"${item.id}"`,
         `"${(item.full_name || '').replace(/"/g, '""')}"`,
         `"${(item.email || '').replace(/"/g, '""')}"`,
-        `"${item.country_code || '+91'} ${item.phone || ''}"`,
+        `"${item.phone || ''}"`,
+        `"${(item.country || 'India').replace(/"/g, '""')}"`,
+        `"${item.country_code || '+91'}"`,
         `"${(item.state || '').replace(/"/g, '""')}"`,
         `"${(item.city_district || '').replace(/"/g, '""')}"`,
         `"${item.preferred_contact || ''}"`,
@@ -1377,6 +1409,7 @@ export const updateAdminCandidateProfile = async (req, res) => {
       full_name,
       email,
       phone,
+      country,
       country_code,
       gender,
       state,
@@ -1435,23 +1468,14 @@ export const updateAdminCandidateProfile = async (req, res) => {
 
     // Resolve real Supabase UUID for DB queries
     let realUuid = isUuid(oldRecord?.id) ? oldRecord.id : null;
-    if (!realUuid && Array.isArray(allDbRecords)) {
-      const match = allDbRecords.find(
-        (r) =>
-          r &&
-          isUuid(r.id) &&
-          (String(r.registration_code || '').toLowerCase() === searchId ||
-            String(r.email || '').toLowerCase() === String(oldRecord?.email || '').toLowerCase())
-      );
-      if (match) realUuid = match.id;
-    }
 
     const changedFields = [];
     if (full_name && full_name !== oldRecord.full_name) changedFields.push(`Name ("${oldRecord.full_name || ''}" -> "${full_name}")`);
     if (email && email !== oldRecord.email) changedFields.push(`Email ("${oldRecord.email || ''}" -> "${email}")`);
     if (phone && phone !== oldRecord.phone) changedFields.push(`Phone ("${oldRecord.phone || ''}" -> "${phone}")`);
+    if (country && country !== (oldRecord.country || 'India')) changedFields.push(`Country ("${oldRecord.country || 'India'}" -> "${country}")`);
     if (gender && gender !== oldRecord.gender) changedFields.push(`Gender ("${oldRecord.gender || ''}" -> "${gender}")`);
-    if (state && state !== oldRecord.state) changedFields.push(`State ("${oldRecord.state || ''}" -> "${state}")`);
+    if (state !== undefined && state !== oldRecord.state) changedFields.push(`State ("${oldRecord.state || ''}" -> "${state}")`);
     if (city_district && city_district !== oldRecord.city_district) changedFields.push(`City ("${oldRecord.city_district || ''}" -> "${city_district}")`);
     if (primary_role && primary_role !== oldRecord.primary_role) changedFields.push(`Role ("${oldRecord.primary_role || ''}" -> "${primary_role}")`);
     if (Array.isArray(languages)) changedFields.push(`Languages updated (${languages.length} configured)`);
@@ -1466,9 +1490,10 @@ export const updateAdminCandidateProfile = async (req, res) => {
     if (full_name) updatedRecord.full_name = String(full_name).trim();
     if (email) updatedRecord.email = String(email).trim().toLowerCase();
     if (phone) updatedRecord.phone = String(phone).trim();
+    if (country) updatedRecord.country = String(country).trim();
     if (country_code) updatedRecord.country_code = String(country_code).trim();
     if (gender) updatedRecord.gender = gender;
-    if (state) updatedRecord.state = String(state).trim();
+    if (state !== undefined) updatedRecord.state = String(state).trim();
     if (city_district) updatedRecord.city_district = String(city_district).trim();
     if (preferred_contact) updatedRecord.preferred_contact = preferred_contact;
     if (primary_role) updatedRecord.primary_role = primary_role;
@@ -1532,7 +1557,8 @@ export const updateAdminCandidateProfile = async (req, res) => {
         full_name: updatedRecord.full_name,
         email: updatedRecord.email,
         phone: updatedRecord.phone,
-        country_code: updatedRecord.country_code,
+        country: updatedRecord.country || 'India',
+        country_code: updatedRecord.country_code || '+91',
         gender: updatedRecord.gender,
         state: updatedRecord.state,
         city_district: updatedRecord.city_district,
