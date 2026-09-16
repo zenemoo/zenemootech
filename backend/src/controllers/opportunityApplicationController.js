@@ -378,6 +378,8 @@ export const submitApplication = async (req, res) => {
     }
 
     // SERVER-SIDE REFERRAL VALIDATION & RESOLUTION
+    const isValidUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+
     let referralAttribution = {
       referral_code: null,
       referred_by_id: null,
@@ -404,17 +406,31 @@ export const submitApplication = async (req, res) => {
           const referrerEmail = (referrerRecord.email || '').trim().toLowerCase();
           // Prevent self-referral
           if (referrerEmail !== cleanEmail) {
+            const validReferredById = referrerRecord.id && isValidUuid(referrerRecord.id) ? referrerRecord.id : null;
             referralAttribution = {
               referral_code: referrerRecord.registration_code || rawRefCode,
-              referred_by_id: referrerRecord.id,
+              referred_by_id: validReferredById,
               referrer_name: referrerRecord.full_name || 'Zenemoo Contributor',
               referrer_email: referrerEmail,
               referral_source: req.body.referral_source || 'talent_hub',
             };
           }
+        } else if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode)) {
+          // Graceful fallback: preserve valid referral code even if referrer profile lookup is delayed
+          referralAttribution = {
+            referral_code: rawRefCode,
+            referred_by_id: null,
+            referrer_name: null,
+            referrer_email: null,
+            referral_source: req.body.referral_source || 'talent_hub',
+          };
         }
       } catch (refErr) {
         console.warn('[Referral verification note]:', refErr.message);
+        if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode)) {
+          referralAttribution.referral_code = rawRefCode;
+          referralAttribution.referral_source = req.body.referral_source || 'talent_hub';
+        }
       }
     }
 

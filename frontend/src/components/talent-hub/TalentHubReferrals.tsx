@@ -328,6 +328,15 @@ export const TalentHubReferrals: React.FC = () => {
     }
   };
 
+  // Helper for flexible and resilient opportunity ID & title matching
+  const isMatchingOpp = (oppIdA?: string, oppIdB?: string, titleA?: string, titleB?: string) => {
+    if (!oppIdA || !oppIdB) return false;
+    if (oppIdA === oppIdB) return true;
+    if (oppIdA.replace(/^op_/, '') === oppIdB.replace(/^op_/, '')) return true;
+    if (titleA && titleB && titleA.trim().toLowerCase() === titleB.trim().toLowerCase()) return true;
+    return false;
+  };
+
   // Build unified project cards combining live opportunities and historical referral stats
   const unifiedProjectCards = useMemo(() => {
     const map: Record<string, {
@@ -363,13 +372,17 @@ export const TalentHubReferrals: React.FC = () => {
     // 2. Merge referral stats from backend
     opportunityStats.forEach((stat) => {
       const oppId = stat.opportunity_id;
-      if (map[oppId]) {
-        map[oppId].total = stat.total;
-        map[oppId].pending = stat.pending;
-        map[oppId].shortlisted = stat.shortlisted;
-        map[oppId].accepted = stat.accepted;
-        map[oppId].rejected = stat.rejected;
-        map[oppId].selected = stat.selected || (stat.accepted + stat.shortlisted);
+      const matchedKey = Object.keys(map).find((key) =>
+        isMatchingOpp(key, oppId, map[key]?.opportunity_title, stat.opportunity_title)
+      );
+
+      if (matchedKey && map[matchedKey]) {
+        map[matchedKey].total += stat.total;
+        map[matchedKey].pending += stat.pending;
+        map[matchedKey].shortlisted += stat.shortlisted;
+        map[matchedKey].accepted += stat.accepted;
+        map[matchedKey].rejected += stat.rejected;
+        map[matchedKey].selected += stat.selected || (stat.accepted + stat.shortlisted);
       } else {
         // Historical opportunity that is no longer in active opportunities feed
         map[oppId] = {
@@ -411,8 +424,8 @@ export const TalentHubReferrals: React.FC = () => {
   // Project Modal Specific Referred Applicants List
   const modalProjectApplicants = useMemo(() => {
     if (!selectedProjectForModal) return [];
-    return referredApplications.filter(
-      (app) => app.opportunity_id === selectedProjectForModal.opportunity_id
+    return referredApplications.filter((app) =>
+      isMatchingOpp(app.opportunity_id, selectedProjectForModal.opportunity_id, app.opportunity_title, selectedProjectForModal.opportunity_title)
     );
   }, [referredApplications, selectedProjectForModal]);
 

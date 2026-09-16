@@ -39,6 +39,8 @@ import confetti from 'canvas-confetti';
 import { useTalentHubAuth, OpportunityItem, ApplicationItem } from './TalentHubAuthContext';
 import { talentHubApi } from '../../services/talentHubApi';
 import { downloadApplicationPdf } from '../../services/applicationPdfService';
+import { parseQuestionOptions } from '../../lib/opportunityStore';
+import { invalidateReferralSessionCache } from './TalentHubReferrals';
 
 export const TalentHubOpportunities: React.FC = () => {
   const { talentProfile, token, opportunities, applications, isDataLoading, mutateApplications } = useTalentHubAuth();
@@ -211,10 +213,15 @@ export const TalentHubOpportunities: React.FC = () => {
 
       if (res && res.success) {
         setSubmitSuccess(res.data);
-        // Immediately mutate cached applications state
+        // Immediately mutate cached applications state & invalidate referral cache
         if (res.data) {
           mutateApplications(res.data);
         }
+        invalidateReferralSessionCache();
+        try {
+          localStorage.removeItem('zenemoo_active_ref');
+          sessionStorage.removeItem('zenemoo_active_ref');
+        } catch (_) {}
 
         try {
           confetti({
@@ -1051,11 +1058,32 @@ export const TalentHubOpportunities: React.FC = () => {
                             ? answers[q.id]
                             : '';
 
-                        if (q.type === 'textarea') {
+                        const rawType = (q.type || '').toLowerCase().trim();
+                        const parsedOptions = parseQuestionOptions(q.options || q.choices);
+
+                        const isTextarea = rawType === 'textarea' || rawType === 'longtext' || rawType === 'paragraph';
+                        const isMultiselect =
+                          rawType === 'multiselect' ||
+                          rawType === 'multi_select' ||
+                          rawType === 'multiple_choice' ||
+                          rawType === 'multiple-choice' ||
+                          rawType === 'checkboxes';
+                        const isYesNo = rawType === 'yesno' || rawType === 'yes_no' || rawType === 'boolean';
+                        const isCheckbox = rawType === 'checkbox';
+                        const isSelect =
+                          rawType === 'select' ||
+                          rawType === 'single_choice' ||
+                          rawType === 'single-choice' ||
+                          rawType === 'choice' ||
+                          rawType === 'dropdown' ||
+                          rawType === 'radio' ||
+                          (!isTextarea && !isMultiselect && !isYesNo && !isCheckbox && parsedOptions.length > 0);
+
+                        if (isTextarea) {
                           return (
-                            <div key={qLabel} className="space-y-1">
+                            <div key={qLabel} className="space-y-1.5">
                               <label className="text-xs font-medium text-slate-300 block">
-                                {q.label} {isRequired && <span className="text-rose-400">*</span>}
+                                {q.label || qLabel} {isRequired && <span className="text-rose-400">*</span>}
                               </label>
                               <textarea
                                 rows={3}
@@ -1063,27 +1091,27 @@ export const TalentHubOpportunities: React.FC = () => {
                                 value={currentVal}
                                 onChange={(e) => handleFieldChange(qLabel, e.target.value)}
                                 placeholder="Your answer..."
-                                className="w-full p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                                className="w-full p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors font-sans"
                               />
                             </div>
                           );
                         }
 
-                        if (q.type === 'select' && Array.isArray(q.options)) {
+                        if (isSelect) {
                           return (
-                            <div key={qLabel} className="space-y-1">
+                            <div key={qLabel} className="space-y-1.5">
                               <label className="text-xs font-medium text-slate-300 block">
-                                {q.label} {isRequired && <span className="text-rose-400">*</span>}
+                                {q.label || qLabel} {isRequired && <span className="text-rose-400">*</span>}
                               </label>
                               <select
                                 required={isRequired}
                                 value={currentVal}
                                 onChange={(e) => handleFieldChange(qLabel, e.target.value)}
-                                className="w-full p-2.5 rounded-2xl bg-[#080d19] border border-white/10 text-xs text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                                className="w-full p-2.5 rounded-2xl bg-[#080d19] border border-white/10 text-xs text-white focus:outline-none focus:border-cyan-500 transition-colors font-sans cursor-pointer"
                               >
-                                <option value="">Select an option...</option>
-                                {q.options.map((opt: string, i: number) => (
-                                  <option key={i} value={opt}>
+                                <option value="" className="bg-[#080d19] text-slate-400">Select an option...</option>
+                                {parsedOptions.map((opt: string, i: number) => (
+                                  <option key={i} value={opt} className="bg-[#080d19] text-white">
                                     {opt}
                                   </option>
                                 ))}
@@ -1092,18 +1120,114 @@ export const TalentHubOpportunities: React.FC = () => {
                           );
                         }
 
+                        if (isMultiselect) {
+                          const selectedArr: string[] = Array.isArray(currentVal)
+                            ? currentVal
+                            : currentVal
+                            ? [String(currentVal)]
+                            : [];
+                          return (
+                            <div key={qLabel} className="space-y-1.5">
+                              <label className="text-xs font-medium text-slate-300 block">
+                                {q.label || qLabel} {isRequired && <span className="text-rose-400">*</span>}
+                              </label>
+                              <div className="space-y-2 p-3 rounded-2xl bg-white/[0.03] border border-white/10">
+                                {parsedOptions.map((opt: string, i: number) => {
+                                  const isChecked = selectedArr.includes(opt);
+                                  return (
+                                    <label key={i} className="flex items-center gap-2.5 text-slate-200 cursor-pointer text-xs font-sans">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          const newArr = e.target.checked
+                                            ? [...selectedArr, opt]
+                                            : selectedArr.filter((item) => item !== opt);
+                                          handleFieldChange(qLabel, newArr);
+                                        }}
+                                        className="w-4 h-4 rounded border-white/30 bg-black/40 text-cyan-500 focus:ring-0 cursor-pointer"
+                                      />
+                                      <span>{opt}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (isYesNo) {
+                          return (
+                            <div key={qLabel} className="space-y-1.5">
+                              <label className="text-xs font-medium text-slate-300 block">
+                                {q.label || qLabel} {isRequired && <span className="text-rose-400">*</span>}
+                              </label>
+                              <div className="flex items-center gap-6 pt-1">
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-200 text-xs font-sans">
+                                  <input
+                                    type="radio"
+                                    name={`th_${q.id || idx}`}
+                                    value="Yes"
+                                    checked={currentVal === 'Yes'}
+                                    onChange={(e) => handleFieldChange(qLabel, e.target.value)}
+                                    className="w-4 h-4 text-cyan-500 bg-black/40 border-white/30 focus:ring-0 cursor-pointer"
+                                  />
+                                  <span>Yes</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer text-slate-200 text-xs font-sans">
+                                  <input
+                                    type="radio"
+                                    name={`th_${q.id || idx}`}
+                                    value="No"
+                                    checked={currentVal === 'No'}
+                                    onChange={(e) => handleFieldChange(qLabel, e.target.value)}
+                                    className="w-4 h-4 text-cyan-500 bg-black/40 border-white/30 focus:ring-0 cursor-pointer"
+                                  />
+                                  <span>No</span>
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (isCheckbox) {
+                          return (
+                            <div key={qLabel} className="pt-1">
+                              <label className="flex items-center gap-2.5 text-slate-200 cursor-pointer text-xs font-sans">
+                                <input
+                                  type="checkbox"
+                                  checked={!!currentVal}
+                                  onChange={(e) => handleFieldChange(qLabel, e.target.checked)}
+                                  className="w-4 h-4 rounded border-white/30 bg-black/40 text-cyan-500 focus:ring-0 cursor-pointer"
+                                />
+                                <span>{q.label || qLabel} {isRequired && <span className="text-rose-400">*</span>}</span>
+                              </label>
+                            </div>
+                          );
+                        }
+
                         return (
-                          <div key={qLabel} className="space-y-1">
+                          <div key={qLabel} className="space-y-1.5">
                             <label className="text-xs font-medium text-slate-300 block">
-                              {q.label} {isRequired && <span className="text-rose-400">*</span>}
+                              {q.label || qLabel} {isRequired && <span className="text-rose-400">*</span>}
                             </label>
                             <input
-                              type={q.type || 'text'}
+                              type={
+                                rawType === 'number' || rawType === 'numeric'
+                                  ? 'number'
+                                  : rawType === 'email'
+                                  ? 'email'
+                                  : rawType === 'phone' || rawType === 'tel'
+                                  ? 'tel'
+                                  : rawType === 'date'
+                                  ? 'date'
+                                  : 'text'
+                              }
                               required={isRequired}
                               value={currentVal}
                               onChange={(e) => handleFieldChange(qLabel, e.target.value)}
                               placeholder="Your answer..."
-                              className="w-full p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                              className="w-full p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors font-sans"
                             />
                           </div>
                         );

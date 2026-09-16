@@ -154,6 +154,15 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
     }
   };
 
+  // Helper for flexible and resilient opportunity ID & title matching
+  const isMatchingOpp = (oppIdA?: string, oppIdB?: string, titleA?: string, titleB?: string) => {
+    if (!oppIdA || !oppIdB) return false;
+    if (oppIdA === oppIdB) return true;
+    if (oppIdA.replace(/^op_/, '') === oppIdB.replace(/^op_/, '')) return true;
+    if (titleA && titleB && titleA.trim().toLowerCase() === titleB.trim().toLowerCase()) return true;
+    return false;
+  };
+
   // ── Project-Level Aggregation ──
   const projectAggregations = useMemo(() => {
     const map: Record<
@@ -189,9 +198,14 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
     // Populate referral data
     referredApps.forEach((app) => {
       const oppId = app.opportunity_id || 'general';
-      if (!map[oppId]) {
-        map[oppId] = {
-          opportunity_id: oppId,
+      const matchedKey = Object.keys(map).find((key) =>
+        isMatchingOpp(key, oppId, map[key]?.opportunity_title, app.opportunity_title)
+      );
+
+      const targetKey = matchedKey || oppId;
+      if (!map[targetKey]) {
+        map[targetKey] = {
+          opportunity_id: targetKey,
           opportunity_title: app.opportunity_title || 'Project Opportunity',
           total: 0,
           accepted: 0,
@@ -203,17 +217,17 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
         };
       }
 
-      map[oppId].total++;
+      map[targetKey].total++;
       const s = (app.status || 'pending').toLowerCase();
-      if (s === 'accepted') map[oppId].accepted++;
-      else if (s === 'shortlisted') map[oppId].shortlisted++;
-      else if (s === 'rejected') map[oppId].rejected++;
-      else map[oppId].pending++;
+      if (s === 'accepted') map[targetKey].accepted++;
+      else if (s === 'shortlisted') map[targetKey].shortlisted++;
+      else if (s === 'rejected') map[targetKey].rejected++;
+      else map[targetKey].pending++;
 
-      map[oppId].selected = map[oppId].accepted + map[oppId].shortlisted;
+      map[targetKey].selected = map[targetKey].accepted + map[targetKey].shortlisted;
 
       if (app.referral_code || app.referrer_name) {
-        map[oppId].uniqueReferrers.add((app.referral_code || app.referrer_name || '').toUpperCase());
+        map[targetKey].uniqueReferrers.add((app.referral_code || app.referrer_name || '').toUpperCase());
       }
     });
 
@@ -247,7 +261,9 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
       }
     > = {};
 
-    const appsForProj = referredApps.filter((a) => a.opportunity_id === selectedProject.id);
+    const appsForProj = referredApps.filter((a) =>
+      isMatchingOpp(a.opportunity_id, selectedProject.id, a.opportunity_title, selectedProject.title)
+    );
 
     appsForProj.forEach((app) => {
       const code = app.referral_code || 'ZEN-UNKNOWN';
@@ -288,7 +304,8 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
       if (!q) return true;
       return (
         ref.referrer_name.toLowerCase().includes(q) ||
-        ref.referral_code.toLowerCase().includes(q)
+        ref.referral_code.toLowerCase().includes(q) ||
+        (ref.referrer_email || '').toLowerCase().includes(q)
       );
     });
   }, [projectReferrers, searchQuery]);
@@ -297,7 +314,7 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
   const referrerProjectApps = useMemo(() => {
     if (!selectedProject || !selectedReferrer) return [];
     return referredApps.filter((app) => {
-      const matchProj = app.opportunity_id === selectedProject.id;
+      const matchProj = isMatchingOpp(app.opportunity_id, selectedProject.id, app.opportunity_title, selectedProject.title);
       const matchRef =
         (app.referral_code && app.referral_code.toUpperCase() === selectedReferrer.referral_code.toUpperCase()) ||
         (app.referrer_name && app.referrer_name.toLowerCase() === selectedReferrer.referrer_name.toLowerCase());

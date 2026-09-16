@@ -328,10 +328,16 @@ export const AdminTalentNetworkTab: React.FC = () => {
     }
   };
 
-  // Static / curated filter options (Zero full-table scans!)
+  // Static / curated filter options augmented with dynamic active languages (Zero full-table scans!)
   const uniqueRegisteredLanguages = useMemo(() => {
-    return LANGUAGES_LIST.filter((l) => l !== 'All Languages');
-  }, []);
+    const list = new Set(LANGUAGES_LIST.filter((l) => l !== 'All Languages'));
+    if (Array.isArray(stats?.activeLanguages)) {
+      stats.activeLanguages.forEach((l: string) => {
+        if (l && l !== 'Other') list.add(l);
+      });
+    }
+    return Array.from(list).sort();
+  }, [stats?.activeLanguages]);
 
   const uniqueRegisteredStates = useMemo(() => {
     return INDIAN_STATES_UT.filter((s) => s !== 'All States');
@@ -377,6 +383,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
     pageSize,
     searchQuery,
     selectedLanguage,
+    selectedCountry,
     selectedState,
     selectedRole,
     selectedWorkType,
@@ -394,6 +401,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
   }, [
     searchQuery,
     selectedLanguage,
+    selectedCountry,
     selectedState,
     selectedRole,
     selectedWorkType,
@@ -416,7 +424,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
       vendors: stats.vendors || 0,
       singers: stats.singers || 0,
       recordingTeams: stats.recordingTeams || 0,
-      languages: stats.languageCoverageCount || stats.languages || 8,
+      languages: stats.languageCoverageCount || stats.languages || 0,
     };
   }, [stats, totalRecords]);
 

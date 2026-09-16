@@ -458,6 +458,8 @@ export const submitTalentOpportunityApplication = async (req, res) => {
     }
 
     // 4. Server-Side Referral Attribution Validation
+    const isValidUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+
     let referralAttribution = {
       referral_code: null,
       referred_by_id: null,
@@ -485,17 +487,31 @@ export const submitTalentOpportunityApplication = async (req, res) => {
           const applicantEmail = (email || '').trim().toLowerCase();
           // Prevent self-referral
           if (referrerEmail !== applicantEmail && referrerRecord.id !== talentRecord.id) {
+            const validReferredById = referrerRecord.id && isValidUuid(referrerRecord.id) ? referrerRecord.id : null;
             referralAttribution = {
               referral_code: referrerRecord.registration_code || rawRefCode,
-              referred_by_id: referrerRecord.id,
+              referred_by_id: validReferredById,
               referrer_name: referrerRecord.full_name || 'Zenemoo Contributor',
               referrer_email: referrerEmail,
               referral_source: 'talent_hub',
             };
           }
+        } else if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode)) {
+          // Graceful fallback: preserve valid referral code even if referrer lookup is delayed
+          referralAttribution = {
+            referral_code: rawRefCode,
+            referred_by_id: null,
+            referrer_name: null,
+            referrer_email: null,
+            referral_source: 'talent_hub',
+          };
         }
       } catch (refErr) {
         console.warn('[TalentHub Referral Verification Note]:', refErr.message);
+        if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode)) {
+          referralAttribution.referral_code = rawRefCode;
+          referralAttribution.referral_source = 'talent_hub';
+        }
       }
     }
 
@@ -667,11 +683,18 @@ export const getTalentReferrals = async (req, res) => {
     }
 
     // 2. Query all applications referred by this talent (by referred_by_id OR referral_code)
+    const isTalentUuid = talentRecord.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(talentRecord.id).trim());
     let query = supabase
       .from('opportunity_applications')
-      .select('id, applicant_id, applicant_name, applicant_email, applicant_phone, opportunity_id, opportunity_title, status, created_at, referral_code, referred_by_id, referral_source')
-      .or(`referred_by_id.eq.${talentRecord.id},referral_code.eq.${talentCode}`)
-      .order('created_at', { ascending: false });
+      .select('id, applicant_id, applicant_name, applicant_email, applicant_phone, opportunity_id, opportunity_title, status, created_at, referral_code, referred_by_id, referral_source');
+
+    if (isTalentUuid) {
+      query = query.or(`referred_by_id.eq.${talentRecord.id},referral_code.ilike.${talentCode}`);
+    } else {
+      query = query.ilike('referral_code', talentCode);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     const { data: referredApps, error: appError } = await query;
 

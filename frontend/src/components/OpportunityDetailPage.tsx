@@ -283,6 +283,10 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
       const generatedId = result.applicant_id || result.id;
       setSubmittedAppId(generatedId);
       localStorage.setItem(`zenemoo_applicant_email_${opportunity.id}`, applicantEmail.trim().toLowerCase());
+      try {
+        localStorage.removeItem('zenemoo_active_ref');
+        sessionStorage.removeItem('zenemoo_active_ref');
+      } catch (_) {}
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);

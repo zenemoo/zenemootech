@@ -164,7 +164,17 @@ const CandidateTableRow = React.memo<TableRowProps>(({
 
       {/* Custom Form Answers */}
       <td className="p-4 max-w-sm">
-        {answerEntries.length === 0 ? (
+        {app.answers === undefined || app.answers === null ? (
+          <button
+            type="button"
+            onClick={() => onView(app)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-mono font-medium transition-colors cursor-pointer"
+            title="Click to view custom question responses in details modal"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>View Responses</span>
+          </button>
+        ) : answerEntries.length === 0 ? (
           <span className="text-slate-500 italic text-[11px]">No custom responses</span>
         ) : (
           <div className="space-y-1.5">
@@ -437,13 +447,24 @@ const CandidateMobileCard = React.memo<TableRowProps>(({
       </div>
 
       {/* Custom Answers Chips */}
-      {answerEntries.length > 0 && (
+      {app.answers === undefined || app.answers === null ? (
+        <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] font-mono">
+          <span className="text-slate-400">Custom Responses:</span>
+          <button
+            type="button"
+            onClick={() => onView(app)}
+            className="text-cyan-400 hover:text-cyan-300 underline font-medium cursor-pointer"
+          >
+            View in Details
+          </button>
+        </div>
+      ) : answerEntries.length > 0 ? (
         <div className="space-y-1 pt-2 border-t border-white/5">
           {answerEntries.slice(0, 2).map(([k, v]) => (
             <CustomAnswerChip key={k} answerKey={k} val={v} customQuestions={customQuestions} />
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Action Buttons Row */}
       <div className="pt-2 border-t border-white/10 flex items-center justify-end gap-2">

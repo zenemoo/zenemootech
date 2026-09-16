@@ -656,9 +656,17 @@ export const getRegistrationsAdmin = async (req, res) => {
           query = query.ilike('city_district', `%${city.trim()}%`);
         }
 
-        // 5. Role Filter (Database-side)
+        // 5. Role Filter (Database-side with alias normalization)
         if (role && role.trim().length > 0 && role.toLowerCase() !== 'all' && role.toLowerCase() !== 'all roles') {
-          query = query.ilike('primary_role', `%${role.trim()}%`);
+          let roleSearch = role.trim();
+          const lowerRole = roleSearch.toLowerCase();
+          if (lowerRole.startsWith('coordinator')) roleSearch = 'Coordinator';
+          else if (lowerRole.startsWith('vendor') || lowerRole.startsWith('agency')) roleSearch = 'Vendor';
+          else if (lowerRole.startsWith('singer') || lowerRole.startsWith('vocal')) roleSearch = 'Singer';
+          else if (lowerRole.startsWith('recording')) roleSearch = 'Recording';
+          else if (lowerRole.startsWith('speaker')) roleSearch = 'Speaker';
+          else if (lowerRole.startsWith('individual')) roleSearch = 'Individual';
+          query = query.ilike('primary_role', `%${roleSearch}%`);
         }
 
         // 6. Availability Filter (Database-side)
@@ -675,11 +683,12 @@ export const getRegistrationsAdmin = async (req, res) => {
         // 8. Language Filter (Targeted ID pre-filter via talent_languages)
         if (language && language.trim().length > 0 && language.toLowerCase() !== 'all' && language.toLowerCase() !== 'all languages') {
           const targetLang = language.trim();
+          const canonicalLang = formatLanguageDisplayName(targetLang);
           const { data: matchedLangRows } = await supabase
             .from('talent_languages')
             .select('registration_id')
-            .ilike('language', `%${targetLang}%`)
-            .limit(500);
+            .or(`language.ilike.%${targetLang}%,language.ilike.%${canonicalLang}%`)
+            .limit(1000);
 
           const matchedIds = (matchedLangRows || []).map((r) => r.registration_id).filter(Boolean);
           if (matchedIds.length > 0) {
@@ -785,7 +794,14 @@ export const getRegistrationsAdmin = async (req, res) => {
         }
 
         if (role && role.trim() && role.toLowerCase() !== 'all' && role.toLowerCase() !== 'all roles') {
-          if (!(item.primary_role || '').toLowerCase().includes(role.toLowerCase().trim())) return false;
+          let roleSearch = role.trim().toLowerCase();
+          if (roleSearch.startsWith('coordinator')) roleSearch = 'coordinator';
+          else if (roleSearch.startsWith('vendor') || roleSearch.startsWith('agency')) roleSearch = 'vendor';
+          else if (roleSearch.startsWith('singer') || roleSearch.startsWith('vocal')) roleSearch = 'singer';
+          else if (roleSearch.startsWith('recording')) roleSearch = 'recording';
+          else if (roleSearch.startsWith('speaker')) roleSearch = 'speaker';
+          else if (roleSearch.startsWith('individual')) roleSearch = 'individual';
+          if (!(item.primary_role || '').toLowerCase().includes(roleSearch)) return false;
         }
 
         if (availability && availability.trim() && availability.toLowerCase() !== 'all') {
@@ -815,20 +831,94 @@ export const getRegistrationsAdmin = async (req, res) => {
         vendors: 0,
         singers: 0,
         recordingTeams: 0,
-        languageCoverageCount: 12,
+        languageCoverageCount: 0,
+        activeLanguages: [],
       };
 
       if (supabase) {
         try {
-          const [verCountRes, pendCountRes, totalAllRes] = await Promise.all([
+          const [verCountRes, pendCountRes, totalAllRes, rolesRes, langsRes] = await Promise.all([
             supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('status', 'verified').eq('is_archived', false),
             supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('is_archived', false),
             supabase.from('talent_registrations').select('id', { count: 'exact', head: true }).eq('is_archived', false),
+            supabase.from('talent_registrations').select('primary_role').eq('is_archived', false),
+            supabase.from('talent_languages').select('language'),
           ]);
+
           stats.verified = verCountRes.count || 0;
           stats.pending = pendCountRes.count || 0;
           stats.total = totalAllRes.count || (stats.verified + stats.pending);
-        } catch (_) {}
+
+          if (Array.isArray(rolesRes.data)) {
+            let coordCount = 0;
+            let vendorCount = 0;
+            let singerCount = 0;
+            let recTeamCount = 0;
+
+            for (const r of rolesRes.data) {
+              const roleStr = (r.primary_role || '').toLowerCase().trim();
+              if (roleStr.includes('coordinator')) coordCount++;
+              if (roleStr.includes('vendor') || roleStr.includes('agency')) vendorCount++;
+              if (roleStr.includes('singer') || roleStr.includes('vocal')) singerCount++;
+              if (roleStr.includes('recording team') || roleStr.includes('recording_team')) recTeamCount++;
+            }
+            stats.coordinators = coordCount;
+            stats.vendors = vendorCount;
+            stats.singers = singerCount;
+            stats.recordingTeams = recTeamCount;
+          }
+
+          if (Array.isArray(langsRes.data)) {
+            const uniqueLangs = new Set();
+            for (const l of langsRes.data) {
+              const rawName = (l.language || '').trim();
+              if (rawName && rawName.toLowerCase() !== 'other') {
+                const canonical = formatLanguageDisplayName(rawName);
+                if (canonical) uniqueLangs.add(canonical);
+              }
+            }
+            stats.languageCoverageCount = uniqueLangs.size;
+            stats.activeLanguages = Array.from(uniqueLangs).sort();
+          }
+        } catch (statsErr) {
+          console.warn('Error calculating talent network stats:', statsErr.message);
+        }
+      } else {
+        // Disk fallback statistics computation
+        const diskAll = loadDiskRegistrations().filter((item) => !item.is_archived);
+        stats.total = diskAll.length;
+        stats.verified = diskAll.filter((i) => (i.status || '').toLowerCase() === 'verified').length;
+        stats.pending = diskAll.filter((i) => (i.status || 'pending').toLowerCase() === 'pending').length;
+
+        let coordCount = 0;
+        let vendorCount = 0;
+        let singerCount = 0;
+        let recTeamCount = 0;
+        const uniqueLangs = new Set();
+
+        for (const item of diskAll) {
+          const roleStr = (item.primary_role || '').toLowerCase().trim();
+          if (roleStr.includes('coordinator')) coordCount++;
+          if (roleStr.includes('vendor') || roleStr.includes('agency')) vendorCount++;
+          if (roleStr.includes('singer') || roleStr.includes('vocal')) singerCount++;
+          if (roleStr.includes('recording team') || roleStr.includes('recording_team')) recTeamCount++;
+
+          const langList = Array.isArray(item.languages) ? item.languages : [];
+          for (const l of langList) {
+            const raw = typeof l === 'string' ? l : (l?.language || '');
+            if (raw && raw.toLowerCase() !== 'other') {
+              const canonical = formatLanguageDisplayName(raw);
+              if (canonical) uniqueLangs.add(canonical);
+            }
+          }
+        }
+
+        stats.coordinators = coordCount;
+        stats.vendors = vendorCount;
+        stats.singers = singerCount;
+        stats.recordingTeams = recTeamCount;
+        stats.languageCoverageCount = uniqueLangs.size;
+        stats.activeLanguages = Array.from(uniqueLangs).sort();
       }
 
       adminRegistrationsStatsCache = {

@@ -191,6 +191,17 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setIsSubmitting(true);
     setIsDuplicate(false);
 
+    // Read active referral code from URL or persistent storage
+    let activeRefCode = '';
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      activeRefCode = urlParams.get('ref') || urlParams.get('referral') || '';
+      if (!activeRefCode) {
+        activeRefCode = sessionStorage.getItem('zenemoo_active_ref') || localStorage.getItem('zenemoo_active_ref') || '';
+      }
+      activeRefCode = activeRefCode.trim().toUpperCase();
+    } catch (_) {}
+
     try {
       const result = await submitCandidateApplication({
         opportunity_id: applyingOpportunity.id,
@@ -199,6 +210,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
         applicant_email: applicantEmail,
         applicant_phone: applicantPhone,
         answers: customAnswers,
+        referral_code: activeRefCode || undefined,
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
         terms_version: '1.0',
@@ -207,6 +219,10 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       const generatedId = result.applicant_id || result.id;
       setSubmittedRef(generatedId);
       localStorage.setItem(`zenemoo_applicant_email_${applyingOpportunity.id}`, applicantEmail.trim().toLowerCase());
+      try {
+        localStorage.removeItem('zenemoo_active_ref');
+        sessionStorage.removeItem('zenemoo_active_ref');
+      } catch (_) {}
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);

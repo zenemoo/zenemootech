@@ -103,12 +103,47 @@ export const parseQuestionOptions = (optionsInput: any): string[] => {
  * required flags, and clean options arrays.
  */
 export const normalizeQuestion = (q: any, idx: number): CustomQuestion => {
-  const type = (q.type || 'text').toLowerCase();
+  const rawType = (q.type || '').toLowerCase().trim();
   const rawOptions = q.options || q.choices || [];
   const parsedOptions = parseQuestionOptions(rawOptions);
 
-  const validTypes = ['text', 'textarea', 'number', 'select', 'multiselect', 'yesno', 'email', 'phone', 'date', 'checkbox'];
-  const finalType = validTypes.includes(type) ? (type as CustomQuestion['type']) : 'text';
+  let finalType: CustomQuestion['type'] = 'text';
+
+  if (rawType === 'textarea' || rawType === 'longtext' || rawType === 'paragraph') {
+    finalType = 'textarea';
+  } else if (rawType === 'number' || rawType === 'numeric' || rawType === 'integer') {
+    finalType = 'number';
+  } else if (rawType === 'email') {
+    finalType = 'email';
+  } else if (rawType === 'phone' || rawType === 'tel' || rawType === 'mobile') {
+    finalType = 'phone';
+  } else if (rawType === 'date') {
+    finalType = 'date';
+  } else if (rawType === 'yesno' || rawType === 'yes_no' || rawType === 'boolean') {
+    finalType = 'yesno';
+  } else if (rawType === 'checkbox') {
+    finalType = 'checkbox';
+  } else if (
+    rawType === 'multiselect' ||
+    rawType === 'multi_select' ||
+    rawType === 'multiple_choice' ||
+    rawType === 'multiple-choice' ||
+    rawType === 'checkboxes'
+  ) {
+    finalType = 'multiselect';
+  } else if (
+    rawType === 'select' ||
+    rawType === 'single_choice' ||
+    rawType === 'single-choice' ||
+    rawType === 'choice' ||
+    rawType === 'dropdown' ||
+    rawType === 'radio'
+  ) {
+    finalType = 'select';
+  } else if (parsedOptions.length > 0) {
+    // If options exist but type is unspecified or text, treat as select
+    finalType = 'select';
+  }
 
   return {
     id: q.id || `q_${Date.now()}_${idx}`,
