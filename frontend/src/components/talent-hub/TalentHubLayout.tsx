@@ -113,13 +113,21 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   // Lock body scrolling when mobile drawer or bottom sheets are open
   useEffect(() => {
     if (mobileMenuOpen || isSocialSheetOpen || isContactSheetOpen) {
-      const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.overflow = originalOverflow;
+        document.body.style.overflow = '';
       };
+    } else {
+      document.body.style.overflow = '';
     }
   }, [mobileMenuOpen, isSocialSheetOpen, isContactSheetOpen]);
+
+  // Ensure body scroll is always restored when layout unmounts
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   // Auto-close user profile dropdown when page scrolling occurs outside
   useEffect(() => {
@@ -151,17 +159,6 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       window.removeEventListener('touchmove', handleTouchMove);
     };
   }, [userMenuOpen]);
-
-  // Lock body scrolling when mobile drawer or social sheet is open
-  useEffect(() => {
-    if (mobileMenuOpen || isSocialSheetOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [mobileMenuOpen, isSocialSheetOpen]);
 
   const handleCopyText = (text: string, fieldName: string) => {
     if (!text) return;
@@ -789,7 +786,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
       </AnimatePresence>
 
       {/* ── Main Content Area (Compact, Snug, Perfectly Proportioned Spacing) ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pt-4 sm:pb-8 min-w-0 overflow-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pt-4 sm:pb-8 min-w-0">
         {children}
       </main>
 

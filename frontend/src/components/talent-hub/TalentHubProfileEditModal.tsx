@@ -99,10 +99,9 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
   // Lock body scroll and mount portal
   useEffect(() => {
     setIsMounted(true);
-    const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = originalStyle;
+      document.body.style.overflow = '';
     };
   }, []);
 

@@ -65,7 +65,7 @@ export const TalentHubProfile: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0 overflow-hidden">
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0">
       {/* ── Success Toast ── */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[170] p-4 rounded-2xl bg-[#09151f] border border-cyan-500/40 text-cyan-300 flex items-center gap-3 shadow-2xl shadow-cyan-950/60 animate-in slide-in-from-bottom-5">
