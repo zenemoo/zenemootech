@@ -14,17 +14,19 @@ import {
   getSentEmails,
   sendInboxEmail,
 } from '../controllers/emailInboxController.js';
-import { verifyToken, requireEmailAccess } from '../middleware/rbacMiddleware.js';
+import { verifyToken, requireRole, requireEmailAccess } from '../middleware/rbacMiddleware.js';
+import { emailSendRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
-router.get('/diagnose', runEmailDiagnostics);
-router.post('/diagnose', runEmailDiagnostics);
+// Production Live Diagnostic Suite (Admin Only)
+router.get('/diagnose', verifyToken, requireRole(['admin']), runEmailDiagnostics);
+router.post('/diagnose', verifyToken, requireRole(['admin']), runEmailDiagnostics);
 
 // Email operations (Permitted for Admin, HR, or authorized members with email_access=true)
-router.post('/send', verifyToken, requireEmailAccess, sendEmail);
-router.post('/reply', verifyToken, requireEmailAccess, sendInboxEmail);
-router.post('/forward', verifyToken, requireEmailAccess, sendInboxEmail);
+router.post('/send', verifyToken, requireEmailAccess, emailSendRateLimiter, sendEmail);
+router.post('/reply', verifyToken, requireEmailAccess, emailSendRateLimiter, sendInboxEmail);
+router.post('/forward', verifyToken, requireEmailAccess, emailSendRateLimiter, sendInboxEmail);
 router.get('/sent', verifyToken, requireEmailAccess, getSentEmails);
 router.get('/inbox', verifyToken, requireEmailAccess, getIncomingEmails);
 router.get('/history', verifyToken, requireEmailAccess, getEmailHistory);

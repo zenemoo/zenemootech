@@ -6,13 +6,17 @@ import {
   reorderOpportunity,
   deleteOpportunity,
 } from '../controllers/opportunityController.js';
+import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
 
+// Public opportunity listing
 router.get('/', getOpportunities);
-router.post('/', createOpportunity);
-router.put('/:id', updateOpportunity);
-router.put('/:id/reorder', reorderOpportunity);
-router.delete('/:id', deleteOpportunity);
+
+// Admin-only management endpoints
+router.post('/', verifyToken, requireRole(['admin']), createOpportunity);
+router.put('/:id', verifyToken, requireRole(['admin']), updateOpportunity);
+router.put('/:id/reorder', verifyToken, requireRole(['admin']), reorderOpportunity);
+router.delete('/:id', verifyToken, requireRole(['admin']), deleteOpportunity);
 
 export default router;

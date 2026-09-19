@@ -1,8 +1,15 @@
 import crypto from 'crypto';
 
-const SECRET = process.env.ZENEMOO_PII_ENCRYPTION_KEY || 'zenemoo_enterprise_pii_secret_key_2026_super_secure';
-// Derive 32-byte key using SHA-256 digest
-const KEY = crypto.createHash('sha256').update(SECRET).digest();
+let cachedPiiKey = null;
+function getPiiKey() {
+  if (cachedPiiKey) return cachedPiiKey;
+  const secret = process.env.ZENEMOO_PII_ENCRYPTION_KEY || process.env.ENCRYPTION_SECRET;
+  if (!secret || secret.trim() === '') {
+    throw new Error('Server configuration error: PII encryption secret is not configured.');
+  }
+  cachedPiiKey = crypto.createHash('sha256').update(secret.trim()).digest();
+  return cachedPiiKey;
+}
 
 export const SENSITIVE_PROFILE_FIELDS = [
   'personal_email',
@@ -29,8 +36,9 @@ export function encryptField(plainText) {
   }
 
   try {
+    const key = getPiiKey();
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     let encrypted = cipher.update(plainText.trim(), 'utf8', 'hex');
     encrypted += cipher.final('hex');
     const authTag = cipher.getAuthTag().toString('hex');
@@ -57,7 +65,8 @@ export function decryptField(cipherText) {
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(tagHex, 'hex');
 
-    const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, iv);
+    const key = getPiiKey();
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAuthTag(authTag);
     let decrypted = decipher.update(contentHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');

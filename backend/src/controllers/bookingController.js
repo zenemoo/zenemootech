@@ -13,6 +13,7 @@ import {
 import { sendBookingNotification } from '../services/telegramNotificationService.js';
 import { createGoogleMeetForBooking } from '../services/googleMeetService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
+import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups.com';
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAA...'; // Site secret key
@@ -502,10 +503,15 @@ export const getBookingById = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
 
+    const cleanBookingId = sanitizePostgrestExact(bookingId);
+    if (!cleanBookingId) {
+      return res.status(404).json({ success: false, message: 'Invalid booking ID format.' });
+    }
+
     const { data: booking, error } = await supabase
       .from('call_bookings')
       .select('*')
-      .or(`id.eq.${bookingId},booking_id.eq.${bookingId}`)
+      .or(`id.eq.${cleanBookingId},booking_id.eq.${cleanBookingId}`)
       .maybeSingle();
 
     if (error || !booking) {
@@ -566,8 +572,11 @@ export const getAdminBookings = async (req, res, next) => {
     }
 
     if (search && search.trim()) {
-      const term = `%${search.trim()}%`;
-      query = query.or(`full_name.ilike.${term},email.ilike.${term},company_name.ilike.${term},booking_id.ilike.${term},phone.ilike.${term}`);
+      const cleanSearch = sanitizePostgrestFilter(search);
+      if (cleanSearch) {
+        const term = `%${cleanSearch}%`;
+        query = query.or(`full_name.ilike.${term},email.ilike.${term},company_name.ilike.${term},booking_id.ilike.${term},phone.ilike.${term}`);
+      }
     }
 
     const pageNum = parseInt(page, 10) || 1;
@@ -633,10 +642,15 @@ export const generateMeetingForBooking = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
 
+    const cleanId = sanitizePostgrestExact(id);
+    if (!cleanId) {
+      return res.status(400).json({ success: false, message: 'Invalid booking ID.' });
+    }
+
     const { data: booking, error } = await supabase
       .from('call_bookings')
       .select('*')
-      .or(`id.eq.${id},booking_id.eq.${id}`)
+      .or(`id.eq.${cleanId},booking_id.eq.${cleanId}`)
       .maybeSingle();
 
     if (error || !booking) {
@@ -721,10 +735,15 @@ export const resendBookingEmail = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
 
+    const cleanId = sanitizePostgrestExact(id);
+    if (!cleanId) {
+      return res.status(400).json({ success: false, message: 'Invalid booking ID.' });
+    }
+
     const { data: booking, error } = await supabase
       .from('call_bookings')
       .select('*')
-      .or(`id.eq.${id},booking_id.eq.${id}`)
+      .or(`id.eq.${cleanId},booking_id.eq.${cleanId}`)
       .maybeSingle();
 
     if (error || !booking) {
@@ -854,10 +873,15 @@ export const updateAdminBooking = async (req, res, next) => {
       updateData.admin_notes = adminNotes;
     }
 
+    const cleanId = sanitizePostgrestExact(id);
+    if (!cleanId) {
+      return res.status(400).json({ success: false, message: 'Invalid booking ID.' });
+    }
+
     const { data: updatedBooking, error } = await supabase
       .from('call_bookings')
       .update(updateData)
-      .or(`id.eq.${id},booking_id.eq.${id}`)
+      .or(`id.eq.${cleanId},booking_id.eq.${cleanId}`)
       .select()
       .single();
 
@@ -887,6 +911,11 @@ export const deleteAdminBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Booking ID is required.' });
     }
 
+    const cleanId = sanitizePostgrestExact(id);
+    if (!cleanId) {
+      return res.status(400).json({ success: false, message: 'Invalid booking ID format.' });
+    }
+
     if (!supabase) {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
     }
@@ -894,7 +923,7 @@ export const deleteAdminBooking = async (req, res, next) => {
     const { error } = await supabase
       .from('call_bookings')
       .delete()
-      .or(`id.eq.${id},booking_id.eq.${id}`);
+      .or(`id.eq.${cleanId},booking_id.eq.${cleanId}`);
 
     if (error) {
       return res.status(500).json({ success: false, message: 'Failed to delete booking.' });

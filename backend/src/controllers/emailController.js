@@ -9,6 +9,7 @@ import {
   runFullEmailDiagnostics,
 } from '../services/emailService.js';
 import { encrypt, decrypt } from '../services/encryptionService.js';
+import { sanitizePostgrestExact, sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 // Helper for non-hanging async queries with timeout
 const withTimeout = (promise, ms = 8000) => {
@@ -492,17 +493,19 @@ export const getEmailHistoryById = async (req, res, next) => {
 
     if (supabase) {
       try {
-        const { data, error } = await withTimeout(
-          supabase
-            .from('email_history')
-            .select('*')
-            .or(`id.eq.${id},message_id.eq.${id}`)
-            .maybeSingle(),
-          6000
-        );
-
-        if (!error && data) {
-          record = data;
+        const cleanId = sanitizePostgrestExact(id);
+        if (cleanId) {
+          const { data, error } = await withTimeout(
+            supabase
+              .from('email_history')
+              .select('*')
+              .or(`id.eq.${cleanId},message_id.eq.${cleanId}`)
+              .maybeSingle(),
+            6000
+          );
+          if (!error && data) {
+            record = data;
+          }
         }
       } catch (dbErr) {
         console.warn('Supabase fetch email detail note:', dbErr.message);

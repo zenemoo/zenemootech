@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { googleAppsScriptService } from '../services/googleAppsScriptService.js';
+import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 // In-memory store for datasets & files (starts 100% empty — NO fake data)
 const fallbackDatasets = [];
@@ -94,7 +95,10 @@ export const getDatasets = async (req, res) => {
           query = query.eq('status', status);
         }
         if (search) {
-          query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,language.ilike.%${search}%`);
+          const q = sanitizePostgrestFilter(search);
+          if (q) {
+            query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%,language.ilike.%${q}%`);
+          }
         }
 
         const { data, error } = await query;

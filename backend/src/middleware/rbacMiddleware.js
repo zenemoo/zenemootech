@@ -1,11 +1,27 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.trim() === '') {
+    return null;
+  }
+  return secret.trim();
+};
 
 /**
  * Universal Token Verification Middleware
  */
 export const verifyToken = (req, res, next) => {
+  const secret = getJwtSecret();
+  if (!secret) {
+    console.error('[Security Warning] JWT_SECRET environment variable is missing on server.');
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_AUTH_CONFIG_ERROR',
+      message: 'Server configuration error: Authentication is temporarily unavailable.',
+    });
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({
@@ -18,7 +34,7 @@ export const verifyToken = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, secret);
     req.user = decoded;
 
     // Issue renewed sliding token preserving all user claims
@@ -32,7 +48,7 @@ export const verifyToken = (req, res, next) => {
         temporary_password: decoded.temporary_password,
         password_changed: decoded.password_changed,
       },
-      JWT_SECRET,
+      secret,
       { expiresIn: '30m' }
     );
 

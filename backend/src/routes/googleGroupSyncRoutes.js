@@ -13,7 +13,7 @@ import {
 } from '../controllers/googleGroupSyncController.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
+const getJwtSecret = () => (process.env.JWT_SECRET ? process.env.JWT_SECRET.trim() : null);
 
 /**
  * Dual Authentication Guard Middleware:
@@ -46,24 +46,27 @@ export const requireSyncAuth = (req, res, next) => {
     }
 
     // Attempt JWT verification
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      const userRole = (decoded.role || '').toLowerCase();
-      const isAdmin = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
+    const secret = getJwtSecret();
+    if (secret) {
+      try {
+        const decoded = jwt.verify(token, secret);
+        const userRole = (decoded.role || '').toLowerCase();
+        const isAdmin = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
 
-      if (isAdmin) {
-        req.user = decoded;
-        req.authMethod = 'ADMIN_JWT';
-        return next();
+        if (isAdmin) {
+          req.user = decoded;
+          req.authMethod = 'ADMIN_JWT';
+          return next();
+        }
+
+        return res.status(403).json({
+          success: false,
+          code: 'FORBIDDEN_INSUFFICIENT_ROLE',
+          message: '403 Access Denied: Admin authorization required to manage Google Group.',
+        });
+      } catch (_) {
+        // Token invalid or expired
       }
-
-      return res.status(403).json({
-        success: false,
-        code: 'FORBIDDEN_INSUFFICIENT_ROLE',
-        message: '403 Access Denied: Admin authorization required to manage Google Group.',
-      });
-    } catch (_) {
-      // Token invalid or expired
     }
   }
 

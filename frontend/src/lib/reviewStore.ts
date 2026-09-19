@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { reviewApi } from '../services/api';
 
 export interface ReviewItem {
   id: string;
@@ -106,49 +107,20 @@ export const getPublicVisibleReviews = async (forceRefresh = false): Promise<Rev
 };
 
 /**
- * Admin API: Fetch ALL reviews directly from Supabase ordered newest first.
+ * Admin API: Fetch ALL reviews via backend API ordered newest first.
  * Marks duplicate records with `isPossibleDuplicate = true` for Admin inspection.
  */
 export const getAllReviewsForAdmin = async (): Promise<ReviewItem[]> => {
-  const { data, error } = await supabase
-    .from('reviews')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Supabase fetch admin reviews error:', error);
-    throw new Error(error.message || 'Unable to fetch admin reviews from database.');
-  }
-
-  const items = (data as ReviewItem[]) || [];
-
-  // Identify duplicate fingerprints or duplicate (name + review_text) for Admin indicator
-  const fingerprintCounts: Record<string, number> = {};
-  const nameTextCounts: Record<string, number> = {};
-
-  items.forEach((item) => {
-    if (item.review_fingerprint) {
-      fingerprintCounts[item.review_fingerprint] = (fingerprintCounts[item.review_fingerprint] || 0) + 1;
+  try {
+    const res = await reviewApi.getAllAdmin();
+    if (res.data && res.data.data) {
+      return res.data.data as ReviewItem[];
     }
-    const normName = (item.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-    const normText = (item.review_text || '').trim().replace(/\s+/g, ' ').toLowerCase();
-    const key = `${normName}|${normText}`;
-    nameTextCounts[key] = (nameTextCounts[key] || 0) + 1;
-  });
-
-  return items.map((item) => {
-    const normName = (item.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-    const normText = (item.review_text || '').trim().replace(/\s+/g, ' ').toLowerCase();
-    const key = `${normName}|${normText}`;
-
-    const isDupFingerprint = item.review_fingerprint && fingerprintCounts[item.review_fingerprint] > 1;
-    const isDupNameText = nameTextCounts[key] > 1;
-
-    return {
-      ...item,
-      isPossibleDuplicate: Boolean(isDupFingerprint || isDupNameText),
-    };
-  });
+  } catch (err: any) {
+    console.error('Backend fetch admin reviews error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to fetch admin reviews from database.');
+  }
+  return [];
 };
 
 /**
@@ -184,7 +156,28 @@ export const submitPublicReview = async (reviewData: {
 
   const cleanText = reviewData.review_text && reviewData.review_text.trim() ? reviewData.review_text.trim() : null;
 
-  // 2. Compute SHA-256 fingerprint from normalized fields
+  // 2. Primary: Submit via backend reviewApi
+  try {
+    const res = await reviewApi.submit({
+      name: cleanName,
+      reviewer_type: cleanType,
+      rating: cleanRating,
+      review_text: cleanText,
+    });
+    if (res.data && res.data.data) {
+      invalidatePublicReviewsCache();
+      return res.data.data as ReviewItem;
+    }
+  } catch (apiErr: any) {
+    if (apiErr.response?.data?.error?.includes('already submitted')) {
+      const dupErr: any = new Error(apiErr.response.data.error);
+      dupErr.isDuplicate = true;
+      throw dupErr;
+    }
+    console.warn('Backend review submit note, trying fallback:', apiErr.message);
+  }
+
+  // 3. Compute SHA-256 fingerprint from normalized fields
   const fingerprint = await computeReviewFingerprint(cleanName, cleanType, cleanRating, cleanText);
 
   // 3. Check Supabase database for existing identical review fingerprint
@@ -273,156 +266,90 @@ export const submitPublicReview = async (reviewData: {
 };
 
 /**
- * Admin API: Toggle review visibility state in Supabase.
+ * Admin API: Toggle review visibility state via backend API.
  */
 export const toggleReviewVisibility = async (id: string, newVisibility: boolean): Promise<ReviewItem> => {
-  const now = new Date().toISOString();
-
-  const { data, error } = await supabase
-    .from('reviews')
-    .update({ is_visible: newVisibility, updated_at: now })
-    .or(`id.eq.${id},review_id.eq.${id}`)
-    .select()
-    .single();
-
-  if (error || !data) {
-    console.error('Supabase toggle visibility error:', error);
-    throw new Error(error?.message || 'Unable to update review visibility. Please try again.');
+  try {
+    const res = await reviewApi.update(id, { is_visible: newVisibility });
+    invalidatePublicReviewsCache();
+    return res.data.data as ReviewItem;
+  } catch (err: any) {
+    console.error('Backend toggle review visibility error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to update review visibility.');
   }
-
-  invalidatePublicReviewsCache();
-  return data as ReviewItem;
 };
 
 /**
- * Admin API: Delete review permanently from Supabase.
+ * Admin API: Delete review permanently via backend API.
  */
 export const deleteReviewFromApi = async (id: string): Promise<void> => {
-  const { error } = await supabase
-    .from('reviews')
-    .delete()
-    .or(`id.eq.${id},review_id.eq.${id}`);
-
-  if (error) {
-    console.error('Supabase delete review error:', error);
-    throw new Error(error.message || 'Unable to delete this review. Please try again.');
+  try {
+    await reviewApi.delete(id);
+    invalidatePublicReviewsCache();
+  } catch (err: any) {
+    console.error('Backend delete review error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to delete this review.');
   }
-
-  invalidatePublicReviewsCache();
 };
 
 /**
- * Admin API: Publish ALL pending (hidden) reviews at once in Supabase.
+ * Admin API: Publish ALL pending (hidden) reviews at once via backend API.
  */
 export const publishAllPendingReviews = async (): Promise<number> => {
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('reviews')
-    .update({ is_visible: true, updated_at: now })
-    .eq('is_visible', false)
-    .select('id');
-
-  if (error) {
-    console.error('Supabase publish all pending error:', error);
-    throw new Error(error.message || 'Unable to publish pending reviews.');
+  try {
+    const res = await reviewApi.publishAllPending();
+    invalidatePublicReviewsCache();
+    return res.data?.count || 0;
+  } catch (err: any) {
+    console.error('Backend publish all pending error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to publish pending reviews.');
   }
-
-  invalidatePublicReviewsCache();
-  return data ? data.length : 0;
 };
 
 /**
- * Admin API: Bulk publish selected review IDs in Supabase.
+ * Admin API: Bulk publish selected review IDs via backend API.
  */
 export const bulkPublishReviews = async (ids: string[]): Promise<number> => {
   if (!ids || ids.length === 0) return 0;
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('reviews')
-    .update({ is_visible: true, updated_at: now })
-    .in('id', ids)
-    .select('id');
-
-  if (error) {
-    console.error('Supabase bulk publish error:', error);
-    throw new Error(error.message || 'Unable to publish selected reviews.');
+  try {
+    const res = await reviewApi.bulkPublish(ids);
+    invalidatePublicReviewsCache();
+    return res.data?.count || 0;
+  } catch (err: any) {
+    console.error('Backend bulk publish error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to publish selected reviews.');
   }
-
-  invalidatePublicReviewsCache();
-  return data ? data.length : 0;
 };
 
 /**
- * Admin API: Bulk delete selected review IDs in Supabase.
+ * Admin API: Bulk delete selected review IDs via backend API.
  */
 export const bulkDeleteReviews = async (ids: string[]): Promise<number> => {
   if (!ids || ids.length === 0) return 0;
-  const { data, error } = await supabase
-    .from('reviews')
-    .delete()
-    .in('id', ids)
-    .select('id');
-
-  if (error) {
-    console.error('Supabase bulk delete error:', error);
-    throw new Error(error.message || 'Unable to delete selected reviews.');
+  try {
+    const res = await reviewApi.bulkDelete(ids);
+    invalidatePublicReviewsCache();
+    return res.data?.count || 0;
+  } catch (err: any) {
+    console.error('Backend bulk delete error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to delete selected reviews.');
   }
-
-  invalidatePublicReviewsCache();
-  return data ? data.length : 0;
 };
 
 /**
- * Admin API: Fully update a review item in Supabase (Name, Type, Rating, Message Text, Visibility).
+ * Admin API: Fully update a review item via backend API (Name, Type, Rating, Message Text, Visibility).
  */
 export const updateReviewInApi = async (
   id: string,
   updates: Partial<Pick<ReviewItem, 'name' | 'reviewer_type' | 'rating' | 'review_text' | 'is_visible'>>
 ): Promise<ReviewItem> => {
-  const now = new Date().toISOString();
-  const payload: any = {
-    ...updates,
-    updated_at: now,
-  };
-
-  if (
-    updates.name !== undefined ||
-    updates.reviewer_type !== undefined ||
-    updates.rating !== undefined ||
-    updates.review_text !== undefined
-  ) {
-    const normName = updates.name !== undefined ? updates.name : '';
-    const normType = updates.reviewer_type !== undefined ? updates.reviewer_type : '';
-    const normRating = updates.rating !== undefined ? updates.rating : 5;
-    const normText = updates.review_text !== undefined ? updates.review_text : null;
-    payload.review_fingerprint = await computeReviewFingerprint(normName, normType, normRating, normText);
+  try {
+    const res = await reviewApi.update(id, updates);
+    invalidatePublicReviewsCache();
+    return res.data.data as ReviewItem;
+  } catch (err: any) {
+    console.error('Backend update review error:', err);
+    throw new Error(err.response?.data?.error || err.message || 'Unable to update review details.');
   }
-
-  let { data, error } = await supabase
-    .from('reviews')
-    .update(payload)
-    .or(`id.eq.${id},review_id.eq.${id}`)
-    .select()
-    .single();
-
-  if (error && error.message?.includes('review_fingerprint')) {
-    delete payload.review_fingerprint;
-    const res = await supabase
-      .from('reviews')
-      .update(payload)
-      .or(`id.eq.${id},review_id.eq.${id}`)
-      .select()
-      .single();
-    data = res.data;
-    error = res.error;
-  }
-
-  if (error || !data) {
-    console.error('Supabase update review error:', error);
-    throw new Error(error?.message || 'Unable to update review details. Please try again.');
-  }
-
-  invalidatePublicReviewsCache();
-  return data as ReviewItem;
 };
 

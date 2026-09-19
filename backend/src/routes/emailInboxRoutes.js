@@ -13,6 +13,7 @@ import {
   getAttachmentDownload,
 } from '../controllers/emailInboxController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
+import { emailSendRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -23,9 +24,9 @@ router.post('/webhook/cloudflare', ingestCloudflareEmail);
 router.get('/storage-usage', verifyToken, requireRole(['admin']), getEmailStorageUsage);
 router.get('/inbox', verifyToken, requireRole(['admin']), getIncomingEmails);
 router.get('/sent', verifyToken, requireRole(['admin']), getSentEmails);
-router.post('/send', verifyToken, requireRole(['admin']), sendInboxEmail);
-router.post('/reply', verifyToken, requireRole(['admin']), sendInboxEmail);
-router.post('/forward', verifyToken, requireRole(['admin']), sendInboxEmail);
+router.post('/send', verifyToken, requireRole(['admin']), emailSendRateLimiter, sendInboxEmail);
+router.post('/reply', verifyToken, requireRole(['admin']), emailSendRateLimiter, sendInboxEmail);
+router.post('/forward', verifyToken, requireRole(['admin']), emailSendRateLimiter, sendInboxEmail);
 router.get('/inbox/:id', verifyToken, requireRole(['admin']), getIncomingEmailById);
 router.patch('/inbox/:id', verifyToken, requireRole(['admin']), updateIncomingEmailState);
 router.delete('/inbox/:id', verifyToken, requireRole(['admin']), deleteIncomingEmail);

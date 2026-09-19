@@ -78,25 +78,7 @@ export const getStoredCandidateApplications = async (opportunity_id?: string, fo
           return live;
         }
       } catch (err: any) {
-        console.warn('Backend opportunity applications fetch note. Trying fallback:', err.message);
-      }
-
-      // 2. Fallback: Direct Supabase client query with explicit columns (Zero select('*'), answers omitted for list)
-      if (supabase) {
-        try {
-          const explicitCols = 'id, applicant_id, opportunity_id, opportunity_title, applicant_name, applicant_email, applicant_phone, status, admin_notes, sync_status, sync_error, last_synced_at, terms_accepted, terms_accepted_at, terms_version, referral_code, referrer_name, referrer_email, referred_by_id, referral_source, created_at, updated_at';
-          let query = supabase.from('opportunity_applications').select(explicitCols).order('created_at', { ascending: false });
-          if (opportunity_id) {
-            query = query.eq('opportunity_id', opportunity_id);
-          }
-          const { data, error } = await query;
-          if (!error && Array.isArray(data)) {
-            saveLocalApplications(data as CandidateApplication[]);
-            return data as CandidateApplication[];
-          }
-        } catch (err: any) {
-          console.warn('Direct Supabase fetch candidate applications error:', err.message);
-        }
+        console.warn('Backend opportunity applications fetch note. Using local cache:', err.message);
       }
 
       const localList = getLocalApplications();
@@ -130,16 +112,7 @@ export const getSingleCandidateApplicationById = async (id: string): Promise<Can
       return detailed;
     }
   } catch (err: any) {
-    console.warn('Backend single application fetch note, trying Supabase direct:', err.message);
-  }
-
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('opportunity_applications').select('*').eq('id', id).maybeSingle();
-      if (!error && data) {
-        return data as CandidateApplication;
-      }
-    } catch (_) {}
+    console.warn('Backend single application fetch note, using local cache:', err.message);
   }
 
   const localList = getLocalApplications();
@@ -158,8 +131,8 @@ export const checkExistingApplication = async (
   try {
     const res = await opportunityApplicationApi.checkDuplicate(opportunity_id, cleanEmail);
     if (res.data && res.data.success !== undefined) {
-      if (res.data.exists && res.data.application) {
-        return res.data.application as CandidateApplication;
+      if ((res.data.isDuplicate || res.data.exists) && (res.data.existingApplication || res.data.application)) {
+        return (res.data.existingApplication || res.data.application) as CandidateApplication;
       } else {
         // Authoritative NO from server: Purge any stale ghost record from localStorage
         let localList = getLocalApplications();
@@ -173,42 +146,13 @@ export const checkExistingApplication = async (
       }
     }
   } catch (apiErr: any) {
-    console.warn('[checkDuplicate API Note, falling back to direct Supabase]:', apiErr.message);
+    console.warn('[checkDuplicate API Note]:', apiErr.message);
   }
 
-  // 2. Secondary Check: Direct Supabase database query (targeted 1-row query)
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('opportunity_applications')
-        .select('id, applicant_id, opportunity_id, applicant_email, status, created_at')
-        .eq('opportunity_id', opportunity_id)
-        .ilike('applicant_email', cleanEmail)
-        .limit(1);
-
-      if (!error && Array.isArray(data)) {
-        if (data.length > 0) {
-          return data[0] as CandidateApplication;
-        } else {
-          // Authoritative NO from Supabase: Purge any stale ghost record from localStorage
-          let localList = getLocalApplications();
-          const filtered = localList.filter(
-            (app) => !(app.opportunity_id === opportunity_id && (app.applicant_email || '').toLowerCase() === cleanEmail)
-          );
-          if (filtered.length !== localList.length) {
-            saveLocalApplications(filtered);
-          }
-          return null;
-        }
-      }
-    } catch (_) {}
-  }
-
-  // 3. Fallback: Network failure / offline is NOT proof of existing application
   return null;
 };
 
-// Submit candidate application directly to Supabase / Backend API with Duplicate Protection
+// Submit candidate application via Backend API with Duplicate Protection
 export const submitCandidateApplication = async (
   appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'>
 ): Promise<CandidateApplication> => {
@@ -226,7 +170,7 @@ export const submitCandidateApplication = async (
     terms_version: appData.terms_version || '1.0',
   };
 
-  // Primary Method: Submit via Express API Backend (Enforces server-side duplicate protection & notifications)
+  // Submit via Express API Backend (Enforces server-side duplicate protection, Sheets sync & notifications)
   try {
     const res = await opportunityApplicationApi.submit(normalizedAppData);
     if (res.data && res.data.data) {
@@ -246,98 +190,13 @@ export const submitCandidateApplication = async (
     if (responseData?.error) {
       throw new Error(responseData.error);
     }
-    console.warn('Express submit application note, trying direct Supabase fallback:', apiErr.message);
+    throw new Error(apiErr.message || 'Unable to submit application. Please try again.');
   }
 
-  // Fallback Method: Direct Supabase client insert (When backend API is unreachable)
-  // MUST perform client-side pre-check for duplicates before inserting
-  try {
-    const { data: existingApps } = await supabase
-      .from('opportunity_applications')
-      .select('id, applicant_id')
-      .eq('opportunity_id', normalizedAppData.opportunity_id)
-      .ilike('applicant_email', cleanEmail)
-      .limit(1);
-
-    if (existingApps && existingApps.length > 0) {
-      const dupError = new Error('You have already applied for this opportunity using this email address.') as any;
-      dupError.code = 'DUPLICATE_APPLICATION';
-      dupError.isDuplicate = true;
-      throw dupError;
-    }
-
-    const generatedId = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const dbRecord = {
-      applicant_id: normalizedAppData.applicant_id || generatedId,
-      opportunity_id: normalizedAppData.opportunity_id,
-      opportunity_title: normalizedAppData.opportunity_title || 'General Opportunity',
-      applicant_name: normalizedAppData.applicant_name,
-      applicant_email: cleanEmail,
-      applicant_phone: normalizedAppData.applicant_phone,
-      answers: normalizedAppData.answers || {},
-      status: 'pending',
-      referral_code: normalizedAppData.referral_code || null,
-      referrer_name: normalizedAppData.referrer_name || null,
-      referrer_email: normalizedAppData.referrer_email || null,
-      referred_by_id: normalizedAppData.referred_by_id || null,
-      referral_source: normalizedAppData.referral_source || (normalizedAppData.referral_code ? 'talent_hub' : null),
-      terms_accepted: true,
-      terms_accepted_at: normalizedAppData.terms_accepted_at,
-      terms_version: normalizedAppData.terms_version,
-      admin_notes: '',
-      sync_status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await supabase.from('opportunity_applications').insert([dbRecord]).select();
-    if (!error && data && data.length > 0) {
-      const saved = data[0] as CandidateApplication;
-      localList.unshift(saved);
-      saveLocalApplications(localList);
-
-      // Asynchronously trigger backend confirmation email dispatch, Telegram alert, and Google Sheets sync
-      try {
-        opportunityApplicationApi.sendConfirmation(saved).catch((err) => {
-          console.warn('[Post-insert confirmation trigger note]:', err.message);
-        });
-      } catch (_) {}
-
-      return saved;
-    } else if (error) {
-      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
-        const dupError = new Error('You have already applied for this opportunity using this email address.') as any;
-        dupError.code = 'DUPLICATE_APPLICATION';
-        dupError.isDuplicate = true;
-        throw dupError;
-      }
-      console.error('Supabase insert application error:', error.message);
-    }
-  } catch (err: any) {
-    if (err.code === 'DUPLICATE_APPLICATION' || err.isDuplicate) {
-      throw err;
-    }
-    console.warn('Direct Supabase submit application error:', err.message);
-  }
-
-  const generatedId = `APP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-  const fallbackApp: CandidateApplication = {
-    id: `app_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    applicant_id: normalizedAppData.applicant_id || generatedId,
-    opportunity_id: normalizedAppData.opportunity_id,
-    opportunity_title: normalizedAppData.opportunity_title || 'General Opportunity',
-    applicant_name: normalizedAppData.applicant_name,
-    applicant_email: cleanEmail,
-    applicant_phone: normalizedAppData.applicant_phone,
-    answers: normalizedAppData.answers || {},
-    status: 'pending',
-  };
-
-  localList.unshift(fallbackApp);
-  saveLocalApplications(localList);
-  return fallbackApp;
+  throw new Error('Unable to submit application. Please try again.');
 };
 
-// Update status directly via API / Supabase and return fresh application list with updated email status
+// Update status via Backend API and return fresh application list with updated email status
 export const updateCandidateApplicationStatus = async (
   id: string,
   updates: { status?: 'pending' | 'shortlisted' | 'accepted' | 'rejected'; admin_notes?: string }
@@ -349,14 +208,8 @@ export const updateCandidateApplicationStatus = async (
     if (res.data && res.data.data) {
       backendRecord = res.data.data;
     }
-  } catch (e) {}
-
-  if (!backendRecord) {
-    try {
-      if (id && id.includes('-')) {
-        await supabase.from('opportunity_applications').update(updates).eq('id', id);
-      }
-    } catch (e) {}
+  } catch (e: any) {
+    console.warn('Backend update candidate application error:', e.message);
   }
 
   // Update local storage cache
@@ -364,21 +217,17 @@ export const updateCandidateApplicationStatus = async (
   localList = localList.map((app) => (app.id === id ? { ...app, ...updates, ...(backendRecord || {}) } : app));
   saveLocalApplications(localList);
 
-  // Fetch live applications directly from Supabase / API to ensure acceptance_email_status is fresh
+  // Fetch live applications directly from API to ensure acceptance_email_status is fresh
   return await getStoredCandidateApplications();
 };
 
-// Delete application directly from Supabase
+// Delete application via Backend API
 export const deleteCandidateApplication = async (id: string): Promise<CandidateApplication[]> => {
   try {
-    if (id && id.includes('-')) {
-      await supabase.from('opportunity_applications').delete().eq('id', id);
-    }
-  } catch (e) {}
-
-  try {
     await opportunityApplicationApi.delete(id);
-  } catch (e) {}
+  } catch (e: any) {
+    console.warn('Backend delete candidate application error:', e.message);
+  }
 
   let localList = getLocalApplications().filter((app) => app.id !== id);
   saveLocalApplications(localList);

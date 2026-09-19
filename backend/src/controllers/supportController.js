@@ -1,6 +1,7 @@
 import { supabaseService } from '../services/supabaseService.js';
 import { supabase } from '../config/supabase.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
+import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 // In-memory fallback array for support tickets
 let memorySupportTickets = [];
@@ -162,8 +163,10 @@ export const getSupportTickets = async (req, res, next) => {
         }
 
         if (search && search.trim()) {
-          const q = search.trim();
-          query = query.or(`ticket_id.ilike.%${q}%,user_name.ilike.%${q}%,user_email.ilike.%${q}%,subject.ilike.%${q}%,message.ilike.%${q}%`);
+          const q = sanitizePostgrestFilter(search);
+          if (q) {
+            query = query.or(`ticket_id.ilike.%${q}%,user_name.ilike.%${q}%,user_email.ilike.%${q}%,subject.ilike.%${q}%,message.ilike.%${q}%`);
+          }
         }
 
         query = query.order('created_at', { ascending: false }).range(from, to);

@@ -1,9 +1,17 @@
 import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-cbc';
-const SECRET_KEY = process.env.ENCRYPTION_SECRET || 'zenemoo_secure_email_encryption_key_2026_salt';
-// Generate a deterministic 32-byte key using scrypt
-const KEY = crypto.scryptSync(SECRET_KEY, 'zenemoo_salt', 32);
+
+let cachedKey = null;
+const getKey = () => {
+  if (cachedKey) return cachedKey;
+  const secretKey = process.env.ENCRYPTION_SECRET;
+  if (!secretKey || secretKey.trim() === '') {
+    throw new Error('Server configuration error: ENCRYPTION_SECRET environment variable is missing.');
+  }
+  cachedKey = crypto.scryptSync(secretKey.trim(), 'zenemoo_salt', 32);
+  return cachedKey;
+};
 
 /**
  * Encrypt a text string or object into iv:encryptedHex format
@@ -14,8 +22,9 @@ export const encrypt = (text) => {
   if (!stringValue) return '';
 
   try {
+    const key = getKey();
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
     let encrypted = cipher.update(stringValue, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     return `${iv.toString('hex')}:${encrypted}`;
@@ -47,7 +56,7 @@ export const decrypt = (encryptedData, isJson = false) => {
     if (!ivHex || !cipherHex) return isJson ? [] : encryptedData;
 
     const iv = Buffer.from(ivHex, 'hex');
-    const decipher = crypto.createDecipheriv(ALGORITHM, KEY, iv);
+    const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), iv);
     let decrypted = decipher.update(cipherHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
 

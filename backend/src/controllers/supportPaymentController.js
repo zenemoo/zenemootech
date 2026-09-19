@@ -5,6 +5,7 @@ import { cashfreeService } from '../services/cashfreeService.js';
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
+import { sanitizePostgrestExact, sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1758,17 +1759,21 @@ export const getReceiptVerificationData = async (req, res) => {
     const cleanParam = rawDecoded.replace(/[\s]+/g, '-').toUpperCase();
     const normalizedParam = cleanParam.replace(/^RCPT-7NM-/i, 'RCPT-ZNM-');
 
+    const safeDecoded = sanitizePostgrestExact(rawDecoded);
+    const safeClean = sanitizePostgrestExact(cleanParam);
+    const safeNorm = sanitizePostgrestExact(normalizedParam);
+
     const parts = normalizedParam.split('-');
-    const suffix = (parts[parts.length - 1] || '').trim().toUpperCase(); // e.g. "MS8L"
+    const suffix = sanitizePostgrestExact((parts[parts.length - 1] || '').trim().toUpperCase()); // e.g. "MS8L"
 
     // 1. Check direct match in Supabase support_payments
     let record = null;
-    if (supabase) {
+    if (supabase && (safeDecoded || safeClean || safeNorm)) {
       try {
         const { data: directMatch } = await supabase
           .from('support_payments')
           .select('*')
-          .or(`order_id.eq.${rawDecoded},order_id.eq.${cleanParam},order_id.eq.${normalizedParam},payment_id.eq.${rawDecoded},cf_order_id.eq.${rawDecoded}`)
+          .or(`order_id.eq.${safeDecoded || safeClean},order_id.eq.${safeClean},order_id.eq.${safeNorm},payment_id.eq.${safeDecoded},cf_order_id.eq.${safeDecoded}`)
           .maybeSingle();
 
         if (directMatch) {

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { generateCommunication, modifyCommunication } from '../controllers/adminHrAiController.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = Router();
 
@@ -17,8 +17,8 @@ const adminAiRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Protected routes (Requires valid auth token / session)
-router.post('/generate', authMiddleware, adminAiRateLimiter, generateCommunication);
-router.post('/modify', authMiddleware, adminAiRateLimiter, modifyCommunication);
+// Protected routes (Requires valid admin/hr authorization)
+router.post('/generate', verifyToken, requireRole(['admin', 'hr']), adminAiRateLimiter, generateCommunication);
+router.post('/modify', verifyToken, requireRole(['admin', 'hr']), adminAiRateLimiter, modifyCommunication);
 
 export default router;

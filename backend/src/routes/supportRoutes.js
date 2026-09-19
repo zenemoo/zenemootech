@@ -17,30 +17,49 @@ import {
 } from '../controllers/supportPaymentController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
+import { supabase } from '../config/supabase.js';
+
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
 
 // Optional token extraction middleware (supports both Zenemoo JWT and Supabase Auth tokens)
-const optionalAuth = (req, res, next) => {
+// Strictly requires cryptographic verification; NEVER trusts unverified jwt.decode claims
+const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    try {
-      req.user = jwt.verify(token, JWT_SECRET);
-    } catch (_) {
+    const jwtSecret = process.env.JWT_SECRET ? process.env.JWT_SECRET.trim() : null;
+
+    let verified = false;
+
+    // 1. Try Zenemoo JWT verification
+    if (jwtSecret && token) {
       try {
-        const decoded = jwt.decode(token);
-        if (decoded && (decoded.sub || decoded.email || decoded.id)) {
-          req.user = {
-            id: decoded.sub || decoded.id,
-            email: decoded.email,
-            role: decoded.role || decoded.user_metadata?.role || 'user',
-            name: decoded.user_metadata?.full_name || decoded.name,
-            ...decoded,
-          };
-        }
-      } catch (__) {}
+        req.user = jwt.verify(token, jwtSecret);
+        verified = true;
+      } catch (_) {
+        // Token was not a valid Zenemoo JWT or was expired/tampered
+      }
     }
+
+    // 2. If not verified and Supabase is configured, try Supabase Auth token verification
+    if (!verified && supabase && token) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (!error && user && user.email) {
+          req.user = {
+            id: user.id,
+            email: (user.email || '').trim().toLowerCase(),
+            role: user.user_metadata?.role || 'user',
+            name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+          };
+          verified = true;
+        }
+      } catch (_) {
+        // Supabase token verification failed
+      }
+    }
+
+    // If verification failed, req.user remains undefined (unauthenticated)
   }
   next();
 };

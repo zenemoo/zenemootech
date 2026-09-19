@@ -33,6 +33,7 @@ import { AdminReferralsTab } from './AdminReferralsTab';
 import { AdminTalentTeamsTab } from './AdminTalentTeamsTab';
 import { AdminGoogleGroupTab } from './AdminGoogleGroupTab';
 import { AdminMessageHistoryTab } from './AdminMessageHistoryTab';
+import DOMPurify from 'dompurify';
 
 interface AdminDashboardProps {
   onExit: () => void;
@@ -6378,7 +6379,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 <div className="space-y-2">
                   <div className="text-xs font-mono text-slate-400 font-bold">Decrypted Body Content:</div>
                   <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-200 font-sans text-sm leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
-                    <div dangerouslySetInnerHTML={{ __html: selectedEmailDetail.html || '' }} />
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(selectedEmailDetail.html || '', {
+                          USE_PROFILES: { html: true },
+                          ADD_ATTR: ['target'],
+                          FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'link'],
+                          FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+                        }),
+                      }}
+                    />
                   </div>
                 </div>
 

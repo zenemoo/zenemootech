@@ -69,7 +69,7 @@ export const ensureOpportunitySheetExists = async (opportunityObj) => {
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   if (appsScriptUrl) {
     try {
-      const secret = process.env.ZENEMOO_SHEETS_SYNC_SECRET || 'zenemoo-secret-key-2026';
+      const secret = process.env.ZENEMOO_SHEETS_SYNC_SECRET ? process.env.ZENEMOO_SHEETS_SYNC_SECRET.trim() : '';
       await fetch(appsScriptUrl.trim(), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -179,7 +179,7 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   if (appsScriptUrl) {
     try {
-      const secret = process.env.ZENEMOO_SHEETS_SYNC_SECRET || 'zenemoo-secret-key-2026';
+      const secret = process.env.ZENEMOO_SHEETS_SYNC_SECRET ? process.env.ZENEMOO_SHEETS_SYNC_SECRET.trim() : '';
       const payload = {
         secret,
         action: 'sync_application',

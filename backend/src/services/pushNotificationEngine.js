@@ -4,14 +4,18 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { supabase } from '../config/supabase.js';
 
 // VAPID Keys Setup for Web Push
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || 'BH0dqalpC9xFj_3g1vYx15dUaxAPCVKLQlRpuTAftHt1UPOgFN7jk-6Q1k642-NIZ_Gj6b4rbnXG12SSuuGTgZo';
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || 'o026b3oV0uwl-9RM3eg6G7XJtnQdtS8jGnk2SsC9p_Q';
-const vapidEmail = process.env.VAPID_EMAIL || 'mailto:notifications@zenemoo.in';
+const vapidPublicKey = (process.env.VAPID_PUBLIC_KEY || '').trim();
+const vapidPrivateKey = (process.env.VAPID_PRIVATE_KEY || '').trim();
+const vapidEmail = (process.env.VAPID_EMAIL || 'mailto:notifications@zenemoo.in').trim();
 
-try {
-  webpush.setVapidDetails(vapidEmail, vapidPublicKey, vapidPrivateKey);
-} catch (err) {
-  console.warn('[WebPush Config Warning]: VAPID keys warning:', err.message);
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    webpush.setVapidDetails(vapidEmail, vapidPublicKey, vapidPrivateKey);
+  } catch (err) {
+    console.warn('[WebPush Config Warning]: VAPID keys warning:', err.message);
+  }
+} else {
+  console.warn('[WebPush Config]: VAPID keys not configured in environment; web push notifications disabled.');
 }
 
 export { vapidPublicKey };

@@ -5,6 +5,7 @@ import { sendMailViaBrevo } from '../services/emailService.js';
 import { generateApplicationConfirmationHtml } from '../services/applicationEmailTemplate.js';
 import { generateApplicationAcceptanceHtml } from '../services/applicationAcceptanceEmailTemplate.js';
 import { invalidateTalentOpportunitiesCache } from './talentHubController.js';
+import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 /**
  * Asynchronously sends confirmation email to applicant upon successful Opportunity Application submission
@@ -184,8 +185,10 @@ export const getApplications = async (req, res) => {
       query = query.ilike('status', status.trim());
     }
     if (search && search.trim()) {
-      const q = search.trim();
-      query = query.or(`applicant_name.ilike.%${q}%,applicant_email.ilike.%${q}%,applicant_phone.ilike.%${q}%,applicant_id.ilike.%${q}%`);
+      const q = sanitizePostgrestFilter(search);
+      if (q) {
+        query = query.or(`applicant_name.ilike.%${q}%,applicant_email.ilike.%${q}%,applicant_phone.ilike.%${q}%,applicant_id.ilike.%${q}%`);
+      }
     }
 
     if (page || pageSize || limit) {

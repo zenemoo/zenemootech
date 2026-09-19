@@ -10,7 +10,7 @@ import {
   deleteFile,
   deleteDataset,
 } from '../controllers/datasetController.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
 
@@ -19,12 +19,12 @@ router.get('/', getDatasets);
 router.get('/:identifier', getDatasetBySlugOrId);
 
 // Admin Authorized Management Routes
-router.post('/', authMiddleware, createDataset);
-router.post('/fetch-link-metadata', authMiddleware, fetchLinkMetadata);
-router.post('/:id/folders', authMiddleware, createFolder);
-router.post('/:id/upload', authMiddleware, uploadFile);
-router.post('/:id/upload-chunk', authMiddleware, uploadChunk);
-router.delete('/files/:fileId', authMiddleware, deleteFile);
-router.delete('/:id', authMiddleware, deleteDataset);
+router.post('/', verifyToken, requireRole(['admin']), createDataset);
+router.post('/fetch-link-metadata', verifyToken, requireRole(['admin']), fetchLinkMetadata);
+router.post('/:id/folders', verifyToken, requireRole(['admin']), createFolder);
+router.post('/:id/upload', verifyToken, requireRole(['admin']), uploadFile);
+router.post('/:id/upload-chunk', verifyToken, requireRole(['admin']), uploadChunk);
+router.delete('/files/:fileId', verifyToken, requireRole(['admin']), deleteFile);
+router.delete('/:id', verifyToken, requireRole(['admin']), deleteDataset);
 
 export default router;

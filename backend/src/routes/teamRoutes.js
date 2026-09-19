@@ -33,13 +33,13 @@ router.get('/profile-updates/pending', verifyToken, requireRole(['admin']), getP
 router.post('/profile-updates/:id/approve', verifyToken, requireRole(['admin']), approveProfileUpdate);
 router.post('/profile-updates/:id/reject', verifyToken, requireRole(['admin']), rejectProfileUpdate);
 
-// Admin Team Roster CRUD
+// Admin Team Roster CRUD (Strictly require Admin authorization)
 router.get('/', getTeam);
-router.post('/', createTeamMember);
-router.put('/reorder', reorderTeam);
-router.post('/:id/generate-summary', generateMemberSummary);
-router.put('/:id', updateTeamMember);
-router.delete('/:id', deleteTeamMember);
+router.post('/', verifyToken, requireRole(['admin']), createTeamMember);
+router.put('/reorder', verifyToken, requireRole(['admin']), reorderTeam);
+router.post('/:id/generate-summary', verifyToken, requireRole(['admin']), generateMemberSummary);
+router.put('/:id', verifyToken, requireRole(['admin']), updateTeamMember);
+router.delete('/:id', verifyToken, requireRole(['admin']), deleteTeamMember);
 
 export default router;
 

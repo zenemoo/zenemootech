@@ -3,6 +3,7 @@ import { supabaseService } from '../services/supabaseService.js';
 import { sendContactNotification } from '../services/telegramNotificationService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { generateContactConfirmationHtml } from '../services/contactEmailTemplate.js';
+import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 /**
  * Asynchronously sends confirmation email to user upon successful Contact Inquiry submission
@@ -203,8 +204,10 @@ export const getContacts = async (req, res, next) => {
         }
 
         if (search && search.trim()) {
-          const q = search.trim();
-          query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,company.ilike.%${q}%,inquiry_code.ilike.%${q}%`);
+          const q = sanitizePostgrestFilter(search);
+          if (q) {
+            query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,company.ilike.%${q}%,inquiry_code.ilike.%${q}%`);
+          }
         }
 
         query = query.order('created_at', { ascending: false }).range(from, to);

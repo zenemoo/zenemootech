@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
+import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 /**
  * Helper: Generates a system-level human-readable member code (e.g. MEM-A1B2-C3D4).
@@ -155,9 +156,12 @@ export const getVendorTeamMembers = async (req, res) => {
     }
 
     if (searchQuery) {
-      query = query.or(
-        `full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,member_code.ilike.%${searchQuery}%,city_district.ilike.%${searchQuery}%,state.ilike.%${searchQuery}%`
-      );
+      const cleanSearch = sanitizePostgrestFilter(searchQuery);
+      if (cleanSearch) {
+        query = query.or(
+          `full_name.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,member_code.ilike.%${cleanSearch}%,city_district.ilike.%${cleanSearch}%,state.ilike.%${cleanSearch}%`
+        );
+      }
     }
 
     query = query.order('created_at', { ascending: false }).range(from, to);
@@ -791,9 +795,12 @@ export const getAdminVendorTeamMembers = async (req, res) => {
       .is('deleted_at', null);
 
     if (searchQuery) {
-      query = query.or(
-        `full_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%,member_code.ilike.%${searchQuery}%`
-      );
+      const cleanSearch = sanitizePostgrestFilter(searchQuery);
+      if (cleanSearch) {
+        query = query.or(
+          `full_name.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,member_code.ilike.%${cleanSearch}%`
+        );
+      }
     }
 
     query = query.order('created_at', { ascending: false }).range(from, to);

@@ -106,18 +106,6 @@ export const authApi = {
       if (err.response && err.response.status !== 404) {
         throw err;
       }
-      try {
-        const { data } = await supabase
-          .from('authorized_admin_emails')
-          .select('*')
-          .eq('email', cleanEmail)
-          .maybeSingle();
-
-        if (data) {
-          return { data: { success: true, exists: true, message: '✅ Administrator account found.' } };
-        }
-      } catch (dbErr) {}
-
       const isAllowed = DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in');
       if (isAllowed) {
         return { data: { success: true, exists: true, message: '✅ Administrator account found.' } };
@@ -218,6 +206,25 @@ export const opportunityApplicationApi = {
   delete: (id: string) => api.delete(`/opportunity-applications/${id}`),
   resyncSingle: (id: string) => api.post(`/opportunity-applications/${id}/resync`),
   resyncAll: (opportunityId: string) => api.post(`/opportunity-applications/opportunity/${opportunityId}/resync-all`),
+};
+
+// Customer & Candidate Reviews APIs
+export const reviewApi = {
+  getPublic: (params?: { page?: number; limit?: number }) => api.get('/reviews', { params }),
+  submit: (data: any) => api.post('/reviews', data),
+  getAllAdmin: () => api.get('/reviews/admin/all'),
+  update: (id: string, data: any) => api.put(`/reviews/admin/${id}`, data),
+  delete: (id: string) => api.delete(`/reviews/admin/${id}`),
+  publishAllPending: () => api.post('/reviews/admin/publish-all-pending'),
+  bulkPublish: (ids: string[]) => api.post('/reviews/admin/bulk-publish', { ids }),
+  bulkDelete: (ids: string[]) => api.post('/reviews/admin/bulk-delete', { ids }),
+};
+
+// Authorized Admin Emails APIs
+export const adminEmailApi = {
+  getAll: () => api.get('/auth/authorized-emails'),
+  upsert: (data: any) => api.post('/auth/authorized-emails', data),
+  delete: (idOrEmail: string) => api.delete(`/auth/authorized-emails/${encodeURIComponent(idOrEmail)}`),
 };
 
 // Contact APIs

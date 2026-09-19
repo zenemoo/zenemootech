@@ -6,8 +6,9 @@ import { supabaseService } from '../services/supabaseService.js';
 import { encrypt, decrypt } from '../services/encryptionService.js';
 import { sendMailViaBrevo, parseRecipients, validateEmail, sanitizeHtml } from '../services/emailService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
+import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
 
-const CLOUDFLARE_WEBHOOK_SECRET = process.env.CLOUDFLARE_WEBHOOK_SECRET || 'zenemoo_cloudflare_worker_secret_2026';
+const getCloudflareWebhookSecret = () => (process.env.CLOUDFLARE_WEBHOOK_SECRET ? process.env.CLOUDFLARE_WEBHOOK_SECRET.trim() : null);
 
 const DEFAULT_VERIFIED_ADDRESSES = [
   {
@@ -293,8 +294,11 @@ export const getIncomingEmails = async (req, res, next) => {
       }
 
       if (fromSender && fromSender.trim()) {
-        const fTerm = `%${fromSender.trim()}%`;
-        query = query.or(`sender_name.ilike.${fTerm},sender_email.ilike.${fTerm}`);
+        const cleanFrom = sanitizePostgrestFilter(fromSender);
+        if (cleanFrom) {
+          const fTerm = `%${cleanFrom}%`;
+          query = query.or(`sender_name.ilike.${fTerm},sender_email.ilike.${fTerm}`);
+        }
       }
 
       if (toRecipient && toRecipient.trim()) {
@@ -306,8 +310,11 @@ export const getIncomingEmails = async (req, res, next) => {
       }
 
       if (search && search.trim()) {
-        const term = `%${search.trim()}%`;
-        query = query.or(`sender_name.ilike.${term},sender_email.ilike.${term},recipient_email.ilike.${term},subject.ilike.${term},snippet.ilike.${term},mailbox_email.ilike.${term},message_id.ilike.${term}`);
+        const cleanSearch = sanitizePostgrestFilter(search);
+        if (cleanSearch) {
+          const term = `%${cleanSearch}%`;
+          query = query.or(`sender_name.ilike.${term},sender_email.ilike.${term},recipient_email.ilike.${term},subject.ilike.${term},snippet.ilike.${term},mailbox_email.ilike.${term},message_id.ilike.${term}`);
+        }
       }
 
       if (dateRange && dateRange !== 'all') {
@@ -454,7 +461,12 @@ export const getIncomingEmailById = async (req, res, next) => {
     if (supabase) {
       let query = supabase.from('incoming_email_messages').select('*');
       if (id.startsWith('msg_') || id.startsWith('sent_') || id.includes('@') || id.includes('<')) {
-        query = query.or(`id.eq.${id},message_id.eq.${id}`);
+        const cleanId = sanitizePostgrestExact(id);
+        if (cleanId) {
+          query = query.or(`id.eq.${cleanId},message_id.eq.${cleanId}`);
+        } else {
+          return res.status(404).json({ success: false, message: 'Invalid email ID format' });
+        }
       } else {
         query = query.eq('id', id);
       }
@@ -564,12 +576,18 @@ export const deleteIncomingEmail = async (req, res, next) => {
 export const ingestCloudflareEmail = async (req, res, next) => {
   try {
     const authHeader = req.headers['x-cloudflare-webhook-secret'] || req.headers.authorization;
-    const expectedSecret =
-      process.env.CLOUDFLARE_WEBHOOK_SECRET ||
-      process.env.CLOUDFLARE_WEBHOOK_SECRET_2026 ||
-      'zenemoo_cloudflare_worker_secret_2026';
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Missing Cloudflare Webhook authorization header.' });
+    }
 
-    if (authHeader && authHeader !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+    const expectedSecret = getCloudflareWebhookSecret();
+    if (!expectedSecret) {
+      console.error('[Cloudflare Webhook] CLOUDFLARE_WEBHOOK_SECRET environment variable is not configured on server.');
+      return res.status(500).json({ success: false, message: 'Webhook configuration error' });
+    }
+
+    const cleanAuth = String(authHeader).replace(/^Bearer\s+/i, '').trim();
+    if (cleanAuth !== expectedSecret) {
       console.warn('[Cloudflare Webhook] Unauthorized token attempt.');
       return res.status(401).json({ success: false, message: 'Unauthorized Cloudflare Webhook token.' });
     }

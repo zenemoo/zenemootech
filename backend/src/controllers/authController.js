@@ -5,8 +5,13 @@ import { supabase } from '../config/supabase.js';
 import { memoryUserAccounts } from './userManagementController.js';
 import { sendTelegramAlert, getClientIp, parseUserAgent, getApproximateLocation } from '../services/telegramService.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
-const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || 'zenemoo2026';
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.trim() === '') {
+    throw new Error('Server configuration error: JWT_SECRET is not configured.');
+  }
+  return secret.trim();
+};
 
 // In-Memory Backup Caches (Ensures System Reliability even if DB table creation is pending)
 const otpStore = new Map(); // key: email, value: { hash, expiresAt, attempts, used }
@@ -153,7 +158,7 @@ export const login = async (req, res, next) => {
 
     const token = jwt.sign(
       { role: 'admin', email: cleanEmail, email_access: true },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '30m' }
     );
 
@@ -681,10 +686,9 @@ export const resetPassword = async (req, res) => {
       }
     }
 
-    // Save in process environment and clear OTP store
-    process.env.CUSTOM_ADMIN_PASSCODE = newPassword;
+    // Clear OTP store cache
     otpStore.delete(cleanEmail);
-    console.log('🧹 Cleared OTP store cache and updated custom admin passcode environment variable.');
+    console.log('🧹 Cleared OTP store cache.');
 
     await writeAuditLog(req, 'PASSWORD_RESET_SUCCESS', cleanEmail);
 
@@ -909,7 +913,7 @@ export const portalLogin = async (req, res, next) => {
         temporary_password: isTempPassword,
         password_changed: isPassChanged,
       },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '30m' }
     );
 
@@ -1210,6 +1214,118 @@ export const changePassword = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Password changed successfully! Please use your new password for future logins.',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 12. Authorized Admin Emails Management (Admin Only)
+ */
+export const getAuthorizedAdminEmails = async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('authorized_admin_emails')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    return res.json({
+      success: true,
+      data: data || [],
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const upsertAuthorizedAdminEmail = async (req, res, next) => {
+  try {
+    const {
+      email,
+      role,
+      name,
+      profile_photo_url,
+      department,
+      phone,
+      telegram_chat_id,
+      notes,
+      status,
+      added_by,
+    } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email address is required.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const payload = {
+      email: cleanEmail,
+      role: role || 'Administrator',
+      added_by: added_by || req.user?.email || 'Super Admin',
+      updated_at: new Date().toISOString(),
+    };
+
+    if (name !== undefined) payload.name = String(name).trim();
+    if (profile_photo_url !== undefined) payload.profile_photo_url = profile_photo_url;
+    if (department !== undefined) payload.department = department;
+    if (phone !== undefined) payload.phone = phone;
+    if (telegram_chat_id !== undefined) payload.telegram_chat_id = telegram_chat_id;
+    if (notes !== undefined) payload.notes = notes;
+    if (status !== undefined) payload.status = status;
+
+    const { data, error } = await supabase
+      .from('authorized_admin_emails')
+      .upsert([payload], { onConflict: 'email' })
+      .select();
+
+    if (error) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    await writeAuditLog(req, 'UPSERT_AUTHORIZED_ADMIN_EMAIL', cleanEmail);
+
+    return res.json({
+      success: true,
+      data: data && data.length > 0 ? data[0] : payload,
+      message: 'Authorized administrator updated successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const deleteAuthorizedAdminEmail = async (req, res, next) => {
+  try {
+    const { idOrEmail } = req.params;
+    if (!idOrEmail) {
+      return res.status(400).json({ success: false, error: 'Identifier is required.' });
+    }
+
+    const cleanTarget = String(idOrEmail).trim().toLowerCase();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanTarget);
+
+    let query = supabase.from('authorized_admin_emails').delete();
+    if (isUuid) {
+      query = query.or(`id.eq.${cleanTarget},email.eq.${cleanTarget}`);
+    } else {
+      query = query.eq('email', cleanTarget);
+    }
+
+    const { error } = await query;
+    if (error) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    await writeAuditLog(req, 'DELETE_AUTHORIZED_ADMIN_EMAIL', cleanTarget);
+
+    return res.json({
+      success: true,
+      message: 'Authorized administrator deleted successfully.',
     });
   } catch (err) {
     next(err);

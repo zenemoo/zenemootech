@@ -6,14 +6,19 @@ import {
   updateSubscriber,
   deleteSubscriber,
 } from '../controllers/subscriberController.js';
+import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
+import { subscriberRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
-router.get('/', getSubscribers);
-router.post('/', subscribeNewsletter);
-router.post('/bulk', subscribeNewsletter);
-router.post('/unsubscribe', unsubscribeNewsletter);
-router.put('/:id', updateSubscriber);
-router.delete('/:id', deleteSubscriber);
+// Public Newsletter Subscription Endpoints
+router.post('/', subscriberRateLimiter, subscribeNewsletter);
+router.post('/bulk', subscriberRateLimiter, subscribeNewsletter);
+router.post('/unsubscribe', subscriberRateLimiter, unsubscribeNewsletter);
+
+// Admin Subscriber Management Endpoints
+router.get('/', verifyToken, requireRole(['admin']), getSubscribers);
+router.put('/:id', verifyToken, requireRole(['admin']), updateSubscriber);
+router.delete('/:id', verifyToken, requireRole(['admin']), deleteSubscriber);
 
 export default router;

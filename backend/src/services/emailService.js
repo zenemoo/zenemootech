@@ -189,9 +189,12 @@ export const sanitizeHtml = (html) => {
   if (!html || typeof html !== 'string') return '';
 
   return html
-    .replace(/<script[^>]*>.*?<\/script>/gis, '')
-    .replace(/\s(onerror|onclick|onload|onmouseover)=["'][^"']*["']/gi, '')
-    .replace(/<iframe[^>]*>.*?<\/iframe>/gis, '');
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gis, '')
+    .replace(/\s(onerror|onclick|onload|onmouseover|onfocus|onblur|onsubmit)\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gis, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gis, '')
+    .replace(/<embed\b[^>]*>/gis, '')
+    .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href="#"');
 };
 
 /**

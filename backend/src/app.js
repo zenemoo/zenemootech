@@ -35,6 +35,7 @@ import talentHubRoutes from './routes/talentHubRoutes.js';
 import publicTeamInviteRoutes from './routes/publicTeamInviteRoutes.js';
 import adminTalentTeamsRoutes from './routes/adminTalentTeamsRoutes.js';
 import googleGroupSyncRoutes from './routes/googleGroupSyncRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -51,6 +52,16 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
 ];
 
+// Production Security Headers (Step 6)
+// ContentSecurityPolicy is handled at the frontend hosting layer to protect dynamic Vite/Turnstile/Cloudinary scripts
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -64,15 +75,38 @@ app.use(
   })
 );
 app.use(morgan('dev'));
+
+// Route-Specific Body Size Protection (Step 5)
+// Email composing endpoints require larger payloads for inline/base64 attachments (up to 25MB)
+const LARGE_PAYLOAD_ROUTES = [
+  '/api/email/send',
+  '/api/email/drafts',
+  '/api/emails/send',
+  '/api/emails/reply',
+  '/api/emails/forward',
+];
+
 app.use(
+  LARGE_PAYLOAD_ROUTES,
   express.json({
-    limit: '100mb',
+    limit: '25mb',
     verify: (req, res, buf) => {
       req.rawBody = buf;
     },
   })
 );
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(LARGE_PAYLOAD_ROUTES, express.urlencoded({ limit: '25mb', extended: true }));
+
+// Standard Secure Body Limit for all general API endpoints (max 2MB)
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
+app.use(express.urlencoded({ limit: '2mb', extended: true }));
 
 // Health Check API Route
 app.get('/api/health', (req, res) => {
@@ -146,6 +180,7 @@ app.use('/api/talent-hub', talentHubRoutes);
 app.use('/api/public/team-invite', publicTeamInviteRoutes);
 app.use('/api/admin/talent-teams', adminTalentTeamsRoutes);
 app.use('/api/admin/google-group', googleGroupSyncRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);

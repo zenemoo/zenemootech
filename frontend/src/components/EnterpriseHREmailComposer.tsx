@@ -45,6 +45,7 @@ import {
   parseLocalDateInTimezoneToUtc,
   formatScheduledDateInTimezone,
 } from '../utils/timezoneUtils';
+import DOMPurify from 'dompurify';
 
 interface EnterpriseHREmailComposerProps {
   showToast: (text: string, type: 'success' | 'error') => void;
@@ -1975,7 +1976,17 @@ ${customPara}
 
                 {/* Email Body Content */}
                 <div
-                  dangerouslySetInnerHTML={{ __html: editorRef.current ? editorRef.current.innerHTML : (htmlContent || '<p>No content entered yet.</p>') }}
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(
+                      editorRef.current ? editorRef.current.innerHTML : (htmlContent || '<p>No content entered yet.</p>'),
+                      {
+                        USE_PROFILES: { html: true },
+                        ADD_ATTR: ['target'],
+                        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'link'],
+                        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+                      }
+                    ),
+                  }}
                   className="leading-relaxed text-slate-800 font-sans space-y-3 text-xs sm:text-sm break-words [word-break:break-word] overflow-wrap-break-word max-w-full overflow-x-auto [&_img]:max-w-full [&_img]:h-auto [&_table]:max-w-full [&_table]:block [&_table]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words"
                 />
 
@@ -2091,7 +2102,13 @@ ${customPara}
                       <div className="space-y-1">
                         <div className="font-bold text-white text-xs">{displaySubject}</div>
                         <div
-                          dangerouslySetInnerHTML={{ __html: displayHtml }}
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(displayHtml, {
+                              USE_PROFILES: { html: true },
+                              FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'link'],
+                              FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+                            }),
+                          }}
                           className="text-[11px] text-slate-300 line-clamp-2 max-h-12 overflow-hidden text-ellipsis [&_p]:m-0"
                         />
                       </div>

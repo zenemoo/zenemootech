@@ -5,6 +5,7 @@ import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { normalizeLanguageKey, formatLanguageDisplayName, isSameLanguage } from '../utils/languageUtils.js';
+import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -676,14 +677,16 @@ export const getRegistrationsAdmin = async (req, res) => {
 
         // 7. Search Filter (Database-side multi-column search)
         if (search && search.trim().length > 0) {
-          const q = search.trim();
-          query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,country.ilike.%${q}%,state.ilike.%${q}%,city_district.ilike.%${q}%,registration_code.ilike.%${q}%,primary_role.ilike.%${q}%`);
+          const q = sanitizePostgrestFilter(search);
+          if (q) {
+            query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,country.ilike.%${q}%,state.ilike.%${q}%,city_district.ilike.%${q}%,registration_code.ilike.%${q}%,primary_role.ilike.%${q}%`);
+          }
         }
 
         // 8. Language Filter (Targeted ID pre-filter via talent_languages)
         if (language && language.trim().length > 0 && language.toLowerCase() !== 'all' && language.toLowerCase() !== 'all languages') {
-          const targetLang = language.trim();
-          const canonicalLang = formatLanguageDisplayName(targetLang);
+          const targetLang = sanitizePostgrestFilter(language.trim());
+          const canonicalLang = sanitizePostgrestFilter(formatLanguageDisplayName(targetLang));
           const { data: matchedLangRows } = await supabase
             .from('talent_languages')
             .select('registration_id')
@@ -960,7 +963,10 @@ export const getRegistrationByIdAdmin = async (req, res) => {
         if (isUuid) {
           query = query.eq('id', id);
         } else {
-          query = query.or(`registration_code.eq.${id},email.eq.${id.toLowerCase()}`);
+          const cleanId = sanitizePostgrestExact(id);
+          if (cleanId) {
+            query = query.or(`registration_code.eq.${cleanId},email.eq.${cleanId.toLowerCase()}`);
+          }
         }
 
         const { data: dbRec } = await query.maybeSingle();
@@ -1170,7 +1176,10 @@ export const deleteRegistrationAdmin = async (req, res) => {
         if (isUuid) {
           query = query.eq('id', id);
         } else {
-          query = query.or(`registration_code.eq.${id},email.eq.${id.toLowerCase()}`);
+          const cleanId = sanitizePostgrestExact(id);
+          if (cleanId) {
+            query = query.or(`registration_code.eq.${cleanId},email.eq.${cleanId.toLowerCase()}`);
+          }
         }
         const { data: targetRec } = await query.maybeSingle();
         if (targetRec) {
@@ -1543,7 +1552,10 @@ export const updateAdminCandidateProfile = async (req, res) => {
         if (isUuid(searchId)) {
           query = query.eq('id', searchId);
         } else {
-          query = query.or(`registration_code.eq.${searchId},email.eq.${searchId}`);
+          const cleanSearchId = sanitizePostgrestExact(searchId);
+          if (cleanSearchId) {
+            query = query.or(`registration_code.eq.${cleanSearchId},email.eq.${cleanSearchId}`);
+          }
         }
         const { data: matched } = await query.maybeSingle();
         if (matched) dbRecord = matched;

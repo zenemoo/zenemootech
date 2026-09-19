@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_WEB_APP_URL || '';
-const APPS_SCRIPT_SECRET = process.env.APPS_SCRIPT_SECRET_TOKEN || 'ZENEMOO_DRIVE_SECRET_2026_PORTFOLIO';
+const APPS_SCRIPT_SECRET = process.env.APPS_SCRIPT_SECRET_TOKEN ? process.env.APPS_SCRIPT_SECRET_TOKEN.trim() : '';
 
 async function postToAppsScript(payload) {
   try {

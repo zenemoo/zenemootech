@@ -1,4 +1,4 @@
-import { mediaApi, contactApi } from '../services/api';
+import { mediaApi, contactApi, adminEmailApi } from '../services/api';
 import { supabase } from './supabaseClient';
 
 export interface SiteConfig {
@@ -183,16 +183,14 @@ export const setStoredAdminPhoto = (email: string, photoUrl: string) => {
   localStorage.setItem('zenemoo_admin_photos_map', JSON.stringify(map));
 };
 
-// Query Supabase directly for Authorized Admin Emails
+// Query Backend API for Authorized Admin Emails
 export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccount[]> => {
   const photoMap = getStoredPhotoMap();
   try {
-    const { data, error } = await supabase
-      .from('authorized_admin_emails')
-      .select('*')
-      .order('created_at', { ascending: true });
+    const res = await adminEmailApi.getAll();
+    const data = res.data?.data;
 
-    if (!error && data && data.length > 0) {
+    if (data && Array.isArray(data) && data.length > 0) {
       const formatted: AuthorizedEmailAccount[] = data.map((item: any) => {
         const cleanEmail = item.email.trim().toLowerCase();
         const photo = photoMap[cleanEmail] || item.profile_photo_url || item.avatar_url || '';
@@ -218,8 +216,8 @@ export const getStoredAuthorizedEmails = async (): Promise<AuthorizedEmailAccoun
       localStorage.setItem('zenemoo_authorized_admin_emails', JSON.stringify(formatted));
       return formatted;
     }
-  } catch (err) {
-    console.warn('Supabase authorized_admin_emails fetch fallback:', err);
+  } catch (err: any) {
+    console.warn('Backend authorized_admin_emails fetch fallback:', err.message);
   }
 
   const local = localStorage.getItem('zenemoo_authorized_admin_emails');
@@ -260,12 +258,9 @@ export const saveAuthorizedEmailToSupabase = async (
   if (account.status !== undefined) insertPayload.status = account.status;
 
   try {
-    const { error } = await supabase.from('authorized_admin_emails').upsert([insertPayload], { onConflict: 'email' });
-    if (error) {
-      console.warn('Supabase upsert authorized_admin_emails warning:', error.message);
-    }
-  } catch (err) {
-    console.warn('Supabase upsert authorized_admin_emails error:', err);
+    await adminEmailApi.upsert(insertPayload);
+  } catch (err: any) {
+    console.warn('Backend upsert authorized_admin_emails error:', err.message);
   }
 
   // Update local storage backup
@@ -322,40 +317,10 @@ export const updateAuthorizedEmailInSupabase = async (
   }
 
   try {
-    const dbPayload: any = {};
-    if (updates.email !== undefined) dbPayload.email = updates.email.trim().toLowerCase();
-    if (updates.name !== undefined) dbPayload.name = updates.name;
-    if (updates.role !== undefined) dbPayload.role = updates.role;
-    if (updates.department !== undefined) dbPayload.department = updates.department;
-    if (updates.phone !== undefined) dbPayload.phone = updates.phone;
-    if (updates.telegram_chat_id !== undefined) dbPayload.telegram_chat_id = updates.telegram_chat_id;
-    if (updates.notes !== undefined) dbPayload.notes = updates.notes;
-    if (updates.status !== undefined) dbPayload.status = updates.status;
-    if (updates.profile_photo_url !== undefined) dbPayload.profile_photo_url = updates.profile_photo_url;
-
-    // First try upserting by email so it works even if record wasn't previously in DB or id mismatched
-    if (targetEmail && dbPayload.email) {
-      const { error: upsertErr } = await supabase
-        .from('authorized_admin_emails')
-        .upsert([dbPayload], { onConflict: 'email' });
-
-      if (upsertErr) {
-        console.warn('Supabase upsert on update warning:', upsertErr.message);
-      }
-    } else {
-      // Fallback update by email if email present
-      const matchKey = targetEmail || cleanKey;
-      const { error } = await supabase
-        .from('authorized_admin_emails')
-        .update(dbPayload)
-        .eq('email', matchKey);
-
-      if (error) {
-        console.warn('Supabase update authorized_admin_emails warning:', error.message);
-      }
-    }
-  } catch (err) {
-    console.warn('Supabase update authorized_admin_emails error:', err);
+    const dbPayload: any = { ...updates, email: targetEmail || (updates.email ? updates.email.trim().toLowerCase() : undefined) };
+    await adminEmailApi.upsert(dbPayload);
+  } catch (err: any) {
+    console.warn('Backend update authorized_admin_emails error:', err.message);
   }
 
   const local = localStorage.getItem('zenemoo_authorized_admin_emails');
@@ -396,9 +361,9 @@ export const getStoredMessageHistoryRecords = async (): Promise<MessageHistoryRe
 // Delete Authorized Email directly from Supabase PostgreSQL DB
 export const deleteAuthorizedEmailFromSupabase = async (idOrEmail: string): Promise<AuthorizedEmailAccount[]> => {
   try {
-    await supabase.from('authorized_admin_emails').delete().or(`id.eq.${idOrEmail},email.eq.${idOrEmail}`);
-  } catch (err) {
-    console.warn('Supabase delete authorized_admin_emails error:', err);
+    await adminEmailApi.delete(idOrEmail);
+  } catch (err: any) {
+    console.warn('Backend delete authorized_admin_emails error:', err.message);
   }
 
   const current = await getStoredAuthorizedEmails();
