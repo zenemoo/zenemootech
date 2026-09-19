@@ -68,7 +68,7 @@ export const submitReview = async (req, res, next) => {
       : '';
     const numRating = Math.max(1, Math.min(5, parseInt(rating, 10) || 5));
 
-    const generatedReviewId = `REV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const generatedReviewId = `REV-${new Date().getFullYear()}-${crypto.randomInt(1000, 10000)}`;
     const reviewSlug = `${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-4)}`;
     const fingerprint = computeReviewFingerprint(cleanName, cleanType, numRating, reviewText);
 

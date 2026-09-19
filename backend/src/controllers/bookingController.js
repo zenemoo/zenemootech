@@ -2,30 +2,26 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import axios from 'axios';
+import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
+import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
-import {
-  generateCustomerBookingEmailHtml,
-  generateAdminBookingEmailHtml,
-  generateCustomerReminderEmailHtml,
-  generateAdminReminderEmailHtml,
-} from '../services/bookingEmailTemplate.js';
-import { sendBookingNotification } from '../services/telegramNotificationService.js';
 import { createGoogleMeetForBooking } from '../services/googleMeetService.js';
+import { sendBookingNotification } from '../services/telegramNotificationService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups.com';
-const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAA...'; // Site secret key
+const TURNSTILE_SECRET = (process.env.TURNSTILE_SECRET_KEY || '').trim();
 
 /**
- * Generate 5-character alphanumeric uppercase code
+ * Generate 5-character alphanumeric uppercase code using CSPRNG
  */
 const generateBookingCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let randomStr = '';
   for (let i = 0; i < 5; i++) {
-    randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
+    randomStr += chars.charAt(crypto.randomInt(0, chars.length));
   }
   return `ZEN-CALL-${randomStr}`;
 };

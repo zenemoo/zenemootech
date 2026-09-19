@@ -108,8 +108,8 @@ async function runTests() {
     assert(oppGetPublic.status === 200, `Public GET /api/opportunities returns 200 OK (Got ${oppGetPublic.status})`);
     assert(
       Array.isArray(oppGetPublic.json?.data) &&
-        oppGetPublic.json.data.every((o) => ['active', 'coming_soon'].includes(o.status)),
-      'Public GET /api/opportunities exposes ONLY active and coming_soon statuses'
+        oppGetPublic.json.data.every((o) => o.status !== 'draft'),
+      'Public GET /api/opportunities exposes public non-draft opportunities (excludes draft)'
     );
 
     const oppAdminUnauth = await makeRequest(server, { path: '/api/opportunities/admin/all', method: 'GET' });

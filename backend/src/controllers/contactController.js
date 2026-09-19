@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendContactNotification } from '../services/telegramNotificationService.js';
@@ -27,51 +28,46 @@ export const sendContactConfirmationEmail = async (inquiryData) => {
     created_at,
   });
 
-  console.log(`📧 Sending confirmation email: to = ${email} | ticket = #${inquiry_code}`);
+  const textContent = `Dear ${name},\n\nThank you for contacting Zenemoo. We have received your inquiry for ${service} (Ticket #${inquiry_code}). Our business development team will review your requirements and get back to you shortly.\n\nBest regards,\nZenemoo Team\nhttps://zenemoo.in`;
 
   try {
-    const result = await sendMailViaBrevo({
-      sender,
-      recipients: email,
-      cc: ccRecipient,
+    const info = await sendMailViaBrevo({
+      to: email,
       subject,
       html: htmlContent,
+      text: textContent,
+      sender,
+      cc: ccRecipient,
     });
-
-    console.log(`✅ Email confirmation status: sent (ticket = #${inquiry_code})`);
-
-    // Update email_status in Supabase if record ID exists (safely ignored if column missing)
-    if (id) {
-      try {
-        await supabaseService.update('contacts', id, { email_status: 'sent' });
-      } catch (_) {}
-    }
-
-    return result;
+    return info;
   } catch (err) {
-    console.error(`❌ Email confirmation status: failed (ticket = #${inquiry_code}) - ${err.message}`);
-
-    if (id) {
-      try {
-        await supabaseService.update('contacts', id, { email_status: 'failed' });
-      } catch (_) {}
-    }
-
-    return { success: false, error: err.message };
+    console.error(`Contact confirmation email failed for ${email}:`, err.message);
+    return null;
   }
 };
 
+/**
+ * POST /api/contact
+ * Handles Public Contact Form Submissions with Cloudflare Turnstile Anti-Bot Verification
+ */
 export const submitContact = async (req, res, next) => {
   try {
-    const { name, email, phone, company, service, language, lang, inquiry_code, inquiry_id, notes, message } = req.body;
+    const { name, email, phone, company, service, language, message, inquiry_code, inquiry_id, lang } = req.body;
+
     if (!name || !email || !message) {
-      return res.status(400).json({ success: false, message: 'Name, email, and message are required fields.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email, and message are required fields.',
+      });
     }
 
-    // Input Validation & XSS/HTML Sanitization
     const cleanEmail = (email || '').trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address.',
+      });
     }
 
     const cleanName = (name || '').replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
@@ -82,7 +78,7 @@ export const submitContact = async (req, res, next) => {
 
     // CLOUDFLARE TURNSTILE ANTI-BOT SERVER-SIDE VERIFICATION
     const turnstileToken = req.body.turnstileToken || req.body.turnstile_token || req.body['cf-turnstile-response'];
-    const turnstileSecret = process.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAEKG_sx7PnsrKH6dRojjixiRQWo';
+    const turnstileSecret = (process.env.TURNSTILE_SECRET_KEY || '').trim();
 
     if (!turnstileToken) {
       console.warn('[TURNSTILE VERIFICATION FAILED]: Turnstile token is missing from contact submission request.');
@@ -92,37 +88,39 @@ export const submitContact = async (req, res, next) => {
       });
     }
 
-    try {
-      const userIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
-      const verifyFormData = new URLSearchParams();
-      verifyFormData.append('secret', turnstileSecret);
-      verifyFormData.append('response', turnstileToken);
-      if (userIp) verifyFormData.append('remoteip', String(userIp).split(',')[0].trim());
+    if (turnstileSecret) {
+      try {
+        const userIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+        const verifyFormData = new URLSearchParams();
+        verifyFormData.append('secret', turnstileSecret);
+        verifyFormData.append('response', turnstileToken);
+        if (userIp) verifyFormData.append('remoteip', String(userIp).split(',')[0].trim());
 
-      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-        method: 'POST',
-        body: verifyFormData,
-      });
+        const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+          method: 'POST',
+          body: verifyFormData,
+        });
 
-      const verifyData = await verifyRes.json();
-      console.log(`[TURNSTILE VERIFICATION]: success = ${verifyData.success} | error-codes = ${JSON.stringify(verifyData['error-codes'] || [])}`);
+        const verifyData = await verifyRes.json();
+        console.log(`[TURNSTILE VERIFICATION]: success = ${verifyData.success} | error-codes = ${JSON.stringify(verifyData['error-codes'] || [])}`);
 
-      if (!verifyData.success) {
+        if (!verifyData.success) {
+          return res.status(400).json({
+            success: false,
+            message: 'Anti-bot security check failed or token expired. Please complete the verification and try again.',
+          });
+        }
+      } catch (cfErr) {
+        console.error('[TURNSTILE API ERROR]:', cfErr.message);
         return res.status(400).json({
           success: false,
-          message: 'Anti-bot security check failed or token expired. Please complete the verification and try again.',
+          message: 'Anti-bot verification service unavailable. Please try submitting again.',
         });
       }
-    } catch (cfErr) {
-      console.error('[TURNSTILE API ERROR]:', cfErr.message);
-      return res.status(400).json({
-        success: false,
-        message: 'Anti-bot verification service unavailable. Please try submitting again.',
-      });
     }
 
     const year = new Date().getFullYear();
-    const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
     const generatedCode = inquiry_code || inquiry_id || req.body.code || `ZNM-${year}-${randomHex}`;
     const selectedLanguage = language || lang || req.body.languages || 'Odia';
 

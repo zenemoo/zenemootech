@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { supabaseService } from '../services/supabaseService.js';
 import { supabase } from '../config/supabase.js';
+import { invalidateUserRoleCache } from '../middleware/rbacMiddleware.js';
 
 // Fallback in-memory user account cache if DB table is pending creation
 export const memoryUserAccounts = [];
@@ -291,6 +292,9 @@ export const updateUser = async (req, res, next) => {
       }
     }
 
+    // Invalidate in-memory RBAC role cache for instant permission synchronization
+    invalidateUserRoleCache(id);
+
     res.json({
       success: true,
       message: 'User account permissions updated successfully.',
@@ -356,6 +360,9 @@ export const deleteUserAccess = async (req, res, next) => {
       const idx = memoryUserAccounts.findIndex((u) => u.id === id);
       if (idx !== -1) memoryUserAccounts.splice(idx, 1);
     }
+
+    // Invalidate in-memory RBAC role cache immediately upon revocation
+    invalidateUserRoleCache(id);
 
     res.json({
       success: true,

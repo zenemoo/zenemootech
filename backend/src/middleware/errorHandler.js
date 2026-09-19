@@ -9,6 +9,15 @@ export const errorHandler = (err, req, res, next) => {
     });
   }
 
+  // Handle CORS Forbidden / Rejected Errors
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      code: 'CORS_NOT_ALLOWED',
+      message: 'Cross-Origin Request Blocked: Origin is not allowed by CORS policy.',
+    });
+  }
+
   console.error('Unhandled Server Error:', err);
 
   const statusCode = err.status || err.statusCode || (res.statusCode && res.statusCode !== 200 ? res.statusCode : 500);
@@ -22,9 +31,14 @@ export const errorHandler = (err, req, res, next) => {
     }).catch((e) => console.warn('[Telegram System Alert Note]', e.message));
   }
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const clientMessage = (statusCode >= 500 && isProduction)
+    ? 'Internal Server Error'
+    : (err.message || 'Internal Server Error');
+
   res.status(statusCode).json({
     success: false,
-    message: err.message || 'Internal Server Error',
-    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    message: clientMessage,
+    stack: isProduction ? null : err.stack,
   });
 };

@@ -2,11 +2,13 @@ import { supabase } from '../config/supabase.js';
 import { ensureOpportunitySheetExists } from '../services/googleSheetsService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 
-// In-Memory Public Cache (5-Minute TTL)
+// In-Memory Public Cache (3-Minute TTL)
 let opportunitiesCache = {
   data: null,
   timestamp: 0,
 };
+const OPPORTUNITIES_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
 // In-Memory Admin Cache (30-second TTL for fast admin operations)
 let adminOpportunitiesCache = {
   data: null,
@@ -19,7 +21,9 @@ export const invalidateOpportunitiesCache = () => {
   adminOpportunitiesCache = { data: null, timestamp: 0 };
 };
 
-// 1. GET PUBLIC OPPORTUNITY PROGRAMS (Sorted by position ASC, only active and coming_soon)
+const OPPORTUNITY_PUBLIC_COLUMNS = 'id, position, title, partner_name, badge, status, description, company_logo, poster_url, public_id, features, requirements, language_skills, eligibility_criteria, whatsapp_group_url, whatsapp_channel_url, telegram_url, contact_support_url, linkedin_post_url, x_post_url, facebook_post_url, instagram_url, youtube_url, other_social_url, application_post_url, pdf_link, contact_details, custom_questions, action_url, about_project, what_you_will_do, experience_requirements, equipment_requirements, internet_requirements, working_hours, project_duration, payment_info, payment_frequency, work_mode, availability_requirement, project_highlights, benefits, why_join, important_notes, created_at, updated_at';
+
+// 1. GET PUBLIC OPPORTUNITY PROGRAMS (Sorted by position ASC, excluding drafts)
 export const getOpportunities = async (req, res) => {
   try {
     const now = Date.now();
@@ -29,8 +33,8 @@ export const getOpportunities = async (req, res) => {
 
     const { data, error } = await supabase
       .from('opportunities')
-      .select('*')
-      .in('status', ['active', 'coming_soon'])
+      .select(OPPORTUNITY_PUBLIC_COLUMNS)
+      .neq('status', 'draft')
       .order('position', { ascending: true });
 
     if (error) {

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
@@ -549,7 +550,7 @@ export const submitTalentOpportunityApplication = async (req, res) => {
     });
 
     // 6. Construct new application record with identity locked from talent profile
-    const generatedApplicantId = `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const generatedApplicantId = `APP-${new Date().getFullYear()}-${crypto.randomInt(1000, 10000)}`;
     const newRecord = {
       applicant_id: generatedApplicantId,
       opportunity_id: oppRecord.id,

@@ -265,14 +265,31 @@ export const invalidateOpportunitiesCache = () => {
   adminOpportunitiesMemoryCache = { data: null, timestamp: 0 };
 };
 
-// Fetch public opportunities ordered by position ASC directly from Supabase (with client-side in-memory caching)
-// Restricted by RLS to status IN ('active', 'coming_soon')
+// Fetch public opportunities ordered by position ASC (with client-side in-memory caching)
+// Uses backend API (which securely serves all non-draft programs: active, coming_soon, stopped), falling back to Supabase direct anon query or local storage
 export const getStoredOpportunities = async (forceRefresh = false): Promise<OpportunityProgram[]> => {
   const now = Date.now();
   if (!forceRefresh && opportunitiesMemoryCache.data && now - opportunitiesMemoryCache.timestamp < OPPORTUNITIES_CACHE_TTL_MS) {
     return opportunitiesMemoryCache.data;
   }
 
+  // 1. Fetch from public backend API (primary path)
+  try {
+    const res = await opportunityApi.getAll();
+    if (res.data && res.data.data && Array.isArray(res.data.data)) {
+      const live = res.data.data
+        .map(normalizeOpportunity)
+        .sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position))
+        .map((item: OpportunityProgram, idx: number) => ({ ...item, position: idx + 1 }));
+      opportunitiesMemoryCache = { data: live, timestamp: now };
+      saveLocalOpportunities(live);
+      return live;
+    }
+  } catch (err: any) {
+    console.warn('Backend API getOpportunities unavailable. Trying Supabase fallback:', err.message);
+  }
+
+  // 2. Direct Supabase anon fallback (restricted by RLS)
   try {
     const { data, error } = await supabase
       .from('opportunities')
@@ -292,21 +309,7 @@ export const getStoredOpportunities = async (forceRefresh = false): Promise<Oppo
       console.warn('Supabase fetch opportunities error:', error.message);
     }
   } catch (err: any) {
-    console.warn('Direct Supabase fetch opportunities error. Trying API fallback:', err.message);
-  }
-
-  try {
-    const res = await opportunityApi.getAll();
-    if (res.data && res.data.data && Array.isArray(res.data.data)) {
-      const live = res.data.data
-        .map(normalizeOpportunity)
-        .sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position))
-        .map((item: OpportunityProgram, idx: number) => ({ ...item, position: idx + 1 }));
-      saveLocalOpportunities(live);
-      return live;
-    }
-  } catch (err: any) {
-    console.warn('Backend API fallback unavailable. Using local storage:', err.message);
+    console.warn('Direct Supabase fetch opportunities error:', err.message);
   }
 
   return getLocalOpportunities();

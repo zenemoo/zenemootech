@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
@@ -23,25 +24,26 @@ const formatIstDateTime = (isoDateString) => {
       hour12: true,
       timeZone: 'Asia/Kolkata',
     };
-    const formatted = d.toLocaleString('en-IN', options);
-    return `${formatted} (IST)`;
+    return new Intl.DateTimeFormat('en-IN', options).format(d);
   } catch (_) {
-    return `${new Date().toLocaleDateString('en-IN')} (IST)`;
+    return isoDateString;
   }
 };
 
 // Local disk fallback helpers
-export const loadDiskRegistrations = () => {
+export const getDiskRegistrations = () => {
   try {
     if (fs.existsSync(PERSISTENT_FILE_PATH)) {
       const data = fs.readFileSync(PERSISTENT_FILE_PATH, 'utf-8');
-      if (data) return JSON.parse(data);
+      return JSON.parse(data || '[]');
     }
   } catch (e) {
     console.warn('Error reading talent_registrations.json:', e.message);
   }
   return [];
 };
+
+export const loadDiskRegistrations = getDiskRegistrations;
 
 export const saveDiskRegistrations = (list) => {
   try {
@@ -59,7 +61,7 @@ const generateRandomAlphanumericSegment = (length = 4) => {
   const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let result = '';
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(crypto.randomInt(0, chars.length));
   }
   return result;
 };

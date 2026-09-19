@@ -160,7 +160,7 @@ export const partnerApi = {
 
 // Program Opportunities APIs
 export const opportunityApi = {
-  getAll: () => api.get('/opportunities'),
+  getAll: () => deduplicatedGet('/opportunities'),
   getAllAdmin: () => api.get('/opportunities/admin/all'),
   create: (data: any) => api.post('/opportunities', data),
   reorder: (id: string, newPosition: number) => api.put(`/opportunities/${id}/reorder`, { newPosition }),

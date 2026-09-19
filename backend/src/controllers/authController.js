@@ -345,8 +345,8 @@ export const forgotPassword = async (req, res) => {
     recentRequests.push(now);
     rateLimitStore.set(cleanEmail, recentRequests);
 
-    // Generate Secure 6-digit numeric OTP
-    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate Cryptographically Secure 6-digit numeric OTP
+    const rawOtp = crypto.randomInt(100000, 1000000).toString();
     const otpHashed = hashOtp(rawOtp);
     const expiresAt = new Date(now + 5 * 60 * 1000); // 5 minutes expiration
 

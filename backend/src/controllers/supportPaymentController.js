@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { cashfreeService } from '../services/cashfreeService.js';
 import { supabase } from '../config/supabase.js';
@@ -204,7 +205,7 @@ export const createPaymentOrder = async (req, res, next) => {
     // 3. Generate unique order ID
     // Format: ZNM_SUP_<timestamp>_<random>
     const timestamp = Date.now();
-    const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
     const orderId = `ZNM_SUP_${timestamp}_${randomSuffix}`;
 
     // 4. Save initial PENDING payment record
@@ -1051,7 +1052,7 @@ export const createAdminPaymentLink = async (req, res) => {
 
     // Generate unique link ID: PL_ZNM_<timestamp>_<rand>
     const timestamp = Date.now();
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const rand = crypto.randomBytes(2).toString('hex').toUpperCase();
     const linkId = `PL_ZNM_${timestamp}_${rand}`;
 
     // Compute expiry time if specified (default 30 days)

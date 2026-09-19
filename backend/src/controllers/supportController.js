@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { supabaseService } from '../services/supabaseService.js';
 import { supabase } from '../config/supabase.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
@@ -22,7 +23,7 @@ export const createSupportTicket = async (req, res, next) => {
     const senderName = user_name || req.user?.name || senderEmail.split('@')[0];
     
     // Generate unique Ticket ID: TKT-XXXXXX
-    const randomDigits = Math.floor(100000 + Math.random() * 900000);
+    const randomDigits = crypto.randomInt(100000, 1000000);
     const ticketId = `TKT-${randomDigits}`;
 
     const ticketRecord = {

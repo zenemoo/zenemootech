@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
 import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js';
@@ -435,7 +436,7 @@ export const submitApplication = async (req, res) => {
     }
 
     // Generate Applicant ID ONLY AFTER duplicate check passes
-    const generatedApplicantId = req.body.applicant_id || `APP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const generatedApplicantId = `APP-${new Date().getFullYear()}-${crypto.randomInt(1000, 10000)}`;
 
     const newRecord = {
       applicant_id: generatedApplicantId,
