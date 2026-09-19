@@ -106,6 +106,33 @@ async function runTests() {
 
     const oppGetPublic = await makeRequest(server, { path: '/api/opportunities', method: 'GET' });
     assert(oppGetPublic.status === 200, `Public GET /api/opportunities returns 200 OK (Got ${oppGetPublic.status})`);
+    assert(
+      Array.isArray(oppGetPublic.json?.data) &&
+        oppGetPublic.json.data.every((o) => ['active', 'coming_soon'].includes(o.status)),
+      'Public GET /api/opportunities exposes ONLY active and coming_soon statuses'
+    );
+
+    const oppAdminUnauth = await makeRequest(server, { path: '/api/opportunities/admin/all', method: 'GET' });
+    assert(oppAdminUnauth.status === 401, `Unauthenticated GET /api/opportunities/admin/all returns 401 (Got ${oppAdminUnauth.status})`);
+
+    const oppAdminCandidate = await makeRequest(server, {
+      path: '/api/opportunities/admin/all',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${unauthorizedToken}` },
+    });
+    assert(oppAdminCandidate.status === 403, `Non-admin GET /api/opportunities/admin/all returns 403 Forbidden (Got ${oppAdminCandidate.status})`);
+
+    const oppAdminAuthorized = await makeRequest(server, {
+      path: '/api/opportunities/admin/all',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert(oppAdminAuthorized.status === 200, `Admin GET /api/opportunities/admin/all returns 200 OK (Got ${oppAdminAuthorized.status})`);
+    assert(
+      Array.isArray(oppAdminAuthorized.json?.data) &&
+        oppAdminAuthorized.json.data.some((o) => o.status === 'stopped'),
+      'Admin GET /api/opportunities/admin/all returns complete opportunity list including stopped/closed'
+    );
 
     // Test Group 3: Opportunity Applications Authorization & Validation
     console.log('\n--- Test Group 3: Opportunity Applications Flow ---');

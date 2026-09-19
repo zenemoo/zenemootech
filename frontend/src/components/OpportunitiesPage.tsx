@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getPublicOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
-import { submitCandidateApplication, checkExistingApplication, CandidateApplication } from '../lib/opportunityApplicationStore';
+import { submitCandidateApplication, checkExistingApplication, CandidateApplication, extractAndStoreReferralCode } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 import { OpportunityStatusModal } from './OpportunityStatusModal';
 import { useActiveLogo } from '../lib/useActiveLogo';
@@ -56,6 +56,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({});
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState('');
+  const [referralCode, setReferralCode] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
@@ -65,6 +66,10 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const [statusModalType, setStatusModalType] = useState<'closed' | 'coming_soon' | null>(null);
 
   useEffect(() => {
+    const activeRef = extractAndStoreReferralCode();
+    if (activeRef) {
+      setReferralCode(activeRef);
+    }
     getPublicOpportunities().then((data) => {
       setOpportunities(data);
       setLoading(false);
@@ -108,6 +113,11 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setExistingApp(null);
     setSubmittedRef(null);
     setCopiedId(false);
+
+    const activeRef = extractAndStoreReferralCode();
+    if (activeRef) {
+      setReferralCode(activeRef);
+    }
 
     // Open fresh form allowing applications for any candidate
     setApplicantEmail('');
@@ -191,16 +201,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setIsSubmitting(true);
     setIsDuplicate(false);
 
-    // Read active referral code from URL or persistent storage
-    let activeRefCode = '';
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      activeRefCode = urlParams.get('ref') || urlParams.get('referral') || '';
-      if (!activeRefCode) {
-        activeRefCode = sessionStorage.getItem('zenemoo_active_ref') || localStorage.getItem('zenemoo_active_ref') || '';
-      }
-      activeRefCode = activeRefCode.trim().toUpperCase();
-    } catch (_) {}
+    // Read active referral code from form state, URL, or persistent storage
+    const activeRefCode = (referralCode || extractAndStoreReferralCode()).trim().toUpperCase();
 
     try {
       const result = await submitCandidateApplication({
@@ -219,10 +221,6 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       const generatedId = result.applicant_id || result.id;
       setSubmittedRef(generatedId);
       localStorage.setItem(`zenemoo_applicant_email_${applyingOpportunity.id}`, applicantEmail.trim().toLowerCase());
-      try {
-        localStorage.removeItem('zenemoo_active_ref');
-        sessionStorage.removeItem('zenemoo_active_ref');
-      } catch (_) {}
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);
@@ -884,6 +882,12 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                               <span className="text-slate-400">Phone / WhatsApp:</span>
                               <span className="text-emerald-300 font-bold">{applicantPhone}</span>
                             </div>
+                            {referralCode && (
+                              <div className="flex justify-between border-b border-white/5 pb-1">
+                                <span className="text-slate-400">Referral Attribution:</span>
+                                <span className="text-cyan-300 font-bold font-mono">Ref: {referralCode}</span>
+                              </div>
+                            )}
                             {Object.entries(customAnswers).map(([k, v]) => (
                               <div key={k} className="flex justify-between border-b border-white/5 pb-1">
                                 <span className="text-slate-400">{k}:</span>

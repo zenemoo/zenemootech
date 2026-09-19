@@ -154,7 +154,7 @@ export const submitPublicReview = async (reviewData: {
     throw new Error('Rating must be between 1 and 5 stars');
   }
 
-  const cleanText = reviewData.review_text && reviewData.review_text.trim() ? reviewData.review_text.trim() : null;
+  const cleanText = typeof reviewData.review_text === 'string' ? reviewData.review_text.trim() : '';
 
   // 2. Primary: Submit via backend reviewApi
   try {

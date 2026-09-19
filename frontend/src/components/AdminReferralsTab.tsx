@@ -33,7 +33,7 @@ import {
   Check,
 } from 'lucide-react';
 import { CandidateApplication, getStoredCandidateApplications } from '../lib/opportunityApplicationStore';
-import { OpportunityProgram, getStoredOpportunities } from '../lib/opportunityStore';
+import { OpportunityProgram, getAllOpportunitiesForAdmin } from '../lib/opportunityStore';
 import {
   generateReferralCSV,
   generateReferralXLSX,
@@ -83,7 +83,7 @@ export const AdminReferralsTab: React.FC<AdminReferralsTabProps> = ({ showToast 
     try {
       const [apps, opps] = await Promise.all([
         getStoredCandidateApplications(),
-        getStoredOpportunities(),
+        getAllOpportunitiesForAdmin(),
       ]);
       setApplications(apps || []);
       setOpportunities(opps || []);

@@ -407,18 +407,15 @@ export const submitApplication = async (req, res) => {
           referrerRecord.status !== 'rejected'
         ) {
           const referrerEmail = (referrerRecord.email || '').trim().toLowerCase();
-          // Prevent self-referral
-          if (referrerEmail !== cleanEmail) {
-            const validReferredById = referrerRecord.id && isValidUuid(referrerRecord.id) ? referrerRecord.id : null;
-            referralAttribution = {
-              referral_code: referrerRecord.registration_code || rawRefCode,
-              referred_by_id: validReferredById,
-              referrer_name: referrerRecord.full_name || 'Zenemoo Contributor',
-              referrer_email: referrerEmail,
-              referral_source: req.body.referral_source || 'talent_hub',
-            };
-          }
-        } else if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode)) {
+          const validReferredById = referrerRecord.id && isValidUuid(referrerRecord.id) ? referrerRecord.id : null;
+          referralAttribution = {
+            referral_code: referrerRecord.registration_code || rawRefCode,
+            referred_by_id: validReferredById,
+            referrer_name: referrerRecord.full_name || 'Zenemoo Contributor',
+            referrer_email: referrerEmail,
+            referral_source: req.body.referral_source || 'talent_hub',
+          };
+        } else if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode) || rawRefCode.length >= 4) {
           // Graceful fallback: preserve valid referral code even if referrer profile lookup is delayed
           referralAttribution = {
             referral_code: rawRefCode,
@@ -430,7 +427,7 @@ export const submitApplication = async (req, res) => {
         }
       } catch (refErr) {
         console.warn('[Referral verification note]:', refErr.message);
-        if (/^ZEN-[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(rawRefCode)) {
+        if (rawRefCode) {
           referralAttribution.referral_code = rawRefCode;
           referralAttribution.referral_source = req.body.referral_source || 'talent_hub';
         }

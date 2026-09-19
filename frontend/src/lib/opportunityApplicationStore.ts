@@ -33,6 +33,63 @@ export interface CandidateApplication {
 
 const LOCAL_STORAGE_KEY = 'zenemoo_opp_applications_db';
 
+/**
+ * Robust Referral Code Extraction & Normalization Helper
+ * Scans URL query parameters (search), hash query parameters, full URL regex,
+ * and falls back to persistent sessionStorage / localStorage.
+ * Normalizes by trimming and uppercase.
+ */
+export const extractAndStoreReferralCode = (): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    let rawCode = '';
+
+    // 1. Search params (?ref=... or ?referral=...)
+    if (window.location.search) {
+      const searchParams = new URLSearchParams(window.location.search);
+      rawCode = searchParams.get('ref') || searchParams.get('referral') || '';
+    }
+
+    // 2. Hash query params (e.g. #/opportunity/id?ref=... or #opportunity/id?ref=...)
+    if (!rawCode && window.location.hash && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      if (hashQuery) {
+        const hashParams = new URLSearchParams(hashQuery);
+        rawCode = hashParams.get('ref') || hashParams.get('referral') || '';
+      }
+    }
+
+    // 3. Fallback regex on full URL
+    if (!rawCode && window.location.href) {
+      const match = window.location.href.match(/[?&](?:ref|referral)=([^&#]+)/i);
+      if (match && match[1]) {
+        rawCode = decodeURIComponent(match[1]);
+      }
+    }
+
+    // If found in URL, normalize and persist across sessions
+    if (rawCode && rawCode.trim()) {
+      const clean = rawCode.trim().toUpperCase();
+      try {
+        sessionStorage.setItem('zenemoo_active_ref', clean);
+        localStorage.setItem('zenemoo_active_ref', clean);
+      } catch (_) {}
+      return clean;
+    }
+
+    // 4. Fallback to active stored referral
+    try {
+      const stored = sessionStorage.getItem('zenemoo_active_ref') || localStorage.getItem('zenemoo_active_ref') || '';
+      if (stored && stored.trim()) {
+        const clean = stored.trim().toUpperCase();
+        return clean;
+      }
+    } catch (_) {}
+  } catch (_) {}
+
+  return '';
+};
+
 const getLocalApplications = (): CandidateApplication[] => {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -162,9 +219,13 @@ export const submitCandidateApplication = async (
 
   let localList = getLocalApplications();
   const cleanEmail = (appData.applicant_email || '').trim().toLowerCase();
+  const cleanRefCode = typeof appData.referral_code === 'string' && appData.referral_code.trim()
+    ? appData.referral_code.trim().toUpperCase()
+    : undefined;
   const normalizedAppData = {
     ...appData,
     applicant_email: cleanEmail,
+    referral_code: cleanRefCode,
     terms_accepted: true,
     terms_accepted_at: appData.terms_accepted_at || new Date().toISOString(),
     terms_version: appData.terms_version || '1.0',

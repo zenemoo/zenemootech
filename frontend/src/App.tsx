@@ -57,6 +57,7 @@ import { ZenemooTeamJoinPage } from './components/ZenemooTeamJoinPage';
 import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
+import { extractAndStoreReferralCode } from './lib/opportunityApplicationStore';
 
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
@@ -293,13 +294,7 @@ function AppInner() {
 
       // ── Capture Referral Code from URL parameters & persist across sessions ──
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const refParam = urlParams.get('ref') || urlParams.get('referral');
-        if (refParam && refParam.trim()) {
-          const cleanRef = refParam.trim().toUpperCase();
-          sessionStorage.setItem('zenemoo_active_ref', cleanRef);
-          localStorage.setItem('zenemoo_active_ref', cleanRef);
-        }
+        extractAndStoreReferralCode();
       } catch (_) {}
 
       if (isSecretAdminRoute) {

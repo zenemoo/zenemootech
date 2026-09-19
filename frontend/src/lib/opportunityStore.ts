@@ -254,13 +254,19 @@ let opportunitiesMemoryCache: { data: OpportunityProgram[] | null; timestamp: nu
   data: null,
   timestamp: 0,
 };
+let adminOpportunitiesMemoryCache: { data: OpportunityProgram[] | null; timestamp: number } = {
+  data: null,
+  timestamp: 0,
+};
 const OPPORTUNITIES_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes client cache
 
 export const invalidateOpportunitiesCache = () => {
   opportunitiesMemoryCache = { data: null, timestamp: 0 };
+  adminOpportunitiesMemoryCache = { data: null, timestamp: 0 };
 };
 
-// Fetch opportunities ordered by position ASC directly from Supabase (with client-side in-memory caching)
+// Fetch public opportunities ordered by position ASC directly from Supabase (with client-side in-memory caching)
+// Restricted by RLS to status IN ('active', 'coming_soon')
 export const getStoredOpportunities = async (forceRefresh = false): Promise<OpportunityProgram[]> => {
   const now = Date.now();
   if (!forceRefresh && opportunitiesMemoryCache.data && now - opportunitiesMemoryCache.timestamp < OPPORTUNITIES_CACHE_TTL_MS) {
@@ -304,6 +310,33 @@ export const getStoredOpportunities = async (forceRefresh = false): Promise<Oppo
   }
 
   return getLocalOpportunities();
+};
+
+// Fetch ALL opportunities for Admin via authenticated backend service_role API
+// Includes all statuses: active, coming_soon, stopped, draft
+export const getAllOpportunitiesForAdmin = async (forceRefresh = false): Promise<OpportunityProgram[]> => {
+  const now = Date.now();
+  if (!forceRefresh && adminOpportunitiesMemoryCache.data && now - adminOpportunitiesMemoryCache.timestamp < OPPORTUNITIES_CACHE_TTL_MS) {
+    return adminOpportunitiesMemoryCache.data;
+  }
+
+  try {
+    const res = await opportunityApi.getAllAdmin();
+    if (res.data && res.data.data && Array.isArray(res.data.data)) {
+      const live = res.data.data
+        .map(normalizeOpportunity)
+        .sort((a: OpportunityProgram, b: OpportunityProgram) => Number(a.position) - Number(b.position))
+        .map((item: OpportunityProgram, idx: number) => ({ ...item, position: idx + 1 }));
+      adminOpportunitiesMemoryCache = { data: live, timestamp: now };
+      saveLocalOpportunities(live);
+      return live;
+    }
+  } catch (err: any) {
+    console.warn('Admin opportunities API error. Trying fallback:', err.message);
+  }
+
+  // Fallback to getStoredOpportunities or local cache if offline
+  return getStoredOpportunities(forceRefresh);
 };
 
 // Fetch public opportunities excluding drafts
@@ -404,7 +437,7 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     }
 
     invalidateOpportunitiesCache();
-    const updatedList = await getStoredOpportunities(true);
+    const updatedList = await getAllOpportunitiesForAdmin(true);
     if (updatedList.length > 0) return updatedList;
   } catch (err: any) {
     console.warn('Backend opportunity save error. Trying local fallback:', err.message);
@@ -448,7 +481,7 @@ export const reorderOpportunityInApi = async (id: string, newPosition: number): 
   }
 
   invalidateOpportunitiesCache();
-  return getStoredOpportunities(true);
+  return getAllOpportunitiesForAdmin(true);
 };
 
 // Delete opportunity via Backend API
@@ -465,5 +498,5 @@ export const deleteOpportunityFromApi = async (id: string): Promise<OpportunityP
   localList = saveLocalOpportunities(localList);
 
   invalidateOpportunitiesCache();
-  return getStoredOpportunities(true);
+  return getAllOpportunitiesForAdmin(true);
 };

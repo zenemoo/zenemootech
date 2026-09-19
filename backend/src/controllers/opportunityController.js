@@ -7,13 +7,19 @@ let opportunitiesCache = {
   data: null,
   timestamp: 0,
 };
-const OPPORTUNITIES_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// In-Memory Admin Cache (30-second TTL for fast admin operations)
+let adminOpportunitiesCache = {
+  data: null,
+  timestamp: 0,
+};
+const ADMIN_OPPORTUNITIES_CACHE_TTL = 30 * 1000; // 30 seconds
 
 export const invalidateOpportunitiesCache = () => {
   opportunitiesCache = { data: null, timestamp: 0 };
+  adminOpportunitiesCache = { data: null, timestamp: 0 };
 };
 
-// 1. GET ALL OPPORTUNITY PROGRAMS (Sorted by position ASC)
+// 1. GET PUBLIC OPPORTUNITY PROGRAMS (Sorted by position ASC, only active and coming_soon)
 export const getOpportunities = async (req, res) => {
   try {
     const now = Date.now();
@@ -24,6 +30,7 @@ export const getOpportunities = async (req, res) => {
     const { data, error } = await supabase
       .from('opportunities')
       .select('*')
+      .in('status', ['active', 'coming_soon'])
       .order('position', { ascending: true });
 
     if (error) {
@@ -40,6 +47,37 @@ export const getOpportunities = async (req, res) => {
     return res.json({ status: 'success', data: resultList });
   } catch (err) {
     console.error('getOpportunities controller exception:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// 1B. GET ALL OPPORTUNITIES FOR ADMIN (Sorted by position ASC, includes all statuses: active, coming_soon, stopped, draft)
+export const getAdminOpportunities = async (req, res) => {
+  try {
+    const now = Date.now();
+    if (adminOpportunitiesCache.data && now - adminOpportunitiesCache.timestamp < ADMIN_OPPORTUNITIES_CACHE_TTL) {
+      return res.json({ status: 'success', data: adminOpportunitiesCache.data, cached: true });
+    }
+
+    const { data, error } = await supabase
+      .from('opportunities')
+      .select('*')
+      .order('position', { ascending: true });
+
+    if (error) {
+      console.error('Supabase fetch admin opportunities error:', error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    const resultList = data || [];
+    adminOpportunitiesCache = {
+      data: resultList,
+      timestamp: Date.now(),
+    };
+
+    return res.json({ status: 'success', data: resultList });
+  } catch (err) {
+    console.error('getAdminOpportunities controller exception:', err.message);
     return res.status(500).json({ error: err.message });
   }
 };

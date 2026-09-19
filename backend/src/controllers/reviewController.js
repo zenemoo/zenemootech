@@ -57,18 +57,20 @@ export const submitReview = async (req, res, next) => {
   try {
     const { name, reviewer_type, rating, review_text } = req.body;
 
-    if (!name || !review_text) {
-      return res.status(400).json({ error: 'Name and review text are required.' });
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Name is required.' });
     }
 
     const cleanName = String(name).replace(/<[^>]*>?/gm, '').trim().substring(0, 100);
     const cleanType = String(reviewer_type || 'Candidate').replace(/<[^>]*>?/gm, '').trim().substring(0, 50);
-    const cleanText = String(review_text).replace(/<[^>]*>?/gm, '').trim().substring(0, 2000);
+    const reviewText = typeof review_text === 'string'
+      ? review_text.replace(/<[^>]*>?/gm, '').trim().substring(0, 2000)
+      : '';
     const numRating = Math.max(1, Math.min(5, parseInt(rating, 10) || 5));
 
     const generatedReviewId = `REV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const reviewSlug = `${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-4)}`;
-    const fingerprint = computeReviewFingerprint(cleanName, cleanType, numRating, cleanText);
+    const fingerprint = computeReviewFingerprint(cleanName, cleanType, numRating, reviewText);
 
     const newRecord = {
       review_id: generatedReviewId,
@@ -76,7 +78,7 @@ export const submitReview = async (req, res, next) => {
       name: cleanName,
       reviewer_type: cleanType,
       rating: numRating,
-      review_text: cleanText,
+      review_text: reviewText,
       review_fingerprint: fingerprint,
       is_visible: false, // Held for admin moderation
       created_at: new Date().toISOString(),
@@ -174,6 +176,12 @@ export const updateReview = async (req, res, next) => {
   try {
     const { id } = req.params;
     const updates = { ...req.body, updated_at: new Date().toISOString() };
+
+    if (updates.review_text !== undefined) {
+      updates.review_text = typeof updates.review_text === 'string'
+        ? updates.review_text.replace(/<[^>]*>?/gm, '').trim()
+        : '';
+    }
 
     // Recompute fingerprint if text/name/rating updated
     if (updates.name !== undefined || updates.reviewer_type !== undefined || updates.rating !== undefined || updates.review_text !== undefined) {

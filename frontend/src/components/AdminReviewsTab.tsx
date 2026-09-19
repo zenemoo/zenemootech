@@ -129,7 +129,7 @@ export const AdminReviewsTab: React.FC<AdminReviewsTabProps> = ({ onAddToast, on
         name: editName.trim(),
         reviewer_type: editType,
         rating: editRating,
-        review_text: editText.trim() ? editText.trim() : null,
+        review_text: typeof editText === 'string' ? editText.trim() : '',
         is_visible: editIsVisible,
       });
 
