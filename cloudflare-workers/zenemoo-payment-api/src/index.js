@@ -64,11 +64,11 @@ function deriveDisplayName(email, talentId) {
 
 function getCorsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';
-  const allowedOrigins = (env.CORS_ORIGIN || 'https://web.zenemoo.in,https://zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000')
+  const allowedOrigins = (env.CORS_ORIGIN || 'https://zenemoo.in,https://www.zenemoo.in,https://web.zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000')
     .split(',')
     .map((o) => o.trim());
 
-  let matchedOrigin = allowedOrigins[0] || 'https://web.zenemoo.in';
+  let matchedOrigin = allowedOrigins[0] || 'https://zenemoo.in';
   if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
     matchedOrigin = origin;
   }
@@ -724,7 +724,7 @@ export default {
         );
       }
 
-      // 8. POST /admin/payments/import — High-speed Batch CSV / Excel import
+      // 8. POST /admin/payments/import — High-speed Batch CSV / Excel import with Idempotency Protection
       if (pathname === '/admin/payments/import' && request.method === 'POST') {
         const auth = await authenticateAdmin(request, env);
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
@@ -741,8 +741,7 @@ export default {
         }
 
         const now = new Date().toISOString();
-        const statements = [];
-        const validatedRecords = [];
+        const validatedItems = [];
         const rowErrors = [];
 
         for (let i = 0; i < records.length; i++) {
@@ -751,35 +750,7 @@ export default {
           if (!validation.isValid) {
             rowErrors.push(`Row ${i + 1}: ${validation.errors.join('; ')}`);
           } else {
-            const s = validation.sanitized;
-            const id = crypto.randomUUID();
-            validatedRecords.push({ id, ...s });
-
-            const insertSql = `
-              INSERT INTO payments (
-                id, talent_id, email, project_name, amount, currency, status,
-                payment_date, reference_number, reference_link, source, notes, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
-
-            statements.push(
-              env.DB.prepare(insertSql).bind(
-                id,
-                s.talent_id,
-                s.email,
-                s.project_name,
-                s.amount,
-                s.currency,
-                s.status,
-                s.payment_date,
-                s.reference_number,
-                s.reference_link,
-                'import',
-                s.notes,
-                now,
-                now
-              )
-            );
+            validatedItems.push(validation.sanitized);
           }
         }
 
@@ -796,6 +767,121 @@ export default {
           );
         }
 
+        // --- Efficient D1 Duplicate Detection ---
+        const existingKeys = new Set();
+
+        // 1. Collect non-empty reference numbers to check
+        const refList = Array.from(
+          new Set(
+            validatedItems
+              .filter((item) => item.reference_number && item.reference_number.trim())
+              .map((item) => item.reference_number.trim())
+          )
+        );
+
+        // 2. Query existing reference numbers in D1 (batched in chunks of 50 for SQL parameter safety)
+        const refChunkSize = 50;
+        for (let i = 0; i < refList.length; i += refChunkSize) {
+          const chunk = refList.slice(i, i + refChunkSize);
+          const placeholders = chunk.map(() => '?').join(', ');
+          const selectSql = `
+            SELECT LOWER(email) as email, reference_number
+            FROM payments
+            WHERE reference_number IN (${placeholders})
+          `;
+          const queryRes = await env.DB.prepare(selectSql).bind(...chunk).all();
+          if (queryRes?.results) {
+            for (const row of queryRes.results) {
+              if (row.email && row.reference_number) {
+                existingKeys.add(`ref:${String(row.email).toLowerCase().trim()}:${String(row.reference_number).trim()}`);
+              }
+            }
+          }
+        }
+
+        // 3. For items lacking reference numbers, query existing matches on (email, project, amount, date)
+        const noRefEmails = Array.from(
+          new Set(
+            validatedItems
+              .filter((item) => !item.reference_number || !item.reference_number.trim())
+              .map((item) => item.email.toLowerCase().trim())
+          )
+        );
+
+        for (let i = 0; i < noRefEmails.length; i += refChunkSize) {
+          const chunk = noRefEmails.slice(i, i + refChunkSize);
+          const placeholders = chunk.map(() => '?').join(', ');
+          const selectSql = `
+            SELECT LOWER(email) as email, project_name, amount, payment_date
+            FROM payments
+            WHERE (reference_number IS NULL OR reference_number = '') AND LOWER(email) IN (${placeholders})
+          `;
+          const queryRes = await env.DB.prepare(selectSql).bind(...chunk).all();
+          if (queryRes?.results) {
+            for (const row of queryRes.results) {
+              if (row.email) {
+                const normProj = String(row.project_name || '').trim().toLowerCase();
+                const normAmount = Number(row.amount);
+                const normDate = String(row.payment_date || '').trim();
+                existingKeys.add(`noref:${String(row.email).toLowerCase().trim()}:${normProj}:${normAmount}:${normDate}`);
+              }
+            }
+          }
+        }
+
+        // --- Build Insert Statements & Filter Out Both DB and In-Batch Duplicates ---
+        const statements = [];
+        const seenInBatch = new Set(existingKeys);
+        let insertedCount = 0;
+        let skippedDuplicates = 0;
+
+        const insertSql = `
+          INSERT INTO payments (
+            id, talent_id, email, project_name, amount, currency, status,
+            payment_date, reference_number, reference_link, source, notes, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        for (const s of validatedItems) {
+          let itemKey = '';
+          if (s.reference_number && s.reference_number.trim()) {
+            itemKey = `ref:${s.email.toLowerCase().trim()}:${s.reference_number.trim()}`;
+          } else {
+            const normProj = String(s.project_name || '').trim().toLowerCase();
+            const normAmount = Number(s.amount);
+            const normDate = String(s.payment_date || '').trim();
+            itemKey = `noref:${s.email.toLowerCase().trim()}:${normProj}:${normAmount}:${normDate}`;
+          }
+
+          if (seenInBatch.has(itemKey)) {
+            skippedDuplicates++;
+            continue;
+          }
+
+          seenInBatch.add(itemKey);
+          insertedCount++;
+
+          const id = crypto.randomUUID();
+          statements.push(
+            env.DB.prepare(insertSql).bind(
+              id,
+              s.talent_id,
+              s.email,
+              s.project_name,
+              s.amount,
+              s.currency,
+              s.status,
+              s.payment_date,
+              s.reference_number,
+              s.reference_link,
+              'import',
+              s.notes,
+              now,
+              now
+            )
+          );
+        }
+
         // Execute batch insertion in chunks of 100 for maximum D1 performance and reliability
         const chunkSize = 100;
         for (let i = 0; i < statements.length; i += chunkSize) {
@@ -806,10 +892,19 @@ export default {
         return jsonResponse(
           {
             success: true,
-            count: statements.length,
-            message: `Successfully imported ${statements.length} payment records`,
+            count: insertedCount,
+            message:
+              insertedCount > 0
+                ? `Successfully imported ${insertedCount} payment records${skippedDuplicates > 0 ? ` (${skippedDuplicates} duplicate${skippedDuplicates > 1 ? 's' : ''} skipped)` : ''}`
+                : `0 new payments imported (${skippedDuplicates} duplicate record${skippedDuplicates > 1 ? 's' : ''} skipped)`,
+            summary: {
+              total_rows: records.length,
+              inserted: insertedCount,
+              skipped_duplicates: skippedDuplicates,
+              invalid: 0,
+            },
           },
-          201,
+          insertedCount > 0 ? 201 : 200,
           corsHeaders
         );
       }

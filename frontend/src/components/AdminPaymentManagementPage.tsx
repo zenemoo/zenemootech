@@ -384,107 +384,439 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     }
   };
 
+  // --- Header & CSV/Excel Import Utilities ---
+  const normalizeHeader = (raw: string): string => {
+    return raw
+      .toLowerCase()
+      .trim()
+      .replace(/[\._\-]/g, ' ')
+      .replace(/\s+/g, ' ');
+  };
+
+  const EMAIL_ALIASES = ['email', 'e mail', 'email address', 'mail'];
+  const AMOUNT_P1_ALIASES = ['price', 'to pay', 'topay', 'net amount', 'paid amount', 'payment amount'];
+  const AMOUNT_P2_ALIASES = ['amount', 'total amount'];
+  const AMOUNT_EXCLUDED = ['total raw amount', 'raw amount', 'gross amount', 'gross'];
+  const REFERENCE_ALIASES = [
+    'ref no',
+    'ref. no',
+    'ref.no',
+    'ref no.',
+    'reference',
+    'reference number',
+    'reference no',
+    'reference id',
+    'utr',
+    'utr number',
+    'txn id',
+    'transaction id',
+  ];
+  const STATUS_ALIASES = ['status', 'payment status', 'payout status'];
+  const DATE_ALIASES = ['date', 'payment date', 'paid date', 'txn date', 'transaction date'];
+  const TALENT_ID_ALIASES = ['talent id', 'talent_id', 'contributor id', 'worker id', 'member code', 'user id'];
+  const PROJECT_ALIASES = ['project', 'project name', 'campaign', 'campaign name', 'task name'];
+
+  interface ColumnMapping {
+    emailCol?: number;
+    amountCol?: number;
+    hasAmountHeader: boolean;
+    referenceCol?: number;
+    statusCol?: number;
+    dateCol?: number;
+    talentIdCol?: number;
+    projectCol?: number;
+  }
+
+  const detectColumns = (headers: string[]): ColumnMapping => {
+    let emailCol: number | undefined;
+    let p1AmountCol: number | undefined;
+    let p2AmountCol: number | undefined;
+    let referenceCol: number | undefined;
+    let statusCol: number | undefined;
+    let dateCol: number | undefined;
+    let talentIdCol: number | undefined;
+    let projectCol: number | undefined;
+
+    headers.forEach((h, colIndex) => {
+      const norm = normalizeHeader(h || '');
+
+      // Email mapping
+      if (emailCol === undefined && (EMAIL_ALIASES.includes(norm) || norm === 'email')) {
+        emailCol = colIndex;
+      }
+
+      // Amount Priority mapping (Explicitly ignores Total Raw Amount, Raw Amount, Gross Amount)
+      if (!AMOUNT_EXCLUDED.includes(norm)) {
+        if (p1AmountCol === undefined && AMOUNT_P1_ALIASES.includes(norm)) {
+          p1AmountCol = colIndex;
+        } else if (p2AmountCol === undefined && AMOUNT_P2_ALIASES.includes(norm)) {
+          p2AmountCol = colIndex;
+        }
+      }
+
+      // Reference mapping
+      if (referenceCol === undefined && REFERENCE_ALIASES.includes(norm)) {
+        referenceCol = colIndex;
+      }
+
+      // Status mapping
+      if (statusCol === undefined && STATUS_ALIASES.includes(norm)) {
+        statusCol = colIndex;
+      }
+
+      // Date mapping
+      if (dateCol === undefined && DATE_ALIASES.includes(norm)) {
+        dateCol = colIndex;
+      }
+
+      // Talent ID mapping
+      if (talentIdCol === undefined && TALENT_ID_ALIASES.includes(norm)) {
+        talentIdCol = colIndex;
+      }
+
+      // Project mapping
+      if (projectCol === undefined && PROJECT_ALIASES.includes(norm)) {
+        projectCol = colIndex;
+      }
+    });
+
+    const amountCol = p1AmountCol !== undefined ? p1AmountCol : p2AmountCol;
+    const hasAmountHeader = amountCol !== undefined;
+
+    return {
+      emailCol,
+      amountCol,
+      hasAmountHeader,
+      referenceCol,
+      statusCol,
+      dateCol,
+      talentIdCol,
+      projectCol,
+    };
+  };
+
+  const validateEmailValue = (raw: any): { email: string; isValid: boolean; error?: string } => {
+    if (raw === undefined || raw === null) {
+      return { email: '', isValid: false, error: 'Invalid or missing email' };
+    }
+    const str = String(raw).trim();
+    if (!str) {
+      return { email: '', isValid: false, error: 'Invalid or missing email' };
+    }
+    // Strict rejection of #N/A, N/A, n/a, null, undefined
+    if (/^#n\/a$/i.test(str) || /^n\/a$/i.test(str) || /^na$/i.test(str) || /^null$/i.test(str) || /^undefined$/i.test(str)) {
+      return { email: str, isValid: false, error: 'Invalid or missing email (#N/A)' };
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(str)) {
+      return { email: str, isValid: false, error: 'Invalid email syntax' };
+    }
+    return { email: str.toLowerCase(), isValid: true };
+  };
+
+  const parseAmountValue = (raw: any, hasAmountHeader: boolean): { amount: number; isValid: boolean; error?: string } => {
+    if (!hasAmountHeader) {
+      return { amount: 0, isValid: false, error: 'Payment amount column not found' };
+    }
+    if (raw === undefined || raw === null || String(raw).trim() === '') {
+      return { amount: 0, isValid: false, error: 'Missing or invalid amount' };
+    }
+    let str = String(raw).trim();
+    // Strip currency symbols (₹, $, INR) and commas (thousands separators)
+    str = str.replace(/[₹$]|inr/gi, '').replace(/,/g, '').trim();
+    const num = Number(str);
+    if (isNaN(num) || num <= 0) {
+      return { amount: isNaN(num) ? 0 : num, isValid: false, error: 'Amount must be greater than 0' };
+    }
+    return { amount: num, isValid: true };
+  };
+
+  const normalizeStatusValue = (raw: any, hasStatusHeader: boolean): { status: string; isValid: boolean; error?: string } => {
+    if (!hasStatusHeader || raw === undefined || raw === null || String(raw).trim() === '') {
+      return { status: 'Paid', isValid: true };
+    }
+    const clean = String(raw).trim().toLowerCase();
+    if (clean === 'done' || clean === 'completed' || clean === 'success' || clean === 'paid') {
+      return { status: 'Paid', isValid: true };
+    }
+    if (clean === 'pending') {
+      return { status: 'Pending', isValid: true };
+    }
+    if (clean === 'processing') {
+      return { status: 'Processing', isValid: true };
+    }
+    if (clean === 'failed') {
+      return { status: 'Failed', isValid: true };
+    }
+    if (clean === 'cancelled' || clean === 'canceled') {
+      return { status: 'Cancelled', isValid: true };
+    }
+    return { status: String(raw).trim(), isValid: false, error: `Unrecognized status: "${raw}"` };
+  };
+
+  const validateImportRow = (
+    row: {
+      email?: any;
+      amount?: any;
+      status?: any;
+      project_name?: any;
+      payment_date?: any;
+      reference_number?: any;
+      talent_id?: any;
+      hasAmountHeader?: boolean;
+      hasStatusHeader?: boolean;
+    },
+    defaultProject: string
+  ): {
+    isValid: boolean;
+    error?: string;
+    validatedEmail: string;
+    validatedAmount: number;
+    validatedStatus: string;
+    validatedProject: string;
+  } => {
+    const emailRes = validateEmailValue(row.email);
+    const amountRes = parseAmountValue(row.amount, row.hasAmountHeader !== false);
+    const statusRes = normalizeStatusValue(row.status, row.hasStatusHeader !== false);
+
+    const project = (row.project_name || '').trim() || defaultProject.trim();
+    const projectValid = !!project;
+
+    const errors: string[] = [];
+    if (!emailRes.isValid) errors.push(emailRes.error || 'Invalid email');
+    if (!amountRes.isValid) errors.push(amountRes.error || 'Invalid amount');
+    if (!statusRes.isValid) errors.push(statusRes.error || 'Invalid status');
+    if (!projectValid) errors.push('Project name is required');
+
+    return {
+      isValid: errors.length === 0,
+      error: errors.length > 0 ? errors.join(', ') : undefined,
+      validatedEmail: emailRes.email || row.email,
+      validatedAmount: amountRes.amount,
+      validatedStatus: statusRes.status,
+      validatedProject: project,
+    };
+  };
+
+  const getCellValue = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') {
+      if (val.result !== undefined) return String(val.result);
+      if (val.text !== undefined) return String(val.text);
+      if (val instanceof Date) return val.toISOString().split('T')[0];
+    }
+    return String(val);
+  };
+
+  // --- Robust Browser CSV Parser (supports quotes, commas in quotes, escaped quotes, CRLF/LF, BOM) ---
+  const parseCsvText = (text: string): string[][] => {
+    const cleanText = text.replace(/^\uFEFF/, '');
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < cleanText.length; i++) {
+      const char = cleanText[i];
+      const nextChar = cleanText[i + 1];
+
+      if (insideQuotes) {
+        if (char === '"') {
+          if (nextChar === '"') {
+            currentField += '"';
+            i++; // Skip escaped quote
+          } else {
+            insideQuotes = false;
+          }
+        } else {
+          currentField += char;
+        }
+      } else {
+        if (char === '"') {
+          insideQuotes = true;
+        } else if (char === ',') {
+          currentRow.push(currentField.trim());
+          currentField = '';
+        } else if (char === '\r') {
+          if (nextChar === '\n') {
+            i++;
+          }
+          currentRow.push(currentField.trim());
+          currentField = '';
+          if (currentRow.some((f) => f.length > 0)) {
+            rows.push(currentRow);
+          }
+          currentRow = [];
+        } else if (char === '\n') {
+          currentRow.push(currentField.trim());
+          currentField = '';
+          if (currentRow.some((f) => f.length > 0)) {
+            rows.push(currentRow);
+          }
+          currentRow = [];
+        } else {
+          currentField += char;
+        }
+      }
+    }
+
+    if (currentField.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentField.trim());
+      if (currentRow.some((f) => f.length > 0)) {
+        rows.push(currentRow);
+      }
+    }
+
+    return rows;
+  };
+
   // --- File Parsing & Import Handler ---
   const handleFileUpload = async (file: File) => {
     setIsParsingFile(true);
     try {
-      const { default: ExcelJS } = await import('exceljs');
-      const buffer = await file.arrayBuffer();
-      const workbook = new ExcelJS.Workbook();
-
-      if (file.name.endsWith('.csv')) {
-        await workbook.csv.read(new Blob([buffer]).stream() as any);
-      } else {
-        await workbook.xlsx.load(buffer);
-      }
-
-      const worksheet = workbook.worksheets[0];
-      if (!worksheet) {
-        throw new Error('File contains no readable sheets');
-      }
-
-      // Detect header columns in row 1
-      const headerMap: Record<string, number> = {};
-      const firstRow = worksheet.getRow(1);
-      firstRow.eachCell((cell, colNumber) => {
-        const val = String(cell.value || '').trim().toLowerCase();
-        if (/email|e-mail|email_id|mail/i.test(val)) headerMap['email'] = colNumber;
-        else if (/amount|payment|paid|price|fee/i.test(val)) headerMap['amount'] = colNumber;
-        else if (/project|work|title|campaign/i.test(val)) headerMap['project'] = colNumber;
-        else if (/reference|ref_no|transaction|txn_id|utr/i.test(val)) headerMap['reference'] = colNumber;
-        else if (/link|url|proof|receipt/i.test(val)) headerMap['reference_link'] = colNumber;
-        else if (/date|paid_date|txn_date/i.test(val)) headerMap['date'] = colNumber;
-        else if (/status/i.test(val)) headerMap['status'] = colNumber;
-        else if (/talent_id|member_code|talent|user_id/i.test(val)) headerMap['talent_id'] = colNumber;
-        else if (/notes|remarks|comment/i.test(val)) headerMap['notes'] = colNumber;
-      });
-
       const parsedRows: ImportRow[] = [];
 
-      for (let r = 2; r <= worksheet.rowCount; r++) {
-        const row = worksheet.getRow(r);
-        if (!row || row.cellCount === 0) continue;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        // --- NATIVE BROWSER CSV PARSING ---
+        const text = await file.text();
+        const csvRows = parseCsvText(text);
 
-        const rawEmail = String(row.getCell(headerMap['email'] || 1).value || '').trim();
-        const rawAmount = row.getCell(headerMap['amount'] || 2).value;
-        const rawProject = headerMap['project']
-          ? String(row.getCell(headerMap['project']).value || '').trim()
-          : defaultProjectName;
-        const rawRef = headerMap['reference']
-          ? String(row.getCell(headerMap['reference']).value || '').trim()
-          : '';
-        const rawRefLink = headerMap['reference_link']
-          ? String(row.getCell(headerMap['reference_link']).value || '').trim()
-          : '';
-        const rawDate = headerMap['date'] ? String(row.getCell(headerMap['date']).value || '').trim() : '';
-        const rawStatus = headerMap['status']
-          ? String(row.getCell(headerMap['status']).value || '').trim()
-          : 'Paid';
-        const rawTalentId = headerMap['talent_id']
-          ? String(row.getCell(headerMap['talent_id']).value || '').trim()
-          : '';
-        const rawNotes = headerMap['notes'] ? String(row.getCell(headerMap['notes']).value || '').trim() : '';
-
-        if (!rawEmail && !rawAmount) continue;
-
-        let numAmount = Number(rawAmount);
-        if (typeof rawAmount === 'object' && rawAmount !== null && (rawAmount as any).result !== undefined) {
-          numAmount = Number((rawAmount as any).result);
+        if (csvRows.length < 2) {
+          throw new Error('CSV file must contain a header row and at least one data row');
         }
 
-        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail);
-        const isValidAmount = !isNaN(numAmount) && numAmount > 0;
-        const isValid = isValidEmail && isValidAmount;
+        const headers = csvRows[0];
+        const colMap = detectColumns(headers);
 
-        let error = '';
-        if (!isValidEmail) error = 'Invalid email';
-        else if (!isValidAmount) error = 'Missing/invalid amount';
+        for (let r = 1; r < csvRows.length; r++) {
+          const row = csvRows[r];
+          if (!row || row.length === 0 || row.every((c) => !c || c.trim() === '')) continue;
 
-        parsedRows.push({
-          email: rawEmail.toLowerCase(),
-          project_name: rawProject || defaultProjectName || 'General Project',
-          amount: isNaN(numAmount) ? 0 : numAmount,
-          currency: 'INR',
-          status: ['Pending', 'Processing', 'Paid', 'Failed', 'Cancelled'].includes(rawStatus)
-            ? rawStatus
-            : 'Paid',
-          payment_date: rawDate || new Date().toISOString().split('T')[0],
-          reference_number: rawRef,
-          reference_link: rawRefLink,
-          notes: rawNotes,
-          talent_id: rawTalentId,
-          isValid,
-          error,
+          const rawEmail = colMap.emailCol !== undefined ? String(row[colMap.emailCol] ?? '').trim() : '';
+          const rawAmount = colMap.amountCol !== undefined ? row[colMap.amountCol] : undefined;
+          const rawProject = colMap.projectCol !== undefined
+            ? String(row[colMap.projectCol] ?? '').trim()
+            : defaultProjectName.trim();
+          const rawRef = colMap.referenceCol !== undefined ? String(row[colMap.referenceCol] ?? '').trim() : '';
+          const rawDate = colMap.dateCol !== undefined && String(row[colMap.dateCol] ?? '').trim()
+            ? String(row[colMap.dateCol]).trim()
+            : new Date().toISOString().split('T')[0];
+          const rawStatus = colMap.statusCol !== undefined ? row[colMap.statusCol] : undefined;
+          const rawTalentId = colMap.talentIdCol !== undefined ? String(row[colMap.talentIdCol] ?? '').trim() : '';
+
+          const validation = validateImportRow(
+            {
+              email: rawEmail,
+              amount: rawAmount,
+              status: rawStatus,
+              project_name: rawProject,
+              payment_date: rawDate,
+              reference_number: rawRef,
+              talent_id: rawTalentId,
+              hasAmountHeader: colMap.hasAmountHeader,
+              hasStatusHeader: colMap.statusCol !== undefined,
+            },
+            defaultProjectName
+          );
+
+          parsedRows.push({
+            email: validation.validatedEmail,
+            project_name: validation.validatedProject,
+            amount: validation.validatedAmount,
+            currency: 'INR',
+            status: validation.validatedStatus,
+            payment_date: rawDate,
+            reference_number: rawRef,
+            reference_link: '',
+            notes: '',
+            talent_id: rawTalentId,
+            isValid: validation.isValid,
+            error: validation.error,
+          });
+        }
+      } else {
+        // --- EXCEL (.XLSX / .XLS) PARSING ---
+        const { default: ExcelJS } = await import('exceljs');
+        const buffer = await file.arrayBuffer();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+
+        const worksheet = workbook.worksheets[0];
+        if (!worksheet) {
+          throw new Error('Excel file contains no readable sheets');
+        }
+
+        const headers: string[] = [];
+        const headerRow = worksheet.getRow(1);
+        headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          headers[colNumber - 1] = getCellValue(cell.value);
         });
+
+        const colMap = detectColumns(headers);
+
+        for (let r = 2; r <= worksheet.rowCount; r++) {
+          const row = worksheet.getRow(r);
+          if (!row || row.cellCount === 0) continue;
+
+          const rawEmail = colMap.emailCol !== undefined ? getCellValue(row.getCell(colMap.emailCol + 1).value).trim() : '';
+          const rawAmount = colMap.amountCol !== undefined ? getCellValue(row.getCell(colMap.amountCol + 1).value) : undefined;
+          const rawProject = colMap.projectCol !== undefined
+            ? getCellValue(row.getCell(colMap.projectCol + 1).value).trim()
+            : defaultProjectName.trim();
+          const rawRef = colMap.referenceCol !== undefined ? getCellValue(row.getCell(colMap.referenceCol + 1).value).trim() : '';
+          const rawDate = colMap.dateCol !== undefined && getCellValue(row.getCell(colMap.dateCol + 1).value).trim()
+            ? getCellValue(row.getCell(colMap.dateCol + 1).value).trim()
+            : new Date().toISOString().split('T')[0];
+          const rawStatus = colMap.statusCol !== undefined ? getCellValue(row.getCell(colMap.statusCol + 1).value) : undefined;
+          const rawTalentId = colMap.talentIdCol !== undefined ? getCellValue(row.getCell(colMap.talentIdCol + 1).value).trim() : '';
+
+          if (!rawEmail && rawAmount === undefined && !rawRef && !rawTalentId) continue;
+
+          const validation = validateImportRow(
+            {
+              email: rawEmail,
+              amount: rawAmount,
+              status: rawStatus,
+              project_name: rawProject,
+              payment_date: rawDate,
+              reference_number: rawRef,
+              talent_id: rawTalentId,
+              hasAmountHeader: colMap.hasAmountHeader,
+              hasStatusHeader: colMap.statusCol !== undefined,
+            },
+            defaultProjectName
+          );
+
+          parsedRows.push({
+            email: validation.validatedEmail,
+            project_name: validation.validatedProject,
+            amount: validation.validatedAmount,
+            currency: 'INR',
+            status: validation.validatedStatus,
+            payment_date: rawDate,
+            reference_number: rawRef,
+            reference_link: '',
+            notes: '',
+            talent_id: rawTalentId,
+            isValid: validation.isValid,
+            error: validation.error,
+          });
+        }
       }
 
       if (parsedRows.length === 0) {
-        throw new Error('No valid payment rows detected in the uploaded file');
+        throw new Error('No readable data rows found in the uploaded file');
       }
 
       setImportRows(parsedRows);
       setImportStep('preview');
-      addToast('File parsed', `Loaded ${parsedRows.length} rows for review`, 'info');
+      const validCount = parsedRows.filter((r) => r.isValid).length;
+      const invalidCount = parsedRows.length - validCount;
+      addToast(
+        'File parsed',
+        `Loaded ${parsedRows.length} rows (${validCount} valid, ${invalidCount} invalid)`,
+        invalidCount > 0 ? 'warning' : 'info'
+      );
     } catch (err: any) {
       console.error('[File Parse Error]:', err.message);
       addToast('Failed to parse file', err.message || 'Check CSV/Excel formatting', 'error');
@@ -497,11 +829,23 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     setImportRows((prev) => {
       const updated = [...prev];
       const row = { ...updated[index], [field]: value };
-      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email || '').trim());
-      const numAmount = Number(row.amount);
-      const isValidAmount = !isNaN(numAmount) && numAmount > 0;
-      row.isValid = isValidEmail && isValidAmount;
-      row.error = !isValidEmail ? 'Invalid email' : !isValidAmount ? 'Invalid amount' : undefined;
+      const validation = validateImportRow(
+        {
+          email: String(row.email || ''),
+          amount: row.amount,
+          status: String(row.status || ''),
+          project_name: String(row.project_name || ''),
+          payment_date: String(row.payment_date || ''),
+          reference_number: String(row.reference_number || ''),
+          talent_id: String(row.talent_id || ''),
+          hasAmountHeader: true,
+          hasStatusHeader: true,
+        },
+        defaultProjectName
+      );
+
+      row.isValid = validation.isValid;
+      row.error = validation.error;
       updated[index] = row;
       return updated;
     });
@@ -518,11 +862,24 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       return;
     }
 
+    // Ensure all valid rows have a non-empty project name
+    for (const r of validRows) {
+      if (!r.project_name.trim() && !defaultProjectName.trim()) {
+        addToast('Project name required', 'Project name is required for all rows.', 'error');
+        return;
+      }
+    }
+
+    if (validRows.length > 500) {
+      addToast('Batch limit exceeded', 'Maximum 500 records per import batch.', 'warning');
+      return;
+    }
+
     setIsImporting(true);
     try {
       const payload = validRows.map((r) => ({
         email: r.email.trim().toLowerCase(),
-        project_name: r.project_name.trim() || defaultProjectName || 'General Project',
+        project_name: r.project_name.trim() || defaultProjectName.trim() || 'General Project',
         amount: Number(r.amount),
         currency: r.currency || 'INR',
         status: r.status || 'Paid',
@@ -1455,11 +1812,11 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           {importRows.length} Rows Loaded
                         </span>
                         <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
-                          {importRows.filter((r) => r.isValid).length} Valid
+                          Valid rows: {importRows.filter((r) => r.isValid).length}
                         </span>
                         {importRows.some((r) => !r.isValid) && (
                           <span className="px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-semibold">
-                            {importRows.filter((r) => !r.isValid).length} Errors
+                            Invalid rows: {importRows.filter((r) => !r.isValid).length}
                           </span>
                         )}
                       </div>
@@ -1481,11 +1838,12 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           <tr>
                             <th className="py-2.5 px-3">#</th>
                             <th className="py-2.5 px-3">Email *</th>
-                            <th className="py-2.5 px-3">Project</th>
+                            <th className="py-2.5 px-3">Project *</th>
                             <th className="py-2.5 px-3">Amount (₹) *</th>
                             <th className="py-2.5 px-3">Status</th>
                             <th className="py-2.5 px-3">Date</th>
                             <th className="py-2.5 px-3">Reference</th>
+                            <th className="py-2.5 px-3">Talent ID</th>
                             <th className="py-2.5 px-3 text-right">Action</th>
                           </tr>
                         </thead>
@@ -1501,7 +1859,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
 
                               <td className="py-2 px-3">
                                 <input
-                                  type="email"
+                                  type="text"
                                   value={row.email}
                                   onChange={(e) => handleUpdateImportRow(idx, 'email', e.target.value)}
                                   className="w-40 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
@@ -1520,7 +1878,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
 
                               <td className="py-2 px-3">
                                 <input
-                                  type="number"
+                                  type="text"
                                   value={row.amount}
                                   onChange={(e) => handleUpdateImportRow(idx, 'amount', e.target.value)}
                                   className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-emerald-400 font-bold focus:outline-none focus:border-cyan-500"
@@ -1556,6 +1914,16 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                                   placeholder="Ref No"
                                   value={row.reference_number}
                                   onChange={(e) => handleUpdateImportRow(idx, 'reference_number', e.target.value)}
+                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-[11px] focus:outline-none"
+                                />
+                              </td>
+
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  placeholder="Talent ID"
+                                  value={row.talent_id}
+                                  onChange={(e) => handleUpdateImportRow(idx, 'talent_id', e.target.value)}
                                   className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-[11px] focus:outline-none"
                                 />
                               </td>

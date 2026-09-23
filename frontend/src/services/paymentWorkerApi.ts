@@ -105,7 +105,7 @@ const getPaymentApiBaseUrl = (): string => {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
     return envUrl.replace(/\/+$/, '');
   }
-  return 'https://zenemoo-payment-api.workers.dev';
+  return 'https://zenemoo-payment-api.zenemootech.workers.dev';
 };
 
 const getAdminAuthHeaders = () => {

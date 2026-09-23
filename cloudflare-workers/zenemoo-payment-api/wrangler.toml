@@ -8,4 +8,5 @@ database_name = "zenemoo-payments"
 database_id = "767e3dfb-3762-47e2-8a15-b7f786686fb5"
 
 [vars]
-CORS_ORIGIN = "https://web.zenemoo.in,https://zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000"
+CORS_ORIGIN = "https://zenemoo.in,https://www.zenemoo.in,https://web.zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000"
+
