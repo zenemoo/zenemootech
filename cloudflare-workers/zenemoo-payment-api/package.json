@@ -1,0 +1,14 @@
+{
+  "name": "zenemoo-payment-api",
+  "version": "1.0.0",
+  "description": "Zenemoo Payment Management API backed by Cloudflare D1",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.137.0"
+  }
+}

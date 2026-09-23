@@ -53,6 +53,7 @@ import {
 export interface SupportContributionRecord {
   id: string;
   order_id: string;
+  link_id?: string;
   cf_order_id?: string;
   payment_id?: string;
   user_id?: string | null;
@@ -1179,12 +1180,20 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
                                     {p.purpose}
                                   </span>
                                 )}
-                                {(p.source === 'Admin Payment Link' || p.order_id?.startsWith('PL_')) ? (
-                                  <span className="px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[8px] font-semibold">
-                                    🔗 Link
+                                {(p.source === 'Payment Link' || p.source === 'Admin Payment Link' || p.link_id || p.order_id?.startsWith('PL_')) ? (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[8.5px] font-semibold flex items-center gap-1"
+                                    title={p.link_id || (p.order_id?.startsWith('PL_') ? p.order_id : 'Payment Link')}
+                                  >
+                                    <span>🔗 Payment Link</span>
+                                    {p.link_id && (
+                                      <span className="text-[7.5px] text-purple-400/80 font-mono hidden sm:inline">
+                                        ({p.link_id.slice(-6)})
+                                      </span>
+                                    )}
                                   </span>
                                 ) : (
-                                  <span className="px-1.5 py-0.2 rounded bg-slate-500/15 text-slate-400 border border-slate-500/20 text-[8px]">
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 border border-slate-500/20 text-[8.5px]">
                                     Web
                                   </span>
                                 )}
@@ -1592,15 +1601,25 @@ export const AdminSupportContributionsPage: React.FC<AdminSupportContributionsPa
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-400">Origin / Source:</span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                        (selectedPayment.source === 'Admin Payment Link' || selectedPayment.order_id?.startsWith('PL_'))
+                        (selectedPayment.source === 'Payment Link' || selectedPayment.source === 'Admin Payment Link' || selectedPayment.link_id || selectedPayment.order_id?.startsWith('PL_'))
                           ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
                           : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20'
                       }`}>
-                        {(selectedPayment.source === 'Admin Payment Link' || selectedPayment.order_id?.startsWith('PL_'))
-                          ? 'Admin Payment Link'
+                        {(selectedPayment.source === 'Payment Link' || selectedPayment.source === 'Admin Payment Link' || selectedPayment.link_id || selectedPayment.order_id?.startsWith('PL_'))
+                          ? 'Payment Link'
                           : 'Direct Support Page'}
                       </span>
                     </div>
+
+                    {/* Payment Link Reference if present */}
+                    {(selectedPayment.link_id || (selectedPayment.order_id?.startsWith('PL_') ? selectedPayment.order_id : null)) && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">Payment Link ID:</span>
+                        <span className="font-mono text-purple-300 font-semibold">
+                          {selectedPayment.link_id || selectedPayment.order_id}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 

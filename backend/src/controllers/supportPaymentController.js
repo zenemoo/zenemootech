@@ -416,7 +416,8 @@ export const verifyPaymentOrder = async (req, res, next) => {
           }
 
           // If payment newly succeeded and customer email provided, send receipt email
-          if (orderStatus === 'SUCCESS' && localRecord?.status !== 'SUCCESS' && localRecord?.customer_email) {
+          const isNewlySuccessful = orderStatus === 'SUCCESS' && localRecord?.status !== 'SUCCESS' && localRecord?.status !== 'PAID';
+          if (isNewlySuccessful && localRecord?.customer_email) {
             try {
               await sendPaymentSuccessEmail({
                 orderId,
@@ -461,7 +462,7 @@ export const verifyPaymentOrder = async (req, res, next) => {
 
 /**
  * POST /api/payments/cashfree/webhook
- * Cashfree Webhook listener for real-time payment status updates
+ * Cashfree Webhook listener for real-time payment status updates (with strict idempotency)
  */
 export const handleCashfreeWebhook = async (req, res) => {
   try {
@@ -490,6 +491,15 @@ export const handleCashfreeWebhook = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Ignored: No order_id' });
     }
 
+    const currentRec = await findPaymentRecord(orderId);
+    const incomingPaymentId = paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined;
+    const isAlreadySuccess = currentRec?.status === 'SUCCESS' || currentRec?.status === 'PAID';
+
+    // Strict idempotency check: if already SUCCESS with identical payment_id, no-op immediately
+    if (isAlreadySuccess && incomingPaymentId && currentRec?.payment_id === incomingPaymentId) {
+      return res.status(200).json({ success: true, message: 'Webhook already processed (idempotent)' });
+    }
+
     let status = 'PENDING';
     if (eventType === 'PAYMENT_SUCCESS_WEBHOOK' || paymentData?.payment_status === 'SUCCESS') {
       status = 'SUCCESS';
@@ -501,13 +511,12 @@ export const handleCashfreeWebhook = async (req, res) => {
 
     await savePaymentRecord(orderId, {
       status,
-      payment_id: paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined,
+      payment_id: incomingPaymentId,
       payment_time: paymentData?.payment_time || new Date().toISOString(),
       amount: orderData?.order_amount || paymentData?.payment_amount,
     });
 
     if (status === 'SUCCESS') {
-      const currentRec = await findPaymentRecord(orderId);
       let meta = currentRec?.metadata;
       if (typeof meta === 'string') {
         try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
@@ -518,7 +527,7 @@ export const handleCashfreeWebhook = async (req, res) => {
           await savePaymentLinkRecord(associatedLinkId, {
             link_status: 'PAID',
             order_id: orderId,
-            payment_id: paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined,
+            payment_id: incomingPaymentId,
             payment_time: paymentData?.payment_time || new Date().toISOString(),
           });
         } catch (_) {}
@@ -707,7 +716,10 @@ export const getMemberPaymentReceipt = async (req, res) => {
 
 /**
  * GET /api/support/contributions
- * Admin-protected API to retrieve all payment records, statistics, and date-wise collections
+ * Admin-protected API to retrieve all payment records, statistics, and date-wise collections.
+ * Enforces PRIMARY ACCOUNTING RULE: ONE REAL CASHFREE PAYMENT = ONE ACCOUNTING TRANSACTION.
+ * Reconciles Payment Link placeholders (PL_ZNM_...) with Gateway Payment Orders (ZNM_SUP_...)
+ * so that no payment is double-counted in totals, counts, or table displays.
  * Optimized for minimum Supabase egress using selective column projections and server-side TTL caching.
  */
 export const getAdminContributions = async (req, res) => {
@@ -748,28 +760,90 @@ export const getAdminContributions = async (req, res) => {
       }
     }
 
-    const allPayments = Array.from(recordMap.values()).map((item) => {
-      const purpose =
-        item.metadata?.purpose ||
-        item.purpose ||
-        (typeof item.metadata === 'string'
-          ? (() => {
-              try {
-                return JSON.parse(item.metadata)?.purpose;
-              } catch (_) {
-                return 'HELP US BUILD';
-              }
-            })()
-          : 'HELP US BUILD');
+    const rawList = Array.from(recordMap.values());
+
+    // 4. CANONICAL TRANSACTION RECONCILIATION & DEDUPLICATION
+    // Identify links with corresponding gateway transactions
+    const linkIdToGatewayOrder = new Map();
+    const paymentIdToGatewayOrder = new Map();
+
+    for (const item of rawList) {
+      let meta = item.metadata;
+      if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+      }
+      const isGatewayOrder = item.order_id && !item.order_id.startsWith('PL_');
+      const associatedLinkId = meta?.link_id || null;
+
+      if (isGatewayOrder) {
+        if (associatedLinkId) {
+          linkIdToGatewayOrder.set(associatedLinkId, item);
+        }
+        if (item.payment_id) {
+          paymentIdToGatewayOrder.set(item.payment_id, item);
+        }
+      }
+    }
+
+    // Build deduplicated canonical transactions ledger
+    const canonicalPaymentsMap = new Map();
+
+    for (const item of rawList) {
+      let meta = item.metadata;
+      if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+      }
+
+      const isLinkPlaceholder = item.order_id?.startsWith('PL_');
+      const linkId = isLinkPlaceholder ? item.order_id : (meta?.link_id || null);
+      const paidOrderId = meta?.paid_order_id || null;
 
       // Normalize status
       let rawStatus = (item.status || 'PENDING').toUpperCase();
       if (rawStatus === 'PAID') rawStatus = 'SUCCESS';
       if (rawStatus === 'USER_DROPPED') rawStatus = 'CANCELLED';
 
-      return {
+      const isSuccess = rawStatus === 'SUCCESS';
+
+      // Check if this is a PL_ placeholder row that has a corresponding gateway order
+      const hasAssociatedGatewayPayment = isLinkPlaceholder && (
+        (paidOrderId && recordMap.has(paidOrderId)) ||
+        linkIdToGatewayOrder.has(item.order_id) ||
+        (item.payment_id && paymentIdToGatewayOrder.has(item.payment_id))
+      );
+
+      if (isLinkPlaceholder) {
+        if (hasAssociatedGatewayPayment) {
+          // Suppress redundant PL_ placeholder row since canonical gateway order is present
+          continue;
+        }
+        if (!isSuccess && !item.payment_id) {
+          // Unpaid link definition (ACTIVE / PENDING / CANCELLED template)
+          // Suppress from financial contributions ledger so opening/creating links doesn't create phantom pending contributions
+          continue;
+        }
+        // Legacy standalone payment link payment (where no separate ZNM_SUP_ row exists) -> retained once
+      }
+
+      // Determine clean source label
+      let resolvedSource = 'Direct Support Page';
+      if (linkId || isLinkPlaceholder || item.source === 'Admin Payment Link' || meta?.source === 'Admin Payment Link') {
+        resolvedSource = 'Payment Link';
+      }
+
+      const purpose =
+        meta?.purpose ||
+        item.purpose ||
+        (typeof meta === 'string'
+          ? (() => {
+              try { return JSON.parse(meta)?.purpose; } catch (_) { return 'HELP US BUILD'; }
+            })()
+          : 'HELP US BUILD');
+
+      const canonicalRecord = {
         id: item.id || item.order_id,
         order_id: item.order_id,
+        link_id: linkId || (isLinkPlaceholder ? item.order_id : undefined),
         cf_order_id: item.cf_order_id || '',
         payment_id: item.payment_id || '',
         user_id: item.user_id || null,
@@ -777,6 +851,7 @@ export const getAdminContributions = async (req, res) => {
         currency: item.currency || 'INR',
         provider: item.provider || 'cashfree',
         status: rawStatus,
+        source: resolvedSource,
         customer_name: item.customer_name || 'Anonymous Supporter',
         customer_email: item.customer_email || '',
         customer_phone: item.customer_phone || '',
@@ -786,12 +861,29 @@ export const getAdminContributions = async (req, res) => {
         created_at: item.created_at || new Date().toISOString(),
         updated_at: item.updated_at || new Date().toISOString(),
       };
-    });
+
+      // Canonical deduplication key
+      const dedupeKey = (isSuccess && item.payment_id)
+        ? `PID_${item.payment_id}`
+        : (linkId && isLinkPlaceholder ? `LINK_${linkId}` : `ORD_${item.order_id}`);
+
+      if (canonicalPaymentsMap.has(dedupeKey)) {
+        const existing = canonicalPaymentsMap.get(dedupeKey);
+        // Prefer gateway transaction (non-PL_) over link template
+        if (isLinkPlaceholder && !existing.order_id?.startsWith('PL_')) {
+          continue;
+        }
+      }
+
+      canonicalPaymentsMap.set(dedupeKey, canonicalRecord);
+    }
+
+    const allPayments = Array.from(canonicalPaymentsMap.values());
 
     // Sort newest to oldest
     allPayments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // 4. Compute Summary Metrics
+    // 5. Compute Summary Metrics on Canonical Ledger
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -985,7 +1077,13 @@ async function savePaymentLinkRecord(linkId, linkData) {
       }
 
       const isPaid = merged.link_status === 'PAID' || found?.status === 'SUCCESS' || meta?.link_status === 'PAID';
-      const payStatus = isPaid ? 'SUCCESS' : (merged.link_status === 'CANCELLED' ? 'CANCELLED' : (found?.status || 'PENDING'));
+      
+      // If a separate gateway transaction (e.g. ZNM_SUP_...) exists, the financial transaction is recorded under that order.
+      // To prevent duplicate SUCCESS accounting records in the database, keep status as PENDING on the template row.
+      const hasSeparateGatewayOrder = Boolean(merged.order_id && merged.order_id !== linkId && merged.order_id.startsWith('ZNM_SUP_'));
+      const payStatus = hasSeparateGatewayOrder
+        ? (found?.status || 'PENDING')
+        : (isPaid ? 'SUCCESS' : (merged.link_status === 'CANCELLED' ? 'CANCELLED' : (found?.status || 'PENDING')));
 
       const dbPayload = {
         order_id: linkId,

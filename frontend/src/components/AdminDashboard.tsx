@@ -29,6 +29,7 @@ import { AdminNotificationCenterTab } from './AdminNotificationCenterTab';
 import { AdminEmailInboxTab } from './AdminEmailInboxTab';
 import { AdminSupportContributionsPage } from './AdminSupportContributionsPage';
 import { AdminPaymentLinksPage } from './AdminPaymentLinksPage';
+import { AdminPaymentManagementPage } from './AdminPaymentManagementPage';
 import { AdminReferralsTab } from './AdminReferralsTab';
 import { AdminTalentTeamsTab } from './AdminTalentTeamsTab';
 import { AdminGoogleGroupTab } from './AdminGoogleGroupTab';
@@ -37,7 +38,7 @@ import DOMPurify from 'dompurify';
 
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
+  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'payment-management' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
   isStandaloneEmailView?: boolean;
 }
 
@@ -230,7 +231,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
+  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'payment-management' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2169,6 +2170,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       items: [
         { id: 'support-contributions', name: 'Support Contributions', icon: CreditCard, count: supportContributionsCount },
         { id: 'payment-links', name: 'Payment Links', icon: Link2 },
+        { id: 'payment-management', name: 'Payment Management', icon: CreditCard },
         { id: 'support-tickets', name: 'Support Tickets', icon: LifeBuoy, count: supportTicketOpenCount },
         { id: 'inquiries', name: 'Contact Inquiries', icon: Mail, count: inquiries.filter((i) => i.status !== 'read').length },
         { id: 'reviews', name: 'Review Management', icon: Star, count: adminReviews.filter((r) => !r.is_visible).length },
@@ -5862,6 +5864,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB 3.59: CASHFREE PAYMENT LINKS MANAGEMENT */}
         {activeTab === 'payment-links' && (
           <AdminPaymentLinksPage showToast={addToast} />
+        )}
+
+        {/* TAB 3.595: CLOUDFLARE D1 PAYMENT MANAGEMENT */}
+        {activeTab === 'payment-management' && (
+          <AdminPaymentManagementPage addToast={addToast} showConfirm={showConfirm} />
         )}
 
         {/* TAB 3.6: ENTERPRISE SUPPORT TICKETS MANAGEMENT */}

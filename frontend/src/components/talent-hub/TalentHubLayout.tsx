@@ -21,6 +21,7 @@ import {
   Heart,
   Globe,
   Receipt,
+  CreditCard,
   Share2,
   Copy,
   Check,
@@ -36,8 +37,9 @@ import { NotificationCenter } from '../NotificationCenter';
 import { ZenemooAiDrawer } from '../ZenemooAiDrawer';
 import { SeoImage } from '../../seo/components/SeoImage';
 import { ZENEMOO_SOCIAL_LINKS } from '../SocialData';
+import { paymentWorkerApi } from '../../services/paymentWorkerApi';
 
-export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'referrals' | 'team' | 'support-zenemooindia' | 'support-history';
+export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'referrals' | 'team' | 'payments' | 'support-zenemooindia' | 'support-history';
 
 interface TalentHubLayoutProps {
   currentTab: TalentHubTab;
@@ -62,7 +64,9 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     signOut,
     refreshTalentHubData,
     isRefreshing,
+    session,
   } = useTalentHubAuth();
+  const [talentTotalPaid, setTalentTotalPaid] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
@@ -90,6 +94,23 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Fetch verified payment summary for dynamic nav label without polling
+  useEffect(() => {
+    if (!session?.access_token) return;
+    let isMounted = true;
+    paymentWorkerApi
+      .getTalentSummary(session.access_token)
+      .then((res) => {
+        if (isMounted && res?.success && res?.summary) {
+          setTalentTotalPaid(res.summary.total_paid);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.access_token]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -184,6 +205,11 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
     { id: 'applications' as const, label: 'My Applications', icon: FileCheck },
     { id: 'referrals' as const, label: 'Referrals', icon: Share2 },
+    {
+      id: 'payments' as const,
+      label: talentTotalPaid !== null && talentTotalPaid > 0 ? `Payments ₹${talentTotalPaid.toLocaleString('en-IN')}` : 'Payments',
+      icon: CreditCard,
+    },
     ...(hasTeamAccess ? [{ id: 'team' as const, label: 'My Team', icon: Users }] : []),
   ];
 
