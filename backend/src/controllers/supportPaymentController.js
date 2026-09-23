@@ -56,8 +56,9 @@ const VALID_SUPPORT_PAYMENT_COLUMNS = new Set([
 /**
  * Filter payload so only valid database columns are passed to Supabase,
  * with any extra attributes (purpose, source, etc.) safely preserved inside metadata JSONB.
+ * Safely preserves and deep-merges with existingRecord metadata so partial updates never wipe fields.
  */
-function sanitizeForSupabase(record) {
+function sanitizeForSupabase(record, existingRecord = {}) {
   if (!record || typeof record !== 'object') return {};
   const clean = {};
   const extraMetadata = {};
@@ -70,31 +71,63 @@ function sanitizeForSupabase(record) {
     }
   }
 
-  // Preserve extra fields inside metadata
-  const baseMetadata =
-    typeof record.metadata === 'object' && record.metadata !== null
-      ? record.metadata
-      : {};
+  // Parse existing metadata if string or object
+  let existingMeta = existingRecord?.metadata || {};
+  if (typeof existingMeta === 'string') {
+    try { existingMeta = JSON.parse(existingMeta); } catch (_) { existingMeta = {}; }
+  } else if (typeof existingMeta !== 'object' || existingMeta === null) {
+    existingMeta = {};
+  }
 
-  clean.metadata = {
-    ...baseMetadata,
+  // Parse incoming record metadata
+  let incomingMeta = record.metadata || {};
+  if (typeof incomingMeta === 'string') {
+    try { incomingMeta = JSON.parse(incomingMeta); } catch (_) { incomingMeta = {}; }
+  } else if (typeof incomingMeta !== 'object' || incomingMeta === null) {
+    incomingMeta = {};
+  }
+
+  // Deep merge to ensure attributes like link_id, source, purpose are preserved
+  const mergedMetadata = {
+    ...existingMeta,
+    ...incomingMeta,
     ...extraMetadata,
   };
+
+  if (Object.keys(mergedMetadata).length > 0 || record.metadata !== undefined || existingRecord?.metadata !== undefined) {
+    clean.metadata = mergedMetadata;
+  }
 
   return clean;
 }
 
 /**
  * Save or update payment in Supabase or memory fallback
+ * Guarantees monotonic state transitions (SUCCESS/PAID cannot be downgraded by stale PENDING)
  */
 async function savePaymentRecord(orderId, paymentData) {
   // Invalidate cache immediately on payment state change
   invalidateContributionsCache();
+  cachedPaymentLinksData = null;
+  lastPaymentLinksCacheTimestamp = 0;
 
-  const existing = memorySupportPayments.get(orderId) || {};
+  const existingMemory = memorySupportPayments.get(orderId) || {};
+
+  // Check if existing memory record is in a terminal successful state
+  const isCurrentlySuccess =
+    existingMemory.status === 'SUCCESS' ||
+    existingMemory.status === 'PAID';
+
+  let targetStatus = paymentData.status;
+  if (isCurrentlySuccess && targetStatus && targetStatus !== 'SUCCESS' && targetStatus !== 'PAID') {
+    // Preserve existing success status against stale downgrade
+    targetStatus = existingMemory.status;
+  }
+
   const merged = {
-    ...existing,
+    ...existingMemory,
     ...paymentData,
+    status: targetStatus || paymentData.status || existingMemory.status || 'PENDING',
     order_id: orderId,
     updated_at: new Date().toISOString(),
   };
@@ -107,14 +140,23 @@ async function savePaymentRecord(orderId, paymentData) {
     try {
       const { data: found } = await supabase
         .from('support_payments')
-        .select('id')
+        .select('id, status, metadata')
         .eq('order_id', orderId)
         .maybeSingle();
 
-      const dbPayload = sanitizeForSupabase(merged);
+      const dbIsCurrentlySuccess =
+        found?.status === 'SUCCESS' ||
+        found?.status === 'PAID';
+
+      const finalStatus =
+        (dbIsCurrentlySuccess || isCurrentlySuccess) && paymentData.status && paymentData.status !== 'SUCCESS' && paymentData.status !== 'PAID'
+          ? (found?.status || existingMemory.status || 'SUCCESS')
+          : (paymentData.status || found?.status || existingMemory.status || 'PENDING');
+
+      const dbPayload = sanitizeForSupabase({ ...merged, status: finalStatus }, found);
 
       if (found?.id) {
-        const updatePayload = sanitizeForSupabase(paymentData);
+        const updatePayload = sanitizeForSupabase({ ...paymentData, status: finalStatus }, found);
         delete updatePayload.id;
         delete updatePayload.order_id;
         await supabase
@@ -331,6 +373,9 @@ export const verifyPaymentOrder = async (req, res, next) => {
               const methods = Object.keys(successfulPayment.payment_method);
               paymentMethod = methods[0] || 'Online';
             }
+          } else if (localRecord?.status === 'SUCCESS' || localRecord?.status === 'PAID') {
+            // Monotonic preservation: never downgrade already verified success
+            orderStatus = 'SUCCESS';
           } else if (cfOrder.order_status === 'EXPIRED') {
             orderStatus = 'FAILED';
           } else if (cancelledPayment && cfOrder.order_status !== 'PAID') {
@@ -351,7 +396,11 @@ export const verifyPaymentOrder = async (req, res, next) => {
           });
 
           // If linked to an admin payment link, update the payment link status to PAID
-          const associatedLinkId = localRecord?.link_id || localRecord?.metadata?.link_id || (orderId.startsWith('PL_') ? orderId : null);
+          let meta = localRecord?.metadata;
+          if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+          }
+          const associatedLinkId = localRecord?.link_id || meta?.link_id || (orderId.startsWith('PL_') ? orderId : null);
           if (orderStatus === 'SUCCESS' && associatedLinkId) {
             try {
               await savePaymentLinkRecord(associatedLinkId, {
@@ -459,13 +508,18 @@ export const handleCashfreeWebhook = async (req, res) => {
 
     if (status === 'SUCCESS') {
       const currentRec = await findPaymentRecord(orderId);
-      const associatedLinkId = currentRec?.link_id || currentRec?.metadata?.link_id;
+      let meta = currentRec?.metadata;
+      if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+      }
+      const associatedLinkId = currentRec?.link_id || meta?.link_id || (orderId.startsWith('PL_') ? orderId : null);
       if (associatedLinkId) {
         try {
           await savePaymentLinkRecord(associatedLinkId, {
             link_status: 'PAID',
             order_id: orderId,
             payment_id: paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined,
+            payment_time: paymentData?.payment_time || new Date().toISOString(),
           });
         } catch (_) {}
       }
@@ -600,7 +654,7 @@ export const getMemberPaymentReceipt = async (req, res) => {
       try {
         const { data } = await supabase
           .from('support_payments')
-          .select('*')
+          .select(REQUIRED_CONTRIBUTION_COLUMNS)
           .eq('order_id', cleanParam)
           .maybeSingle();
         if (data) record = data;
@@ -894,9 +948,17 @@ const PAYMENT_LINKS_CACHE_TTL_MS = 60 * 1000; // 60s TTL
  */
 async function savePaymentLinkRecord(linkId, linkData) {
   const existing = memoryPaymentLinks.get(linkId) || {};
+
+  // Monotonic guard: once link is PAID, do not downgrade to ACTIVE
+  let targetLinkStatus = linkData.link_status;
+  if (existing.link_status === 'PAID' && targetLinkStatus && targetLinkStatus !== 'PAID') {
+    targetLinkStatus = 'PAID';
+  }
+
   const merged = {
     ...existing,
     ...linkData,
+    link_status: targetLinkStatus || linkData.link_status || existing.link_status || 'ACTIVE',
     link_id: linkId,
     updated_at: new Date().toISOString(),
   };
@@ -911,11 +973,19 @@ async function savePaymentLinkRecord(linkId, linkData) {
     try {
       const { data: found } = await supabase
         .from('support_payments')
-        .select('id, status, payment_id')
+        .select('id, status, payment_id, metadata')
         .eq('order_id', linkId)
         .maybeSingle();
 
-      const payStatus = merged.link_status === 'PAID' ? 'SUCCESS' : (merged.link_status === 'CANCELLED' ? 'CANCELLED' : (found?.status || 'PENDING'));
+      let meta = found?.metadata;
+      if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+      } else if (typeof meta !== 'object' || meta === null) {
+        meta = {};
+      }
+
+      const isPaid = merged.link_status === 'PAID' || found?.status === 'SUCCESS' || meta?.link_status === 'PAID';
+      const payStatus = isPaid ? 'SUCCESS' : (merged.link_status === 'CANCELLED' ? 'CANCELLED' : (found?.status || 'PENDING'));
 
       const dbPayload = {
         order_id: linkId,
@@ -926,15 +996,20 @@ async function savePaymentLinkRecord(linkId, linkData) {
         customer_name: merged.customer_name || 'Zenemoo Supporter',
         customer_email: merged.customer_email || 'support@zenemoo.in',
         customer_phone: merged.customer_phone || '9999999999',
+        payment_id: merged.payment_id || found?.payment_id || undefined,
+        payment_time: merged.payment_time || undefined,
         metadata: {
-          purpose: merged.link_purpose || 'Support Zenemoo — Platform & Technology',
+          ...meta,
+          purpose: merged.link_purpose || meta.purpose || 'Support Zenemoo — Platform & Technology',
           source: 'Admin Payment Link',
-          cf_link_id: merged.cf_link_id,
-          link_url: merged.link_url,
-          link_status: merged.link_status,
-          link_expiry_time: merged.link_expiry_time,
-          last_email_sent_at: merged.last_email_sent_at,
-          last_email_sent_to: merged.last_email_sent_to,
+          cf_link_id: merged.cf_link_id || meta.cf_link_id,
+          link_url: merged.link_url || meta.link_url,
+          link_status: isPaid ? 'PAID' : merged.link_status,
+          link_expiry_time: merged.link_expiry_time || meta.link_expiry_time,
+          last_email_sent_at: merged.last_email_sent_at || meta.last_email_sent_at,
+          last_email_sent_to: merged.last_email_sent_to || meta.last_email_sent_to,
+          paid_order_id: merged.order_id || meta.paid_order_id,
+          payment_id: merged.payment_id || meta.payment_id,
         },
         updated_at: new Date().toISOString(),
       };
@@ -982,7 +1057,7 @@ async function findPaymentLinkRecord(linkId) {
     try {
       const { data } = await supabase
         .from('support_payments')
-        .select('*')
+        .select(REQUIRED_CONTRIBUTION_COLUMNS)
         .eq('order_id', linkId)
         .maybeSingle();
 
@@ -1171,20 +1246,47 @@ export const getAdminPaymentLinks = async (req, res) => {
       try {
         const { data, error } = await supabase
           .from('support_payments')
-          .select('*')
+          .select(REQUIRED_CONTRIBUTION_COLUMNS)
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data)) {
+          // Index any completed payments by their associated link_id or order_id
+          const paidLinkDetails = new Map();
           for (const item of data) {
             let meta = item.metadata;
             if (typeof meta === 'string') {
-              try { meta = JSON.parse(meta); } catch (_) {}
+              try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+            }
+            const isSuccess = item.status === 'SUCCESS' || item.status === 'PAID';
+            if (isSuccess) {
+              const targetLinkId = meta?.link_id || (item.order_id?.startsWith('PL_') ? item.order_id : null);
+              if (targetLinkId) {
+                paidLinkDetails.set(targetLinkId, {
+                  payment_id: item.payment_id,
+                  payment_time: item.payment_time || item.created_at,
+                  order_id: item.order_id,
+                  customer_name: item.customer_name,
+                  customer_email: item.customer_email,
+                  customer_phone: item.customer_phone,
+                });
+              }
+            }
+          }
+
+          for (const item of data) {
+            let meta = item.metadata;
+            if (typeof meta === 'string') {
+              try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
             }
 
-            const isLink = item.order_id?.startsWith('PL_') || meta?.source === 'Admin Payment Link';
+            const isLink = item.order_id?.startsWith('PL_');
             if (isLink) {
               const existing = recordMap.get(item.order_id) || {};
-              const linkStatus = item.status === 'SUCCESS' ? 'PAID' : (item.status === 'CANCELLED' ? 'CANCELLED' : (existing.link_status || meta?.link_status || 'ACTIVE'));
+              const paidInfo = paidLinkDetails.get(item.order_id);
+              const isPaid = item.status === 'SUCCESS' || meta?.link_status === 'PAID' || existing.link_status === 'PAID' || !!paidInfo;
+              const isCancelled = item.status === 'CANCELLED' || meta?.link_status === 'CANCELLED';
+              const linkStatus = isPaid ? 'PAID' : (isCancelled ? 'CANCELLED' : (existing.link_status || meta?.link_status || 'ACTIVE'));
+              
               const linkRec = {
                 ...existing,
                 link_id: item.order_id,
@@ -1193,20 +1295,31 @@ export const getAdminPaymentLinks = async (req, res) => {
                 link_amount: Number(item.amount || existing.link_amount || 0),
                 link_currency: item.currency || 'INR',
                 link_purpose: meta?.purpose || existing.link_purpose || 'Support Zenemoo — Platform & Technology',
-                customer_phone: item.customer_phone || existing.customer_phone || '',
-                customer_email: item.customer_email || existing.customer_email || '',
-                customer_name: item.customer_name || existing.customer_name || 'Zenemoo Supporter',
+                customer_phone: paidInfo?.customer_phone || item.customer_phone || existing.customer_phone || '',
+                customer_email: paidInfo?.customer_email || item.customer_email || existing.customer_email || '',
+                customer_name: paidInfo?.customer_name || item.customer_name || existing.customer_name || 'Zenemoo Supporter',
                 link_status: linkStatus,
                 link_expiry_time: meta?.link_expiry_time || existing.link_expiry_time || null,
                 created_by: meta?.created_by || existing.created_by || 'admin@zenemoo.in',
                 source: 'Admin Payment Link',
-                order_id: item.order_id,
-                payment_id: item.payment_id || existing.payment_id || null,
+                order_id: paidInfo?.order_id || item.order_id,
+                payment_id: paidInfo?.payment_id || item.payment_id || existing.payment_id || null,
                 created_at: item.created_at || existing.created_at || new Date().toISOString(),
                 updated_at: item.updated_at || existing.updated_at || new Date().toISOString(),
               };
               recordMap.set(item.order_id, linkRec);
               memoryPaymentLinks.set(item.order_id, linkRec);
+            }
+          }
+
+          // Reconcile disk & memory links with any paidLinkDetails
+          for (const [linkId, linkRec] of recordMap.entries()) {
+            if (paidLinkDetails.has(linkId) && linkRec.link_status !== 'PAID') {
+              const paidInfo = paidLinkDetails.get(linkId);
+              linkRec.link_status = 'PAID';
+              if (paidInfo.payment_id) linkRec.payment_id = paidInfo.payment_id;
+              if (paidInfo.order_id) linkRec.order_id = paidInfo.order_id;
+              memoryPaymentLinks.set(linkId, linkRec);
             }
           }
         }
@@ -1773,7 +1886,7 @@ export const getReceiptVerificationData = async (req, res) => {
       try {
         const { data: directMatch } = await supabase
           .from('support_payments')
-          .select('*')
+          .select(REQUIRED_CONTRIBUTION_COLUMNS)
           .or(`order_id.eq.${safeDecoded || safeClean},order_id.eq.${safeClean},order_id.eq.${safeNorm},payment_id.eq.${safeDecoded},cf_order_id.eq.${safeDecoded}`)
           .maybeSingle();
 
@@ -1783,7 +1896,7 @@ export const getReceiptVerificationData = async (req, res) => {
           // Search by suffix in order_id (e.g. %MS8L)
           const { data: suffixMatches } = await supabase
             .from('support_payments')
-            .select('*')
+            .select(REQUIRED_CONTRIBUTION_COLUMNS)
             .ilike('order_id', `%${suffix}`)
             .limit(10);
 
