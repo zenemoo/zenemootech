@@ -53,8 +53,34 @@ interface AdminPaymentManagementPageProps {
   ) => void;
 }
 
+export function normalizeContributorName(name?: string | null): string {
+  if (!name || typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed || /^(#n\/a|n\/a|na|null|undefined|-)$/i.test(trimmed)) {
+    return '';
+  }
+  const collapsed = trimmed.replace(/\s+/g, ' ');
+  const isAllUpper = collapsed === collapsed.toUpperCase() && /[a-z]/i.test(collapsed);
+  const isAllLower = collapsed === collapsed.toLowerCase() && /[a-z]/i.test(collapsed);
+  if (isAllUpper || isAllLower) {
+    return collapsed
+      .split(' ')
+      .map((word) => {
+        if (!word) return '';
+        return word
+          .split('-')
+          .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : ''))
+          .join('-');
+      })
+      .join(' ');
+  }
+  return collapsed;
+}
+
 interface ImportRow {
   email: string;
+  talent_name?: string;
+  source_name?: string;
   project_name: string;
   work_type?: string;
   amount: number | string;
@@ -430,6 +456,19 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   };
 
   const EMAIL_ALIASES = ['email', 'e mail', 'email address', 'mail'];
+  const NAME_ALIASES = [
+    'annotator',
+    'account holder name',
+    'account holder',
+    'contributor name',
+    'contributor',
+    'name',
+    'talent name',
+    'worker name',
+    'user name',
+    'full name',
+    'fullname',
+  ];
   const AMOUNT_P1_ALIASES = ['price', 'to pay', 'topay', 'net amount', 'paid amount', 'payment amount'];
   const AMOUNT_P2_ALIASES = ['amount', 'total amount'];
   const AMOUNT_EXCLUDED = ['total raw amount', 'raw amount', 'gross amount', 'gross'];
@@ -479,6 +518,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   const PROJECT_ALIASES = ['project', 'project name', 'campaign', 'campaign name', 'task name'];
 
   interface ColumnMapping {
+    nameCol?: number;
     emailCol?: number;
     amountCol?: number;
     hasAmountHeader: boolean;
@@ -492,6 +532,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   }
 
   const detectColumns = (headers: string[]): ColumnMapping => {
+    let nameCol: number | undefined;
     let emailCol: number | undefined;
     let p1AmountCol: number | undefined;
     let p2AmountCol: number | undefined;
@@ -505,6 +546,11 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
 
     headers.forEach((h, colIndex) => {
       const norm = normalizeHeader(h || '');
+
+      // Name / Annotator mapping
+      if (nameCol === undefined && NAME_ALIASES.includes(norm)) {
+        nameCol = colIndex;
+      }
 
       // Email mapping
       if (emailCol === undefined && (EMAIL_ALIASES.includes(norm) || norm === 'email')) {
@@ -560,6 +606,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     const hasAmountHeader = amountCol !== undefined;
 
     return {
+      nameCol,
       emailCol,
       amountCol,
       hasAmountHeader,
@@ -775,6 +822,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           const row = csvRows[r];
           if (!row || row.length === 0 || row.every((c) => !c || c.trim() === '')) continue;
 
+          const rawName = colMap.nameCol !== undefined ? String(row[colMap.nameCol] ?? '').trim() : '';
           const rawEmail = colMap.emailCol !== undefined ? String(row[colMap.emailCol] ?? '').trim() : '';
           const rawAmount = colMap.amountCol !== undefined ? row[colMap.amountCol] : undefined;
           const rawProject = colMap.projectCol !== undefined
@@ -806,8 +854,12 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
             defaultProjectName
           );
 
+          const cleanSourceName = normalizeContributorName(rawName);
+
           parsedRows.push({
             email: validation.validatedEmail,
+            source_name: cleanSourceName || undefined,
+            talent_name: cleanSourceName || '',
             project_name: validation.validatedProject,
             work_type: validation.validatedWorkType,
             amount: validation.validatedAmount,
@@ -846,6 +898,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           const row = worksheet.getRow(r);
           if (!row || row.cellCount === 0) continue;
 
+          const rawName = colMap.nameCol !== undefined ? getCellValue(row.getCell(colMap.nameCol + 1).value).trim() : '';
           const rawEmail = colMap.emailCol !== undefined ? getCellValue(row.getCell(colMap.emailCol + 1).value).trim() : '';
           const rawAmount = colMap.amountCol !== undefined ? getCellValue(row.getCell(colMap.amountCol + 1).value) : undefined;
           const rawProject = colMap.projectCol !== undefined
@@ -860,7 +913,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           const rawStatus = colMap.statusCol !== undefined ? getCellValue(row.getCell(colMap.statusCol + 1).value) : undefined;
           const rawTalentId = colMap.talentIdCol !== undefined ? getCellValue(row.getCell(colMap.talentIdCol + 1).value).trim() : '';
 
-          if (!rawEmail && rawAmount === undefined && !rawRef && !rawTalentId && !rawRefLink) continue;
+          if (!rawEmail && rawAmount === undefined && !rawRef && !rawTalentId && !rawRefLink && !rawName) continue;
 
           const validation = validateImportRow(
             {
@@ -879,8 +932,12 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
             defaultProjectName
           );
 
+          const cleanSourceName = normalizeContributorName(rawName);
+
           parsedRows.push({
             email: validation.validatedEmail,
+            source_name: cleanSourceName || undefined,
+            talent_name: cleanSourceName || '',
             project_name: validation.validatedProject,
             work_type: validation.validatedWorkType,
             amount: validation.validatedAmount,
@@ -899,6 +956,39 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
 
       if (parsedRows.length === 0) {
         throw new Error('No readable data rows found in the uploaded file');
+      }
+
+      // --- Batched Talent Network Resolution for Preview (Egress-Safe) ---
+      const uniqueEmails = Array.from(
+        new Set(
+          parsedRows
+            .map((r) => (r.email ? r.email.toLowerCase().trim() : ''))
+            .filter((e) => e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+        )
+      );
+
+      if (uniqueEmails.length > 0) {
+        try {
+          const resolveRes = await paymentWorkerApi.batchResolveTalents(uniqueEmails);
+          if (resolveRes?.success && resolveRes.resolved) {
+            for (const r of parsedRows) {
+              const key = r.email.toLowerCase().trim();
+              const info = resolveRes.resolved[key];
+              if (info) {
+                if (info.registration_code && info.registration_code !== 'NA' && info.registration_code !== '') {
+                  r.talent_id = info.registration_code;
+                }
+                // Priority 1: Talent Hub full_name
+                // Priority 2: spreadsheet source_name
+                const thName = normalizeContributorName(info.talent_name);
+                const srcName = normalizeContributorName(r.source_name);
+                r.talent_name = thName || srcName || '';
+              }
+            }
+          }
+        } catch (resErr: any) {
+          console.warn('[Talent Batch Resolution Error in Preview]:', resErr.message);
+        }
       }
 
       setImportRows(parsedRows);
@@ -974,6 +1064,8 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     try {
       const payload = validRows.map((r) => ({
         email: r.email.trim().toLowerCase(),
+        talent_name: r.talent_name ? r.talent_name.trim() : undefined,
+        source_name: r.source_name ? r.source_name.trim() : undefined,
         project_name: r.project_name.trim() || defaultProjectName.trim() || 'General Project',
         work_type: r.work_type ? r.work_type.trim() : undefined,
         amount: Number(r.amount),
@@ -1383,9 +1475,9 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           <div className="font-medium text-white truncate max-w-[220px]" title={p.email}>
                             {p.email}
                           </div>
-                          {p.talent_name && (
+                          {(p.display_name || p.talent_name || p.source_name) && (
                             <div className="text-xs text-slate-300 font-medium mt-0.5">
-                              {p.talent_name}
+                              {p.display_name || p.talent_name || p.source_name}
                             </div>
                           )}
                           <div className="text-[11px] text-slate-500 font-mono mt-0.5">
@@ -1987,11 +2079,12 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                       </button>
                     </div>
 
-                    <div className="border border-white/10 rounded-xl overflow-hidden overflow-x-auto max-h-[350px]">
-                      <table className="w-full text-left text-xs text-slate-300">
-                        <thead className="bg-white/5 border-b border-white/10 font-semibold uppercase text-slate-400 sticky top-0 bg-slate-900 z-10">
+                    <div className="border border-white/10 rounded-xl overflow-y-auto overflow-x-auto max-h-[55vh] relative bg-slate-950/50 shadow-inner">
+                      <table className="w-full text-left text-xs text-slate-300 min-w-[1150px]">
+                        <thead className="bg-slate-900/95 backdrop-blur-md border-b border-white/10 font-semibold uppercase text-slate-400 sticky top-0 z-10 shadow-sm">
                           <tr>
-                            <th className="py-2.5 px-3">#</th>
+                            <th className="py-2.5 px-3 w-12">#</th>
+                            <th className="py-2.5 px-3">Name</th>
                             <th className="py-2.5 px-3">Email *</th>
                             <th className="py-2.5 px-3">Project *</th>
                             <th className="py-2.5 px-3">Work Type</th>
@@ -2017,9 +2110,19 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                               <td className="py-2 px-3">
                                 <input
                                   type="text"
+                                  placeholder="Contributor NA"
+                                  value={row.talent_name || ''}
+                                  onChange={(e) => handleUpdateImportRow(idx, 'talent_name', e.target.value)}
+                                  className="w-36 bg-white/5 border border-white/10 rounded px-2 py-1 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                                />
+                              </td>
+
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
                                   value={row.email}
                                   onChange={(e) => handleUpdateImportRow(idx, 'email', e.target.value)}
-                                  className="w-36 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
+                                  className="w-36 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500 font-mono text-[11px]"
                                 />
                                 {row.error && <p className="text-[10px] text-rose-400 mt-0.5">{row.error}</p>}
                               </td>

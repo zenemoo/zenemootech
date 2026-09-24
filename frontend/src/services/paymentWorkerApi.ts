@@ -5,6 +5,8 @@ export interface PaymentRecord {
   id: string;
   talent_id?: string | null;
   talent_name?: string | null;
+  source_name?: string | null;
+  display_name?: string;
   email: string;
   project_name: string;
   work_type?: string | null;
@@ -83,6 +85,7 @@ export interface AdminLeaderboardItem {
   rank: number;
   talent_id: string | null;
   talent_name?: string | null;
+  source_name?: string | null;
   email: string;
   name: string;
   company: string;
@@ -191,6 +194,7 @@ export const paymentWorkerApi = {
     payment_date?: string;
     talent_id?: string;
     talent_name?: string;
+    source_name?: string;
     reference_number?: string;
     reference_link?: string;
     notes?: string;
@@ -227,6 +231,7 @@ export const paymentWorkerApi = {
       payment_date?: string;
       talent_id?: string;
       talent_name?: string;
+      source_name?: string;
       reference_number?: string;
       reference_link?: string;
       notes?: string;
@@ -245,6 +250,19 @@ export const paymentWorkerApi = {
   }> {
     const baseUrl = getPaymentApiBaseUrl();
     const response = await axios.post(`${baseUrl}/admin/payments/sync-talent-ids`, {}, getAdminAuthHeaders());
+    return response.data;
+  },
+
+  async batchResolveTalents(emails: string[]): Promise<{
+    success: boolean;
+    resolved: Record<string, { registration_code: string; talent_name: string | null }>;
+  }> {
+    const baseUrl = getPaymentApiBaseUrl();
+    const response = await axios.post(
+      `${baseUrl}/admin/payments/resolve-talents`,
+      { emails },
+      getAdminAuthHeaders()
+    );
     return response.data;
   },
 
