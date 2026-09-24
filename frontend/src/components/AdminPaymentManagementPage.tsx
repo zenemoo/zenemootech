@@ -56,6 +56,7 @@ interface AdminPaymentManagementPageProps {
 interface ImportRow {
   email: string;
   project_name: string;
+  work_type?: string;
   amount: number | string;
   currency: string;
   status: string;
@@ -90,8 +91,9 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedProject, setSelectedProject] = useState<string>('All');
+  const [selectedWorkType, setSelectedWorkType] = useState<string>('All');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(20);
+  const [pageSize, setPageSize] = useState<number>(50);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [sortBy, setSortBy] = useState<string>('payment_date');
@@ -119,6 +121,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   const [formData, setFormData] = useState({
     email: '',
     project_name: '',
+    work_type: '',
     amount: '',
     currency: 'INR',
     status: 'Paid',
@@ -170,6 +173,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
             search: debouncedSearch,
             status: selectedStatus !== 'All' ? selectedStatus : undefined,
             project: selectedProject !== 'All' ? selectedProject : undefined,
+            workType: selectedWorkType !== 'All' ? selectedWorkType : undefined,
             sortBy,
             sortOrder,
           }),
@@ -193,7 +197,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
         setIsRefreshing(false);
       }
     },
-    [currentPage, pageSize, debouncedSearch, selectedStatus, selectedProject, sortBy, sortOrder, addToast]
+    [currentPage, pageSize, debouncedSearch, selectedStatus, selectedProject, selectedWorkType, sortBy, sortOrder, addToast]
   );
 
   // Load Leaderboard Data for Admin
@@ -243,6 +247,15 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     return Array.from(set);
   }, [payments]);
 
+  // Extract unique work types list for filter dropdown
+  const uniqueWorkTypes = useMemo(() => {
+    const set = new Set<string>();
+    payments.forEach((p) => {
+      if (p.work_type) set.add(p.work_type);
+    });
+    return Array.from(set);
+  }, [payments]);
+
   // --- Form Validation ---
   const validateForm = () => {
     const errors: Record<string, string> = {};
@@ -274,6 +287,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
         await paymentWorkerApi.updatePayment(editingPayment.id, {
           email: formData.email.trim().toLowerCase(),
           project_name: formData.project_name.trim(),
+          work_type: formData.work_type.trim() || undefined,
           amount: Number(formData.amount),
           currency: formData.currency,
           status: formData.status as any,
@@ -288,6 +302,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
         await paymentWorkerApi.createPayment({
           email: formData.email.trim().toLowerCase(),
           project_name: formData.project_name.trim(),
+          work_type: formData.work_type.trim() || undefined,
           amount: Number(formData.amount),
           currency: formData.currency,
           status: formData.status,
@@ -337,6 +352,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     setFormData({
       email: '',
       project_name: defaultProjectName || '',
+      work_type: '',
       amount: '',
       currency: 'INR',
       status: 'Paid',
@@ -360,6 +376,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     setFormData({
       email: payment.email,
       project_name: payment.project_name,
+      work_type: payment.work_type || '',
       amount: payment.amount.toString(),
       currency: payment.currency || 'INR',
       status: payment.status || 'Paid',
@@ -429,6 +446,32 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     'utr number',
     'txn id',
     'transaction id',
+    'txn no',
+    'transaction no',
+  ];
+  const REFERENCE_LINK_ALIASES = [
+    'link',
+    'url',
+    'image link',
+    'image url',
+    'proof link',
+    'proof url',
+    'payment link',
+    'receipt link',
+    'receipt url',
+    'reference link',
+    'reference url',
+    'proof',
+  ];
+  const WORK_TYPE_ALIASES = [
+    'work type',
+    'worktype',
+    'work',
+    'task type',
+    'service type',
+    'service',
+    'task',
+    'work_type',
   ];
   const STATUS_ALIASES = ['status', 'payment status', 'payout status'];
   const DATE_ALIASES = ['date', 'payment date', 'paid date', 'txn date', 'transaction date'];
@@ -440,6 +483,8 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     amountCol?: number;
     hasAmountHeader: boolean;
     referenceCol?: number;
+    referenceLinkCol?: number;
+    workTypeCol?: number;
     statusCol?: number;
     dateCol?: number;
     talentIdCol?: number;
@@ -451,6 +496,8 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     let p1AmountCol: number | undefined;
     let p2AmountCol: number | undefined;
     let referenceCol: number | undefined;
+    let referenceLinkCol: number | undefined;
+    let workTypeCol: number | undefined;
     let statusCol: number | undefined;
     let dateCol: number | undefined;
     let talentIdCol: number | undefined;
@@ -476,6 +523,16 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       // Reference mapping
       if (referenceCol === undefined && REFERENCE_ALIASES.includes(norm)) {
         referenceCol = colIndex;
+      }
+
+      // Proof / Link mapping
+      if (referenceLinkCol === undefined && REFERENCE_LINK_ALIASES.includes(norm)) {
+        referenceLinkCol = colIndex;
+      }
+
+      // Work Type mapping
+      if (workTypeCol === undefined && WORK_TYPE_ALIASES.includes(norm)) {
+        workTypeCol = colIndex;
       }
 
       // Status mapping
@@ -507,6 +564,8 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       amountCol,
       hasAmountHeader,
       referenceCol,
+      referenceLinkCol,
+      workTypeCol,
       statusCol,
       dateCol,
       talentIdCol,
@@ -579,8 +638,10 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       amount?: any;
       status?: any;
       project_name?: any;
+      work_type?: any;
       payment_date?: any;
       reference_number?: any;
+      reference_link?: any;
       talent_id?: any;
       hasAmountHeader?: boolean;
       hasStatusHeader?: boolean;
@@ -593,6 +654,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
     validatedAmount: number;
     validatedStatus: string;
     validatedProject: string;
+    validatedWorkType: string;
   } => {
     const emailRes = validateEmailValue(row.email);
     const amountRes = parseAmountValue(row.amount, row.hasAmountHeader !== false);
@@ -600,6 +662,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
 
     const project = (row.project_name || '').trim() || defaultProject.trim();
     const projectValid = !!project;
+    const workType = (row.work_type || '').trim();
 
     const errors: string[] = [];
     if (!emailRes.isValid) errors.push(emailRes.error || 'Invalid email');
@@ -614,6 +677,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       validatedAmount: amountRes.amount,
       validatedStatus: statusRes.status,
       validatedProject: project,
+      validatedWorkType: workType,
     };
   };
 
@@ -716,7 +780,9 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           const rawProject = colMap.projectCol !== undefined
             ? String(row[colMap.projectCol] ?? '').trim()
             : defaultProjectName.trim();
+          const rawWorkType = colMap.workTypeCol !== undefined ? String(row[colMap.workTypeCol] ?? '').trim() : '';
           const rawRef = colMap.referenceCol !== undefined ? String(row[colMap.referenceCol] ?? '').trim() : '';
+          const rawRefLink = colMap.referenceLinkCol !== undefined ? String(row[colMap.referenceLinkCol] ?? '').trim() : '';
           const rawDate = colMap.dateCol !== undefined && String(row[colMap.dateCol] ?? '').trim()
             ? String(row[colMap.dateCol]).trim()
             : new Date().toISOString().split('T')[0];
@@ -729,8 +795,10 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
               amount: rawAmount,
               status: rawStatus,
               project_name: rawProject,
+              work_type: rawWorkType,
               payment_date: rawDate,
               reference_number: rawRef,
+              reference_link: rawRefLink,
               talent_id: rawTalentId,
               hasAmountHeader: colMap.hasAmountHeader,
               hasStatusHeader: colMap.statusCol !== undefined,
@@ -741,12 +809,13 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           parsedRows.push({
             email: validation.validatedEmail,
             project_name: validation.validatedProject,
+            work_type: validation.validatedWorkType,
             amount: validation.validatedAmount,
             currency: 'INR',
             status: validation.validatedStatus,
             payment_date: rawDate,
             reference_number: rawRef,
-            reference_link: '',
+            reference_link: rawRefLink,
             notes: '',
             talent_id: rawTalentId,
             isValid: validation.isValid,
@@ -782,14 +851,16 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           const rawProject = colMap.projectCol !== undefined
             ? getCellValue(row.getCell(colMap.projectCol + 1).value).trim()
             : defaultProjectName.trim();
+          const rawWorkType = colMap.workTypeCol !== undefined ? getCellValue(row.getCell(colMap.workTypeCol + 1).value).trim() : '';
           const rawRef = colMap.referenceCol !== undefined ? getCellValue(row.getCell(colMap.referenceCol + 1).value).trim() : '';
+          const rawRefLink = colMap.referenceLinkCol !== undefined ? getCellValue(row.getCell(colMap.referenceLinkCol + 1).value).trim() : '';
           const rawDate = colMap.dateCol !== undefined && getCellValue(row.getCell(colMap.dateCol + 1).value).trim()
             ? getCellValue(row.getCell(colMap.dateCol + 1).value).trim()
             : new Date().toISOString().split('T')[0];
           const rawStatus = colMap.statusCol !== undefined ? getCellValue(row.getCell(colMap.statusCol + 1).value) : undefined;
           const rawTalentId = colMap.talentIdCol !== undefined ? getCellValue(row.getCell(colMap.talentIdCol + 1).value).trim() : '';
 
-          if (!rawEmail && rawAmount === undefined && !rawRef && !rawTalentId) continue;
+          if (!rawEmail && rawAmount === undefined && !rawRef && !rawTalentId && !rawRefLink) continue;
 
           const validation = validateImportRow(
             {
@@ -797,8 +868,10 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
               amount: rawAmount,
               status: rawStatus,
               project_name: rawProject,
+              work_type: rawWorkType,
               payment_date: rawDate,
               reference_number: rawRef,
+              reference_link: rawRefLink,
               talent_id: rawTalentId,
               hasAmountHeader: colMap.hasAmountHeader,
               hasStatusHeader: colMap.statusCol !== undefined,
@@ -809,12 +882,13 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           parsedRows.push({
             email: validation.validatedEmail,
             project_name: validation.validatedProject,
+            work_type: validation.validatedWorkType,
             amount: validation.validatedAmount,
             currency: 'INR',
             status: validation.validatedStatus,
             payment_date: rawDate,
             reference_number: rawRef,
-            reference_link: '',
+            reference_link: rawRefLink,
             notes: '',
             talent_id: rawTalentId,
             isValid: validation.isValid,
@@ -854,8 +928,10 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           amount: row.amount,
           status: String(row.status || ''),
           project_name: String(row.project_name || ''),
+          work_type: String(row.work_type || ''),
           payment_date: String(row.payment_date || ''),
           reference_number: String(row.reference_number || ''),
+          reference_link: String(row.reference_link || ''),
           talent_id: String(row.talent_id || ''),
           hasAmountHeader: true,
           hasStatusHeader: true,
@@ -899,6 +975,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       const payload = validRows.map((r) => ({
         email: r.email.trim().toLowerCase(),
         project_name: r.project_name.trim() || defaultProjectName.trim() || 'General Project',
+        work_type: r.work_type ? r.work_type.trim() : undefined,
         amount: Number(r.amount),
         currency: r.currency || 'INR',
         status: r.status || 'Paid',
@@ -1205,6 +1282,27 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                 </div>
               )}
 
+              {uniqueWorkTypes.length > 0 && (
+                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">
+                  <span className="text-xs text-slate-400">Work Type:</span>
+                  <select
+                    value={selectedWorkType}
+                    onChange={(e) => {
+                      setSelectedWorkType(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-transparent text-sm text-slate-200 focus:outline-none cursor-pointer max-w-[140px] truncate"
+                  >
+                    <option value="All" className="bg-slate-900 text-white">All Types</option>
+                    {uniqueWorkTypes.map((wt) => (
+                      <option key={wt} value={wt} className="bg-slate-900 text-white">
+                        {wt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">
                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
                 <select
@@ -1222,21 +1320,38 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                   <option value="amount:ASC" className="bg-slate-900 text-white">Amount (Low to High)</option>
                 </select>
               </div>
+
+              <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">
+                <span className="text-xs text-slate-400">Rows:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-transparent text-sm text-slate-200 focus:outline-none cursor-pointer"
+                >
+                  <option value={25} className="bg-slate-900 text-white">25</option>
+                  <option value={50} className="bg-slate-900 text-white">50</option>
+                  <option value={100} className="bg-slate-900 text-white">100</option>
+                </select>
+              </div>
             </div>
           </div>
 
           {/* Payments Table */}
           <div className="bg-slate-900/60 border border-white/10 rounded-2xl overflow-hidden shadow-xl backdrop-blur-xl">
-            <div className="overflow-x-auto min-h-[300px]">
+            <div className="overflow-x-auto overflow-y-auto max-h-[68vh] min-h-[300px] relative">
               <table className="w-full text-left text-sm text-slate-300">
-                <thead className="bg-white/5 border-b border-white/10 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 border-b border-white/10 text-xs font-semibold uppercase tracking-wider text-slate-400 shadow-sm">
                   <tr>
-                    <th className="py-3.5 px-4">Talent Email / ID</th>
-                    <th className="py-3.5 px-4">Project / Work</th>
+                    <th className="py-3.5 px-4">Talent / Contributor</th>
+                    <th className="py-3.5 px-4">Project & Work Type</th>
                     <th className="py-3.5 px-4">Amount</th>
                     <th className="py-3.5 px-4">Status</th>
                     <th className="py-3.5 px-4">Payment Date</th>
                     <th className="py-3.5 px-4">Reference</th>
+                    <th className="py-3.5 px-4">Proof</th>
                     <th className="py-3.5 px-4">Source</th>
                     <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
@@ -1244,18 +1359,18 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                 <tbody className="divide-y divide-white/5">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={8} className="py-16 text-center text-slate-400">
+                      <td colSpan={9} className="py-16 text-center text-slate-400">
                         <RefreshCw className="w-8 h-8 animate-spin mx-auto text-cyan-400 mb-2" />
                         <p className="text-sm">Loading payment records from Cloudflare D1...</p>
                       </td>
                     </tr>
                   ) : payments.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-16 text-center text-slate-400">
+                      <td colSpan={9} className="py-16 text-center text-slate-400">
                         <CreditCard className="w-10 h-10 mx-auto text-slate-600 mb-3" />
                         <p className="text-base font-semibold text-white">No payment records found</p>
                         <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                          {searchQuery || selectedStatus !== 'All'
+                          {searchQuery || selectedStatus !== 'All' || selectedWorkType !== 'All'
                             ? 'No records match your search filters.'
                             : 'No payments have been recorded yet.'}
                         </p>
@@ -1268,6 +1383,11 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           <div className="font-medium text-white truncate max-w-[220px]" title={p.email}>
                             {p.email}
                           </div>
+                          {p.talent_name && (
+                            <div className="text-xs text-slate-300 font-medium mt-0.5">
+                              {p.talent_name}
+                            </div>
+                          )}
                           <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                             Talent ID: {p.talent_id && p.talent_id !== 'NA' ? p.talent_id : 'NA'}
                           </div>
@@ -1277,6 +1397,11 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           <span className="truncate max-w-[180px] block" title={p.project_name}>
                             {p.project_name}
                           </span>
+                          {p.work_type && (
+                            <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                              {p.work_type}
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-4 font-bold text-emerald-400 whitespace-nowrap">
@@ -1293,30 +1418,20 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-4 text-xs">
-                          {p.reference_number ? (
-                            <div className="font-mono text-slate-300 flex items-center gap-1.5">
-                              <span>{p.reference_number}</span>
-                              {p.reference_link && (
-                                <a
-                                  href={p.reference_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-cyan-400 hover:text-cyan-300"
-                                  title="Open link"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                            </div>
-                          ) : p.reference_link ? (
+                        <td className="py-3.5 px-4 text-xs font-mono text-slate-300">
+                          {p.reference_number || '-'}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-xs whitespace-nowrap">
+                          {p.reference_link ? (
                             <a
                               href={p.reference_link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-cyan-400 hover:underline flex items-center gap-1"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-all font-medium"
+                              title="Open proof in new tab"
                             >
-                              View Link
+                              View Proof
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           ) : (
@@ -1363,7 +1478,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                   <span className="font-semibold text-white">
                     {Math.min(currentPage * pageSize, totalCount)}
                   </span>{' '}
-                  of <span className="font-semibold text-white">{totalCount}</span> records
+                  of <span className="font-semibold text-white">{totalCount}</span> records (50/page default)
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1621,6 +1736,19 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Work Type (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Audio Collection, Annotation"
+                      value={formData.work_type}
+                      onChange={(e) => setFormData({ ...formData, work_type: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                       Amount (₹) *
                     </label>
                     <input
@@ -1866,10 +1994,12 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                             <th className="py-2.5 px-3">#</th>
                             <th className="py-2.5 px-3">Email *</th>
                             <th className="py-2.5 px-3">Project *</th>
+                            <th className="py-2.5 px-3">Work Type</th>
                             <th className="py-2.5 px-3">Amount (₹) *</th>
                             <th className="py-2.5 px-3">Status</th>
                             <th className="py-2.5 px-3">Date</th>
                             <th className="py-2.5 px-3">Reference</th>
+                            <th className="py-2.5 px-3">Proof Link</th>
                             <th className="py-2.5 px-3">Talent ID</th>
                             <th className="py-2.5 px-3 text-right">Action</th>
                           </tr>
@@ -1889,7 +2019,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                                   type="text"
                                   value={row.email}
                                   onChange={(e) => handleUpdateImportRow(idx, 'email', e.target.value)}
-                                  className="w-40 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
+                                  className="w-36 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
                                 />
                                 {row.error && <p className="text-[10px] text-rose-400 mt-0.5">{row.error}</p>}
                               </td>
@@ -1899,7 +2029,17 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                                   type="text"
                                   value={row.project_name}
                                   onChange={(e) => handleUpdateImportRow(idx, 'project_name', e.target.value)}
-                                  className="w-32 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
+                                  className="w-28 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
+                                />
+                              </td>
+
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  placeholder="Work Type"
+                                  value={row.work_type || ''}
+                                  onChange={(e) => handleUpdateImportRow(idx, 'work_type', e.target.value)}
+                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-cyan-500"
                                 />
                               </td>
 
@@ -1908,7 +2048,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                                   type="text"
                                   value={row.amount}
                                   onChange={(e) => handleUpdateImportRow(idx, 'amount', e.target.value)}
-                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-emerald-400 font-bold focus:outline-none focus:border-cyan-500"
+                                  className="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-emerald-400 font-bold focus:outline-none focus:border-cyan-500"
                                 />
                               </td>
 
@@ -1941,7 +2081,17 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                                   placeholder="Ref No"
                                   value={row.reference_number}
                                   onChange={(e) => handleUpdateImportRow(idx, 'reference_number', e.target.value)}
-                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-[11px] focus:outline-none"
+                                  className="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-[11px] focus:outline-none"
+                                />
+                              </td>
+
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  placeholder="URL / Link"
+                                  value={row.reference_link || ''}
+                                  onChange={(e) => handleUpdateImportRow(idx, 'reference_link', e.target.value)}
+                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-[11px] focus:outline-none"
                                 />
                               </td>
 
@@ -1951,7 +2101,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                                   placeholder="Talent ID"
                                   value={row.talent_id}
                                   onChange={(e) => handleUpdateImportRow(idx, 'talent_id', e.target.value)}
-                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-[11px] focus:outline-none"
+                                  className="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white font-mono text-[11px] focus:outline-none"
                                 />
                               </td>
 

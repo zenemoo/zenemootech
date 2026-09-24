@@ -4,8 +4,10 @@ import { supabase } from '../lib/supabaseClient';
 export interface PaymentRecord {
   id: string;
   talent_id?: string | null;
+  talent_name?: string | null;
   email: string;
   project_name: string;
+  work_type?: string | null;
   amount: number;
   currency: string;
   status: 'Pending' | 'Processing' | 'Paid' | 'Failed' | 'Cancelled';
@@ -80,6 +82,7 @@ export interface TalentLeaderboardResponse {
 export interface AdminLeaderboardItem {
   rank: number;
   talent_id: string | null;
+  talent_name?: string | null;
   email: string;
   name: string;
   company: string;
@@ -143,6 +146,7 @@ export const paymentWorkerApi = {
     search?: string;
     status?: string;
     project?: string;
+    workType?: string;
     sortBy?: string;
     sortOrder?: 'ASC' | 'DESC';
   }): Promise<PaymentListResponse> {
@@ -180,11 +184,13 @@ export const paymentWorkerApi = {
   async createPayment(data: {
     email: string;
     project_name: string;
+    work_type?: string;
     amount: number;
     currency?: string;
     status?: string;
     payment_date?: string;
     talent_id?: string;
+    talent_name?: string;
     reference_number?: string;
     reference_link?: string;
     notes?: string;
@@ -214,11 +220,13 @@ export const paymentWorkerApi = {
     records: Array<{
       email: string;
       project_name: string;
+      work_type?: string;
       amount: number;
       currency?: string;
       status?: string;
       payment_date?: string;
       talent_id?: string;
+      talent_name?: string;
       reference_number?: string;
       reference_link?: string;
       notes?: string;

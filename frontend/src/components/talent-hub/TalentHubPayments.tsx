@@ -434,7 +434,7 @@ export const TalentHubPayments: React.FC = () => {
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="bg-white/5 border-b border-white/10 text-xs font-semibold uppercase tracking-wider text-slate-400">
                   <tr>
-                    <th className="py-3.5 px-4">Project / Work Name</th>
+                    <th className="py-3.5 px-4">Project & Work Type</th>
                     <th className="py-3.5 px-4">Amount</th>
                     <th className="py-3.5 px-4">Status</th>
                     <th className="py-3.5 px-4">Payment Date</th>
@@ -467,6 +467,11 @@ export const TalentHubPayments: React.FC = () => {
                       <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
                         <td className="py-3.5 px-4">
                           <div className="font-semibold text-white">{p.project_name}</div>
+                          {p.work_type && (
+                            <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                              {p.work_type}
+                            </span>
+                          )}
                           {p.notes && (
                             <div className="text-xs text-slate-400 mt-0.5 max-w-xs truncate" title={p.notes}>
                               {p.notes}
@@ -499,8 +504,9 @@ export const TalentHubPayments: React.FC = () => {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-all font-medium"
+                              title="Open proof link in new tab"
                             >
-                              View Reference
+                              View Proof
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           ) : (
@@ -533,6 +539,11 @@ export const TalentHubPayments: React.FC = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-bold text-white text-sm leading-tight">{p.project_name}</p>
+                        {p.work_type && (
+                          <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                            {p.work_type}
+                          </span>
+                        )}
                         <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-slate-500" />
                           {p.payment_date || '-'}
@@ -549,7 +560,7 @@ export const TalentHubPayments: React.FC = () => {
                     {(p.reference_number || p.reference_link) && (
                       <div className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex items-center justify-between text-xs">
                         <span className="text-slate-400 font-mono text-[11px]">
-                          Ref: {p.reference_number || 'Confirmed'}
+                          Ref: {p.reference_number || '-'}
                         </span>
                         {p.reference_link && (
                           <a
@@ -558,7 +569,7 @@ export const TalentHubPayments: React.FC = () => {
                             rel="noopener noreferrer"
                             className="text-cyan-400 hover:underline flex items-center gap-1 font-medium text-[11px]"
                           >
-                            View Link <ExternalLink className="w-3 h-3" />
+                            View Proof <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
                       </div>

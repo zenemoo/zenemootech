@@ -50,14 +50,14 @@ function maskEmail(email) {
   return `${visible}${'•'.repeat(maskedLength)}@${domain}`;
 }
 
-function deriveDisplayName(email, talentId) {
-  if (talentId && talentId.trim()) {
+function deriveDisplayName(email, talentId, talentName) {
+  if (talentName && talentName.trim() && talentName.trim() !== 'NA') {
+    return talentName.trim();
+  }
+  if (talentId && talentId.trim() && talentId.trim() !== 'NA') {
     return `Contributor ${talentId.trim()}`;
   }
-  if (!email) return 'Zenemoo Contributor';
-  const namePart = email.split('@')[0] || '';
-  if (namePart.length <= 2) return `Contributor ${namePart}`;
-  return `${namePart.slice(0, 1).toUpperCase()}${namePart.slice(1, 4)}.`;
+  return 'Contributor NA';
 }
 
 // --- Security & CORS Helpers ---
@@ -221,12 +221,12 @@ async function verifySupabaseToken(token, env) {
 }
 
 /**
- * Resolves Talent Registration Code (Zenemoo ID) from Supabase talent_registrations
+ * Resolves Talent Registration Code (Zenemoo ID) and Full Name from Supabase talent_registrations
  * CRITICAL EGRESS PROTECTION:
- * - Uses exact indexed email lookup (select=email,registration_code&email=in.(...))
+ * - Uses exact indexed email lookup (select=email,registration_code,full_name&email=in.(...))
  * - Never does SELECT * or fetches the full table
  * - Batches unique emails in chunks of up to 50
- * - Returns a Map<normalizedEmail, registration_code | 'NA'>
+ * - Returns a Map<normalizedEmail, { registration_code: string, talent_name: string | null }>
  */
 async function resolveTalentRegistrationCodes(emails, env) {
   const result = new Map();
@@ -247,7 +247,7 @@ async function resolveTalentRegistrationCodes(emails, env) {
 
   if (!supabaseKey) {
     for (const em of uniqueEmails) {
-      result.set(em, 'NA');
+      result.set(em, { registration_code: 'NA', talent_name: null });
     }
     return result;
   }
@@ -256,7 +256,7 @@ async function resolveTalentRegistrationCodes(emails, env) {
   for (let i = 0; i < uniqueEmails.length; i += batchSize) {
     const chunk = uniqueEmails.slice(i, i + batchSize);
     const inList = chunk.map((e) => `"${e}"`).join(',');
-    const url = `${supabaseUrl}/rest/v1/talent_registrations?select=email,registration_code&email=in.(${encodeURIComponent(inList)})`;
+    const url = `${supabaseUrl}/rest/v1/talent_registrations?select=email,registration_code,full_name&email=in.(${encodeURIComponent(inList)})`;
 
     try {
       const res = await fetch(url, {
@@ -270,8 +270,13 @@ async function resolveTalentRegistrationCodes(emails, env) {
         const rows = await res.json();
         if (Array.isArray(rows)) {
           for (const row of rows) {
-            if (row.email && row.registration_code) {
-              result.set(row.email.toLowerCase().trim(), row.registration_code.trim());
+            if (row.email) {
+              const code = row.registration_code ? row.registration_code.trim() : 'NA';
+              const name = row.full_name ? row.full_name.trim() : null;
+              result.set(row.email.toLowerCase().trim(), {
+                registration_code: code,
+                talent_name: name,
+              });
             }
           }
         }
@@ -284,7 +289,7 @@ async function resolveTalentRegistrationCodes(emails, env) {
   // Populate 'NA' for any emails not registered in talent_registrations
   for (const em of uniqueEmails) {
     if (!result.has(em)) {
-      result.set(em, 'NA');
+      result.set(em, { registration_code: 'NA', talent_name: null });
     }
   }
 
@@ -402,7 +407,9 @@ function validatePaymentInput(data) {
     sanitized: {
       email,
       talent_id: (data.talent_id || '').trim() || null,
+      talent_name: (data.talent_name || '').trim() || null,
       project_name: projectName,
+      work_type: (data.work_type || '').trim() || null,
       amount,
       currency: (data.currency || 'INR').trim().toUpperCase(),
       status,
@@ -460,13 +467,16 @@ export default {
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
+        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
         const offset = (page - 1) * limit;
 
         const search = (url.searchParams.get('search') || '').trim().toLowerCase();
         const status = (url.searchParams.get('status') || '').trim();
         const project = (url.searchParams.get('project') || '').trim();
-        const sortBy = ['payment_date', 'created_at', 'amount', 'email', 'project_name'].includes(url.searchParams.get('sortBy'))
+        const workType = (url.searchParams.get('workType') || '').trim();
+        const sortBy = ['payment_date', 'created_at', 'amount', 'email', 'project_name', 'work_type'].includes(
+          url.searchParams.get('sortBy')
+        )
           ? url.searchParams.get('sortBy')
           : 'payment_date';
         const sortOrder = (url.searchParams.get('sortOrder') || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
@@ -475,9 +485,9 @@ export default {
         const params = [];
 
         if (search) {
-          whereClauses.push('(LOWER(email) LIKE ? OR LOWER(project_name) LIKE ? OR LOWER(reference_number) LIKE ? OR LOWER(talent_id) LIKE ?)');
+          whereClauses.push('(LOWER(email) LIKE ? OR LOWER(project_name) LIKE ? OR LOWER(reference_number) LIKE ? OR LOWER(talent_id) LIKE ? OR LOWER(talent_name) LIKE ? OR LOWER(work_type) LIKE ?)');
           const searchPattern = `%${search}%`;
-          params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+          params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
         }
 
         if (status && status !== 'All' && VALID_STATUSES.has(status)) {
@@ -490,11 +500,16 @@ export default {
           params.push(project);
         }
 
+        if (workType && workType !== 'All') {
+          whereClauses.push('work_type = ?');
+          params.push(workType);
+        }
+
         const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
         // Query targeted columns only — NEVER SELECT *
         const listSql = `
-          SELECT id, talent_id, email, project_name, amount, currency, status, payment_date, reference_number, reference_link, source, notes, created_at, updated_at
+          SELECT id, talent_id, talent_name, email, project_name, work_type, amount, currency, status, payment_date, reference_number, reference_link, source, notes, created_at, updated_at
           FROM payments
           ${whereSql}
           ORDER BY ${sortBy} ${sortOrder}, created_at DESC
@@ -598,6 +613,7 @@ export default {
           SELECT 
             LOWER(email) as email,
             MAX(talent_id) as talent_id,
+            MAX(talent_name) as talent_name,
             COALESCE(SUM(amount), 0) as total_paid,
             COUNT(*) as payment_count,
             MAX(payment_date) as last_payment_date
@@ -626,7 +642,8 @@ export default {
             rank,
             email: row.email,
             talent_id: row.talent_id || null,
-            name: deriveDisplayName(row.email, row.talent_id),
+            talent_name: row.talent_name || null,
+            name: deriveDisplayName(row.email, row.talent_id, row.talent_name),
             company: 'Zenemoo Contributor',
             grade: calculateGrade(row.total_paid),
             total_paid: Number(row.total_paid) || 0,
@@ -667,23 +684,27 @@ export default {
         const now = new Date().toISOString();
         const s = validation.sanitized;
 
-        // Resolve Zenemoo Registration ID from Talent Network database
+        // Resolve Zenemoo Registration ID and Full Name from Talent Network database
         const talentMap = await resolveTalentRegistrationCodes([s.email], env);
-        s.talent_id = talentMap.get(s.email.toLowerCase().trim()) || 'NA';
+        const resolvedTalent = talentMap.get(s.email.toLowerCase().trim());
+        s.talent_id = resolvedTalent?.registration_code || 'NA';
+        s.talent_name = resolvedTalent?.talent_name || null;
 
         const insertSql = `
           INSERT INTO payments (
-            id, talent_id, email, project_name, amount, currency, status,
+            id, talent_id, talent_name, email, project_name, work_type, amount, currency, status,
             payment_date, reference_number, reference_link, source, notes, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         await env.DB.prepare(insertSql)
           .bind(
             id,
             s.talent_id,
+            s.talent_name,
             s.email,
             s.project_name,
+            s.work_type,
             s.amount,
             s.currency,
             s.status,
@@ -726,15 +747,19 @@ export default {
         const now = new Date().toISOString();
         const s = validation.sanitized;
 
-        // Resolve Zenemoo Registration ID from Talent Network database
+        // Resolve Zenemoo Registration ID and Full Name from Talent Network database
         const talentMap = await resolveTalentRegistrationCodes([s.email], env);
-        s.talent_id = talentMap.get(s.email.toLowerCase().trim()) || 'NA';
+        const resolvedTalent = talentMap.get(s.email.toLowerCase().trim());
+        s.talent_id = resolvedTalent?.registration_code || 'NA';
+        s.talent_name = resolvedTalent?.talent_name || null;
 
         const updateSql = `
           UPDATE payments SET
             talent_id = ?,
+            talent_name = ?,
             email = ?,
             project_name = ?,
+            work_type = ?,
             amount = ?,
             currency = ?,
             status = ?,
@@ -749,8 +774,10 @@ export default {
         const res = await env.DB.prepare(updateSql)
           .bind(
             s.talent_id,
+            s.talent_name,
             s.email,
             s.project_name,
+            s.work_type,
             s.amount,
             s.currency,
             s.status,
@@ -809,7 +836,13 @@ export default {
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
         const body = await request.json().catch(() => ({}));
-        const records = Array.isArray(body.records) ? body.records : [];
+        const records = Array.isArray(body)
+          ? body
+          : Array.isArray(body.records)
+          ? body.records
+          : Array.isArray(body.payments)
+          ? body.payments
+          : [];
 
         if (records.length === 0) {
           return errorResponse('No payment records provided for import', 400, corsHeaders);
@@ -908,12 +941,14 @@ export default {
           }
         }
 
-        // --- Batch Resolve Zenemoo Registration IDs (Talent IDs) from Talent Network ---
+        // --- Batch Resolve Zenemoo Registration IDs and Full Names from Talent Network ---
         const uniqueImportEmails = Array.from(new Set(validatedItems.map((item) => item.email.toLowerCase().trim())));
         const resolvedTalentMap = await resolveTalentRegistrationCodes(uniqueImportEmails, env);
 
         for (const s of validatedItems) {
-          s.talent_id = resolvedTalentMap.get(s.email.toLowerCase().trim()) || 'NA';
+          const resolved = resolvedTalentMap.get(s.email.toLowerCase().trim());
+          s.talent_id = resolved?.registration_code || 'NA';
+          s.talent_name = resolved?.talent_name || null;
         }
 
         // --- Build Insert Statements & Filter Out Both DB and In-Batch Duplicates ---
@@ -924,9 +959,9 @@ export default {
 
         const insertSql = `
           INSERT INTO payments (
-            id, talent_id, email, project_name, amount, currency, status,
+            id, talent_id, talent_name, email, project_name, work_type, amount, currency, status,
             payment_date, reference_number, reference_link, source, notes, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         for (const s of validatedItems) {
@@ -953,8 +988,10 @@ export default {
             env.DB.prepare(insertSql).bind(
               id,
               s.talent_id,
+              s.talent_name,
               s.email,
               s.project_name,
+              s.work_type,
               s.amount,
               s.currency,
               s.status,
@@ -996,7 +1033,7 @@ export default {
         );
       }
 
-      // 8b. POST /admin/payments/sync-talent-ids — Batch backfill/resync unresolved Talent IDs
+      // 8b. POST /admin/payments/sync-talent-ids — Batch backfill/resync unresolved Talent IDs & Names
       if (pathname === '/admin/payments/sync-talent-ids' && request.method === 'POST') {
         const auth = await authenticateAdmin(request, env);
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
@@ -1004,7 +1041,7 @@ export default {
         const selectSql = `
           SELECT DISTINCT LOWER(email) as email
           FROM payments
-          WHERE talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-'
+          WHERE talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = ''
         `;
         const queryRes = await env.DB.prepare(selectSql).all();
         const unresolvedEmails = (queryRes?.results || []).map((r) => r.email).filter(Boolean);
@@ -1013,7 +1050,7 @@ export default {
           return jsonResponse(
             {
               success: true,
-              message: 'All payment records already have resolved Talent IDs',
+              message: 'All payment records already have resolved Talent IDs and Names',
               resolved_count: 0,
             },
             200,
@@ -1025,12 +1062,14 @@ export default {
         const now = new Date().toISOString();
         const updateStatements = [];
 
-        for (const [email, code] of resolvedMap.entries()) {
-          if (code && code !== 'NA' && code !== '') {
+        for (const [email, talentInfo] of resolvedMap.entries()) {
+          const code = talentInfo?.registration_code;
+          const name = talentInfo?.talent_name;
+          if ((code && code !== 'NA' && code !== '') || name) {
             updateStatements.push(
               env.DB.prepare(
-                `UPDATE payments SET talent_id = ?, updated_at = ? WHERE LOWER(email) = ? AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-')`
-              ).bind(code, now, email)
+                `UPDATE payments SET talent_id = COALESCE(?, talent_id), talent_name = COALESCE(?, talent_name), updated_at = ? WHERE LOWER(email) = ? AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = '')`
+              ).bind(code || null, name || null, now, email)
             );
           }
         }
@@ -1044,7 +1083,7 @@ export default {
         return jsonResponse(
           {
             success: true,
-            message: `Successfully resolved and updated ${updateStatements.length} contributor Talent ID(s)`,
+            message: `Successfully resolved and updated ${updateStatements.length} contributor Talent ID(s) and Name(s)`,
             total_unresolved_checked: unresolvedEmails.length,
             resolved_count: updateStatements.length,
           },
@@ -1068,16 +1107,18 @@ export default {
         // Auto-resolve NA/missing records in D1 if talent registered later
         if (talentEmail) {
           try {
-            const checkSql = `SELECT COUNT(*) as cnt FROM payments WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-')`;
+            const checkSql = `SELECT COUNT(*) as cnt FROM payments WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = '')`;
             const checkRes = await env.DB.prepare(checkSql).bind(talentEmail).first();
             if (checkRes && checkRes.cnt > 0) {
-              const resolved = await resolveTalentRegistrationCodes([talentEmail], env);
-              const code = resolved.get(talentEmail.toLowerCase().trim());
-              if (code && code !== 'NA' && code !== '') {
+              const resolvedMap = await resolveTalentRegistrationCodes([talentEmail], env);
+              const talentInfo = resolvedMap.get(talentEmail.toLowerCase().trim());
+              const code = talentInfo?.registration_code;
+              const name = talentInfo?.talent_name;
+              if ((code && code !== 'NA' && code !== '') || name) {
                 const now = new Date().toISOString();
                 await env.DB.prepare(
-                  `UPDATE payments SET talent_id = ?, updated_at = ? WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-')`
-                ).bind(code, now, talentEmail).run();
+                  `UPDATE payments SET talent_id = COALESCE(?, talent_id), talent_name = COALESCE(?, talent_name), updated_at = ? WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = '')`
+                ).bind(code || null, name || null, now, talentEmail).run();
               }
             }
           } catch (syncErr) {
@@ -1096,9 +1137,9 @@ export default {
         const params = [talentEmail, talentId];
 
         if (search) {
-          whereClauses.push('(LOWER(project_name) LIKE ? OR LOWER(reference_number) LIKE ?)');
+          whereClauses.push('(LOWER(project_name) LIKE ? OR LOWER(work_type) LIKE ? OR LOWER(reference_number) LIKE ?)');
           const searchPattern = `%${search}%`;
-          params.push(searchPattern, searchPattern);
+          params.push(searchPattern, searchPattern, searchPattern);
         }
 
         if (status && status !== 'All' && VALID_STATUSES.has(status)) {
@@ -1110,7 +1151,7 @@ export default {
 
         // Only select columns needed by Talent UI — zero internal leakage
         const listSql = `
-          SELECT id, project_name, amount, currency, status, payment_date, reference_number, reference_link, notes, created_at
+          SELECT id, project_name, work_type, amount, currency, status, payment_date, reference_number, reference_link, notes, created_at
           FROM payments
           ${whereSql}
           ORDER BY payment_date DESC, created_at DESC
@@ -1219,6 +1260,7 @@ export default {
           SELECT 
             LOWER(email) as email,
             MAX(talent_id) as talent_id,
+            MAX(talent_name) as talent_name,
             COALESCE(SUM(amount), 0) as total_paid,
             COUNT(*) as payment_count,
             MAX(payment_date) as last_payment_date
@@ -1277,7 +1319,7 @@ export default {
           return {
             rank,
             talent_id: row.talent_id || null,
-            name: deriveDisplayName(row.email, row.talent_id),
+            name: deriveDisplayName(row.email, row.talent_id, row.talent_name),
             email_masked: isCurrentUser ? row.email : maskEmail(row.email),
             company: 'Zenemoo Contributor',
             grade: calculateGrade(row.total_paid),
