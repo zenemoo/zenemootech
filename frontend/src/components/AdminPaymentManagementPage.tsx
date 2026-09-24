@@ -42,6 +42,7 @@ import {
   PaymentSummary,
   AdminLeaderboardItem,
 } from '../services/paymentWorkerApi';
+import { ExportModal } from './ExportModal';
 
 interface AdminPaymentManagementPageProps {
   addToast?: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -119,7 +120,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   const [selectedProject, setSelectedProject] = useState<string>('All');
   const [selectedWorkType, setSelectedWorkType] = useState<string>('All');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(50);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [sortBy, setSortBy] = useState<string>('payment_date');
@@ -142,6 +143,27 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isSyncingTalentIds, setIsSyncingTalentIds] = useState<boolean>(false);
+
+  // --- Export Modal State ---
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [allExportDataset, setAllExportDataset] = useState<PaymentRecord[]>([]);
+  const [isFetchingAllExport, setIsFetchingAllExport] = useState<boolean>(false);
+
+  const handleOpenExport = async () => {
+    setIsExportModalOpen(true);
+    // Lazily fetch all records directly from Cloudflare D1 for "All Records" export scope without querying Talent Network
+    try {
+      setIsFetchingAllExport(true);
+      const res = await paymentWorkerApi.getAdminPayments({ limit: 10000 });
+      if (res?.success && res.data) {
+        setAllExportDataset(res.data);
+      }
+    } catch (err: any) {
+      console.warn('[Admin Payment Export Fetch Error]:', err.message);
+    } finally {
+      setIsFetchingAllExport(false);
+    }
+  };
 
   // --- Form State (Add / Edit) ---
   const [formData, setFormData] = useState({
@@ -1189,6 +1211,15 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           </button>
 
           <button
+            onClick={handleOpenExport}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 text-sm font-semibold transition-all hover:border-white/20 shadow-sm"
+            title="Open Zenemoo Download Center to export payments in CSV, XLSX, or PDF"
+          >
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>Export Data</span>
+          </button>
+
+          <button
             onClick={() => {
               setImportStep('upload');
               setImportRows([]);
@@ -1423,9 +1454,9 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                   }}
                   className="bg-transparent text-sm text-slate-200 focus:outline-none cursor-pointer"
                 >
+                  <option value={10} className="bg-slate-900 text-white">10</option>
                   <option value={25} className="bg-slate-900 text-white">25</option>
                   <option value={50} className="bg-slate-900 text-white">50</option>
-                  <option value={100} className="bg-slate-900 text-white">100</option>
                 </select>
               </div>
             </div>
@@ -1472,14 +1503,12 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                     payments.map((p) => (
                       <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
                         <td className="py-3.5 px-4">
-                          <div className="font-medium text-white truncate max-w-[220px]" title={p.email}>
+                          <div className="font-semibold text-white">
+                            {p.talent_name || p.display_name || p.source_name || 'Unregistered Contributor'}
+                          </div>
+                          <div className="text-xs text-slate-400 font-mono mt-0.5 truncate max-w-[220px]" title={p.email}>
                             {p.email}
                           </div>
-                          {(p.display_name || p.talent_name || p.source_name) && (
-                            <div className="text-xs text-slate-300 font-medium mt-0.5">
-                              {p.display_name || p.talent_name || p.source_name}
-                            </div>
-                          )}
                           <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                             Talent ID: {p.talent_id && p.talent_id !== 'NA' ? p.talent_id : 'NA'}
                           </div>
@@ -1570,16 +1599,17 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                   <span className="font-semibold text-white">
                     {Math.min(currentPage * pageSize, totalCount)}
                   </span>{' '}
-                  of <span className="font-semibold text-white">{totalCount}</span> records (50/page default)
+                  of <span className="font-semibold text-white">{totalCount}</span> records
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 disabled:opacity-40"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 disabled:opacity-40 transition-all font-medium"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    Previous
                   </button>
                   <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-white font-medium">
                     Page {currentPage} of {totalPages || 1}
@@ -1587,9 +1617,10 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                     disabled={currentPage >= totalPages}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 disabled:opacity-40"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 disabled:opacity-40 transition-all font-medium"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    Next
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -2250,6 +2281,27 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── ZENEMOO DOWNLOAD CENTER / EXPORT MODAL ── */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        sectionId="payment-management"
+        sectionName="Payment Management"
+        dataset={allExportDataset.length > 0 ? allExportDataset : payments}
+        filteredDataset={payments}
+        filterSummary={
+          [
+            selectedStatus !== 'All' ? `Status: ${selectedStatus}` : '',
+            selectedProject !== 'All' ? `Project: ${selectedProject}` : '',
+            selectedWorkType !== 'All' ? `Work: ${selectedWorkType}` : '',
+            searchQuery ? `Search: "${searchQuery}"` : '',
+          ]
+            .filter(Boolean)
+            .join(', ') || 'All active filters'
+        }
+        showToast={(msg, type) => addToast('Export Completed', msg, type || 'success')}
+      />
     </div>
   );
 };

@@ -26,6 +26,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../lib/supabaseClient';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import {
   paymentWorkerApi,
@@ -59,8 +60,9 @@ export const TalentHubPayments: React.FC = () => {
   const [historyTotalPages, setHistoryTotalPages] = useState<number>(1);
   const [historyTotalCount, setHistoryTotalCount] = useState<number>(0);
 
-  // Leaderboard State
+  // Leaderboard State (Top 10 + User Neighborhood)
   const [leaderboard, setLeaderboard] = useState<TalentLeaderboardItem[]>([]);
+  const [userNeighborhood, setUserNeighborhood] = useState<TalentLeaderboardItem[]>([]);
   const [leaderboardPosition, setLeaderboardPosition] = useState<{
     rank: number | null;
     total_paid: number;
@@ -80,7 +82,13 @@ export const TalentHubPayments: React.FC = () => {
   // Load Transactions & Summary
   const loadTalentData = useCallback(
     async (showLoading = true) => {
-      const token = session?.access_token;
+      let token = session?.access_token;
+      if (!token) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          token = data.session?.access_token;
+        } catch {}
+      }
       if (!token) return;
 
       if (showLoading) setIsTransactionsLoading(true);
@@ -119,7 +127,13 @@ export const TalentHubPayments: React.FC = () => {
   // Load Leaderboard
   const loadLeaderboardData = useCallback(
     async (showLoading = true) => {
-      const token = session?.access_token;
+      let token = session?.access_token;
+      if (!token) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          token = data.session?.access_token;
+        } catch {}
+      }
       if (!token) return;
 
       if (showLoading) setIsLeaderboardLoading(true);
@@ -127,11 +141,12 @@ export const TalentHubPayments: React.FC = () => {
       try {
         const res = await paymentWorkerApi.getTalentLeaderboard(token, {
           page: leaderboardPage,
-          limit: 20,
+          limit: 10,
         });
 
         if (res?.success) {
           setLeaderboard(res.data || []);
+          setUserNeighborhood(res.user_neighborhood || []);
           setLeaderboardPosition(res.user_position);
           setLeaderboardTotalPages(res.pagination?.totalPages || 1);
           setLeaderboardTotalCount(res.pagination?.total || 0);
@@ -739,67 +754,137 @@ export const TalentHubPayments: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    leaderboard.map((item) => (
-                      <tr
-                        key={item.rank}
-                        className={`transition-colors ${
-                          item.is_current_user
-                            ? 'bg-emerald-500/10 hover:bg-emerald-500/15 font-semibold text-white'
-                            : 'hover:bg-white/[0.02]'
-                        }`}
-                      >
-                        <td className="py-3.5 px-4 font-black">
-                          <div className="flex items-center gap-1.5">
-                            {item.rank === 1 ? (
-                              <Crown className="w-4 h-4 text-amber-300" />
-                            ) : item.rank === 2 ? (
-                              <Medal className="w-4 h-4 text-slate-300" />
-                            ) : item.rank === 3 ? (
-                              <Award className="w-4 h-4 text-amber-600" />
-                            ) : (
-                              <span className="text-slate-500 text-xs w-4 text-center">#{item.rank}</span>
-                            )}
-                            <span className="text-sm">#{item.rank}</span>
-                          </div>
-                        </td>
+                    <>
+                      {leaderboard.map((item) => (
+                        <tr
+                          key={item.rank}
+                          className={`transition-colors ${
+                            item.is_current_user
+                              ? 'bg-emerald-500/10 hover:bg-emerald-500/15 font-semibold text-white'
+                              : 'hover:bg-white/[0.02]'
+                          }`}
+                        >
+                          <td className="py-3.5 px-4 font-black">
+                            <div className="flex items-center gap-1.5">
+                              {item.rank === 1 ? (
+                                <Crown className="w-4 h-4 text-amber-300" />
+                              ) : item.rank === 2 ? (
+                                <Medal className="w-4 h-4 text-slate-300" />
+                              ) : item.rank === 3 ? (
+                                <Award className="w-4 h-4 text-amber-600" />
+                              ) : (
+                                <span className="text-slate-500 text-xs w-4 text-center">#{item.rank}</span>
+                              )}
+                              <span className="text-sm">#{item.rank}</span>
+                            </div>
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-white">
-                              {item.is_current_user
-                                ? talentProfile?.full_name || item.name
-                                : item.name}
-                            </span>
-                            {item.is_current_user && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
-                                You
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-white">
+                                {item.is_current_user
+                                  ? talentProfile?.full_name || item.name
+                                  : item.name}
                               </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-slate-400 font-mono block mt-0.5">
-                            {item.email_masked}
-                          </span>
-                        </td>
+                              {item.is_current_user && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-slate-400 font-mono block mt-0.5">
+                              {item.email_masked}
+                            </span>
+                          </td>
 
-                        <td className="py-3.5 px-4 text-xs font-mono text-slate-400">
-                          {item.talent_id && item.talent_id !== 'NA'
-                            ? item.talent_id
-                            : item.is_current_user && talentProfile?.registration_code
-                            ? talentProfile.registration_code
-                            : 'NA'}
-                        </td>
+                          <td className="py-3.5 px-4 text-xs font-mono text-slate-400">
+                            {item.talent_id && item.talent_id !== 'NA'
+                              ? item.talent_id
+                              : item.is_current_user && talentProfile?.registration_code
+                              ? talentProfile.registration_code
+                              : 'NA'}
+                          </td>
 
-                        <td className="py-3.5 px-4">
-                          <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-medium">
-                            {item.grade}
-                          </span>
-                        </td>
+                          <td className="py-3.5 px-4">
+                            <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-medium">
+                              {item.grade}
+                            </span>
+                          </td>
 
-                        <td className="py-3.5 px-4 text-right font-black text-emerald-400 text-base whitespace-nowrap">
-                          ₹{item.total_paid.toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    ))
+                          <td className="py-3.5 px-4 text-right font-black text-emerald-400 text-base whitespace-nowrap">
+                            ₹{item.total_paid.toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* Neighborhood for users ranked outside Top 10 */}
+                      {leaderboardPosition.rank &&
+                        leaderboardPosition.rank > 10 &&
+                        userNeighborhood.filter((n) => n.rank > 10).length > 0 && (
+                          <>
+                            <tr className="bg-white/[0.01]">
+                              <td colSpan={5} className="py-2.5 text-center text-slate-500 font-bold tracking-widest text-sm">
+                                • • •
+                              </td>
+                            </tr>
+                            {userNeighborhood
+                              .filter((n) => n.rank > 10)
+                              .map((item) => (
+                                <tr
+                                  key={item.rank}
+                                  className={`transition-colors ${
+                                    item.is_current_user
+                                      ? 'bg-emerald-500/15 hover:bg-emerald-500/20 font-semibold text-white ring-1 ring-emerald-500/30'
+                                      : 'hover:bg-white/[0.02]'
+                                  }`}
+                                >
+                                  <td className="py-3.5 px-4 font-black">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-slate-500 text-xs w-4 text-center">#{item.rank}</span>
+                                      <span className="text-sm">#{item.rank}</span>
+                                    </div>
+                                  </td>
+
+                                  <td className="py-3.5 px-4">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-white">
+                                        {item.is_current_user
+                                          ? talentProfile?.full_name || item.name
+                                          : item.name}
+                                      </span>
+                                      {item.is_current_user && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold uppercase shadow-sm">
+                                          You
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-xs text-slate-400 font-mono block mt-0.5">
+                                      {item.email_masked}
+                                    </span>
+                                  </td>
+
+                                  <td className="py-3.5 px-4 text-xs font-mono text-slate-400">
+                                    {item.talent_id && item.talent_id !== 'NA'
+                                      ? item.talent_id
+                                      : item.is_current_user && talentProfile?.registration_code
+                                      ? talentProfile.registration_code
+                                      : 'NA'}
+                                  </td>
+
+                                  <td className="py-3.5 px-4">
+                                    <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-medium">
+                                      {item.grade}
+                                    </span>
+                                  </td>
+
+                                  <td className="py-3.5 px-4 text-right font-black text-emerald-400 text-base whitespace-nowrap">
+                                    ₹{item.total_paid.toLocaleString('en-IN')}
+                                  </td>
+                                </tr>
+                              ))}
+                          </>
+                        )}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -818,44 +903,97 @@ export const TalentHubPayments: React.FC = () => {
                   <p className="text-sm font-semibold text-white">No rankings yet</p>
                 </div>
               ) : (
-                leaderboard.map((item) => (
-                  <div
-                    key={item.rank}
-                    className={`p-3.5 flex items-center justify-between gap-3 ${
-                      item.is_current_user ? 'bg-emerald-500/10' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center font-bold text-xs shrink-0 text-amber-300">
-                        #{item.rank}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-bold text-white text-sm truncate">
-                            {item.is_current_user
-                              ? talentProfile?.full_name || item.name
-                              : item.name}
-                          </p>
-                          {item.is_current_user && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold shrink-0">
-                              You
-                            </span>
-                          )}
+                <>
+                  {leaderboard.map((item) => (
+                    <div
+                      key={item.rank}
+                      className={`p-3.5 flex items-center justify-between gap-3 ${
+                        item.is_current_user ? 'bg-emerald-500/10' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center font-bold text-xs shrink-0 text-amber-300">
+                          #{item.rank}
                         </div>
-                        <p className="text-[11px] text-slate-400 font-mono truncate">
-                          {item.email_masked}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-bold text-white text-sm truncate">
+                              {item.is_current_user
+                                ? talentProfile?.full_name || item.name
+                                : item.name}
+                            </p>
+                            {item.is_current_user && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold shrink-0">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 font-mono truncate">
+                            {item.email_masked}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-black text-emerald-400">
+                          ₹{item.total_paid.toLocaleString('en-IN')}
                         </p>
+                        <span className="text-[10px] text-slate-400">{item.grade}</span>
                       </div>
                     </div>
+                  ))}
 
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-emerald-400">
-                        ₹{item.total_paid.toLocaleString('en-IN')}
-                      </p>
-                      <span className="text-[10px] text-slate-400">{item.grade}</span>
-                    </div>
-                  </div>
-                ))
+                  {/* Mobile Neighborhood for users outside Top 10 */}
+                  {leaderboardPosition.rank &&
+                    leaderboardPosition.rank > 10 &&
+                    userNeighborhood.filter((n) => n.rank > 10).length > 0 && (
+                      <>
+                        <div className="py-2.5 text-center text-slate-500 font-bold tracking-widest text-xs">
+                          • • •
+                        </div>
+                        {userNeighborhood
+                          .filter((n) => n.rank > 10)
+                          .map((item) => (
+                            <div
+                              key={item.rank}
+                              className={`p-3.5 flex items-center justify-between gap-3 ${
+                                item.is_current_user ? 'bg-emerald-500/15 ring-1 ring-emerald-500/30' : ''
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center font-bold text-xs shrink-0 text-slate-300">
+                                  #{item.rank}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="font-bold text-white text-sm truncate">
+                                      {item.is_current_user
+                                        ? talentProfile?.full_name || item.name
+                                        : item.name}
+                                    </p>
+                                    {item.is_current_user && (
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/25 text-emerald-300 font-bold shrink-0">
+                                        You
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 font-mono truncate">
+                                    {item.email_masked}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-black text-emerald-400">
+                                  ₹{item.total_paid.toLocaleString('en-IN')}
+                                </p>
+                                <span className="text-[10px] text-slate-400">{item.grade}</span>
+                              </div>
+                            </div>
+                          ))}
+                      </>
+                    )}
+                </>
               )}
             </div>
 

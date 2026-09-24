@@ -521,7 +521,9 @@ export default {
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
+        // Default pagination limit is 10 records per page; allow up to 10000 for admin export queries
+        const limitParam = parseInt(url.searchParams.get('limit') || '10', 10);
+        const limit = Math.min(10000, Math.max(1, isNaN(limitParam) ? 10 : limitParam));
         const offset = (page - 1) * limit;
 
         const search = (url.searchParams.get('search') || '').trim().toLowerCase();
@@ -669,7 +671,7 @@ export default {
 
         const listSql = `
           SELECT 
-            LOWER(email) as email,
+            LOWER(TRIM(email)) as email,
             MAX(talent_id) as talent_id,
             MAX(talent_name) as talent_name,
             MAX(source_name) as source_name,
@@ -678,13 +680,13 @@ export default {
             MAX(payment_date) as last_payment_date
           FROM payments
           ${whereClause}
-          GROUP BY LOWER(email)
-          ORDER BY ${sortBy} ${sortOrder}, last_payment_date DESC, LOWER(email) ASC
+          GROUP BY LOWER(TRIM(email))
+          ORDER BY ${sortBy} ${sortOrder}, last_payment_date DESC, LOWER(TRIM(email)) ASC
           LIMIT ? OFFSET ?
         `;
 
         const countSql = `
-          SELECT COUNT(DISTINCT LOWER(email)) as total_contributors
+          SELECT COUNT(DISTINCT LOWER(TRIM(email))) as total_contributors
           FROM payments
           ${whereClause}
         `;
@@ -990,7 +992,7 @@ export default {
           const chunk = refList.slice(i, i + refChunkSize);
           const placeholders = chunk.map(() => '?').join(', ');
           const selectSql = `
-            SELECT LOWER(email) as email, reference_number
+            SELECT LOWER(TRIM(email)) as email, reference_number
             FROM payments
             WHERE reference_number IN (${placeholders})
           `;
@@ -1017,9 +1019,9 @@ export default {
           const chunk = noRefEmails.slice(i, i + refChunkSize);
           const placeholders = chunk.map(() => '?').join(', ');
           const selectSql = `
-            SELECT LOWER(email) as email, project_name, amount, payment_date
+            SELECT LOWER(TRIM(email)) as email, project_name, amount, payment_date
             FROM payments
-            WHERE (reference_number IS NULL OR reference_number = '') AND LOWER(email) IN (${placeholders})
+            WHERE (reference_number IS NULL OR reference_number = '') AND LOWER(TRIM(email)) IN (${placeholders})
           `;
           const queryRes = await env.DB.prepare(selectSql).bind(...chunk).all();
           if (queryRes?.results) {
@@ -1134,7 +1136,7 @@ export default {
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
         const selectSql = `
-          SELECT DISTINCT LOWER(email) as email
+          SELECT DISTINCT LOWER(TRIM(email)) as email
           FROM payments
           WHERE talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = ''
         `;
@@ -1163,14 +1165,14 @@ export default {
           if (code && code !== 'NA' && code !== '') {
             updateStatements.push(
               env.DB.prepare(
-                `UPDATE payments SET talent_id = ?, talent_name = COALESCE(?, talent_name, source_name), updated_at = ? WHERE LOWER(email) = ?`
+                `UPDATE payments SET talent_id = ?, talent_name = COALESCE(?, talent_name, source_name), updated_at = ? WHERE LOWER(TRIM(email)) = ?`
               ).bind(code, name || null, now, email)
             );
           } else {
             // Unregistered in Talent Hub: set talent_name to source_name if talent_name is missing
             updateStatements.push(
               env.DB.prepare(
-                `UPDATE payments SET talent_name = COALESCE(talent_name, source_name), updated_at = ? WHERE LOWER(email) = ? AND (talent_name IS NULL OR talent_name = '')`
+                `UPDATE payments SET talent_name = COALESCE(talent_name, source_name), updated_at = ? WHERE LOWER(TRIM(email)) = ? AND (talent_name IS NULL OR talent_name = '')`
               ).bind(now, email)
             );
           }
@@ -1195,48 +1197,48 @@ export default {
       }
 
       // ==========================================
-      // TALENT ENDPOINTS (STRICT ISOLATION)
+      // TALENT ENDPOINTS (STRICT ISOLATION BY AUTHENTICATED EMAIL)
       // ==========================================
 
-      // 9. GET /talent/payments — Authenticated talent payment history
+      // 9. GET /talent/payments — Authenticated talent payment history (Identified strictly by EMAIL)
       if (pathname === '/talent/payments' && request.method === 'GET') {
         const auth = await authenticateTalent(request, env);
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
-        const talentEmail = auth.talent.email;
-        const talentId = auth.talent.id;
+        const talentEmail = (auth.talent.email || '').toLowerCase().trim();
+        if (!talentEmail) {
+          return errorResponse('Authenticated email is required', 400, corsHeaders);
+        }
 
         // Auto-resolve NA/missing records in D1 if talent registered later
-        if (talentEmail) {
-          try {
-            const checkSql = `SELECT COUNT(*) as cnt FROM payments WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = '')`;
-            const checkRes = await env.DB.prepare(checkSql).bind(talentEmail).first();
-            if (checkRes && checkRes.cnt > 0) {
-              const resolvedMap = await resolveTalentRegistrationCodes([talentEmail], env);
-              const talentInfo = resolvedMap.get(talentEmail.toLowerCase().trim());
-              const code = talentInfo?.registration_code;
-              const name = talentInfo?.talent_name;
-              if (code && code !== 'NA' && code !== '') {
-                const now = new Date().toISOString();
-                await env.DB.prepare(
-                  `UPDATE payments SET talent_id = ?, talent_name = COALESCE(?, talent_name, source_name), updated_at = ? WHERE LOWER(email) = LOWER(?)`
-                ).bind(code, name || null, now, talentEmail).run();
-              }
+        try {
+          const checkSql = `SELECT COUNT(*) as cnt FROM payments WHERE LOWER(TRIM(email)) = ? AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-' OR talent_name IS NULL OR talent_name = '')`;
+          const checkRes = await env.DB.prepare(checkSql).bind(talentEmail).first();
+          if (checkRes && checkRes.cnt > 0) {
+            const resolvedMap = await resolveTalentRegistrationCodes([talentEmail], env);
+            const talentInfo = resolvedMap.get(talentEmail);
+            const code = talentInfo?.registration_code;
+            const name = talentInfo?.talent_name;
+            if (code && code !== 'NA' && code !== '') {
+              const now = new Date().toISOString();
+              await env.DB.prepare(
+                `UPDATE payments SET talent_id = ?, talent_name = COALESCE(?, talent_name, source_name), updated_at = ? WHERE LOWER(TRIM(email)) = ?`
+              ).bind(code, name || null, now, talentEmail).run();
             }
-          } catch (syncErr) {
-            console.warn('[Talent Payment Lazy Sync Error]:', syncErr.message);
           }
+        } catch (syncErr) {
+          console.warn('[Talent Payment Lazy Sync Error]:', syncErr.message);
         }
 
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-        const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
+        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
         const offset = (page - 1) * limit;
 
         const search = (url.searchParams.get('search') || '').trim().toLowerCase();
         const status = (url.searchParams.get('status') || '').trim();
 
-        const whereClauses = ['(LOWER(email) = LOWER(?) OR (talent_id IS NOT NULL AND talent_id = ?))'];
-        const params = [talentEmail, talentId];
+        const whereClauses = ['LOWER(TRIM(email)) = ?'];
+        const params = [talentEmail];
 
         if (search) {
           whereClauses.push('(LOWER(project_name) LIKE ? OR LOWER(work_type) LIKE ? OR LOWER(reference_number) LIKE ?)');
@@ -1253,7 +1255,7 @@ export default {
 
         // Only select columns needed by Talent UI — zero internal leakage
         const listSql = `
-          SELECT id, project_name, work_type, amount, currency, status, payment_date, reference_number, reference_link, notes, created_at
+          SELECT id, project_name, work_type, amount, currency, status, payment_date, reference_number, reference_link, talent_id, talent_name, source_name, source, notes, created_at, updated_at
           FROM payments
           ${whereSql}
           ORDER BY payment_date DESC, created_at DESC
@@ -1272,16 +1274,33 @@ export default {
         ]);
 
         const total = countResult ? countResult.total : 0;
+        const rows = (listResult.results || []).map((row) => ({
+          id: row.id,
+          project_name: row.project_name,
+          work_type: row.work_type,
+          amount: Number(row.amount) || 0,
+          currency: row.currency || 'INR',
+          status: row.status,
+          payment_date: row.payment_date,
+          reference_number: row.reference_number,
+          reference_link: row.reference_link,
+          talent_id: row.talent_id,
+          talent_name: deriveDisplayName(row.email, row.talent_id, row.talent_name, row.source_name),
+          source: row.source,
+          notes: row.notes,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }));
 
         return jsonResponse(
           {
             success: true,
-            data: listResult.results || [],
+            data: rows,
             pagination: {
               page,
               limit,
               total,
-              totalPages,
+              totalPages: Math.ceil(total / limit),
             },
           },
           200,
@@ -1289,13 +1308,12 @@ export default {
         );
       }
 
-      // 10. GET /talent/payments/summary — Lightweight talent summary count, rank & grade
+      // 10. GET /talent/payments/summary — Lightweight talent summary count, rank & grade (Identified strictly by EMAIL)
       if (pathname === '/talent/payments/summary' && request.method === 'GET') {
         const auth = await authenticateTalent(request, env);
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
-        const talentEmail = auth.talent.email;
-        const talentId = auth.talent.id;
+        const talentEmail = (auth.talent.email || '').toLowerCase().trim();
 
         const summarySql = `
           SELECT 
@@ -1303,28 +1321,28 @@ export default {
             COALESCE(SUM(CASE WHEN status = 'Paid' THEN amount ELSE 0 END), 0) as total_paid,
             COALESCE(SUM(CASE WHEN status = 'Pending' OR status = 'Processing' THEN 1 ELSE 0 END), 0) as pending_count
           FROM payments
-          WHERE LOWER(email) = LOWER(?) OR (talent_id IS NOT NULL AND talent_id = ?)
+          WHERE LOWER(TRIM(email)) = ?
         `;
 
-        // Calculate rank among all paid contributors
+        // Calculate rank among all paid contributors strictly by email
         const rankSql = `
           SELECT COUNT(*) + 1 as rank
           FROM (
-            SELECT LOWER(email), SUM(amount) as sum_paid
+            SELECT LOWER(TRIM(email)), SUM(amount) as sum_paid
             FROM payments
             WHERE status = 'Paid'
-            GROUP BY LOWER(email)
+            GROUP BY LOWER(TRIM(email))
             HAVING sum_paid > (
               SELECT COALESCE(SUM(amount), 0)
               FROM payments
-              WHERE status = 'Paid' AND (LOWER(email) = LOWER(?) OR (talent_id IS NOT NULL AND talent_id = ?))
+              WHERE status = 'Paid' AND LOWER(TRIM(email)) = ?
             )
           )
         `;
 
         const [summary, rankRow] = await Promise.all([
-          env.DB.prepare(summarySql).bind(talentEmail, talentId).first(),
-          env.DB.prepare(rankSql).bind(talentEmail, talentId).first(),
+          env.DB.prepare(summarySql).bind(talentEmail).first(),
+          env.DB.prepare(rankSql).bind(talentEmail).first(),
         ]);
 
         const totalPaid = Number(summary?.total_paid) || 0;
@@ -1346,21 +1364,17 @@ export default {
         );
       }
 
-      // 11. GET /talent/leaderboard — Privacy-masked Contributor Leaderboard
+      // 11. GET /talent/leaderboard — Privacy-masked Contributor Leaderboard (Top 10 + Nearby Neighborhood)
       if (pathname === '/talent/leaderboard' && request.method === 'GET') {
         const auth = await authenticateTalent(request, env);
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
-        const talentEmail = auth.talent.email;
-        const talentId = auth.talent.id;
+        const talentEmail = (auth.talent.email || '').toLowerCase().trim();
 
-        const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-        const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
-        const offset = (page - 1) * limit;
-
-        const listSql = `
+        // 1. Fetch Top 10 Contributors
+        const top10Sql = `
           SELECT 
-            LOWER(email) as email,
+            LOWER(TRIM(email)) as email,
             MAX(talent_id) as talent_id,
             MAX(talent_name) as talent_name,
             MAX(source_name) as source_name,
@@ -1369,46 +1383,46 @@ export default {
             MAX(payment_date) as last_payment_date
           FROM payments
           WHERE status = 'Paid'
-          GROUP BY LOWER(email)
-          ORDER BY total_paid DESC, last_payment_date DESC, LOWER(email) ASC
-          LIMIT ? OFFSET ?
+          GROUP BY LOWER(TRIM(email))
+          ORDER BY total_paid DESC, last_payment_date DESC, LOWER(TRIM(email)) ASC
+          LIMIT 10 OFFSET 0
         `;
 
         const countSql = `
-          SELECT COUNT(DISTINCT LOWER(email)) as total_contributors
+          SELECT COUNT(DISTINCT LOWER(TRIM(email))) as total_contributors
           FROM payments
           WHERE status = 'Paid'
         `;
 
-        // User specific position query
+        // User specific statistics
         const userStatsSql = `
           SELECT 
             COALESCE(SUM(amount), 0) as user_total_paid,
             COUNT(*) as user_payment_count
           FROM payments
-          WHERE status = 'Paid' AND (LOWER(email) = LOWER(?) OR (talent_id IS NOT NULL AND talent_id = ?))
+          WHERE status = 'Paid' AND LOWER(TRIM(email)) = ?
         `;
 
         const rankSql = `
           SELECT COUNT(*) + 1 as rank
           FROM (
-            SELECT LOWER(email), SUM(amount) as sum_paid
+            SELECT LOWER(TRIM(email)), SUM(amount) as sum_paid
             FROM payments
             WHERE status = 'Paid'
-            GROUP BY LOWER(email)
+            GROUP BY LOWER(TRIM(email))
             HAVING sum_paid > (
               SELECT COALESCE(SUM(amount), 0)
               FROM payments
-              WHERE status = 'Paid' AND (LOWER(email) = LOWER(?) OR (talent_id IS NOT NULL AND talent_id = ?))
+              WHERE status = 'Paid' AND LOWER(TRIM(email)) = ?
             )
           )
         `;
 
-        const [listResult, countResult, userStats, rankRow] = await Promise.all([
-          env.DB.prepare(listSql).bind(limit, offset).all(),
+        const [top10Result, countResult, userStats, rankRow] = await Promise.all([
+          env.DB.prepare(top10Sql).all(),
           env.DB.prepare(countSql).first(),
-          env.DB.prepare(userStatsSql).bind(talentEmail, talentId).first(),
-          env.DB.prepare(rankSql).bind(talentEmail, talentId).first(),
+          env.DB.prepare(userStatsSql).bind(talentEmail).first(),
+          env.DB.prepare(rankSql).bind(talentEmail).first(),
         ]);
 
         const totalContributors = countResult ? countResult.total_contributors : 0;
@@ -1416,9 +1430,9 @@ export default {
         const userRank = userTotalPaid > 0 ? (rankRow?.rank || 1) : null;
         const userGrade = calculateGrade(userTotalPaid);
 
-        const results = (listResult.results || []).map((row, index) => {
+        const top10Results = (top10Result.results || []).map((row, index) => {
           const isCurrentUser = row.email === talentEmail;
-          const rank = offset + index + 1;
+          const rank = index + 1;
           return {
             rank,
             talent_id: row.talent_id || null,
@@ -1431,10 +1445,55 @@ export default {
           };
         });
 
+        // 2. If user is ranked outside top 10 (> 10), fetch their neighborhood (rank-1, rank, rank+1)
+        let userNeighborhood = [];
+        if (userRank && userRank > 10) {
+          // Neighborhood offset: if user is #15, fetch from offset 13 (ranks 14, 15, 16)
+          // Avoid duplicating top 10 (offset >= 10)
+          const startOffset = Math.max(10, userRank - 2);
+          const limitCount = userRank >= totalContributors ? 2 : 3;
+
+          const neighborhoodSql = `
+            SELECT 
+              LOWER(TRIM(email)) as email,
+              MAX(talent_id) as talent_id,
+              MAX(talent_name) as talent_name,
+              MAX(source_name) as source_name,
+              COALESCE(SUM(amount), 0) as total_paid,
+              COUNT(*) as payment_count,
+              MAX(payment_date) as last_payment_date
+            FROM payments
+            WHERE status = 'Paid'
+            GROUP BY LOWER(TRIM(email))
+            ORDER BY total_paid DESC, last_payment_date DESC, LOWER(TRIM(email)) ASC
+            LIMIT ? OFFSET ?
+          `;
+
+          const neighborhoodResult = await env.DB.prepare(neighborhoodSql).bind(limitCount, startOffset).all();
+          if (neighborhoodResult?.results) {
+            userNeighborhood = neighborhoodResult.results.map((row, idx) => {
+              const rank = startOffset + idx + 1;
+              const isCurrentUser = row.email === talentEmail;
+              return {
+                rank,
+                talent_id: row.talent_id || null,
+                name: deriveDisplayName(row.email, row.talent_id, row.talent_name, row.source_name),
+                email_masked: isCurrentUser ? row.email : maskEmail(row.email),
+                company: 'Zenemoo Contributor',
+                grade: calculateGrade(row.total_paid),
+                total_paid: Number(row.total_paid) || 0,
+                is_current_user: isCurrentUser,
+                is_neighborhood: true,
+              };
+            });
+          }
+        }
+
         return jsonResponse(
           {
             success: true,
-            data: results,
+            data: top10Results,
+            user_neighborhood: userNeighborhood,
             user_position: {
               rank: userRank,
               total_paid: userTotalPaid,
@@ -1442,10 +1501,10 @@ export default {
               payment_count: userStats?.user_payment_count || 0,
             },
             pagination: {
-              page,
-              limit,
+              page: 1,
+              limit: 10,
               total: totalContributors,
-              totalPages: Math.ceil(totalContributors / limit),
+              totalPages: Math.ceil(totalContributors / 10),
             },
           },
           200,

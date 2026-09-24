@@ -264,6 +264,49 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'cf_order_id', label: 'Cashfree Order ID' },
     ],
   },
+  'payment-management': {
+    sectionId: 'payment-management',
+    sectionName: 'Payment Management',
+    defaultColumns: [
+      { key: 'id', label: 'Payment ID' },
+      { key: 'talent_id', label: 'Talent ID' },
+      { key: 'contributor_name', label: 'Contributor Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'project_name', label: 'Project / Work Name' },
+      { key: 'work_type', label: 'Work Type' },
+      { key: 'amount', label: 'Amount' },
+      { key: 'currency', label: 'Currency' },
+      { key: 'status', label: 'Status' },
+      { key: 'payment_date', label: 'Payment Date' },
+      { key: 'reference_number', label: 'Reference Number' },
+      { key: 'reference_link', label: 'Proof / Link' },
+      { key: 'source', label: 'Source' },
+      { key: 'notes', label: 'Notes' },
+      { key: 'created_at', label: 'Created At' },
+      { key: 'updated_at', label: 'Updated At' },
+    ],
+  },
+  payments: {
+    sectionId: 'payments',
+    sectionName: 'Payment Records',
+    defaultColumns: [
+      { key: 'id', label: 'Payment ID' },
+      { key: 'talent_id', label: 'Talent ID' },
+      { key: 'contributor_name', label: 'Contributor Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'project_name', label: 'Project / Work Name' },
+      { key: 'work_type', label: 'Work Type' },
+      { key: 'amount', label: 'Amount' },
+      { key: 'currency', label: 'Currency' },
+      { key: 'status', label: 'Status' },
+      { key: 'payment_date', label: 'Payment Date' },
+      { key: 'reference_number', label: 'Reference Number' },
+      { key: 'reference_link', label: 'Proof / Link' },
+      { key: 'source', label: 'Source' },
+      { key: 'notes', label: 'Notes' },
+      { key: 'created_at', label: 'Created At' },
+    ],
+  },
 };
 
 // ── Intelligent Value Extraction & Formatting ─────────────────────────────────
@@ -275,6 +318,11 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
  */
 export function formatFieldValue(row: Record<string, any>, colKey: string): string {
   if (!row || typeof row !== 'object') return '';
+
+  // Contributor Name alias resolution for payments
+  if (colKey === 'contributor_name') {
+    return row.display_name || row.talent_name || row.source_name || row.name || '';
+  }
 
   // 1. Direct property lookup
   let val = row[colKey];

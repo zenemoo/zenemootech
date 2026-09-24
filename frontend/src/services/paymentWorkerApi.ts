@@ -67,6 +67,7 @@ export interface TalentLeaderboardItem {
 export interface TalentLeaderboardResponse {
   success: boolean;
   data: TalentLeaderboardItem[];
+  user_neighborhood?: TalentLeaderboardItem[];
   user_position: {
     rank: number | null;
     total_paid: number;
