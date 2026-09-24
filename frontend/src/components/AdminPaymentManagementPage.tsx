@@ -113,6 +113,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   const [editingPayment, setEditingPayment] = useState<PaymentRecord | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSyncingTalentIds, setIsSyncingTalentIds] = useState<boolean>(false);
 
   // --- Form State (Add / Edit) ---
   const [formData, setFormData] = useState({
@@ -311,6 +312,24 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
       addToast('Failed to save payment', err.response?.data?.message || err.message, 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSyncTalentIds = async () => {
+    setIsSyncingTalentIds(true);
+    try {
+      const res = await paymentWorkerApi.syncTalentIds();
+      if (res.success) {
+        addToast('Talent IDs Synced', res.message || `Resolved ${res.resolved_count} Talent ID(s)`, 'success');
+        loadPaymentData(false);
+        loadLeaderboardData(false);
+      } else {
+        addToast('Sync failed', res.message || 'Could not sync Talent IDs', 'error');
+      }
+    } catch (err: any) {
+      addToast('Sync failed', err.response?.data?.message || err.message, 'error');
+    } finally {
+      setIsSyncingTalentIds(false);
     }
   };
 
@@ -991,6 +1010,16 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           </button>
 
           <button
+            onClick={handleSyncTalentIds}
+            disabled={isSyncingTalentIds || isRefreshing}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-white transition-all text-sm font-medium shadow-sm disabled:opacity-50"
+            title="Sync missing/NA Talent IDs from Talent Network database"
+          >
+            <Sparkles className={`w-4 h-4 text-emerald-400 ${isSyncingTalentIds ? 'animate-spin' : ''}`} />
+            {isSyncingTalentIds ? 'Syncing IDs...' : 'Sync Talent IDs'}
+          </button>
+
+          <button
             onClick={() => {
               setImportStep('upload');
               setImportRows([]);
@@ -1239,11 +1268,9 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                           <div className="font-medium text-white truncate max-w-[220px]" title={p.email}>
                             {p.email}
                           </div>
-                          {p.talent_id && (
-                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                              ID: {p.talent_id}
-                            </div>
-                          )}
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            Talent ID: {p.talent_id && p.talent_id !== 'NA' ? p.talent_id : 'NA'}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-4 font-medium text-slate-200">
@@ -1466,7 +1493,7 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
                         </td>
 
                         <td className="py-3.5 px-4 text-xs font-mono text-slate-400">
-                          {item.talent_id || '-'}
+                          {item.talent_id && item.talent_id !== 'NA' ? item.talent_id : 'NA'}
                         </td>
 
                         <td className="py-3.5 px-4">

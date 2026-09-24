@@ -229,6 +229,17 @@ export const paymentWorkerApi = {
     return response.data;
   },
 
+  async syncTalentIds(): Promise<{
+    success: boolean;
+    message: string;
+    resolved_count: number;
+    total_unresolved_checked?: number;
+  }> {
+    const baseUrl = getPaymentApiBaseUrl();
+    const response = await axios.post(`${baseUrl}/admin/payments/sync-talent-ids`, {}, getAdminAuthHeaders());
+    return response.data;
+  },
+
   // --- Talent Endpoints ---
 
   async getTalentPayments(

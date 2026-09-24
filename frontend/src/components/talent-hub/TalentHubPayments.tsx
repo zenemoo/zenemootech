@@ -771,7 +771,11 @@ export const TalentHubPayments: React.FC = () => {
                         </td>
 
                         <td className="py-3.5 px-4 text-xs font-mono text-slate-400">
-                          {item.talent_id || '-'}
+                          {item.talent_id && item.talent_id !== 'NA'
+                            ? item.talent_id
+                            : item.is_current_user && talentProfile?.registration_code
+                            ? talentProfile.registration_code
+                            : 'NA'}
                         </td>
 
                         <td className="py-3.5 px-4">

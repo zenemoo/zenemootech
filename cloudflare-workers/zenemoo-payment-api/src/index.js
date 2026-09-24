@@ -174,7 +174,7 @@ async function verifySupabaseToken(token, env) {
   }
 
   // 2. Fallback to Supabase Auth API check
-  const supabaseUrl = env.SUPABASE_URL || 'https://kdtujpkwygdwhmffwgyy.supabase.co';
+  const supabaseUrl = env.SUPABASE_URL || 'https://wkbkomwjuywdeaxgchxw.supabase.co';
   const supabaseAnonKey = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
   if (supabaseUrl) {
     try {
@@ -218,6 +218,77 @@ async function verifySupabaseToken(token, env) {
   }
 
   return null;
+}
+
+/**
+ * Resolves Talent Registration Code (Zenemoo ID) from Supabase talent_registrations
+ * CRITICAL EGRESS PROTECTION:
+ * - Uses exact indexed email lookup (select=email,registration_code&email=in.(...))
+ * - Never does SELECT * or fetches the full table
+ * - Batches unique emails in chunks of up to 50
+ * - Returns a Map<normalizedEmail, registration_code | 'NA'>
+ */
+async function resolveTalentRegistrationCodes(emails, env) {
+  const result = new Map();
+  if (!emails || !Array.isArray(emails) || emails.length === 0) return result;
+
+  const uniqueEmails = Array.from(
+    new Set(
+      emails
+        .map((e) => (typeof e === 'string' ? e.toLowerCase().trim() : ''))
+        .filter(Boolean)
+    )
+  );
+
+  if (uniqueEmails.length === 0) return result;
+
+  const supabaseUrl = env.SUPABASE_URL || 'https://wkbkomwjuywdeaxgchxw.supabase.co';
+  const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY;
+
+  if (!supabaseKey) {
+    for (const em of uniqueEmails) {
+      result.set(em, 'NA');
+    }
+    return result;
+  }
+
+  const batchSize = 50;
+  for (let i = 0; i < uniqueEmails.length; i += batchSize) {
+    const chunk = uniqueEmails.slice(i, i + batchSize);
+    const inList = chunk.map((e) => `"${e}"`).join(',');
+    const url = `${supabaseUrl}/rest/v1/talent_registrations?select=email,registration_code&email=in.(${encodeURIComponent(inList)})`;
+
+    try {
+      const res = await fetch(url, {
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+      });
+
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows)) {
+          for (const row of rows) {
+            if (row.email && row.registration_code) {
+              result.set(row.email.toLowerCase().trim(), row.registration_code.trim());
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Talent ID Supabase Resolution Error]:', err.message);
+    }
+  }
+
+  // Populate 'NA' for any emails not registered in talent_registrations
+  for (const em of uniqueEmails) {
+    if (!result.has(em)) {
+      result.set(em, 'NA');
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -596,6 +667,10 @@ export default {
         const now = new Date().toISOString();
         const s = validation.sanitized;
 
+        // Resolve Zenemoo Registration ID from Talent Network database
+        const talentMap = await resolveTalentRegistrationCodes([s.email], env);
+        s.talent_id = talentMap.get(s.email.toLowerCase().trim()) || 'NA';
+
         const insertSql = `
           INSERT INTO payments (
             id, talent_id, email, project_name, amount, currency, status,
@@ -650,6 +725,10 @@ export default {
 
         const now = new Date().toISOString();
         const s = validation.sanitized;
+
+        // Resolve Zenemoo Registration ID from Talent Network database
+        const talentMap = await resolveTalentRegistrationCodes([s.email], env);
+        s.talent_id = talentMap.get(s.email.toLowerCase().trim()) || 'NA';
 
         const updateSql = `
           UPDATE payments SET
@@ -829,6 +908,14 @@ export default {
           }
         }
 
+        // --- Batch Resolve Zenemoo Registration IDs (Talent IDs) from Talent Network ---
+        const uniqueImportEmails = Array.from(new Set(validatedItems.map((item) => item.email.toLowerCase().trim())));
+        const resolvedTalentMap = await resolveTalentRegistrationCodes(uniqueImportEmails, env);
+
+        for (const s of validatedItems) {
+          s.talent_id = resolvedTalentMap.get(s.email.toLowerCase().trim()) || 'NA';
+        }
+
         // --- Build Insert Statements & Filter Out Both DB and In-Batch Duplicates ---
         const statements = [];
         const seenInBatch = new Set(existingKeys);
@@ -909,6 +996,63 @@ export default {
         );
       }
 
+      // 8b. POST /admin/payments/sync-talent-ids — Batch backfill/resync unresolved Talent IDs
+      if (pathname === '/admin/payments/sync-talent-ids' && request.method === 'POST') {
+        const auth = await authenticateAdmin(request, env);
+        if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
+
+        const selectSql = `
+          SELECT DISTINCT LOWER(email) as email
+          FROM payments
+          WHERE talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-'
+        `;
+        const queryRes = await env.DB.prepare(selectSql).all();
+        const unresolvedEmails = (queryRes?.results || []).map((r) => r.email).filter(Boolean);
+
+        if (unresolvedEmails.length === 0) {
+          return jsonResponse(
+            {
+              success: true,
+              message: 'All payment records already have resolved Talent IDs',
+              resolved_count: 0,
+            },
+            200,
+            corsHeaders
+          );
+        }
+
+        const resolvedMap = await resolveTalentRegistrationCodes(unresolvedEmails, env);
+        const now = new Date().toISOString();
+        const updateStatements = [];
+
+        for (const [email, code] of resolvedMap.entries()) {
+          if (code && code !== 'NA' && code !== '') {
+            updateStatements.push(
+              env.DB.prepare(
+                `UPDATE payments SET talent_id = ?, updated_at = ? WHERE LOWER(email) = ? AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-')`
+              ).bind(code, now, email)
+            );
+          }
+        }
+
+        const chunkSize = 100;
+        for (let i = 0; i < updateStatements.length; i += chunkSize) {
+          const chunk = updateStatements.slice(i, i + chunkSize);
+          await env.DB.batch(chunk);
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            message: `Successfully resolved and updated ${updateStatements.length} contributor Talent ID(s)`,
+            total_unresolved_checked: unresolvedEmails.length,
+            resolved_count: updateStatements.length,
+          },
+          200,
+          corsHeaders
+        );
+      }
+
       // ==========================================
       // TALENT ENDPOINTS (STRICT ISOLATION)
       // ==========================================
@@ -920,6 +1064,26 @@ export default {
 
         const talentEmail = auth.talent.email;
         const talentId = auth.talent.id;
+
+        // Auto-resolve NA/missing records in D1 if talent registered later
+        if (talentEmail) {
+          try {
+            const checkSql = `SELECT COUNT(*) as cnt FROM payments WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-')`;
+            const checkRes = await env.DB.prepare(checkSql).bind(talentEmail).first();
+            if (checkRes && checkRes.cnt > 0) {
+              const resolved = await resolveTalentRegistrationCodes([talentEmail], env);
+              const code = resolved.get(talentEmail.toLowerCase().trim());
+              if (code && code !== 'NA' && code !== '') {
+                const now = new Date().toISOString();
+                await env.DB.prepare(
+                  `UPDATE payments SET talent_id = ?, updated_at = ? WHERE LOWER(email) = LOWER(?) AND (talent_id IS NULL OR talent_id = 'NA' OR talent_id = '' OR talent_id = '-')`
+                ).bind(code, now, talentEmail).run();
+              }
+            }
+          } catch (syncErr) {
+            console.warn('[Talent Payment Lazy Sync Error]:', syncErr.message);
+          }
+        }
 
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
         const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));

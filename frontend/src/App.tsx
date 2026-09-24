@@ -62,7 +62,7 @@ import { extractAndStoreReferralCode } from './lib/opportunityApplicationStore';
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | '404'
   >('home');
   const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
@@ -191,6 +191,9 @@ function AppInner() {
         currentRoute === 'talent-hub-profile' ||
         currentRoute === 'talent-hub-opportunities' ||
         currentRoute === 'talent-hub-applications' ||
+        currentRoute === 'talent-hub-referrals' ||
+        currentRoute === 'talent-hub-team' ||
+        currentRoute === 'talent-hub-payments' ||
         currentRoute === 'talent-hub-support' ||
         currentRoute === 'talent-hub-support-history'
       ) {
@@ -276,6 +279,7 @@ function AppInner() {
         | 'talent-hub-applications'
         | 'talent-hub-referrals'
         | 'talent-hub-team'
+        | 'talent-hub-payments'
         | 'talent-hub-support'
         | 'talent-hub-support-history'
         | 'ai-data'
@@ -453,10 +457,20 @@ function AppInner() {
       ) {
         matchedRoute = 'talent-hub-team';
       } else if (
+        path === '/talent-hub/payments' ||
+        path === '/talent-hub/payments/' ||
+        hash === '#talent-hub/payments' ||
+        hash === '#/talent-hub/payments'
+      ) {
+        matchedRoute = 'talent-hub-payments';
+      } else if (
         path === '/talent-hub' ||
         path === '/talent-hub/' ||
+        path.startsWith('/talent-hub/') ||
         hash === '#talent-hub' ||
         hash === '#/talent-hub' ||
+        hash.startsWith('#talent-hub/') ||
+        hash.startsWith('#/talent-hub/') ||
         ((path === '/' || path === '') && (
           window.location.search.includes('error=') ||
           window.location.search.includes('code=') ||
@@ -981,6 +995,7 @@ function AppInner() {
         currentRoute === 'talent-hub-applications' ||
         currentRoute === 'talent-hub-referrals' ||
         currentRoute === 'talent-hub-team' ||
+        currentRoute === 'talent-hub-payments' ||
         currentRoute === 'talent-hub-support' ||
         currentRoute === 'talent-hub-support-history'
       ) ? (
@@ -998,6 +1013,8 @@ function AppInner() {
               ? 'referrals'
               : currentRoute === 'talent-hub-team'
               ? 'team'
+              : currentRoute === 'talent-hub-payments'
+              ? 'payments'
               : currentRoute === 'talent-hub-support'
               ? 'support-zenemooindia'
               : currentRoute === 'talent-hub-support-history'

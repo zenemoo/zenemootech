@@ -2,35 +2,7 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/zenemooai",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/opportunities",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/team-directory",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/privacy",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/terms",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/review",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/opportunity/:id*",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/((?!api/.*|assets/.*|favicon.png|sitemap.*\\.xml|robots.txt).*)",
+      "source": "/((?!api/.*|assets/.*|favicon.*|sitemap.*\\.xml|robots.txt).*)",
       "destination": "/index.html"
     }
   ]
