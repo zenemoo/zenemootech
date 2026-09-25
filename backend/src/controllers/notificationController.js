@@ -291,72 +291,107 @@ export const getUserNotifications = async (req, res, next) => {
 
 /**
  * 3b. GET /api/notifications/admin
- * Authenticated Admin Notifications Endpoint
- * Returns all internal operational events (bookings, meet generation, email delivery, system alerts)
+ * Authenticated Admin Notifications Endpoint with Server-Side Pagination & Filtering
+ * Supports page sizes (10, 25, 50, default 25), full database search, and minimal payload projection.
  */
 export const getAdminNotifications = async (req, res, next) => {
   try {
-    const { category, type, search, page = 1, limit = 100, days = 30 } = req.query;
-    const sinceDate = new Date(Date.now() - parseInt(days, 10) * 24 * 60 * 60 * 1000).toISOString();
-    const now = Date.now();
+    const rawPage = parseInt(req.query.page, 10);
+    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
 
-    let allNotifs = [];
+    const rawSize = parseInt(req.query.pageSize || req.query.limit, 10);
+    const pageSize = [10, 25, 50].includes(rawSize) ? rawSize : 25;
 
-    // Check if valid admin in-memory cache exists
-    if (adminNotifsCache.data && now - adminNotifsCache.timestamp < ADMIN_NOTIFS_CACHE_TTL_MS) {
-      allNotifs = adminNotifsCache.data;
-    } else if (supabase) {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const search = req.query.search ? String(req.query.search).trim() : '';
+    const category = req.query.category ? String(req.query.category).trim().toLowerCase() : 'all';
+    const type = req.query.type ? String(req.query.type).trim() : 'all';
+    const status = req.query.status ? String(req.query.status).trim().toLowerCase() : 'all';
+
+    let notifsList = [];
+    let totalCount = 0;
+    let unreadCount = 0;
+
+    if (supabase) {
       try {
+        // 1. Base Query with explicit column projection (NO SELECT *)
         let query = supabase
           .from('zenemoo_notifications')
-          .select('id, record_type, title, message, notification_type, target_type, target_id, url, opportunity_id, created_at, is_read, metadata')
-          .eq('record_type', 'notification')
-          .gte('created_at', sinceDate)
-          .order('created_at', { ascending: false })
-          .limit(parseInt(limit, 10) || 100);
+          .select('id, record_type, title, message, notification_type, target_type, target_id, url, opportunity_id, metadata, is_read, created_at', { count: 'exact' })
+          .eq('record_type', 'notification');
 
-        if (type && type !== 'all') {
-          query = query.eq('notification_type', type);
+        // Status Filter
+        if (status === 'unread') {
+          query = query.eq('is_read', false);
+        } else if (status === 'read') {
+          query = query.eq('is_read', true);
         }
 
-        const { data, error } = await query;
+        // Type Filter
+        if (type !== 'all') {
+          query = query.eq('notification_type', type);
+        } else if (category !== 'all') {
+          if (category === 'booking') {
+            query = query.ilike('notification_type', '%booking%');
+          } else if (category === 'email') {
+            query = query.ilike('notification_type', '%email%');
+          } else if (category === 'system') {
+            query = query.in('notification_type', ['system', 'security', 'login', 'app_update', 'cloudinary']);
+          }
+        }
+
+        // Full Database Search across title and message
+        if (search) {
+          const safeQ = search.replace(/[%_,()]/g, ' ').trim();
+          if (safeQ) {
+            query = query.or(`title.ilike.%${safeQ}%,message.ilike.%${safeQ}%`);
+          }
+        }
+
+        // Order newest first with stable secondary order, and apply pagination range
+        query = query
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to);
+
+        const { data, error, count } = await query;
         if (!error && Array.isArray(data)) {
-          allNotifs = data;
-          adminNotifsCache = { data, timestamp: now };
+          notifsList = data;
+          totalCount = count !== null ? count : data.length;
+        }
+
+        // 2. Efficient unread count query (head-only count)
+        const { count: exactUnread, error: unreadErr } = await supabase
+          .from('zenemoo_notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('record_type', 'notification')
+          .eq('is_read', false);
+
+        if (!unreadErr && exactUnread !== null) {
+          unreadCount = exactUnread;
         }
       } catch (e) {
-        console.warn('[Admin Notifications Fetch Warning]:', e.message);
+        console.warn('[Admin Notifications DB Error]:', e.message);
       }
     }
 
-    if (!Array.isArray(allNotifs) || allNotifs.length === 0) {
-      allNotifs = memoryNotifications.filter((n) => !n.created_at || new Date(n.created_at) >= new Date(sinceDate));
+    // In-memory fallback if database query returned empty or during offline testing
+    if (notifsList.length === 0 && totalCount === 0 && memoryNotifications.length > 0) {
+      let filtered = memoryNotifications.filter((n) => n.record_type === 'notification');
+      if (status === 'unread') filtered = filtered.filter((n) => !n.is_read);
+      if (status === 'read') filtered = filtered.filter((n) => n.is_read);
+      if (search) {
+        const q = search.toLowerCase();
+        filtered = filtered.filter((n) => (n.title && n.title.toLowerCase().includes(q)) || (n.message && n.message.toLowerCase().includes(q)));
+      }
+      totalCount = filtered.length;
+      unreadCount = memoryNotifications.filter((n) => !n.is_read).length;
+      notifsList = filtered.slice(from, to + 1);
     }
 
-    const readSet = memoryReadNotifications.get('admin') || new Set();
-
-    let filtered = allNotifs;
-    if (category && category !== 'all') {
-      const cat = category.toLowerCase();
-      filtered = filtered.filter((n) => {
-        const t = (n.notification_type || n.type || '').toLowerCase();
-        if (cat === 'booking') return t.includes('booking') || t.includes('meet');
-        if (cat === 'email') return t.includes('email') || t.includes('brevo');
-        if (cat === 'system') return t.includes('system') || t.includes('security');
-        return t === cat;
-      });
-    }
-
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      filtered = filtered.filter((n) =>
-        (n.title && n.title.toLowerCase().includes(q)) ||
-        (n.message && n.message.toLowerCase().includes(q)) ||
-        (n.metadata && JSON.stringify(n.metadata).toLowerCase().includes(q))
-      );
-    }
-
-    const formatted = filtered.map((n) => ({
+    const formatted = notifsList.map((n) => ({
       id: n.id,
       title: n.title,
       message: n.message,
@@ -369,17 +404,23 @@ export const getAdminNotifications = async (req, res, next) => {
       metadata: n.metadata || {},
       created_at: n.created_at || new Date().toISOString(),
       timestamp: n.created_at || new Date().toISOString(),
-      is_read: n.is_read || readSet.has(n.id),
-      read: n.is_read || readSet.has(n.id),
+      is_read: Boolean(n.is_read),
+      read: Boolean(n.is_read),
     }));
 
-    const unreadCount = formatted.filter((n) => !n.is_read).length;
+    const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
     return res.json({
       success: true,
+      notifications: formatted,
+      data: formatted,
+      page,
+      pageSize,
+      total: totalCount,
+      totalPages,
+      unreadCount,
       count: formatted.length,
       unread_count: unreadCount,
-      data: formatted,
     });
   } catch (err) {
     next(err);
@@ -387,31 +428,41 @@ export const getAdminNotifications = async (req, res, next) => {
 };
 
 /**
- * 4. PUT /api/notifications/:id/read
- * Mark notification as read
+ * 4. PUT /api/notifications/admin/:id/read or PUT /api/notifications/:id/read
+ * Mark notification as read or unread
  */
 export const markNotificationAsRead = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const isRead = req.body?.isRead !== undefined ? Boolean(req.body.isRead) : true;
     const userId = req.user?.id || req.body.installation_id || 'guest_user';
 
     const userReads = memoryReadNotifications.get(userId) || new Set();
-    userReads.add(id);
+    if (isRead) {
+      userReads.add(id);
+    } else {
+      userReads.delete(id);
+    }
     memoryReadNotifications.set(userId, userReads);
 
     if (supabase) {
       try {
         await supabase
           .from('zenemoo_notifications')
-          .update({ is_read: true })
+          .update({ is_read: isRead })
           .eq('id', id)
           .eq('record_type', 'notification');
       } catch (e) {}
     }
 
-    res.json({
+    const mem = memoryNotifications.find((n) => n.id === id);
+    if (mem) mem.is_read = isRead;
+
+    invalidatePublicNotifsCache();
+
+    return res.json({
       success: true,
-      message: 'Notification marked as read.',
+      message: `Notification marked as ${isRead ? 'read' : 'unread'}.`,
     });
   } catch (err) {
     next(err);
@@ -419,31 +470,111 @@ export const markNotificationAsRead = async (req, res, next) => {
 };
 
 /**
- * 5. PUT /api/notifications/read-all
- * Mark all notifications as read
+ * 5. PUT /api/notifications/admin/read-all or PUT /api/notifications/read-all
+ * Mark all notifications as read in a single bulk server-side operation
  */
 export const markAllNotificationsAsRead = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.body.installation_id || 'guest_user';
+    let updatedCount = 0;
 
-    let allNotifs = [];
     if (supabase) {
       try {
-        const { data } = await supabase
+        const { count, error } = await supabase
           .from('zenemoo_notifications')
-          .select('id')
-          .eq('record_type', 'notification');
-        if (Array.isArray(data)) allNotifs = data;
+          .update({ is_read: true }, { count: 'exact' })
+          .eq('record_type', 'notification')
+          .eq('is_read', false);
+
+        if (!error && count !== null) {
+          updatedCount = count;
+        }
       } catch (e) {}
     }
 
     const userReads = memoryReadNotifications.get(userId) || new Set();
-    allNotifs.forEach((n) => userReads.add(n.id));
+    memoryNotifications.forEach((n) => {
+      n.is_read = true;
+      userReads.add(n.id);
+    });
     memoryReadNotifications.set(userId, userReads);
 
-    res.json({
+    invalidatePublicNotifsCache();
+
+    return res.json({
       success: true,
       message: 'All notifications marked as read.',
+      updatedCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 5b. POST /api/notifications/admin/delete-older (or DELETE /api/notifications/admin/cleanup)
+ * Admin Safe Permanent Deletion of Old Notifications
+ * Strictly restricted to 7, 15, or 30 days retention.
+ * Executes a single filtered server-side DELETE with no deleted rows returned to the frontend.
+ */
+export const deleteOlderNotifications = async (req, res, next) => {
+  try {
+    const rawDays = req.body?.retentionDays ?? req.query?.retentionDays;
+    const retentionDays = parseInt(rawDays, 10);
+
+    // Strict validation: Only explicitly supported retention options allowed
+    if (![7, 15, 30].includes(retentionDays)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid retention days. Explicitly supported options are 7, 15, or 30 days.',
+      });
+    }
+
+    // Precise server-side UTC timestamp cutoff
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    let deletedCount = 0;
+
+    if (supabase) {
+      try {
+        const { count, error } = await supabase
+          .from('zenemoo_notifications')
+          .delete({ count: 'exact' })
+          .eq('record_type', 'notification')
+          .lt('created_at', cutoffDate);
+
+        if (error) {
+          console.error('[Delete Older Notifications Supabase Error]:', error.message);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to delete older notifications from database.',
+          });
+        }
+
+        deletedCount = count !== null ? count : 0;
+      } catch (dbErr) {
+        console.error('[Delete Older Notifications Exception]:', dbErr);
+        return res.status(500).json({
+          success: false,
+          message: 'Database error occurred during notification cleanup.',
+        });
+      }
+    }
+
+    // Clean memory backup
+    for (let i = memoryNotifications.length - 1; i >= 0; i--) {
+      if (memoryNotifications[i].created_at && new Date(memoryNotifications[i].created_at) < new Date(cutoffDate)) {
+        memoryNotifications.splice(i, 1);
+      }
+    }
+
+    invalidatePublicNotifsCache();
+
+    return res.json({
+      success: true,
+      deletedCount,
+      retentionDays,
+      cutoffDate,
+      message: `${deletedCount} notification${deletedCount === 1 ? '' : 's'} older than ${retentionDays} days permanently deleted.`,
     });
   } catch (err) {
     next(err);

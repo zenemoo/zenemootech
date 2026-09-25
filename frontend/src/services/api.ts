@@ -445,11 +445,22 @@ export const notificationApi = {
     permission_status?: string;
   }) => api.post('/notifications/subscribe', data),
   getAll: (params?: { installation_id?: string; days?: number; scope?: string }) => deduplicatedGet('/notifications', { params }),
-  getAdminNotifications: (params?: { category?: string; type?: string; search?: string; page?: number; limit?: number; days?: number }) =>
-    deduplicatedGet('/notifications/admin', { params }),
+  getAdminNotifications: (params?: {
+    category?: string;
+    type?: string;
+    search?: string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+    limit?: number;
+    days?: number;
+  }) => deduplicatedGet('/notifications/admin', { params }),
   markRead: (id: string, installation_id?: string) => api.put(`/notifications/${id}/read`, { installation_id }),
   markAllRead: (installation_id?: string) => api.put('/notifications/read-all', { installation_id }),
   deleteNotification: (id: string) => api.delete(`/notifications/${id}`),
+  adminMarkRead: (id: string, isRead: boolean = true) => api.put(`/notifications/admin/${id}/read`, { isRead }),
+  adminMarkAllRead: () => api.put('/notifications/admin/read-all'),
+  deleteOlder: (retentionDays: 7 | 15 | 30) => api.post('/notifications/admin/delete-older', { retentionDays }),
   adminCreate: (data: {
     title: string;
     message: string;

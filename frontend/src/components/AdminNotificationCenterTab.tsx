@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
   Search,
@@ -11,70 +11,67 @@ import {
   ExternalLink,
   Calendar,
   Mail,
-  UserCheck,
   Briefcase,
   Handshake,
   ShieldCheck,
   Sparkles,
-  Filter,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  Info,
   Check,
   RotateCcw,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { notificationApi } from '../services/api';
 
 export interface NotificationRecordItem {
   id: string;
-  type: string; // 'inquiry' | 'subscriber' | 'application' | 'partner' | 'login' | 'security' | 'booking' | 'system'
+  type: string;
   title: string;
   description: string;
   timestamp: string;
   url?: string | null;
   read?: boolean;
+  is_read?: boolean;
   booking_id?: string;
   client_name?: string;
   email?: string;
   company_name?: string;
   meet_url?: string;
+  metadata?: any;
   raw?: any;
 }
 
 interface AdminNotificationCenterTabProps {
-  notifications: NotificationRecordItem[];
-  readNotificationIds: string[];
-  onMarkAllRead: () => void;
-  onToggleRead: (id: string) => void;
-  onDeleteNotification: (id: string) => void;
-  onRefresh: () => void;
   onNavigateTab: (tabName: string) => void;
   addToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
   showConfirm: (title: string, message: string, onConfirm: () => void, opts?: any) => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
-export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProps> = ({
-  notifications,
-  readNotificationIds,
-  onMarkAllRead,
-  onToggleRead,
-  onDeleteNotification,
-  onRefresh,
+export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProps> = React.memo(({
   onNavigateTab,
   addToast,
   showConfirm,
+  onUnreadCountChange,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Server-Side Paginated Notification State
+  const [notifications, setNotifications] = useState<NotificationRecordItem[]>([]);
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [total, setTotal] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  // Pagination State (Default: 20 per page)
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(20);
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  // Loading States
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Active Action Menu Popup (id)
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -82,114 +79,217 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
   // Active Detail Drawer Notification
   const [detailNotif, setDetailNotif] = useState<NotificationRecordItem | null>(null);
 
-  const handleRefreshClick = async () => {
-    setIsRefreshing(true);
+  // Delete Older Data Modal State
+  const [isDeleteOlderModalOpen, setIsDeleteOlderModalOpen] = useState(false);
+  const [retentionDays, setRetentionDays] = useState<7 | 15 | 30>(30);
+  const [isDeletingOlder, setIsDeletingOlder] = useState(false);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Keep stable ref for parent callbacks to prevent unnecessary dependency changes
+  const onUnreadCountChangeRef = useRef(onUnreadCountChange);
+  const addToastRef = useRef(addToast);
+  const showConfirmRef = useRef(showConfirm);
+  const onNavigateTabRef = useRef(onNavigateTab);
+
+  useEffect(() => {
+    onUnreadCountChangeRef.current = onUnreadCountChange;
+    addToastRef.current = addToast;
+    showConfirmRef.current = showConfirm;
+    onNavigateTabRef.current = onNavigateTab;
+  });
+
+  // 400ms Search Debounce to eliminate rapid network requests
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const trimmed = searchQuery.trim();
+      setDebouncedSearch((prev) => {
+        if (prev !== trimmed) {
+          setPage(1);
+          return trimmed;
+        }
+        return prev;
+      });
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // Handler functions for filters to cleanly reset page to 1
+  const handleCategoryFilterChange = (cat: string) => {
+    setCategoryFilter(cat);
+    setPage(1);
+  };
+
+  const handleReadFilterChange = (status: 'all' | 'unread' | 'read') => {
+    setReadFilter(status);
+    setPage(1);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setPage(1);
+  };
+
+  // Primary Server-Side Fetch Function
+  const fetchNotifications = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) setIsRefreshing(true);
+      else setIsLoading(true);
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const res = await notificationApi.getAdminNotifications({
+          page,
+          pageSize,
+          search: debouncedSearch || undefined,
+          category: categoryFilter !== 'all' ? categoryFilter : undefined,
+          status: readFilter !== 'all' ? readFilter : undefined,
+        });
+
+        if (res.data && res.data.success) {
+          const list: NotificationRecordItem[] = (res.data.notifications || res.data.data || []).map((n: any) => ({
+            id: n.id,
+            type: n.notification_type || n.type || 'general',
+            title: n.title,
+            description: n.message || n.description || '',
+            timestamp: n.created_at || n.timestamp || new Date().toISOString(),
+            url: n.url || null,
+            is_read: Boolean(n.is_read || n.read),
+            read: Boolean(n.is_read || n.read),
+            booking_id: n.metadata?.booking_id,
+            client_name: n.metadata?.client || n.metadata?.client_name,
+            email: n.metadata?.email,
+            company_name: n.metadata?.company || n.metadata?.company_name,
+            meet_url: n.metadata?.meet_url,
+            metadata: n.metadata || {},
+            raw: n,
+          }));
+
+          setNotifications(list);
+          const totalRecs = res.data.total ?? list.length;
+          setTotal(totalRecs);
+          const computedTotalPages = res.data.totalPages ?? Math.max(1, Math.ceil(totalRecs / pageSize));
+          setTotalPages(computedTotalPages);
+
+          const unread = res.data.unreadCount ?? res.data.unread_count ?? 0;
+          setUnreadCount(unread);
+          if (onUnreadCountChangeRef.current) {
+            onUnreadCountChangeRef.current(unread);
+          }
+        }
+      } catch (err: any) {
+        if (err.name !== 'CanceledError' && err.name !== 'AbortError') {
+          console.warn('[Admin Notifications Fetch Error]:', err);
+        }
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [page, pageSize, debouncedSearch, categoryFilter, readFilter]
+  );
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const handleRefreshClick = () => {
+    fetchNotifications(true);
+    addToastRef.current('Notifications Updated', 'Latest notification records reloaded from server.', 'info');
+  };
+
+  // Bulk Mark All as Read (Server-Side)
+  const handleMarkAllRead = async () => {
     try {
-      await onRefresh();
-      addToast('Notifications Updated', 'Latest notification records reloaded.', 'info');
-    } catch (_) {
-    } finally {
-      setIsRefreshing(false);
+      const res = await notificationApi.adminMarkAllRead();
+      addToastRef.current('Marked as Read', res.data?.message || 'All notifications marked as read.', 'success');
+      await fetchNotifications();
+    } catch (e: any) {
+      addToastRef.current('Error', e.message || 'Failed to mark all notifications as read.', 'error');
     }
   };
 
-  // Filter & Search Logic
-  const filteredNotifications = useMemo(() => {
-    let list = [...notifications];
-
-    // Read / Unread Filter
-    if (readFilter === 'unread') {
-      list = list.filter((n) => !readNotificationIds.includes(n.id));
-    } else if (readFilter === 'read') {
-      list = list.filter((n) => readNotificationIds.includes(n.id));
+  // Single Toggle Read / Unread
+  const handleToggleRead = async (notif: NotificationRecordItem) => {
+    const nextRead = !notif.is_read;
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notif.id ? { ...n, is_read: nextRead, read: nextRead } : n))
+    );
+    setUnreadCount((prev) => (nextRead ? Math.max(0, prev - 1) : prev + 1));
+    if (onUnreadCountChangeRef.current) {
+      onUnreadCountChangeRef.current(nextRead ? Math.max(0, unreadCount - 1) : unreadCount + 1);
     }
+    try {
+      await notificationApi.adminMarkRead(notif.id, nextRead);
+    } catch (_) {
+      fetchNotifications();
+    }
+  };
 
-    // Type Filter
-    if (typeFilter !== 'all') {
-      if (typeFilter === 'booking') {
-        list = list.filter(
-          (n) =>
-            n.type === 'booking' ||
-            n.type.includes('booking') ||
-            n.type.includes('meet') ||
-            n.title.toLowerCase().includes('booking') ||
-            n.title.toLowerCase().includes('call')
+  // Single Notification Deletion
+  const handleDeleteSingle = (id: string, title: string) => {
+    showConfirmRef.current(
+      'Delete Notification Entry?',
+      `Are you sure you want to delete "${title}"? This record will be permanently deleted from the database.`,
+      async () => {
+        try {
+          await notificationApi.adminDelete(id);
+          addToastRef.current('Notification Deleted', 'Notification removed permanently.', 'info');
+          if (notifications.length === 1 && page > 1) {
+            setPage((p) => Math.max(1, p - 1));
+          } else {
+            await fetchNotifications();
+          }
+        } catch (err: any) {
+          addToastRef.current('Error', 'Failed to delete notification record.', 'error');
+        }
+      },
+      { intent: 'danger', confirmText: 'Delete Notification' }
+    );
+  };
+
+  // Safe Server-Side Delete Older Data Execution
+  const handleExecuteDeleteOlder = async () => {
+    setIsDeletingOlder(true);
+    try {
+      const res = await notificationApi.deleteOlder(retentionDays);
+      if (res.data && res.data.success) {
+        const deletedCount = res.data.deletedCount ?? 0;
+        addToastRef.current(
+          'Cleanup Successful',
+          `${deletedCount} notification${deletedCount === 1 ? '' : 's'} older than ${retentionDays} days permanently deleted.`,
+          'success'
         );
-      } else if (typeFilter === 'email') {
-        list = list.filter((n) => n.type === 'email' || n.type.includes('email') || n.title.toLowerCase().includes('email'));
-      } else if (typeFilter === 'inquiry') {
-        list = list.filter((n) => n.type === 'inquiry' || n.title.toLowerCase().includes('inquiry'));
-      } else if (typeFilter === 'subscriber') {
-        list = list.filter((n) => n.type === 'subscriber' || n.title.toLowerCase().includes('subscriber'));
-      } else if (typeFilter === 'application') {
-        list = list.filter((n) => n.type === 'application' || n.title.toLowerCase().includes('application'));
-      } else if (typeFilter === 'partner') {
-        list = list.filter((n) => n.type === 'partner' || n.title.toLowerCase().includes('partner'));
-      } else if (typeFilter === 'security') {
-        list = list.filter((n) => n.type === 'security' || n.type === 'login' || n.type === 'cloudinary');
+        setIsDeleteOlderModalOpen(false);
+        setPage(1);
+        await fetchNotifications();
+      } else {
+        addToastRef.current('Cleanup Failed', res.data?.message || 'Failed to delete older notifications.', 'error');
       }
+    } catch (err: any) {
+      addToastRef.current('Error', err.response?.data?.message || err.message || 'Server error during cleanup.', 'error');
+    } finally {
+      setIsDeletingOlder(false);
     }
+  };
 
-    // Search Query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (n) =>
-          n.title?.toLowerCase().includes(q) ||
-          n.description?.toLowerCase().includes(q) ||
-          n.type?.toLowerCase().includes(q) ||
-          (n.booking_id && n.booking_id.toLowerCase().includes(q)) ||
-          (n.client_name && n.client_name.toLowerCase().includes(q)) ||
-          (n.email && n.email.toLowerCase().includes(q)) ||
-          (n.company_name && n.company_name.toLowerCase().includes(q))
-      );
+  // Helper to generate compact collapsed page numbers with ellipsis
+  const getPageNumbers = (current: number, totalCountPages: number): (number | string)[] => {
+    if (totalCountPages <= 7) {
+      return Array.from({ length: totalCountPages }, (_, i) => i + 1);
     }
-
-    // Sort newest first
-    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [notifications, readNotificationIds, readFilter, typeFilter, searchQuery]);
-
-  // Reset to page 1 whenever search, filter, or page size changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, readFilter, typeFilter, pageSize]);
-
-  // Calculate Total Pages
-  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / pageSize));
-
-  // Automatically clamp page if items were deleted or list shrunk
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [totalPages, currentPage]);
-
-  // Slice Current Page Notifications
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, filteredNotifications.length);
-  const paginatedNotifications = useMemo(() => {
-    return filteredNotifications.slice(startIndex, endIndex);
-  }, [filteredNotifications, startIndex, endIndex]);
-
-  const unreadCount = useMemo(() => {
-    return notifications.filter((n) => !readNotificationIds.includes(n.id)).length;
-  }, [notifications, readNotificationIds]);
-
-  // Helper to generate collapsed page numbers with ellipsis
-  const getPageNumbers = (current: number, total: number): (number | string)[] => {
-    if (total <= 7) {
-      return Array.from({ length: total }, (_, i) => i + 1);
-    }
-
     if (current <= 4) {
-      return [1, 2, 3, 4, 5, '...', total];
+      return [1, 2, 3, 4, 5, '...', totalCountPages];
     }
-
-    if (current >= total - 3) {
-      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    if (current >= totalCountPages - 3) {
+      return [1, '...', totalCountPages - 4, totalCountPages - 3, totalCountPages - 2, totalCountPages - 1, totalCountPages];
     }
-
-    return [1, '...', current - 1, current, current + 1, '...', total];
+    return [1, '...', current - 1, current, current + 1, '...', totalCountPages];
   };
 
   // Relative Time Formatter
@@ -213,8 +313,8 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
   };
 
   // Render Category Icon Helper
-  const renderCategoryIcon = (type: string) => {
-    const t = type.toLowerCase();
+  const renderCategoryIcon = (typeStr: string) => {
+    const t = (typeStr || '').toLowerCase();
     if (t.includes('booking') || t.includes('call') || t.includes('meet')) {
       return <Calendar className="w-4 h-4 text-cyan-400" />;
     }
@@ -226,6 +326,9 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
     if (t === 'login' || t === 'security') return <ShieldCheck className="w-4 h-4 text-red-400" />;
     return <Bell className="w-4 h-4 text-slate-400" />;
   };
+
+  const startIndex = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIndex = Math.min(page * pageSize, total);
 
   return (
     <div className="space-y-6 font-sans">
@@ -244,21 +347,31 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             )}
           </h1>
           <p className="text-xs font-mono text-slate-400 mt-1">
-            Stay updated with call bookings, contact inquiries, newsletter signups, applications, and security alerts.
+            Server-side paginated operational logs, call bookings, inquiries, and automated system alerts.
           </p>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-3 shrink-0 self-start md:self-auto">
+        <div className="flex items-center gap-2.5 flex-wrap shrink-0 self-start md:self-auto">
           {unreadCount > 0 && (
             <button
-              onClick={onMarkAllRead}
-              className="px-4 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/10"
+              onClick={handleMarkAllRead}
+              className="px-3.5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/10"
             >
               <CheckCheck className="w-4 h-4" />
-              <span>Mark all as read</span>
+              <span>Mark all read</span>
             </button>
           )}
+
+          {/* Delete Older Data Action Button */}
+          <button
+            onClick={() => setIsDeleteOlderModalOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-mono text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer"
+            title="Clean up old notifications by retention period"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete Older Data</span>
+          </button>
 
           <button
             onClick={handleRefreshClick}
@@ -275,12 +388,12 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
       {/* 2. SEARCH & FILTER TOOLBAR */}
       <div className="bg-[#0b0f19] p-4 rounded-2xl border border-white/10 space-y-3 font-mono text-xs">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-          {/* Search Input */}
+          {/* Debounced Server Search Input */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
             <input
               type="text"
-              placeholder="Search by title, message, type, booking ID, client..."
+              placeholder="Search across all notifications by title or message..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-400"
@@ -288,7 +401,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-3 text-slate-400 hover:text-white"
+                className="absolute right-3 top-3 text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -298,71 +411,78 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
           {/* Read / Unread Status Filter */}
           <div className="flex items-center gap-1.5 bg-white/[0.03] p-1 rounded-xl border border-white/10 shrink-0">
             <button
-              onClick={() => setReadFilter('all')}
+              onClick={() => handleReadFilterChange('all')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                readFilter === 'all' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                readFilter === 'all'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              All ({notifications.length})
+              All
             </button>
             <button
-              onClick={() => setReadFilter('unread')}
+              onClick={() => handleReadFilterChange('unread')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                readFilter === 'unread' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                readFilter === 'unread'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
               Unread ({unreadCount})
             </button>
             <button
-              onClick={() => setReadFilter('read')}
+              onClick={() => handleReadFilterChange('read')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                readFilter === 'read' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
+                readFilter === 'read'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              Read ({notifications.length - unreadCount})
+              Read
             </button>
           </div>
 
-          {/* Type Filter Dropdown */}
+          {/* Category Filter Dropdown */}
           <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+            value={categoryFilter}
+            onChange={(e) => handleCategoryFilterChange(e.target.value)}
             className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-mono focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="all" className="bg-[#0b0f19]">Category: All Types</option>
             <option value="booking" className="bg-[#0b0f19]">Category: Call Bookings</option>
             <option value="email" className="bg-[#0b0f19]">Category: Email Delivery</option>
-            <option value="inquiry" className="bg-[#0b0f19]">Category: Contact Inquiries</option>
-            <option value="subscriber" className="bg-[#0b0f19]">Category: Subscribers</option>
-            <option value="application" className="bg-[#0b0f19]">Category: Applications</option>
-            <option value="partner" className="bg-[#0b0f19]">Category: Enterprise Partners</option>
-            <option value="security" className="bg-[#0b0f19]">Category: System &amp; Security</option>
+            <option value="system" className="bg-[#0b0f19]">Category: System &amp; Security</option>
           </select>
         </div>
       </div>
 
-      {/* 3. NOTIFICATIONS LIST VIEW (Render only paginated slice) */}
+      {/* 3. NOTIFICATIONS LIST VIEW */}
       <div className="space-y-3">
-        {filteredNotifications.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-[#0b0f19] p-12 rounded-3xl border border-white/10 text-center space-y-3">
+            <div className="w-8 h-8 rounded-full border-t-2 border-cyan-400 border-r-2 border-transparent animate-spin mx-auto" />
+            <p className="text-xs font-mono text-slate-400">Loading notifications from server...</p>
+          </div>
+        ) : notifications.length === 0 ? (
           /* EMPTY STATE */
           <div className="bg-[#0b0f19] p-12 sm:p-16 rounded-3xl border border-white/10 text-center space-y-4 shadow-xl">
             <div className="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mx-auto">
               <Bell className="w-8 h-8" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-lg font-bold font-display text-white">You're all caught up</h3>
+              <h3 className="text-lg font-bold font-display text-white">No notifications found</h3>
               <p className="text-xs font-mono text-slate-400 max-w-sm mx-auto">
-                {searchQuery || readFilter !== 'all' || typeFilter !== 'all'
-                  ? 'No notifications match your search or active filter settings.'
-                  : 'There are no new notifications right now.'}
+                {searchQuery || readFilter !== 'all' || categoryFilter !== 'all'
+                  ? 'No notifications match your active search or filter criteria.'
+                  : 'There are no notifications in the database.'}
               </p>
             </div>
-            {(searchQuery || readFilter !== 'all' || typeFilter !== 'all') && (
+            {(searchQuery || readFilter !== 'all' || categoryFilter !== 'all') && (
               <button
                 onClick={() => {
                   setSearchQuery('');
                   setReadFilter('all');
-                  setTypeFilter('all');
+                  setCategoryFilter('all');
                 }}
                 className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold transition-all cursor-pointer"
               >
@@ -371,8 +491,8 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             )}
           </div>
         ) : (
-          paginatedNotifications.map((notif) => {
-            const isRead = readNotificationIds.includes(notif.id);
+          notifications.map((notif) => {
+            const isRead = Boolean(notif.is_read);
             const isMenuOpen = activeMenuId === notif.id;
 
             return (
@@ -387,14 +507,22 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
                 {/* Left Section: Icon & Text */}
                 <div className="flex items-start gap-3.5 min-w-0 flex-1">
                   {/* Category Icon Badge */}
-                  <div className={`p-2.5 rounded-xl border shrink-0 mt-0.5 ${isRead ? 'bg-white/5 border-white/10' : 'bg-cyan-500/10 border-cyan-500/30'}`}>
+                  <div
+                    className={`p-2.5 rounded-xl border shrink-0 mt-0.5 ${
+                      isRead ? 'bg-white/5 border-white/10' : 'bg-cyan-500/10 border-cyan-500/30'
+                    }`}
+                  >
                     {renderCategoryIcon(notif.type)}
                   </div>
 
                   {/* Notification Content */}
                   <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className={`text-sm leading-snug font-display ${isRead ? 'font-semibold text-slate-200' : 'font-bold text-white'}`}>
+                      <h4
+                        className={`text-sm leading-snug font-display ${
+                          isRead ? 'font-semibold text-slate-200' : 'font-bold text-white'
+                        }`}
+                      >
                         {notif.title}
                       </h4>
 
@@ -428,7 +556,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
                   {/* Quick View Details Button */}
                   <button
                     onClick={() => {
-                      if (!isRead) onToggleRead(notif.id);
+                      if (!isRead) handleToggleRead(notif);
                       setDetailNotif(notif);
                     }}
                     className="p-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
@@ -454,7 +582,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
                       <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-[#090d16] border border-white/15 shadow-2xl p-1.5 z-50 font-mono text-xs space-y-1">
                         <button
                           onClick={() => {
-                            onToggleRead(notif.id);
+                            handleToggleRead(notif);
                             setActiveMenuId(null);
                           }}
                           className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-left flex items-center gap-2 text-slate-200 transition-colors cursor-pointer"
@@ -473,7 +601,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
                         <button
                           onClick={() => {
                             setActiveMenuId(null);
-                            if (!isRead) onToggleRead(notif.id);
+                            if (!isRead) handleToggleRead(notif);
                             setDetailNotif(notif);
                           }}
                           className="w-full px-3 py-2 rounded-lg hover:bg-white/10 text-left flex items-center gap-2 text-slate-200 transition-colors cursor-pointer"
@@ -486,12 +614,7 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
                         <button
                           onClick={() => {
                             setActiveMenuId(null);
-                            showConfirm(
-                              'Delete notification?',
-                              'This notification record will be permanently removed from your view.',
-                              () => onDeleteNotification(notif.id),
-                              { intent: 'danger', confirmText: 'Delete Notification' }
-                            );
+                            handleDeleteSingle(notif.id, notif.title);
                           }}
                           className="w-full px-3 py-2 rounded-lg hover:bg-red-500/20 text-left flex items-center gap-2 text-red-400 transition-colors cursor-pointer"
                         >
@@ -507,22 +630,22 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
         )}
       </div>
 
-      {/* 4. PROFESSIONAL PAGINATION FOOTER */}
-      {filteredNotifications.length > 0 && (
+      {/* 4. SERVER-SIDE PAGINATION FOOTER */}
+      {total > 0 && (
         <div className="p-4 sm:p-5 rounded-2xl bg-[#0b0f19] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-xs shadow-xl">
           {/* Left: Showing X–Y of Z */}
           <div className="text-slate-400 text-center md:text-left">
-            Showing <span className="text-white font-bold">{filteredNotifications.length === 0 ? 0 : startIndex + 1}</span>–
+            Showing <span className="text-white font-bold">{startIndex}</span>–
             <span className="text-white font-bold">{endIndex}</span> of{' '}
-            <span className="text-cyan-300 font-bold">{filteredNotifications.length}</span> notifications
+            <span className="text-cyan-300 font-bold">{total}</span> notifications
           </div>
 
           {/* Center: Pagination Controls */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center">
             {/* Previous Button */}
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || isLoading}
               className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer font-bold"
               aria-label="Previous Page"
             >
@@ -532,27 +655,28 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
 
             {/* Collapsed Page Number Buttons */}
             <div className="hidden sm:flex items-center gap-1">
-              {getPageNumbers(currentPage, totalPages).map((page, idx) => {
-                if (page === '...') {
+              {getPageNumbers(page, totalPages).map((pNum, idx) => {
+                if (pNum === '...') {
                   return (
                     <span key={`ellipsis-${idx}`} className="px-2 py-1 text-slate-500 font-mono">
                       ...
                     </span>
                   );
                 }
-                const pageNum = page as number;
-                const isActive = currentPage === pageNum;
+                const num = pNum as number;
+                const isActive = page === num;
                 return (
                   <button
-                    key={`page-${pageNum}`}
-                    onClick={() => setCurrentPage(pageNum)}
+                    key={`page-${num}`}
+                    onClick={() => setPage(num)}
+                    disabled={isLoading}
                     className={`w-8 h-8 rounded-xl font-bold font-mono text-xs transition-all flex items-center justify-center cursor-pointer ${
                       isActive
                         ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/20'
                         : 'border border-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
                     }`}
                   >
-                    {pageNum}
+                    {num}
                   </button>
                 );
               })}
@@ -560,13 +684,13 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
 
             {/* Mobile Current Page Indicator */}
             <span className="sm:hidden px-3 py-1 text-slate-300 font-mono font-bold">
-              Page {currentPage} of {totalPages}
+              Page {page} of {totalPages}
             </span>
 
             {/* Next Button */}
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || isLoading}
               className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/10 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer font-bold"
               aria-label="Next Page"
             >
@@ -575,23 +699,116 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             </button>
           </div>
 
-          {/* Right: Page Size Selector */}
+          {/* Right: Page Size Selector (10, 25, 50) */}
           <div className="flex items-center gap-2">
             <span className="text-slate-400 font-bold">Show:</span>
             <select
               value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
               className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
             >
-              <option value={20} className="bg-[#0b0f19]">20 per page</option>
-              <option value={50} className="bg-[#0b0f19]">50 per page</option>
-              <option value={100} className="bg-[#0b0f19]">100 per page</option>
+              <option value={10} className="bg-[#0b0f19]">10 / page</option>
+              <option value={25} className="bg-[#0b0f19]">25 / page</option>
+              <option value={50} className="bg-[#0b0f19]">50 / page</option>
             </select>
           </div>
         </div>
       )}
 
-      {/* 5. POLISHED NOTIFICATION DETAILS DRAWER / MODAL */}
+      {/* 5. DELETE OLDER DATA CONFIRMATION MODAL */}
+      {isDeleteOlderModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in font-sans">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-red-500/40 max-w-md w-full relative space-y-5 bg-[#0b0f19] text-slate-200 shadow-2xl">
+            <button
+              onClick={() => !isDeletingOlder && setIsDeleteOlderModalOpen(false)}
+              disabled={isDeletingOlder}
+              aria-label="Close delete older modal"
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold font-display text-white">Delete Older Notifications?</h3>
+              <p className="text-xs font-mono text-slate-400">
+                Safely purge historical notification records from the database
+              </p>
+            </div>
+
+            {/* Retention Range Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-mono text-slate-300 font-bold">
+                Choose retention cutoff:
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {([7, 15, 30] as const).map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => setRetentionDays(days)}
+                    disabled={isDeletingOlder}
+                    className={`py-2.5 px-2 rounded-xl border text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                      retentionDays === days
+                        ? 'bg-red-500/20 border-red-500/50 text-red-300 shadow-sm shadow-red-500/20'
+                        : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    &gt; {days} Days
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Critical Warning Box */}
+            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 space-y-1.5 font-mono text-xs">
+              <div className="flex items-center gap-1.5 text-red-400 font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Permanent Deletion Warning</span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                This will permanently delete all notification records older than{' '}
+                <strong className="text-red-300">{retentionDays} days</strong> from the database. This action cannot be undone.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-2 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setIsDeleteOlderModalOpen(false)}
+                disabled={isDeletingOlder}
+                className="flex-1 py-3 rounded-xl bg-white/[0.05] hover:bg-white/10 border border-white/10 text-slate-300 font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDeleteOlder}
+                disabled={isDeletingOlder}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold transition-all shadow-lg shadow-red-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingOlder ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" /> Delete Permanently
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. POLISHED NOTIFICATION DETAILS DRAWER / MODAL */}
       {detailNotif && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in font-sans">
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-cyan-500/40 max-w-xl w-full my-6 space-y-6 max-h-[85vh] overflow-y-auto relative shadow-2xl bg-[#0b0f19] text-slate-200">
@@ -664,12 +881,10 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
             {/* Modal Actions Footer */}
             <div className="flex items-center justify-between gap-3 pt-4 border-t border-white/10 font-mono text-xs">
               <button
-                onClick={() => {
-                  onToggleRead(detailNotif.id);
-                }}
+                onClick={() => handleToggleRead(detailNotif)}
                 className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                {readNotificationIds.includes(detailNotif.id) ? (
+                {detailNotif.is_read ? (
                   <>
                     <RotateCcw className="w-3.5 h-3.5 text-amber-400" /> Mark Unread
                   </>
@@ -718,4 +933,5 @@ export const AdminNotificationCenterTab: React.FC<AdminNotificationCenterTabProp
       )}
     </div>
   );
-};
+});
+

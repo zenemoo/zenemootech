@@ -71,9 +71,9 @@ const checkAdminEmailAuthorized = async (email) => {
         .maybeSingle();
 
       if (!error && data) {
-        const status = (data.status || 'active').toLowerCase();
-        const role = (data.role || 'admin').toLowerCase().replace(/\s+/g, '_');
-        const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'manager', 'root'].includes(role);
+        const status = (data.status || 'active').toLowerCase().trim();
+        const role = (data.role || 'admin').toLowerCase().trim().replace(/\s+/g, '_');
+        const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(role);
         return status === 'active' && isAdminRole;
       }
     } catch (err) {
@@ -156,7 +156,10 @@ export const login = async (req, res, next) => {
     }
 
     // 3. Must have valid admin role
-    const userRole = (dbUser.role || 'administrator').toLowerCase();
+    const userRole = (dbUser.role || 'administrator')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
     const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
     if (!isAdminRole) {
       console.warn(`⚠️ Login blocked: ${cleanEmail} assigned role is '${dbUser.role}'.`);
@@ -364,7 +367,10 @@ export const googleAdminLogin = async (req, res, next) => {
     }
 
     // 6. Role check: must be admin role
-    const userRole = (adminRecord.role || 'administrator').toLowerCase();
+    const userRole = (adminRecord.role || 'administrator')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
     const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
     if (!isAdminRole) {
       console.warn(`⛔ [Google Admin Login] INSUFFICIENT ROLE: ${cleanEmail} has role '${adminRecord.role}'.`);
@@ -921,23 +927,33 @@ export const logout = async (req, res) => {
 };
 
 export const getProfile = async (req, res) => {
-  const cleanEmail = req.user?.email || '';
+  const cleanEmail = (req.user?.email || '').toLowerCase().trim();
   let profile = { email: cleanEmail, role: req.user?.role || 'admin', name: cleanEmail.split('@')[0] };
   
-  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+  const clientIp = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
   const userAgent = req.headers['user-agent'] || '';
   
   if (supabase && cleanEmail) {
     try {
       const { data, error } = await supabase
         .from('authorized_admin_emails')
-        .select('*')
+        .select('id, email, role, name, profile_photo_url, department, phone, telegram_chat_id, notes, status, created_at, last_password_reset')
         .eq('email', cleanEmail)
         .maybeSingle();
       if (!error && data) {
+        let maskedPhone = null;
+        if (data.phone) {
+          const digits = String(data.phone).replace(/\D/g, '');
+          if (digits.length >= 5) {
+            maskedPhone = `••••• ${digits.slice(-5)}`;
+          } else {
+            maskedPhone = data.phone;
+          }
+        }
         profile = {
           ...profile,
           ...data,
+          phone: maskedPhone || null,
         };
       }
     } catch (e) {
@@ -956,17 +972,17 @@ export const getProfile = async (req, res) => {
 };
 
 export const getAuditLogs = async (req, res) => {
-  const cleanEmail = req.user?.email || '';
+  const cleanEmail = (req.user?.email || '').toLowerCase().trim();
   if (!cleanEmail) {
     return res.status(400).json({ success: false, message: 'Invalid session' });
   }
 
-  // Fetch last 10 audit logs from Supabase
+  // Fetch last 10 audit logs from Supabase with explicit column projection
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from('admin_audit_logs')
-        .select('*')
+        .select('id, event_type, email, ip_address, user_agent, details, created_at')
         .eq('email', cleanEmail)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -981,7 +997,7 @@ export const getAuditLogs = async (req, res) => {
 
   // Fallback to in-memory backup logs filtered by email
   const fallbackLogs = auditLogsStore
-    .filter(log => log.email === cleanEmail)
+    .filter(log => (log.email || '').toLowerCase() === cleanEmail)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 10);
 
@@ -1436,7 +1452,7 @@ export const getAuthorizedAdminEmails = async (req, res, next) => {
   try {
     const { data, error } = await supabase
       .from('authorized_admin_emails')
-      .select('*')
+      .select('id, email, role, added_by, created_at, telegram_chat_id, last_password_reset, name, profile_photo_url, department, phone, notes, status')
       .order('created_at', { ascending: true });
 
     if (error) {

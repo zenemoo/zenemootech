@@ -77,9 +77,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [notifCategoryTab, setNotifCategoryTab] = useState<'all' | 'unread' | 'security' | 'system' | 'applications' | 'partners' | 'newsletter' | 'contacts' | 'audit'>('all');
   
-  const [sessionStartTime] = useState(() => Date.now());
-  const [sessionDurationSec, setSessionDurationSec] = useState(0);
-  const [sessionExpiresInSec, setSessionExpiresInSec] = useState(1800); // Default 30m
+  const [sessionStartTime, setSessionStartTime] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('zenemoo_session_start');
+        if (stored) {
+          const parsed = parseInt(stored, 10);
+          if (!isNaN(parsed) && parsed > 0) return parsed;
+        }
+        const expiry = localStorage.getItem('zenemoo_jwt_expiry');
+        if (expiry) {
+          const expMs = parseInt(expiry, 10);
+          if (!isNaN(expMs)) return expMs - 30 * 60 * 1000;
+        }
+      } catch (_) {}
+    }
+    return Date.now();
+  });
+
+  const [sessionDurationSec, setSessionDurationSec] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('zenemoo_session_start');
+        if (stored) {
+          const parsed = parseInt(stored, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            return Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+          }
+        }
+      } catch (_) {}
+    }
+    return 0;
+  });
+
+  const [sessionExpiresInSec, setSessionExpiresInSec] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const expiry = localStorage.getItem('zenemoo_jwt_expiry');
+        if (expiry) {
+          const expiryMs = parseInt(expiry, 10);
+          if (!isNaN(expiryMs)) {
+            return Math.max(0, Math.ceil((expiryMs - Date.now()) / 1000));
+          }
+        }
+      } catch (_) {}
+    }
+    return 1800;
+  });
+
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false);
   
   const [readNotifications, setReadNotifications] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
@@ -259,6 +305,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       } catch (e) {}
     }
   }, [activeTab]);
+
+  const handleNavigateToTab = useCallback((tabName: string) => {
+    setActiveTab(tabName as any);
+  }, []);
+
+  const handleOpenProfileDrawer = () => {
+    setIsProfileDrawerOpen(true);
+    authApi.getProfile().then((res) => {
+      if (res.data?.success) {
+        if (res.data.user) setAdminProfile(res.data.user);
+        if (res.data.connection) setAdminConnection(res.data.connection);
+      }
+    }).catch(() => {});
+    authApi.getAuditLogs().then((res) => {
+      if (res.data?.success && Array.isArray(res.data.logs)) {
+        setRecentLogs(res.data.logs);
+      }
+    }).catch(() => {});
+  };
+
+  const handleRefreshAdminSession = async () => {
+    setIsRefreshingSession(true);
+    try {
+      const [resProfile, resLogs] = await Promise.all([
+        authApi.getProfile().catch(() => null),
+        authApi.getAuditLogs().catch(() => null),
+      ]);
+      if (resProfile?.data && resProfile.data.success) {
+        if (resProfile.data.user) setAdminProfile(resProfile.data.user);
+        if (resProfile.data.connection) setAdminConnection(resProfile.data.connection);
+      }
+      if (resLogs?.data && resLogs.data.success && Array.isArray(resLogs.data.logs)) {
+        setRecentLogs(resLogs.data.logs);
+      }
+      const expiry = localStorage.getItem('zenemoo_jwt_expiry');
+      const expiryTime = expiry ? new Date(parseInt(expiry, 10)).toLocaleTimeString() : '';
+      addToast('Session Verified', `Admin authentication re-validated. Absolute session expires at ${expiryTime}.`, 'info');
+    } catch (err: any) {
+      addToast('Session Error', err.message || 'Unable to re-validate session.', 'error');
+    } finally {
+      setIsRefreshingSession(false);
+    }
+  };
 
   // Table Sorting, Selection & Pagination State
   const [sortField, setSortField] = useState<string>('created_at');
@@ -643,13 +732,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     setIsLoadingAdminNotifs(true);
     setAdminNotifFetchError(null);
     try {
-      const res = await notificationApi.getAdminNotifications();
-      if (res.data && res.data.success && Array.isArray(res.data.data)) {
-        // Guarantee newest first created_at DESC
-        const sorted = [...res.data.data].sort(
-          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-        );
-        setAdminNotifList(sorted);
+      const res = await notificationApi.getAdminNotifications({ page: 1, pageSize: 25 });
+      const list = res.data?.notifications || res.data?.data;
+      if (res.data && res.data.success && Array.isArray(list)) {
+        setAdminNotifList(list);
       } else {
         setAdminNotifFetchError(res.data?.message || 'Failed to fetch notification history from database.');
       }
@@ -884,6 +970,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   // Helper for centralized logout with optional reason broadcast
   const handleLogoutWithReason = (reason?: string) => {
+    localStorage.removeItem('zenemoo_session_start');
     localStorage.removeItem('zenemoo_jwt_token');
     localStorage.removeItem('zenemoo_jwt_expiry');
     setIsAuthenticated(false);
@@ -937,8 +1024,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           if (googleRes.data && googleRes.data.success && googleRes.data.token) {
             const now = Date.now();
             const absoluteExpiry = now + 30 * 60 * 1000;
+            localStorage.setItem('zenemoo_session_start', now.toString());
             localStorage.setItem('zenemoo_jwt_token', googleRes.data.token);
             localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+            setSessionStartTime(now);
+            setSessionDurationSec(0);
+            setSessionExpiresInSec(1800);
 
             setIsAuthenticated(true);
             setPassError('');
@@ -1025,7 +1116,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           if (response.data.connection) {
             setAdminConnection(response.data.connection);
           }
-          // Note: Strict absolute expiration is preserved and NOT extended beyond the original 30-min window
+          // Preserve session start across page reloads
+          const storedStart = localStorage.getItem('zenemoo_session_start');
+          if (storedStart) {
+            const parsedStart = parseInt(storedStart, 10);
+            if (!isNaN(parsedStart) && parsedStart > 0) {
+              setSessionStartTime(parsedStart);
+              setSessionDurationSec(Math.max(0, Math.floor((Date.now() - parsedStart) / 1000)));
+            }
+          } else if (expiry) {
+            const expMs = parseInt(expiry, 10);
+            if (!isNaN(expMs)) {
+              const derivedStart = expMs - 30 * 60 * 1000;
+              localStorage.setItem('zenemoo_session_start', derivedStart.toString());
+              setSessionStartTime(derivedStart);
+              setSessionDurationSec(Math.max(0, Math.floor((Date.now() - derivedStart) / 1000)));
+            }
+          }
+          if (expiry) {
+            const expMs = parseInt(expiry, 10);
+            if (!isNaN(expMs)) {
+              setSessionExpiresInSec(Math.max(0, Math.ceil((expMs - Date.now()) / 1000)));
+            }
+          }
           console.log('✅ Session validated successfully.');
         } else {
           localStorage.removeItem('zenemoo_jwt_token');
@@ -1133,9 +1246,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     window.addEventListener('click', handleUserActivity, { passive: true });
     window.addEventListener('touchstart', handleUserActivity, { passive: true });
 
-    // 4. 1-second countdown tick
+    // 4. 1-second countdown tick (Local UI mathematical calculation only - NO API calls)
     const interval = setInterval(() => {
       checkAbsoluteExpiration('interval');
+      const now = Date.now();
+      const storedStart = localStorage.getItem('zenemoo_session_start');
+      const actualStart = storedStart ? parseInt(storedStart, 10) : sessionStartTime;
+      if (!isNaN(actualStart) && actualStart > 0) {
+        setSessionDurationSec(Math.max(0, Math.floor((now - actualStart) / 1000)));
+      }
     }, 1000);
 
     return () => {
@@ -1150,18 +1269,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       clearInterval(interval);
       if (channel) channel.close();
     };
-  }, [isAuthenticated]);
-
-  // Count-up timer for session active duration
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const interval = setInterval(() => {
-      const elapsedMs = Date.now() - sessionStartTime;
-      setSessionDurationSec(Math.floor(elapsedMs / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
   }, [isAuthenticated, sessionStartTime]);
 
   // Load dashboard data once authenticated
@@ -1816,8 +1923,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       if (response.data && response.data.success && response.data.token) {
         const now = Date.now();
         const absoluteExpiry = now + 30 * 60 * 1000;
+        localStorage.setItem('zenemoo_session_start', now.toString());
         localStorage.setItem('zenemoo_jwt_token', response.data.token);
         localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+        setSessionStartTime(now);
+        setSessionDurationSec(0);
+        setSessionExpiresInSec(1800);
         setIsAuthenticated(true);
         setPassError('');
         const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
@@ -2578,7 +2689,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* SECTION 3: FIXED BOTTOM USER PROFILE CARD */}
         {!isSidebarCollapsed ? (
           <div 
-            onClick={() => setIsProfileDrawerOpen(true)}
+            onClick={handleOpenProfileDrawer}
             className="h-20 shrink-0 border-t border-white/10 bg-gradient-to-b from-[#06070b]/90 to-black/60 hover:bg-white/[0.04] transition-all cursor-pointer group p-3 flex items-center"
           >
             <div className="flex items-center gap-3 w-full">
@@ -2597,7 +2708,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold text-white truncate leading-tight group-hover:text-cyan-400 transition-colors">
-                    {adminProfile?.name || (adminEmail.includes('prem') ? 'Prem Prasad' : adminEmail.split('@')[0])}
+                    {adminProfile?.name || adminEmail.split('@')[0]}
                   </p>
                 </div>
                 <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">{adminEmail}</p>
@@ -2606,7 +2717,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     ● Online
                   </span>
                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/20">
-                    {adminProfile?.role || 'Super Administrator'}
+                    {adminProfile?.role ? (adminProfile.role === 'super_admin' ? 'Super Administrator' : adminProfile.role.charAt(0).toUpperCase() + adminProfile.role.slice(1).replace(/_/g, ' ')) : 'Super Administrator'}
                   </span>
                 </div>
               </div>
@@ -2614,7 +2725,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           </div>
         ) : (
           <div 
-            onClick={() => setIsProfileDrawerOpen(true)}
+            onClick={handleOpenProfileDrawer}
             className="h-20 shrink-0 border-t border-white/10 bg-black/[0.15] hover:bg-white/[0.05] flex items-center justify-center cursor-pointer transition-colors relative group"
             title="Open Administrator Profile"
           >
@@ -2753,7 +2864,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <div 
                 onClick={() => {
                   setIsMobileMenuOpen(false);
-                  setIsProfileDrawerOpen(true);
+                  handleOpenProfileDrawer();
                 }}
                 className="p-3.5 border border-white/10 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-transparent rounded-2xl flex items-center gap-3 hover:bg-white/[0.05] transition-all cursor-pointer"
               >
@@ -2771,13 +2882,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-white truncate leading-tight">
-                    {adminProfile?.name || (adminEmail.includes('prem') ? 'Prem Prasad' : adminEmail.split('@')[0])}
+                    {adminProfile?.name || adminEmail.split('@')[0]}
                   </p>
                   <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">{adminEmail}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[9px] font-mono text-emerald-400 font-bold">● Online</span>
                     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      {adminProfile?.role || 'Super Administrator'}
+                      {adminProfile?.role ? (adminProfile.role === 'super_admin' ? 'Super Administrator' : adminProfile.role.charAt(0).toUpperCase() + adminProfile.role.slice(1).replace(/_/g, ' ')) : 'Super Administrator'}
                     </span>
                   </div>
                 </div>
@@ -3669,28 +3780,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: DEDICATED NOTIFICATIONS CENTER */}
         {activeTab === 'notifications' && (
           <AdminNotificationCenterTab
-            notifications={compiledNotifications}
-            readNotificationIds={readNotifications}
-            onMarkAllRead={handleMarkAllNotificationsRead}
-            onToggleRead={(id) => {
-              if (readNotifications.includes(id)) {
-                const nextRead = readNotifications.filter((rId) => rId !== id);
-                setReadNotifications(nextRead);
-                localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
-              } else {
-                const nextRead = [...readNotifications, id];
-                setReadNotifications(nextRead);
-                localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
-              }
-            }}
-            onDeleteNotification={(id) => {
-              const nextRead = [...readNotifications, id];
-              setReadNotifications(nextRead);
-              localStorage.setItem('zenemoo_read_notifications', JSON.stringify(nextRead));
-              showStatus('Notification removed');
-            }}
-            onRefresh={loadAdminNotifications}
-            onNavigateTab={(tabName) => setActiveTab(tabName as any)}
+            onNavigateTab={handleNavigateToTab}
             addToast={addToast}
             showConfirm={showConfirm}
           />
@@ -7114,10 +7204,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-lg font-extrabold text-white font-display">
-                          {adminProfile?.name || (adminEmail.includes('prem') ? 'Prem Prasad' : adminEmail.split('@')[0])}
+                          {adminProfile?.name || adminEmail.split('@')[0]}
                         </h3>
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                          {adminProfile?.role || 'Super Administrator'}
+                          {adminProfile?.role ? (adminProfile.role === 'super_admin' ? 'Super Administrator' : adminProfile.role.charAt(0).toUpperCase() + adminProfile.role.slice(1).replace(/_/g, ' ')) : 'Super Administrator'}
                         </span>
                       </div>
                       <p className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
@@ -7126,10 +7216,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       </p>
                       <div className="flex items-center gap-3 pt-1 text-[11px] font-mono text-slate-400">
                         <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" /> ● Online
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> ● {isAuthenticated ? 'Online' : 'Offline'}
                         </span>
                         <span className="text-slate-500">•</span>
-                        <span className="text-slate-300">Auth Token: <code className="text-cyan-400">JWT Verified</code></span>
+                        <span className="text-slate-300">Auth Token: <code className="text-cyan-400">{isAuthenticated && typeof localStorage !== 'undefined' && localStorage.getItem('zenemoo_jwt_token') ? 'JWT Verified' : 'Unverified'}</code></span>
                       </div>
                     </div>
                   </div>
@@ -7143,32 +7233,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Last Login</span>
-                      <span className="text-slate-200 font-bold block">
-                        {recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS')?.created_at 
-                          ? new Date(recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS').created_at).toLocaleString()
-                          : new Date(sessionStartTime).toLocaleString()}
+                      <span className="text-slate-200 font-bold block truncate">
+                        {(() => {
+                          const loginLog = recentLogs.find((l) => l.event_type === 'LOGIN_SUCCESS' || l.event_type === 'GOOGLE_LOGIN_SUCCESS');
+                          if (loginLog?.created_at) return new Date(loginLog.created_at).toLocaleString();
+                          if (sessionStartTime) return new Date(sessionStartTime).toLocaleString();
+                          return 'Not recorded';
+                        })()}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
-                      <span className="text-[10px] text-slate-400 block mb-1">Last Password Change</span>
-                      <span className="text-slate-200 font-bold block">
-                        {recentLogs.find(l => l.event_type === 'PASSWORD_RESET' || l.event_type === 'PASSWORD_CHANGED')?.created_at 
-                          ? new Date(recentLogs.find(l => l.event_type === 'PASSWORD_RESET' || l.event_type === 'PASSWORD_CHANGED').created_at).toLocaleDateString()
-                          : 'Updated Recently'}
+                      <span className="text-[10px] text-slate-400 block mb-1">Phone</span>
+                      <span className="text-slate-200 font-bold block truncate font-mono">
+                        {(() => {
+                          if (!adminProfile?.phone) return 'Not available';
+                          const cleanPhone = String(adminProfile.phone).trim();
+                          if (cleanPhone.startsWith('•••••')) return cleanPhone;
+                          const digits = cleanPhone.replace(/\D/g, '');
+                          if (digits.length >= 5) {
+                            return `••••• ${digits.slice(-5)}`;
+                          }
+                          return cleanPhone || 'Not available';
+                        })()}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Last Password Reset</span>
-                      <span className="text-slate-200 font-bold block">
-                        {recentLogs.find(l => l.event_type === 'PASSWORD_RESET_SUCCESS')?.created_at 
-                          ? new Date(recentLogs.find(l => l.event_type === 'PASSWORD_RESET_SUCCESS').created_at).toLocaleDateString()
-                          : 'Verified via OTP'}
+                      <span className="text-slate-200 font-bold block truncate">
+                        {(() => {
+                          if (adminProfile?.last_password_reset) return new Date(adminProfile.last_password_reset).toLocaleString();
+                          const resetLog = recentLogs.find((l) => l.event_type === 'PASSWORD_RESET_SUCCESS');
+                          if (resetLog?.created_at) return new Date(resetLog.created_at).toLocaleString();
+                          return 'Not recorded';
+                        })()}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Last Telegram OTP Sent</span>
-                      <span className="text-emerald-400 font-bold block flex items-center gap-1">
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Telegram Linked
+                      <span className="font-bold block truncate">
+                        {(() => {
+                          if (adminProfile?.telegram_chat_id) {
+                            const otpLog = recentLogs.find((l) => l.event_type === 'PASSWORD_RESET_TELEGRAM_OTP_SENT');
+                            if (otpLog?.created_at) {
+                              return (
+                                <span className="text-emerald-400 flex items-center gap-1">
+                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  {new Date(otpLog.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-emerald-400 flex items-center gap-1">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> Linked (ID: {String(adminProfile.telegram_chat_id).substring(0, 6)}...)
+                              </span>
+                            );
+                          }
+                          return <span className="text-slate-400">Not linked</span>;
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -7182,13 +7303,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
                     {(() => {
                       const ua = adminConnection?.userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
-                      let browser = 'Google Chrome';
-                      let os = 'Windows';
+                      let browser = 'Unknown Browser';
+                      let os = 'Unknown OS';
                       if (ua.includes('Firefox/')) browser = 'Mozilla Firefox';
                       else if (ua.includes('Edg/')) browser = 'Microsoft Edge';
-                      else if (ua.includes('Safari/') && !ua.includes('Chrome')) browser = 'Apple Safari';
+                      else if (ua.includes('Chrome/')) browser = 'Google Chrome';
+                      else if (ua.includes('Safari/')) browser = 'Apple Safari';
                       
-                      if (ua.includes('Mac')) os = 'macOS';
+                      if (ua.includes('Windows')) os = 'Windows';
+                      else if (ua.includes('Mac')) os = 'macOS';
                       else if (ua.includes('Linux')) os = 'Linux';
                       else if (ua.includes('Android')) os = 'Android';
                       else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
@@ -7197,19 +7320,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         <>
                           <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                             <span className="text-[10px] text-slate-400 block mb-1">Browser</span>
-                            <span className="text-white font-bold block">{browser}</span>
+                            <span className="text-white font-bold block truncate">{browser}</span>
                           </div>
                           <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                             <span className="text-[10px] text-slate-400 block mb-1">Operating System</span>
-                            <span className="text-white font-bold block">{os}</span>
+                            <span className="text-white font-bold block truncate">{os}</span>
                           </div>
                           <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                             <span className="text-[10px] text-slate-400 block mb-1">IP Address</span>
-                            <span className="text-cyan-300 font-bold block">{adminConnection?.ip || '127.0.0.1 (Localhost)'}</span>
+                            <span className="text-cyan-300 font-bold block truncate">{adminConnection?.ip || 'Not available'}</span>
                           </div>
                           <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                             <span className="text-[10px] text-slate-400 block mb-1">Approximate Location</span>
-                            <span className="text-purple-300 font-bold block">India (Authenticated Network)</span>
+                            <span className="text-slate-300 font-bold block truncate">
+                              {adminConnection?.location || (adminConnection?.ip && adminConnection.ip !== '127.0.0.1' && adminConnection.ip !== '::1' ? 'Resolved via Network' : 'Not available')}
+                            </span>
                           </div>
                         </>
                       );
@@ -7228,14 +7353,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <span className="text-2xl font-extrabold text-white tracking-widest font-mono block">
                         {formatDuration(sessionDurationSec)}
                       </span>
-                      <span className="text-[9px] text-slate-400 block mt-1">Updating live every sec</span>
+                      <span className="text-[9px] text-slate-400 block mt-1">Updating live from session start</span>
                     </div>
                     <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/[0.03]">
                       <span className="text-[10px] text-purple-300 uppercase tracking-wider block mb-1 font-bold">Session Expires In</span>
                       <span className="text-2xl font-extrabold text-amber-300 tracking-widest font-mono block">
                         {formatRemainingTime(sessionExpiresInSec)}
                       </span>
-                      <span className="text-[9px] text-slate-400 block mt-1">Sliding countdown active</span>
+                      <span className="text-[9px] text-slate-400 block mt-1">Absolute 30-min policy active</span>
                     </div>
                   </div>
                 </div>
@@ -7248,28 +7373,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Account Created</span>
-                      <span className="text-slate-200 font-bold block">
-                        {adminProfile?.created_at ? new Date(adminProfile.created_at).toLocaleDateString() : 'Verified Account'}
+                      <span className="text-slate-200 font-bold block truncate">
+                        {adminProfile?.created_at ? new Date(adminProfile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not recorded'}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Last Activity</span>
-                      <span className="text-slate-200 font-bold block">
-                        {recentLogs.length > 0 ? getRelativeTimeString(recentLogs[0].created_at) : 'Just now'}
+                      <span className="text-slate-200 font-bold block truncate">
+                        {recentLogs.length > 0 && recentLogs[0]?.created_at ? getRelativeTimeString(recentLogs[0].created_at) : 'Current session active'}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Total Login Count</span>
-                      <span className="text-cyan-400 font-bold block">
-                        {recentLogs.filter(l => l.event_type === 'LOGIN_SUCCESS').length || 1} Sessions Logged
+                      <span className="text-cyan-400 font-bold block truncate">
+                        {(() => {
+                          const count = recentLogs.filter((l) => (l.event_type || '').includes('LOGIN')).length;
+                          return count > 0 ? `${count} Session${count === 1 ? '' : 's'} Recorded` : '1 (Current Session)';
+                        })()}
                       </span>
                     </div>
                     <div className="p-3.5 rounded-xl border border-white/5 bg-white/[0.02]">
                       <span className="text-[10px] text-slate-400 block mb-1">Last Successful Login</span>
-                      <span className="text-emerald-400 font-bold block">
-                        {recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS')?.created_at
-                          ? new Date(recentLogs.find(l => l.event_type === 'LOGIN_SUCCESS').created_at).toLocaleTimeString()
-                          : 'Just now'}
+                      <span className="text-emerald-400 font-bold block truncate">
+                        {(() => {
+                          const loginLog = recentLogs.find((l) => l.event_type === 'LOGIN_SUCCESS' || l.event_type === 'GOOGLE_LOGIN_SUCCESS');
+                          if (loginLog?.created_at) return new Date(loginLog.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                          if (sessionStartTime) return new Date(sessionStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                          return 'Current session';
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -7290,15 +7421,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     </button>
 
                     <button
-                      onClick={() => {
-                        const newExpiry = Date.now() + 30 * 60 * 1000;
-                        localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
-                        setSessionExpiresInSec(1800);
-                        showStatus('Session renewed successfully (+30 mins)');
-                      }}
-                      className="p-3 rounded-xl bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/30 text-slate-200 hover:text-purple-300 font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      onClick={handleRefreshAdminSession}
+                      disabled={isRefreshingSession}
+                      className="p-3 rounded-xl bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/30 text-slate-200 hover:text-purple-300 font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                     >
-                      <RefreshCw className="w-4 h-4 text-purple-400" /> Refresh Session
+                      <RefreshCw className={`w-4 h-4 text-purple-400 ${isRefreshingSession ? 'animate-spin' : ''}`} /> Refresh Session
                     </button>
 
                     <button
@@ -7332,38 +7459,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <span className="text-[10px] font-mono text-slate-500">Last 10 Administrator Actions</span>
                   </div>
 
-                  <div className="space-y-2 font-mono text-xs">
+                  <div className="space-y-2 font-mono text-xs max-h-72 overflow-y-auto pr-1">
                     {recentLogs.length === 0 ? (
                       <div className="p-4 rounded-xl border border-white/5 bg-white/[0.01] text-center text-slate-500 text-[11px]">
-                        No logged audit activity available for this session.
+                        No logged audit activity recorded yet.
                       </div>
                     ) : (
-                      recentLogs.slice(0, 10).map((log, idx) => (
-                        <div
-                          key={log.id || `act_${idx}`}
-                          className="p-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between text-[11px]"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <div className="truncate">
-                              <span className="font-bold text-white block">
-                                ✔ {log.event_type === 'LOGIN_SUCCESS' ? 'Logged In' :
-                                    log.event_type === 'PASSWORD_RESET' || log.event_type === 'PASSWORD_CHANGED' ? 'Changed Password' :
-                                    log.event_type === 'CLOUDINARY_UPLOAD' ? 'Uploaded Logo' :
-                                    log.event_type === 'PARTNER_UPDATED' ? 'Updated Partner' :
-                                    log.event_type === 'NEWSLETTER_ADDED' ? 'Added Newsletter' :
-                                    log.event_type ? log.event_type.replace(/_/g, ' ') : 'Administrator Activity'}
-                              </span>
-                              <span className="text-[10px] text-slate-400 truncate block">
-                                {log.details?.description || log.email || adminEmail}
-                              </span>
+                      recentLogs.slice(0, 10).map((log, idx) => {
+                        const eventType = log.event_type || 'ADMIN_ACTION';
+                        let actionTitle = 'Administrator Action';
+                        let desc = log.details?.description || log.email || adminEmail;
+
+                        if (eventType === 'LOGIN_SUCCESS' || eventType === 'GOOGLE_LOGIN_SUCCESS') {
+                          actionTitle = 'Logged in to Admin Center';
+                          desc = log.details?.authMethod === 'google' ? 'Authenticated via Google OAuth' : 'Authenticated via Admin Passcode';
+                        } else if (eventType === 'LOGOUT') {
+                          actionTitle = 'Logged out of Admin Center';
+                          desc = 'Session ended';
+                        } else if (eventType === 'SELF_SERVICE_PASSWORD_CHANGE_SUCCESS' || eventType === 'PASSWORD_CHANGED') {
+                          actionTitle = 'Password Changed Successfully';
+                          desc = 'Security credentials updated';
+                        } else if (eventType === 'PASSWORD_RESET_SUCCESS') {
+                          actionTitle = 'Password Reset Completed';
+                          desc = 'Reset via Telegram OTP';
+                        } else if (eventType === 'PASSWORD_RESET_TELEGRAM_OTP_SENT') {
+                          actionTitle = 'Telegram OTP Code Dispatched';
+                          desc = 'Security verification code sent';
+                        } else if (eventType === 'UPSERT_AUTHORIZED_ADMIN_EMAIL') {
+                          actionTitle = 'Updated Administrator Account';
+                          desc = log.details?.email || 'Authorized allowlist record updated';
+                        } else if (eventType === 'DELETE_AUTHORIZED_ADMIN_EMAIL') {
+                          actionTitle = 'Removed Administrator Account';
+                          desc = log.details?.target || 'Authorized allowlist record deleted';
+                        } else if (eventType === 'CLOUDINARY_UPLOAD') {
+                          actionTitle = 'Uploaded Brand Asset';
+                          desc = 'Logo or image media uploaded';
+                        } else if (eventType === 'PORTAL_LOGIN_SUCCESS') {
+                          actionTitle = 'Portal Access Authenticated';
+                          desc = log.details?.role ? `Role: ${log.details.role}` : 'Portal login successful';
+                        } else if (eventType === 'SESSION_REVALIDATED') {
+                          actionTitle = 'Session Re-validated';
+                          desc = 'Verified with server';
+                        } else {
+                          actionTitle = eventType.replace(/_/g, ' ');
+                        }
+
+                        return (
+                          <div
+                            key={log.id || `act_${idx}`}
+                            className="p-3 rounded-xl border border-white/5 bg-white/[0.02] flex items-center justify-between text-[11px] hover:border-cyan-500/20 transition-colors"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <div className="truncate">
+                                <span className="font-bold text-white block truncate">{actionTitle}</span>
+                                <span className="text-[10px] text-slate-400 truncate block">{desc}</span>
+                              </div>
                             </div>
+                            <span className="text-[10px] text-slate-500 shrink-0 ml-2">
+                              {log.created_at ? getRelativeTimeString(log.created_at) : 'Just now'}
+                            </span>
                           </div>
-                          <span className="text-[10px] text-slate-500 shrink-0 ml-2">
-                            {getRelativeTimeString(log.created_at)}
-                          </span>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>

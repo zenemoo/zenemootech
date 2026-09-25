@@ -11,6 +11,7 @@ import {
   deleteUserNotification,
   createAdminNotification,
   deleteAdminNotification,
+  deleteOlderNotifications,
 } from '../controllers/notificationController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -29,8 +30,12 @@ router.put('/read-all', markAllNotificationsAsRead);
 router.put('/:id/read', markNotificationAsRead);
 router.delete('/:id', deleteUserNotification);
 
-// Admin Notification Center Endpoints (Strictly Require Admin Authentication)
+// Admin Notification Center Endpoints (Strictly Require Admin Authentication & RBAC)
 router.get('/admin', verifyToken, requireRole(['admin']), getAdminNotifications);
+router.put('/admin/read-all', verifyToken, requireRole(['admin']), markAllNotificationsAsRead);
+router.put('/admin/:id/read', verifyToken, requireRole(['admin']), markNotificationAsRead);
+router.post('/admin/delete-older', verifyToken, requireRole(['admin']), deleteOlderNotifications);
+router.delete('/admin/cleanup', verifyToken, requireRole(['admin']), deleteOlderNotifications);
 router.post('/dispatch', verifyToken, requireRole(['admin']), createAdminNotification);
 router.post('/', verifyToken, requireRole(['admin']), createAdminNotification);
 router.delete('/admin/:id', verifyToken, requireRole(['admin']), deleteAdminNotification);
