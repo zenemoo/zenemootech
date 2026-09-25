@@ -39,11 +39,32 @@ export const deduplicatedGet = <T = any>(url: string, config?: any): Promise<T> 
   return promise as unknown as Promise<T>;
 };
 
+// Initialize default authorization header from storage if session exists on startup
+if (typeof window !== 'undefined') {
+  const initialToken = localStorage.getItem('zenemoo_jwt_token');
+  if (initialToken) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
+  }
+}
+
 // Request interceptor for JWT authentication header (Zenemoo Admin JWT only)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('zenemoo_jwt_token');
+  const token = typeof window !== 'undefined' ? localStorage.getItem('zenemoo_jwt_token') : null;
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    if (config.headers && typeof config.headers.set === 'function') {
+      config.headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      config.headers = config.headers || {};
+      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } else {
+    if (config.headers && typeof config.headers.delete === 'function') {
+      config.headers.delete('Authorization');
+    } else if (config.headers) {
+      delete config.headers['Authorization'];
+      delete config.headers.Authorization;
+    }
   }
   return config;
 });
@@ -52,37 +73,38 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     const newToken = response.headers['x-new-token'] || response.headers['X-New-Token'];
-    if (newToken) {
+    if (newToken && typeof window !== 'undefined') {
       localStorage.setItem('zenemoo_jwt_token', newToken);
-      // NOTE: Absolute expiration is preserved and NOT extended beyond the original 30-min lifetime
+      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     }
     return response;
   },
   (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response && error.response.status === 401 && typeof window !== 'undefined') {
       const reqUrl = error.config?.url || '';
       const currentToken = localStorage.getItem('zenemoo_jwt_token');
-      const sentAuthHeader = error.config?.headers?.Authorization || error.config?.headers?.authorization;
+      const authHeader = error.config?.headers?.get
+        ? error.config.headers.get('Authorization')
+        : (error.config?.headers?.Authorization || error.config?.headers?.authorization);
 
       // Only invalidate Admin session if this was an authenticated Admin request carrying the current Admin JWT
+      // and target was a core session verification endpoint (/auth/profile or /auth/me)
       const isAuthAdminRequest =
         currentToken &&
-        sentAuthHeader &&
-        String(sentAuthHeader).includes(currentToken) &&
-        (reqUrl.startsWith('/auth/profile') ||
-         reqUrl.startsWith('/auth/audit-logs') ||
-         reqUrl.startsWith('/auth/authorized-emails') ||
-         reqUrl.startsWith('/auth/me'));
+        authHeader &&
+        String(authHeader).includes(currentToken) &&
+        (reqUrl.includes('/auth/profile') || reqUrl.includes('/auth/me'));
 
       if (isAuthAdminRequest) {
         console.warn('🔑 401 Unauthorized Admin response received. Session invalidated.');
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
         localStorage.removeItem('zenemoo_session_start');
+        delete api.defaults.headers.common['Authorization'];
 
         // Broadcast session expiration across all open tabs
         try {
-          if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          if ('BroadcastChannel' in window) {
             const channel = new BroadcastChannel('zenemoo_admin_session');
             channel.postMessage({ type: 'ADMIN_SESSION_EXPIRED', reason: 'unauthorized_401' });
             channel.close();

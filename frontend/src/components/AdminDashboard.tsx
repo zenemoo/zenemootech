@@ -7,7 +7,7 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, getAllOpportunitiesForAdmin, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi, isTempId } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk, resendCandidateAcceptanceEmail } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
+import { api, contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
 import { sanitizeZenemooUrl, isValidZenemooUrlInput } from '../services/notificationService';
 import { supabase } from '../lib/supabaseClient';
 import { getAllReviewsForAdmin, ReviewItem } from '../lib/reviewStore';
@@ -52,7 +52,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(() => {
-    return typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
+    if (typeof window === 'undefined') return false;
+    const hasToken = !!localStorage.getItem('zenemoo_jwt_token');
+    const hasOAuthParams =
+      window.location.hash.includes('access_token') ||
+      window.location.hash.includes('code=') ||
+      window.location.search.includes('code=') ||
+      window.location.search.includes('access_token=');
+    return hasToken || hasOAuthParams;
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -973,6 +980,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     localStorage.removeItem('zenemoo_session_start');
     localStorage.removeItem('zenemoo_jwt_token');
     localStorage.removeItem('zenemoo_jwt_expiry');
+    delete api.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
     setShowPasscode(false);
     setPasscode('');
@@ -999,26 +1007,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         setIsCheckingSession(true);
         const googleRes = await authApi.googleAdminLogin(sbToken);
 
-        if (!isMounted) return;
+        if (!isMounted) return false;
 
         if (googleRes.data && googleRes.data.success && googleRes.data.token) {
+          const token = googleRes.data.token;
           const now = Date.now();
           const absoluteExpiry = now + 30 * 60 * 1000;
           localStorage.setItem('zenemoo_session_start', now.toString());
-          localStorage.setItem('zenemoo_jwt_token', googleRes.data.token);
+          localStorage.setItem('zenemoo_jwt_token', token);
           localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+          let verifiedUser = googleRes.data.user;
+          // Verify profile immediately with backend using the Zenemoo admin JWT
+          try {
+            const profileRes = await authApi.getProfile();
+            if (profileRes.data && profileRes.data.success) {
+              if (profileRes.data.user) {
+                verifiedUser = profileRes.data.user;
+                setAdminProfile(profileRes.data.user);
+              }
+              if (profileRes.data.user?.email) {
+                setAdminEmail(profileRes.data.user.email);
+              }
+              if (profileRes.data.connection) {
+                setAdminConnection(profileRes.data.connection);
+              }
+            }
+          } catch (pErr) {
+            console.warn('Initial Google profile validation notice:', pErr);
+            if (googleRes.data.user) {
+              setAdminProfile(googleRes.data.user);
+            }
+            if (googleRes.data.user?.email) {
+              setAdminEmail(googleRes.data.user.email);
+            }
+          }
+
           setSessionStartTime(now);
           setSessionDurationSec(0);
           setSessionExpiresInSec(1800);
-
           setIsAuthenticated(true);
           setPassError('');
-          if (googleRes.data.user?.email) {
-            setAdminEmail(googleRes.data.user.email);
-          }
-          if (googleRes.data.user) {
-            setAdminProfile(googleRes.data.user);
-          }
 
           if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
             window.history.replaceState(null, '', `/${secretEnvRoute}`);
@@ -1028,7 +1058,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           try {
             if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
               const channel = new BroadcastChannel('zenemoo_admin_session');
-              channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: googleRes.data.user?.email });
+              channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: verifiedUser?.email || googleRes.data.user?.email });
               channel.close();
             }
           } catch (_) {}
@@ -1050,6 +1080,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
         localStorage.removeItem('zenemoo_session_start');
+        delete api.defaults.headers.common['Authorization'];
         setIsCheckingSession(false);
         return false;
       }
@@ -1070,21 +1101,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         if (typeof window !== 'undefined') {
           const rawSearch = window.location.search || '';
           const rawHash = window.location.hash || '';
+          const combined = `${rawSearch}&${rawHash}`;
 
-          const searchParams = new URLSearchParams(rawSearch);
-          code = searchParams.get('code');
-          accessToken = searchParams.get('access_token');
-          refreshToken = searchParams.get('refresh_token');
-          errorDesc = searchParams.get('error_description') || searchParams.get('error');
+          const getParam = (paramName: string): string | null => {
+            const match = combined.match(new RegExp(`(?:[?#&/]|^)${paramName}=([^&#]+)`));
+            return match ? decodeURIComponent(match[1]) : null;
+          };
 
-          if (rawHash) {
-            const hashClean = rawHash.replace(/^#+/, '').replace(/^\/+/, '');
-            const hashParams = new URLSearchParams(hashClean);
-            if (!code) code = hashParams.get('code');
-            if (!accessToken) accessToken = hashParams.get('access_token');
-            if (!refreshToken) refreshToken = hashParams.get('refresh_token');
-            if (!errorDesc) errorDesc = hashParams.get('error_description') || hashParams.get('error');
-          }
+          code = getParam('code');
+          accessToken = getParam('access_token');
+          refreshToken = getParam('refresh_token');
+          errorDesc = getParam('error_description') || getParam('error');
 
           const hasUrlTokens = Boolean(
             code ||
@@ -1163,6 +1190,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
         localStorage.removeItem('zenemoo_session_start');
+        delete api.defaults.headers.common['Authorization'];
         if (isMounted) {
           setPassError('Your Admin session has expired. Please sign in again.');
           setIsAuthenticated(false);
@@ -1170,6 +1198,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         }
         return;
       }
+
+      // Ensure axios default header has the token before making getProfile request
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
       try {
         console.log('🔄 Restoring active administrator session with backend...');
@@ -2004,11 +2035,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
       const response = await authApi.login(cleanPass, cleanEmail);
       if (response.data && response.data.success && response.data.token) {
+        const token = response.data.token;
         const now = Date.now();
         const absoluteExpiry = now + 30 * 60 * 1000;
         localStorage.setItem('zenemoo_session_start', now.toString());
-        localStorage.setItem('zenemoo_jwt_token', response.data.token);
+        localStorage.setItem('zenemoo_jwt_token', token);
         localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+        // Verify session profile immediately with the returned admin JWT before activating dashboard
+        let verifiedUser = response.data.user;
+        try {
+          const profileRes = await authApi.getProfile();
+          if (profileRes.data && profileRes.data.success) {
+            if (profileRes.data.user) {
+              verifiedUser = profileRes.data.user;
+              setAdminProfile(profileRes.data.user);
+            }
+            if (profileRes.data.user?.email) {
+              setAdminEmail(profileRes.data.user.email);
+            }
+            if (profileRes.data.connection) {
+              setAdminConnection(profileRes.data.connection);
+            }
+          }
+        } catch (pErr) {
+          console.warn('Initial profile validation notice:', pErr);
+          if (response.data.user) {
+            setAdminProfile(response.data.user);
+          }
+        }
+
         setSessionStartTime(now);
         setSessionDurationSec(0);
         setSessionExpiresInSec(1800);
@@ -2018,6 +2075,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
           window.history.replaceState(null, '', `/${secretEnvRoute}`);
         }
+
+        // Broadcast successful login to other tabs
+        try {
+          if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+            const channel = new BroadcastChannel('zenemoo_admin_session');
+            channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: verifiedUser?.email || cleanEmail });
+            channel.close();
+          }
+        } catch (_) {}
       } else {
         setPassError(response.data?.message || 'Login failed. Please check your credentials.');
       }
