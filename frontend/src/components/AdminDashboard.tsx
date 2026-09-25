@@ -1271,18 +1271,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
     restoreSession();
 
-    // ── Step 5: Listen for Supabase Auth state changes as secondary observer ──
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isMounted) return;
-      if (session?.access_token && !localStorage.getItem('zenemoo_jwt_token')) {
-        console.log(`🔑 [Supabase onAuthStateChange: ${event}] Processing Admin Google Login...`);
-        await processGoogleAdminToken(session.access_token);
-      }
-    });
-
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 
