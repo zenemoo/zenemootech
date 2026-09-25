@@ -2024,6 +2024,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       const cleanPass = passcode.trim();
 
       const response = await authApi.login(cleanPass, cleanEmail);
+      console.log('🔑 [Manual Login]: Login response success:', !!response.data?.success, 'token exists:', !!response.data?.token, 'token length:', response.data?.token?.length || 0);
+
       if (response.data && response.data.success && response.data.token) {
         const token = response.data.token;
         const now = Date.now();
@@ -2033,47 +2035,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-        // Verify session profile immediately with the returned admin JWT before activating dashboard
-        let verifiedUser = response.data.user;
+        console.log('🔑 [Manual Login]: storage key exists:', !!localStorage.getItem('zenemoo_jwt_token'), 'Authorization header exists:', !!api.defaults.headers.common['Authorization']);
+
+        // Step 6: Verify session profile immediately before marking authenticated
         try {
           const profileRes = await authApi.getProfile();
+          console.log('🔑 [Manual Login]: profile response status:', profileRes.status, 'profile success:', !!profileRes.data?.success);
+
           if (profileRes.data && profileRes.data.success) {
-            if (profileRes.data.user) {
-              verifiedUser = profileRes.data.user;
-              setAdminProfile(profileRes.data.user);
+            const verifiedUser = profileRes.data.user || response.data.user;
+            if (verifiedUser) {
+              setAdminProfile(verifiedUser);
             }
-            if (profileRes.data.user?.email) {
-              setAdminEmail(profileRes.data.user.email);
+            if (verifiedUser?.email) {
+              setAdminEmail(verifiedUser.email);
             }
             if (profileRes.data.connection) {
               setAdminConnection(profileRes.data.connection);
             }
-          }
-        } catch (pErr) {
-          console.warn('Initial profile validation notice:', pErr);
-          if (response.data.user) {
-            setAdminProfile(response.data.user);
-          }
-        }
 
-        setSessionStartTime(now);
-        setSessionDurationSec(0);
-        setSessionExpiresInSec(1800);
-        setIsAuthenticated(true);
-        setPassError('');
-        const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
-        if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-          window.history.replaceState(null, '', `/${secretEnvRoute}`);
-        }
+            setSessionStartTime(now);
+            setSessionDurationSec(0);
+            setSessionExpiresInSec(1800);
+            setIsAuthenticated(true);
+            setPassError('');
 
-        // Broadcast successful login to other tabs
-        try {
-          if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-            const channel = new BroadcastChannel('zenemoo_admin_session');
-            channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: verifiedUser?.email || cleanEmail });
-            channel.close();
+            const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', `/${secretEnvRoute}`);
+            }
+
+            // Broadcast successful login across tabs
+            try {
+              if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+                const channel = new BroadcastChannel('zenemoo_admin_session');
+                channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: verifiedUser?.email || cleanEmail });
+                channel.close();
+              }
+            } catch (_) {}
+          } else {
+            throw new Error(profileRes.data?.message || 'Failed to retrieve authenticated administrator profile.');
           }
-        } catch (_) {}
+        } catch (pErr: any) {
+          console.error('❌ [Manual Login]: Profile verification failed:', pErr.response?.status || pErr.message);
+          localStorage.removeItem('zenemoo_jwt_token');
+          localStorage.removeItem('zenemoo_jwt_expiry');
+          localStorage.removeItem('zenemoo_session_start');
+          delete api.defaults.headers.common['Authorization'];
+          setIsAuthenticated(false);
+          setPassError(pErr.response?.data?.message || 'Authentication verification failed with server. Please try again.');
+          return;
+        }
       } else {
         setPassError(response.data?.message || 'Login failed. Please check your credentials.');
       }
