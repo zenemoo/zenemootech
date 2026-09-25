@@ -57,61 +57,48 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Response interceptor to parse renewed sliding tokens and handle automatic logouts
+// Response interceptor to handle renewed claims and broadcast automatic logouts
 api.interceptors.response.use(
   (response) => {
     const newToken = response.headers['x-new-token'] || response.headers['X-New-Token'];
     if (newToken) {
       localStorage.setItem('zenemoo_jwt_token', newToken);
-      const expiry = Date.now() + 30 * 60 * 1000;
-      localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
+      // NOTE: Absolute expiration is preserved and NOT extended beyond the original 30-min lifetime
     }
     return response;
   },
   (error) => {
     if (error.response && error.response.status === 401) {
       const reqUrl = error.config?.url || '';
-      if (!reqUrl.includes('/auth/login') && !reqUrl.includes('/auth/check-email')) {
+      if (!reqUrl.includes('/auth/login') && !reqUrl.includes('/auth/check-email') && !reqUrl.includes('/auth/google-admin-login')) {
         console.warn('🔑 401 Unauthorized API response received. Session invalidated.');
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
+        
+        // Broadcast session expiration across all open tabs
+        try {
+          if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+            const channel = new BroadcastChannel('zenemoo_admin_session');
+            channel.postMessage({ type: 'ADMIN_SESSION_EXPIRED', reason: 'unauthorized_401' });
+            channel.close();
+          }
+        } catch (_) {}
       }
     }
     return Promise.reject(error);
   }
 );
 
-// Core Allowed Emails Fallback List
-const DEFAULT_ALLOWED_EMAILS = [
-  'prem@zenemoo.in',
-  'contact@zenemoo.in',
-  'support@zenemoo.in',
-  'info@zenemoo.in',
-  'noreply@zenemoo.in',
-  'zenemootech@gmail.com',
-  'mr.prem2006@gmail.com',
-];
-
 export const authApi = {
   login: (passcode: string, email?: string) => api.post('/auth/login', { passcode, email }),
+  googleAdminLogin: (supabaseToken: string) => api.post('/auth/google-admin-login', { supabaseToken }),
   logout: () => api.post('/auth/logout'),
   getProfile: () => api.get('/auth/profile'),
   getAuditLogs: () => deduplicatedGet('/auth/audit-logs'),
 
   checkEmail: async (email: string) => {
     const cleanEmail = email.trim().toLowerCase();
-    try {
-      return await api.post('/auth/check-email', { email: cleanEmail });
-    } catch (err: any) {
-      if (err.response && err.response.status !== 404) {
-        throw err;
-      }
-      const isAllowed = DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in');
-      if (isAllowed) {
-        return { data: { success: true, exists: true, message: '✅ Administrator account found.' } };
-      }
-      return { data: { success: false, exists: false, message: '❌ You are not an authorized administrator.' } };
-    }
+    return await api.post('/auth/check-email', { email: cleanEmail });
   },
 
   forgotPassword: async (email: string) => {
@@ -130,6 +117,7 @@ export const authApi = {
     return await api.post('/auth/reset-password', { email: cleanEmail, otp, newPassword });
   },
 };
+
 
 // Team APIs
 export const teamApi = {

@@ -737,7 +737,7 @@ export const TalentHubProfileEditModal: React.FC<TalentHubProfileEditModalProps>
                   </div>
                 </div>
                 <a
-                  href="mailto:support@zenemoo.com?subject=Talent%20Hub%20Profile%20Assistance"
+                  href="mailto:support@zenemoo.in?subject=Talent%20Hub%20Profile%20Assistance"
                   className="w-full py-2 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
                 >
                   <Mail className="w-3.5 h-3.5" />

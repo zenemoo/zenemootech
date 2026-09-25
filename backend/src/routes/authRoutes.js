@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   login,
+  googleAdminLogin,
   portalLogin,
   logout,
   getProfile,
@@ -23,6 +24,7 @@ const router = Router();
 
 // Authentication Endpoints
 router.post('/login', authLoginRateLimiter, login);
+router.post('/google-admin-login', authLoginRateLimiter, googleAdminLogin);
 router.post('/portal-login', authLoginRateLimiter, portalLogin);
 router.post('/logout', authMiddleware, logout);
 router.get('/profile', authMiddleware, getProfile);
@@ -42,3 +44,4 @@ router.post('/verify-otp', authOtpRateLimiter, verifyOtp);
 router.post('/reset-password', authOtpRateLimiter, resetPassword);
 
 export default router;
+

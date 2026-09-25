@@ -55,30 +55,33 @@ const writeAuditLog = async (req, eventType, email, details = {}) => {
 
 /**
  * Helper: Check Admin Email Authorization
+ * Strictly checks the authorized_admin_emails database table for active administrator records.
  */
 const checkAdminEmailAuthorized = async (email) => {
   const cleanEmail = (email || '').trim().toLowerCase();
   if (!cleanEmail) return false;
 
-  // 1. Query Supabase authorized_admin_emails table
+  // Query Supabase authorized_admin_emails table strictly
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from('authorized_admin_emails')
-        .select('*')
+        .select('id, role, status, email')
         .eq('email', cleanEmail)
         .maybeSingle();
 
       if (!error && data) {
-        return true;
+        const status = (data.status || 'active').toLowerCase();
+        const role = (data.role || 'admin').toLowerCase().replace(/\s+/g, '_');
+        const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'manager', 'root'].includes(role);
+        return status === 'active' && isAdminRole;
       }
     } catch (err) {
       console.warn('[Auth Check DB Note]', err.message);
     }
   }
 
-  // 2. Check domain or fallback list
-  return DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in');
+  return false;
 };
 
 /**
@@ -89,7 +92,7 @@ const hashOtp = (otp) => {
 };
 
 /**
- * 1. Admin Login
+ * 1. Admin Passcode/Password Login
  */
 export const login = async (req, res, next) => {
   try {
@@ -107,11 +110,8 @@ export const login = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Email address is required.' });
     }
 
-    const isAuth = await checkAdminEmailAuthorized(cleanEmail);
-    if (!isAuth) {
-      console.warn(`⚠️ Login unauthorized: ${cleanEmail} is not on the authorized list.`);
-      await writeAuditLog(req, 'LOGIN_FAILED_UNAUTHORIZED_EMAIL', cleanEmail);
-      return res.status(403).json({ success: false, message: 'Access Denied: Email is not an authorized administrator.' });
+    if (!passcode) {
+      return res.status(400).json({ success: false, message: 'Passcode is required.' });
     }
 
     let dbUser = null;
@@ -122,7 +122,7 @@ export const login = async (req, res, next) => {
         console.log(`🌐 Querying database for authorized admin email: ${cleanEmail}`);
         const { data, error } = await supabase
           .from('authorized_admin_emails')
-          .select('*')
+          .select('id, email, role, status, name, profile_photo_url, telegram_chat_id, password_hash')
           .eq('email', cleanEmail)
           .maybeSingle();
 
@@ -131,13 +131,37 @@ export const login = async (req, res, next) => {
         } else if (data) {
           dbUser = data;
           passwordHash = data.password_hash;
-          console.log(`✅ DB record found for ${cleanEmail}. Password hash present:`, passwordHash ? 'YES' : 'NO');
+          console.log(`✅ DB record found for ${cleanEmail}. Status: ${data.status}, Role: ${data.role}`);
         } else {
-          console.log(`ℹ️ No DB record found in authorized_admin_emails for ${cleanEmail} (using email rules fallback).`);
+          console.log(`ℹ️ No DB record found in authorized_admin_emails for ${cleanEmail}.`);
         }
       } catch (dbErr) {
         console.error('❌ Database connection/query exception during login:', dbErr);
       }
+    }
+
+    // 1. Must exist in authorized_admin_emails
+    if (!dbUser) {
+      console.warn(`⚠️ Login unauthorized: ${cleanEmail} is not on the authorized list.`);
+      await writeAuditLog(req, 'LOGIN_FAILED_UNAUTHORIZED_EMAIL', cleanEmail);
+      return res.status(403).json({ success: false, message: 'Access Denied: Email is not an authorized administrator.' });
+    }
+
+    // 2. Must be active
+    const status = (dbUser.status || 'active').toLowerCase();
+    if (status !== 'active') {
+      console.warn(`⚠️ Login blocked: ${cleanEmail} status is '${status}'.`);
+      await writeAuditLog(req, 'LOGIN_FAILED_INACTIVE_ACCOUNT', cleanEmail, { status });
+      return res.status(403).json({ success: false, message: 'Access Denied: Administrator account is inactive or disabled.' });
+    }
+
+    // 3. Must have valid admin role
+    const userRole = (dbUser.role || 'administrator').toLowerCase();
+    const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
+    if (!isAdminRole) {
+      console.warn(`⚠️ Login blocked: ${cleanEmail} assigned role is '${dbUser.role}'.`);
+      await writeAuditLog(req, 'LOGIN_FAILED_INSUFFICIENT_ROLE', cleanEmail, { role: dbUser.role });
+      return res.status(403).json({ success: false, message: 'Access Denied: Role is not authorized for Admin access.' });
     }
 
     let isPasswordValid = false;
@@ -156,15 +180,28 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid admin passcode.' });
     }
 
+    // Strict 30-minute absolute session expiration
+    const secret = getJwtSecret();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const absoluteExpirySec = nowSec + 30 * 60; // 30 minutes from now
+
     const token = jwt.sign(
-      { role: 'admin', email: cleanEmail, email_access: true },
-      getJwtSecret(),
-      { expiresIn: '30m' }
+      {
+        id: dbUser.id,
+        role: 'admin',
+        email: cleanEmail,
+        email_access: true,
+        auth_method: 'passcode',
+        session_start: nowSec,
+        exp: absoluteExpirySec,
+        iat: nowSec,
+      },
+      secret
     );
 
-    console.log(`🎉 LOGIN SUCCESS! Generated JWT token for ${cleanEmail}`);
+    console.log(`🎉 LOGIN SUCCESS! Generated strict 30-min JWT token for ${cleanEmail}`);
 
-    // Detect new device before writing the new audit log
+    // Detect new device before writing audit log
     let isNewDevice = false;
     if (supabase) {
       try {
@@ -194,7 +231,7 @@ export const login = async (req, res, next) => {
       }
     }
 
-    await writeAuditLog(req, 'LOGIN_SUCCESS', cleanEmail, { isNewDevice });
+    await writeAuditLog(req, 'LOGIN_SUCCESS', cleanEmail, { isNewDevice, authMethod: 'passcode' });
 
     // Send Telegram Alert if Chat ID is linked
     const telegramChatId = dbUser?.telegram_chat_id;
@@ -202,7 +239,6 @@ export const login = async (req, res, next) => {
       const clientIp = getClientIp(req);
       const userAgent = req.headers['user-agent'] || '';
       
-      // Execute alert asynchronously to minimize login latency
       (async () => {
         try {
           const location = await getApproximateLocation(clientIp);
@@ -212,7 +248,8 @@ export const login = async (req, res, next) => {
             ip: clientIp,
             userAgent: userAgent,
             location: location,
-            isNewDevice: isNewDevice
+            isNewDevice: isNewDevice,
+            authMethod: 'Passcode Login',
           });
         } catch (e) {
           console.error('Failed to send login Telegram alert:', e.message);
@@ -224,13 +261,185 @@ export const login = async (req, res, next) => {
       success: true,
       message: 'Admin authentication successful',
       token,
-      user: { role: 'admin', email: cleanEmail },
+      user: {
+        id: dbUser.id,
+        role: dbUser.role || 'Administrator',
+        email: cleanEmail,
+        name: dbUser.name || cleanEmail.split('@')[0],
+      },
     });
   } catch (err) {
     console.error('🔥 Login Exception:', err);
     next(err);
   }
 };
+
+/**
+ * 1B. Google OAuth Admin Login
+ * Verifies Supabase Bearer token, extracts verified Google email,
+ * checks authorized_admin_emails table, enforces active status and admin role,
+ * and issues a strict 30-minute Zenemoo Admin JWT.
+ */
+export const googleAdminLogin = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const bodyToken = req.body?.supabaseToken;
+    const token = bodyToken || (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHORIZED_MISSING_TOKEN',
+        message: 'Authentication token is required from Google login.',
+      });
+    }
+
+    if (!supabase) {
+      console.error('[Google Admin Login] Supabase client is not available on server.');
+      return res.status(500).json({
+        success: false,
+        message: 'Server authentication configuration error. Please try again later.',
+      });
+    }
+
+    // 1. Verify token with Supabase Auth API
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      console.warn('[Google Admin Login] Invalid Supabase token:', authError?.message);
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHORIZED_INVALID_GOOGLE_SESSION',
+        message: 'Invalid or expired Google authentication session. Please sign in again.',
+      });
+    }
+
+    // 2. Extract verified email
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verified email address not found in Google account profile.',
+      });
+    }
+
+    console.log(`🔑 GOOGLE ADMIN LOGIN ATTEMPT: ${cleanEmail}`);
+
+    // 3. Strict Check: Lookup email in authorized_admin_emails table
+    const { data: adminRecord, error: dbError } = await supabase
+      .from('authorized_admin_emails')
+      .select('id, email, role, status, name, profile_photo_url, telegram_chat_id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (dbError) {
+      console.error('[Google Admin Login] Database lookup error:', dbError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error verifying administrator authorization.',
+      });
+    }
+
+    // 4. If record does not exist in authorized_admin_emails -> STRICT 403 REJECTION
+    if (!adminRecord) {
+      console.warn(`⛔ [Google Admin Login] UNAUTHORIZED: ${cleanEmail} is NOT in authorized_admin_emails.`);
+      await writeAuditLog(req, 'GOOGLE_LOGIN_FAILED_UNAUTHORIZED_EMAIL', cleanEmail, { provider: 'google' });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_UNAUTHORIZED_GOOGLE_ACCOUNT',
+        message: 'Your Google account is not authorized for Admin access.',
+      });
+    }
+
+    // 5. Status check: must be active
+    const status = (adminRecord.status || 'active').toLowerCase();
+    if (status !== 'active') {
+      console.warn(`⛔ [Google Admin Login] INACTIVE: ${cleanEmail} status is '${status}'.`);
+      await writeAuditLog(req, 'GOOGLE_LOGIN_FAILED_INACTIVE_ACCOUNT', cleanEmail, { status });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_ACCOUNT_INACTIVE',
+        message: 'Your administrator account is inactive or disabled. Contact system owner.',
+      });
+    }
+
+    // 6. Role check: must be admin role
+    const userRole = (adminRecord.role || 'administrator').toLowerCase();
+    const isAdminRole = ['admin', 'super_admin', 'administrator', 'superadmin', 'root'].includes(userRole);
+    if (!isAdminRole) {
+      console.warn(`⛔ [Google Admin Login] INSUFFICIENT ROLE: ${cleanEmail} has role '${adminRecord.role}'.`);
+      await writeAuditLog(req, 'GOOGLE_LOGIN_FAILED_INSUFFICIENT_ROLE', cleanEmail, { role: adminRecord.role });
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN_INSUFFICIENT_ROLE',
+        message: 'Access Denied: Your assigned role is not authorized for Admin access.',
+      });
+    }
+
+    // 7. Issue strict 30-minute Zenemoo Admin JWT
+    const secret = getJwtSecret();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const absoluteExpirySec = nowSec + 30 * 60; // Exact 30 minutes from now
+
+    const tokenPayload = {
+      id: adminRecord.id,
+      role: 'admin',
+      email: cleanEmail,
+      email_access: true,
+      auth_method: 'google',
+      session_start: nowSec,
+      exp: absoluteExpirySec,
+      iat: nowSec,
+    };
+
+    const zenemooAdminJwt = jwt.sign(tokenPayload, secret);
+
+    console.log(`🎉 [Google Admin Login] SUCCESS: Generated Admin JWT for ${cleanEmail} (expires in 30m)`);
+
+    // Audit log
+    await writeAuditLog(req, 'GOOGLE_LOGIN_SUCCESS', cleanEmail, {
+      provider: 'google',
+      role: adminRecord.role,
+    });
+
+    // Telegram notification if linked
+    if (adminRecord.telegram_chat_id) {
+      const clientIp = getClientIp(req);
+      const userAgent = req.headers['user-agent'] || '';
+      (async () => {
+        try {
+          const location = await getApproximateLocation(clientIp);
+          await sendTelegramAlert(adminRecord.telegram_chat_id, 'login', {
+            email: cleanEmail,
+            ip: clientIp,
+            userAgent,
+            location,
+            authMethod: 'Google Login',
+          });
+        } catch (e) {
+          console.warn('[Telegram Alert Warning]:', e.message);
+        }
+      })();
+    }
+
+    return res.json({
+      success: true,
+      message: 'Google administrator authentication successful',
+      token: zenemooAdminJwt,
+      user: {
+        id: adminRecord.id,
+        email: cleanEmail,
+        role: adminRecord.role || 'Administrator',
+        name: adminRecord.name || cleanEmail.split('@')[0],
+        profile_photo_url: adminRecord.profile_photo_url || user.user_metadata?.avatar_url || '',
+      },
+    });
+  } catch (err) {
+    console.error('🔥 [Google Admin Login Exception]:', err);
+    next(err);
+  }
+};
+
 
 /**
  * 2. POST /api/auth/check-email

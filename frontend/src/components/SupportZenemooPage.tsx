@@ -946,7 +946,7 @@ export const SupportZenemooPage: React.FC<SupportZenemooPageProps> = ({
                 </p>
                 <div className="pt-2">
                   <a
-                    href="mailto:contact@zenemoo.com"
+                    href="mailto:contact@zenemoo.in"
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-700 hover:text-cyan-800 transition-colors"
                   >
                     <span>Get in Touch</span>

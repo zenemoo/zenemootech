@@ -80,7 +80,7 @@ export interface MediaRecord {
 
 export const DEFAULT_CONFIG: SiteConfig = {
   supabaseUrl: (import.meta as any).env?.VITE_SUPABASE_URL || 'https://wkbkomwjuywdeaxgchxw.supabase.co',
-  adminPasscode: 'zenemoo2026',
+  adminPasscode: '',
 };
 
 export const DEFAULT_TELEMETRY: TelemetryConfig = {

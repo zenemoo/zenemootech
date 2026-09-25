@@ -50,6 +50,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [showPasscode, setShowPasscode] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(() => {
     return typeof window !== 'undefined' && !!localStorage.getItem('zenemoo_jwt_token');
   });
@@ -881,28 +882,138 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     }
   };
 
-  // Session validation and restoration hook on mount
+  // Helper for centralized logout with optional reason broadcast
+  const handleLogoutWithReason = (reason?: string) => {
+    localStorage.removeItem('zenemoo_jwt_token');
+    localStorage.removeItem('zenemoo_jwt_expiry');
+    setIsAuthenticated(false);
+    setShowPasscode(false);
+    setPasscode('');
+    if (reason) {
+      setPassError(reason);
+    }
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const channel = new BroadcastChannel('zenemoo_admin_session');
+        channel.postMessage({ type: 'ADMIN_LOGOUT', reason });
+        channel.close();
+      }
+    } catch (_) {}
+  };
+
+  // Session validation, Google OAuth callback, and restoration hook on mount
   useEffect(() => {
+    let isMounted = true;
+
     const restoreSession = async () => {
       const token = localStorage.getItem('zenemoo_jwt_token');
       const expiry = localStorage.getItem('zenemoo_jwt_expiry');
-      
+
+      // Check if there is an active Supabase session (e.g. returning from Google OAuth)
+      let supabaseAccessToken: string | null = null;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.access_token) {
+          supabaseAccessToken = sessionData.session.access_token;
+        }
+      } catch (_) {}
+
+      // Scenario 1: Returning from Google OAuth callback
+      const isOAuthCallback =
+        (typeof window !== 'undefined' && (
+          window.location.hash.includes('admin_google_callback') ||
+          window.location.hash.includes('access_token') ||
+          window.location.hash.includes('error')
+        )) || (!token && supabaseAccessToken);
+
+      if (isOAuthCallback && supabaseAccessToken) {
+        try {
+          console.log('🔑 Validating Google OAuth token with backend authorized allowlist...');
+          setIsCheckingSession(true);
+          const googleRes = await authApi.googleAdminLogin(supabaseAccessToken);
+
+          if (!isMounted) return;
+
+          if (googleRes.data && googleRes.data.success && googleRes.data.token) {
+            const now = Date.now();
+            const absoluteExpiry = now + 30 * 60 * 1000;
+            localStorage.setItem('zenemoo_jwt_token', googleRes.data.token);
+            localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+
+            setIsAuthenticated(true);
+            setPassError('');
+            if (googleRes.data.user?.email) {
+              setAdminEmail(googleRes.data.user.email);
+            }
+            if (googleRes.data.user) {
+              setAdminProfile(googleRes.data.user);
+            }
+
+            // Clean up URL hash cleanly
+            const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', `/${secretEnvRoute}`);
+            }
+
+            // Broadcast successful login to other tabs
+            try {
+              if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+                const channel = new BroadcastChannel('zenemoo_admin_session');
+                channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: googleRes.data.user?.email });
+                channel.close();
+              }
+            } catch (_) {}
+
+            setIsCheckingSession(false);
+            return;
+          }
+        } catch (err: any) {
+          console.warn('Google Admin login authorization failed:', err);
+          try {
+            await supabase.auth.signOut();
+          } catch (_) {}
+
+          if (!isMounted) return;
+
+          const msg = err.response?.data?.message || 'Your Google account is not authorized for Admin access.';
+          setPassError(msg);
+          setIsAuthenticated(false);
+          localStorage.removeItem('zenemoo_jwt_token');
+          localStorage.removeItem('zenemoo_jwt_expiry');
+
+          const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', `/${secretEnvRoute}`);
+          }
+
+          setIsCheckingSession(false);
+          return;
+        }
+      }
+
+      // Scenario 2: Existing Zenemoo Admin JWT in localStorage
       if (!token) {
-        setIsCheckingSession(false);
+        if (isMounted) setIsCheckingSession(false);
         return;
       }
 
-      if (expiry && Date.now() > parseInt(expiry, 10)) {
+      // Strict check: if local expiry timestamp has passed, immediately log out without extending
+      if (expiry && Date.now() >= parseInt(expiry, 10)) {
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
-        setPassError('Session expired. Please log in again.');
-        setIsCheckingSession(false);
+        if (isMounted) {
+          setPassError('Your Admin session has expired. Please sign in again.');
+          setIsAuthenticated(false);
+          setIsCheckingSession(false);
+        }
         return;
       }
 
       try {
-        console.log('🔄 Restoring active administrator session...');
+        console.log('🔄 Restoring active administrator session with backend...');
         const response = await authApi.getProfile();
+        if (!isMounted) return;
+
         if (response.data && response.data.success) {
           setIsAuthenticated(true);
           if (response.data.user?.email) {
@@ -914,94 +1025,130 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           if (response.data.connection) {
             setAdminConnection(response.data.connection);
           }
-          const newExpiry = Date.now() + 30 * 60 * 1000;
-          localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
-          console.log('✅ Session restored successfully.');
+          // Note: Strict absolute expiration is preserved and NOT extended beyond the original 30-min window
+          console.log('✅ Session validated successfully.');
         } else {
           localStorage.removeItem('zenemoo_jwt_token');
           localStorage.removeItem('zenemoo_jwt_expiry');
+          setIsAuthenticated(false);
+          setPassError('Session validation failed. Please sign in again.');
         }
       } catch (err: any) {
         console.warn('Session verification notice on mount:', err);
-        // Only clear token if server explicitly returned 401 Unauthorized
-        if (err.response && err.response.status === 401) {
+        if (!isMounted) return;
+
+        if (err.response && (err.response.status === 401 || err.response.status === 403)) {
           localStorage.removeItem('zenemoo_jwt_token');
           localStorage.removeItem('zenemoo_jwt_expiry');
+          setIsAuthenticated(false);
+          setPassError('Your Admin session has expired. Please sign in again.');
         } else {
-          // Keep session active for transient network/timeout glitches if token exists
-          setIsAuthenticated(true);
-          const fallbackExpiry = Date.now() + 30 * 60 * 1000;
-          localStorage.setItem('zenemoo_jwt_expiry', fallbackExpiry.toString());
-          loadSupportTickets();
+          // Network failure or server offline: DO NOT assume authenticated!
+          setIsAuthenticated(false);
+          setPassError('Unable to verify secure session with server. Please check your network and sign in again.');
         }
       } finally {
-        setIsCheckingSession(false);
+        if (isMounted) setIsCheckingSession(false);
       }
     };
 
     restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Inactivity timeout watcher, user interaction reset & live countdown updater
+  // Strict 30-minute absolute session watcher, sleep/wake protection & multi-tab sync
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Reset expiry timer on user interaction (mouse move, click, keydown, scroll)
-    let lastActivityReset = Date.now();
-    const handleUserActivity = () => {
-      const now = Date.now();
-      // Throttle expiry reset writes to at most once every 30 seconds
-      if (now - lastActivityReset > 30000) {
-        lastActivityReset = now;
-        const newExpiry = now + 30 * 60 * 1000;
-        localStorage.setItem('zenemoo_jwt_expiry', newExpiry.toString());
+    // Checks current absolute expiry and triggers immediate logout if expired
+    const checkAbsoluteExpiration = (triggerName?: string): boolean => {
+      const token = localStorage.getItem('zenemoo_jwt_token');
+      const expiry = localStorage.getItem('zenemoo_jwt_expiry');
+
+      if (!token || !expiry) {
+        handleLogoutWithReason('Your Admin session has ended. Please sign in again.');
+        return true;
       }
+
+      const expiryMs = parseInt(expiry, 10);
+      const remainingMs = expiryMs - Date.now();
+
+      if (remainingMs <= 0 || isNaN(expiryMs)) {
+        console.log(`⚠️ Admin 30-minute session expired [Trigger: ${triggerName || 'timer'}].`);
+        handleLogoutWithReason('Your Admin session has expired. Please sign in again.');
+        return true;
+      }
+
+      setSessionExpiresInSec(Math.max(0, Math.ceil(remainingMs / 1000)));
+      return false;
+    };
+
+    // 1. Sleep/Wake & Tab Visibility Guard (Checks BEFORE user activity can run)
+    const handleVisibilityOrFocus = () => {
+      checkAbsoluteExpiration('visibility/focus');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('pageshow', handleVisibilityOrFocus);
+
+    // 2. Cross-Tab Synchronization via BroadcastChannel & Storage Event
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        channel = new BroadcastChannel('zenemoo_admin_session');
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'ADMIN_LOGOUT' || event.data?.type === 'ADMIN_SESSION_EXPIRED') {
+            console.log('📡 Cross-tab logout notification received:', event.data);
+            setIsAuthenticated(false);
+            setShowPasscode(false);
+            setPasscode('');
+            setPassError('Your Admin session was ended from another tab.');
+          }
+        };
+      }
+    } catch (_) {}
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'zenemoo_jwt_token' && !e.newValue) {
+        console.log('📡 Storage event: zenemoo_jwt_token cleared in another tab.');
+        setIsAuthenticated(false);
+        setShowPasscode(false);
+        setPasscode('');
+        setPassError('Your Admin session has ended.');
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // 3. User Activity Guard: Checks expiration FIRST. NEVER extends the absolute 30m deadline!
+    const handleUserActivity = () => {
+      checkAbsoluteExpiration('user_activity');
     };
 
     window.addEventListener('mousemove', handleUserActivity, { passive: true });
     window.addEventListener('keydown', handleUserActivity, { passive: true });
     window.addEventListener('click', handleUserActivity, { passive: true });
-    window.addEventListener('scroll', handleUserActivity, { passive: true });
     window.addEventListener('touchstart', handleUserActivity, { passive: true });
-    window.addEventListener('touchmove', handleUserActivity, { passive: true });
-    window.addEventListener('touchend', handleUserActivity, { passive: true });
-    window.addEventListener('pointerdown', handleUserActivity, { passive: true });
 
+    // 4. 1-second countdown tick
     const interval = setInterval(() => {
-      const token = localStorage.getItem('zenemoo_jwt_token');
-      if (!token) {
-        setIsAuthenticated(false);
-        return;
-      }
-
-      let expiry = localStorage.getItem('zenemoo_jwt_expiry');
-      if (!expiry || isNaN(parseInt(expiry, 10))) {
-        const freshExpiry = Date.now() + 30 * 60 * 1000;
-        localStorage.setItem('zenemoo_jwt_expiry', freshExpiry.toString());
-        expiry = freshExpiry.toString();
-      }
-
-      const expiryMs = parseInt(expiry, 10);
-      const remainingMs = expiryMs - Date.now();
-      
-      if (remainingMs <= 0) {
-        console.log('⚠️ Inactivity session timeout reached.');
-        handleLogoutClick();
-      } else {
-        setSessionExpiresInSec(Math.ceil(remainingMs / 1000));
-      }
+      checkAbsoluteExpiration('interval');
     }, 1000);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('pageshow', handleVisibilityOrFocus);
+      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('mousemove', handleUserActivity);
       window.removeEventListener('keydown', handleUserActivity);
       window.removeEventListener('click', handleUserActivity);
-      window.removeEventListener('scroll', handleUserActivity);
       window.removeEventListener('touchstart', handleUserActivity);
-      window.removeEventListener('touchmove', handleUserActivity);
-      window.removeEventListener('touchend', handleUserActivity);
-      window.removeEventListener('pointerdown', handleUserActivity);
       clearInterval(interval);
+      if (channel) channel.close();
     };
   }, [isAuthenticated]);
 
@@ -1653,10 +1800,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
   const isAuthorizedEmail = (email: string) => {
     const trimmed = email.trim().toLowerCase();
-    return (
-      authorizedEmails.some((a) => a.email.toLowerCase() === trimmed) ||
-      trimmed.endsWith('@zenemoo.in')
-    );
+    return authorizedEmails.some((a) => a.email.toLowerCase() === trimmed);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -1670,9 +1814,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
       const response = await authApi.login(cleanPass, cleanEmail);
       if (response.data && response.data.success && response.data.token) {
+        const now = Date.now();
+        const absoluteExpiry = now + 30 * 60 * 1000;
         localStorage.setItem('zenemoo_jwt_token', response.data.token);
-        const expiry = Date.now() + 30 * 60 * 1000;
-        localStorage.setItem('zenemoo_jwt_expiry', expiry.toString());
+        localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
         setIsAuthenticated(true);
         setPassError('');
         const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
@@ -1691,17 +1836,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setPassError('');
+    setIsGoogleLoading(true);
+
+    try {
+      const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+      const redirectUrl = `${window.location.origin}/${secretEnvRoute}#admin_google_callback`;
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) {
+        setPassError(error.message || 'Failed to initiate Google authentication.');
+        setIsGoogleLoading(false);
+      }
+    } catch (err: any) {
+      console.error('Google login error:', err);
+      setPassError(err.message || 'Google authentication failed.');
+      setIsGoogleLoading(false);
+    }
+  };
+
   const handleLogoutClick = async () => {
     try {
       await authApi.logout();
     } catch (e) {
       console.warn('Logout API warning:', e);
     }
-    localStorage.removeItem('zenemoo_jwt_token');
-    localStorage.removeItem('zenemoo_jwt_expiry');
-    setIsAuthenticated(false);
-    setShowPasscode(false);
-    setPasscode('');
+    try {
+      await supabase.auth.signOut();
+    } catch (_) {}
+    handleLogoutWithReason('Logged out successfully.');
   };
 
   const handleSendResetCode = (e: React.FormEvent) => {
@@ -1710,7 +1883,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     setForgotSuccess('');
 
     if (!forgotEmail.trim() || !isAuthorizedEmail(forgotEmail)) {
-      setForgotError('Access Denied: Only mr.prem2006@gmail.com or @zenemoo.in emails are authorized.');
+      setForgotError('Access Denied: Only authorized administrator emails can receive recovery codes.');
       return;
     }
 
@@ -1743,8 +1916,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       <div className="min-h-screen bg-[#050507] flex flex-col items-center justify-center p-4 relative z-50 font-sans">
         <div className="glass-panel p-8 rounded-3xl border border-cyan-500/20 max-w-md w-full text-center space-y-4">
           <div className="w-12 h-12 rounded-full border-t-2 border-cyan-400 border-r-2 border-transparent animate-spin mx-auto" />
-          <h3 className="text-sm font-bold text-white font-display">Checking Secure Session...</h3>
-          <p className="text-[11px] font-mono text-slate-400">Verifying JWT authentication token with backend</p>
+          <h3 className="text-sm font-bold text-white font-display">Verifying Secure Admin Session...</h3>
+          <p className="text-[11px] font-mono text-slate-400">Validating cryptographic credentials with server</p>
         </div>
       </div>
     );
@@ -1753,7 +1926,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#050507] flex items-center justify-center p-4 relative z-50 font-sans">
-        <div className="glass-panel p-8 rounded-3xl border border-white/10 max-w-md w-full space-y-6 text-center">
+        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/10 max-w-md w-full space-y-6 text-center">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] mx-auto shadow-lg shadow-cyan-500/25">
             <img src="/assets/logo.png" alt="Zenemoo Logo" className="w-full h-full object-cover rounded-full bg-white p-0.5" />
           </div>
@@ -1773,7 +1946,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               <input
                 type="email"
                 required
-                placeholder="mr.prem2006@gmail.com or @zenemoo.in"
+                placeholder="Authorized administrator email..."
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono text-xs"
@@ -1817,8 +1990,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
             <button
               type="submit"
-              disabled={isLoggingIn}
-              className={`w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={isLoggingIn || isGoogleLoading}
+              className={`w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-black font-bold font-display text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95 ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isLoggingIn ? (
                 <>
@@ -1832,9 +2005,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             </button>
           </form>
 
+          {/* Divider */}
+          <div className="relative my-4 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10" />
+            </div>
+            <div className="relative bg-[#070b14] px-3 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+              Or
+            </div>
+          </div>
+
+          {/* Continue with Google Login Button */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={isLoggingIn || isGoogleLoading}
+            className={`w-full py-3 px-4 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 text-slate-200 hover:text-white font-mono text-xs font-semibold transition-all shadow-md flex items-center justify-center gap-2.5 cursor-pointer active:scale-95 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 ${isGoogleLoading || isLoggingIn ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isGoogleLoading ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+                <span>Connecting to Google...</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Continue with Google</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={onExit}
-            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
+            className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer pt-2"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Return to Main Website
           </button>
@@ -1939,11 +2159,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     onClick={() => {
                       setIsForgotModalOpen(false);
                       setPasscode(newPass);
-                      setIsAuthenticated(true);
+                      setPassError('Password updated. Please authenticate with your new passcode.');
                     }}
                     className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold font-mono text-xs transition-all cursor-pointer"
                   >
-                    Login to Admin Control Center Now
+                    Return to Login
                   </button>
                 </div>
               )}
@@ -4190,7 +4410,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       </label>
                       <input
                         type="email"
-                        placeholder="founder@zenemoo.com"
+                        placeholder="founder@zenemoo.in"
                         value={editingMember.email || ''}
                         onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-white font-sans text-sm focus:outline-none focus:border-cyan-400"

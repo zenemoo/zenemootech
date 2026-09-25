@@ -187,12 +187,9 @@ export const verifyToken = async (req, res, next) => {
           email_access: dbAccount.email_access !== undefined ? dbAccount.email_access : decoded.email_access,
           verifiedAt: now,
         };
-        roleVerificationCache.set(cacheKey, accountData);
       } else {
-        const cleanEmail = (decoded.email || '').toLowerCase().trim();
-        const isAdminEmail = DEFAULT_ALLOWED_EMAILS.includes(cleanEmail) || cleanEmail.endsWith('@zenemoo.in');
         accountData = {
-          role: decoded.role || (isAdminEmail ? 'admin' : 'team_member'),
+          role: decoded.role || 'team_member',
           status: 'active',
           email_access: decoded.email_access !== undefined ? decoded.email_access : true,
           verifiedAt: now,
@@ -220,6 +217,8 @@ export const verifyToken = async (req, res, next) => {
   }
 
   // Apply verified / updated role & claims
+  const originalRole = decoded.role;
+  const originalEmailAccess = decoded.email_access;
   if (accountData) {
     if (accountData.role) decoded.role = accountData.role;
     if (accountData.email_access !== undefined) decoded.email_access = accountData.email_access;
@@ -227,26 +226,38 @@ export const verifyToken = async (req, res, next) => {
 
   req.user = decoded;
 
-  // Issue renewed sliding token preserving verified claims
-  const newToken = jwt.sign(
-    {
-      id: decoded.id,
-      team_member_id: decoded.team_member_id,
-      role: decoded.role || 'team_member',
-      email: decoded.email,
-      email_access: decoded.email_access !== undefined ? decoded.email_access : true,
-      temporary_password: decoded.temporary_password,
-      password_changed: decoded.password_changed,
-    },
-    secret,
-    { expiresIn: '30m' }
-  );
+  // STRICT ABSOLUTE EXPIRATION PRESERVATION:
+  // If claims updated, issue renewed token that STRICTLY preserves the original absolute 'exp' timestamp
+  // Never extend the session deadline on API calls
+  const claimsChanged = originalRole !== decoded.role || originalEmailAccess !== decoded.email_access;
+  if (claimsChanged && decoded.exp) {
+    const currentEpochSec = Math.floor(Date.now() / 1000);
+    const remainingSec = decoded.exp - currentEpochSec;
 
-  res.setHeader('X-New-Token', newToken);
-  res.setHeader('Access-Control-Expose-Headers', 'X-New-Token');
+    if (remainingSec > 0) {
+      const newToken = jwt.sign(
+        {
+          id: decoded.id,
+          team_member_id: decoded.team_member_id,
+          role: decoded.role || 'team_member',
+          email: decoded.email,
+          email_access: decoded.email_access !== undefined ? decoded.email_access : true,
+          auth_method: decoded.auth_method,
+          session_start: decoded.session_start || decoded.iat,
+          exp: decoded.exp, // Strict absolute expiration preserved
+          iat: decoded.iat || currentEpochSec,
+        },
+        secret
+      );
+
+      res.setHeader('X-New-Token', newToken);
+      res.setHeader('Access-Control-Expose-Headers', 'X-New-Token');
+    }
+  }
 
   next();
 };
+
 
 /**
  * Role Verification Middleware Guard
