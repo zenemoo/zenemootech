@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { supabase } from '../lib/supabaseClient';
 
 let rawApiUrl = (import.meta as any).env?.VITE_API_URL || 'https://zenemootech-api.onrender.com/api';
 
@@ -40,17 +39,9 @@ export const deduplicatedGet = <T = any>(url: string, config?: any): Promise<T> 
   return promise as unknown as Promise<T>;
 };
 
-// Request interceptor for JWT authentication header (supports Zenemoo JWT and Supabase Auth session)
-api.interceptors.request.use(async (config) => {
-  let token = localStorage.getItem('zenemoo_jwt_token');
-  if (!token) {
-    try {
-      const { data } = await supabase.auth.getSession();
-      if (data?.session?.access_token) {
-        token = data.session.access_token;
-      }
-    } catch (_) {}
-  }
+// Request interceptor for JWT authentication header (Zenemoo Admin JWT only)
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('zenemoo_jwt_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

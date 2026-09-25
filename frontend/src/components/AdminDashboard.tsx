@@ -1020,6 +1020,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             setAdminProfile(googleRes.data.user);
           }
 
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', `/${secretEnvRoute}`);
+          }
+
           // Broadcast successful login to other tabs
           try {
             if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -1074,7 +1078,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           errorDesc = searchParams.get('error_description') || searchParams.get('error');
 
           if (rawHash) {
-            const hashClean = rawHash.replace(/^#\/?/, '').replace(/^admin_google_callback&?/, '');
+            const hashClean = rawHash.replace(/^#+/, '').replace(/^\/+/, '');
             const hashParams = new URLSearchParams(hashClean);
             if (!code) code = hashParams.get('code');
             if (!accessToken) accessToken = hashParams.get('access_token');
@@ -1085,10 +1089,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           const hasUrlTokens = Boolean(
             code ||
             accessToken ||
+            refreshToken ||
             errorDesc ||
             rawHash.includes('access_token') ||
-            rawHash.includes('admin_google_callback') ||
-            rawSearch.includes('code=')
+            rawHash.includes('code=') ||
+            rawSearch.includes('code=') ||
+            rawSearch.includes('access_token=')
           );
 
           // CRITICAL SECURITY FIX: IMMEDIATELY sanitize the browser address bar
@@ -2030,7 +2036,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
     try {
       const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
-      const redirectUrl = `${window.location.origin}/${secretEnvRoute}#admin_google_callback`;
+      const redirectUrl = `${window.location.origin}/${secretEnvRoute}`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
