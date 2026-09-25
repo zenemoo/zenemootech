@@ -245,10 +245,14 @@ function AppInner() {
         !isForgotPasswordRoute &&
         (path === `/${secretEnvRoute}` ||
         path === '/portal/9KqvA2Nz8' ||
+        path.startsWith('/portal/9KqvA2Nz8') ||
+        path.startsWith(`/${secretEnvRoute}`) ||
         hash === `#${secretEnvRoute}` ||
         hash === '#portal/9KqvA2Nz8' ||
+        hash.startsWith('#portal/9KqvA2Nz8') ||
         hash === '#manage/portal/x93LmK/admin' ||
         hash === '#portal-9KqvA2Nz8' ||
+        hash.includes('admin_google_callback') ||
         (hasActiveAdminToken && (path.startsWith('/portal') || hash.includes('portal') || path === '/admin')));
 
       let matchedRoute:

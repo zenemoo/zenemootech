@@ -70,11 +70,25 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       const reqUrl = error.config?.url || '';
-      if (!reqUrl.includes('/auth/login') && !reqUrl.includes('/auth/check-email') && !reqUrl.includes('/auth/google-admin-login')) {
-        console.warn('🔑 401 Unauthorized API response received. Session invalidated.');
+      const currentToken = localStorage.getItem('zenemoo_jwt_token');
+      const sentAuthHeader = error.config?.headers?.Authorization || error.config?.headers?.authorization;
+
+      // Only invalidate Admin session if this was an authenticated Admin request carrying the current Admin JWT
+      const isAuthAdminRequest =
+        currentToken &&
+        sentAuthHeader &&
+        String(sentAuthHeader).includes(currentToken) &&
+        (reqUrl.startsWith('/auth/profile') ||
+         reqUrl.startsWith('/auth/audit-logs') ||
+         reqUrl.startsWith('/auth/authorized-emails') ||
+         reqUrl.startsWith('/auth/me'));
+
+      if (isAuthAdminRequest) {
+        console.warn('🔑 401 Unauthorized Admin response received. Session invalidated.');
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
-        
+        localStorage.removeItem('zenemoo_session_start');
+
         // Broadcast session expiration across all open tabs
         try {
           if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {

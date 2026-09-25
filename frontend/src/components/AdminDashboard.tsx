@@ -991,98 +991,162 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   // Session validation, Google OAuth callback, and restoration hook on mount
   useEffect(() => {
     let isMounted = true;
+    const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+
+    const processGoogleAdminToken = async (sbToken: string) => {
+      try {
+        console.log('🔑 Validating Google OAuth token with backend authorized allowlist...');
+        setIsCheckingSession(true);
+        const googleRes = await authApi.googleAdminLogin(sbToken);
+
+        if (!isMounted) return;
+
+        if (googleRes.data && googleRes.data.success && googleRes.data.token) {
+          const now = Date.now();
+          const absoluteExpiry = now + 30 * 60 * 1000;
+          localStorage.setItem('zenemoo_session_start', now.toString());
+          localStorage.setItem('zenemoo_jwt_token', googleRes.data.token);
+          localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+          setSessionStartTime(now);
+          setSessionDurationSec(0);
+          setSessionExpiresInSec(1800);
+
+          setIsAuthenticated(true);
+          setPassError('');
+          if (googleRes.data.user?.email) {
+            setAdminEmail(googleRes.data.user.email);
+          }
+          if (googleRes.data.user) {
+            setAdminProfile(googleRes.data.user);
+          }
+
+          // Broadcast successful login to other tabs
+          try {
+            if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+              const channel = new BroadcastChannel('zenemoo_admin_session');
+              channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: googleRes.data.user?.email });
+              channel.close();
+            }
+          } catch (_) {}
+
+          setIsCheckingSession(false);
+          return true;
+        }
+      } catch (err: any) {
+        console.warn('Google Admin login authorization failed:', err);
+        try {
+          await supabase.auth.signOut();
+        } catch (_) {}
+
+        if (!isMounted) return false;
+
+        const msg = err.response?.data?.message || 'Your Google account is not authorized for Admin access.';
+        setPassError(msg);
+        setIsAuthenticated(false);
+        localStorage.removeItem('zenemoo_jwt_token');
+        localStorage.removeItem('zenemoo_jwt_expiry');
+        localStorage.removeItem('zenemoo_session_start');
+        setIsCheckingSession(false);
+        return false;
+      }
+      return false;
+    };
 
     const restoreSession = async () => {
       const token = localStorage.getItem('zenemoo_jwt_token');
       const expiry = localStorage.getItem('zenemoo_jwt_expiry');
 
-      // Check if there is an active Supabase session (e.g. returning from Google OAuth)
-      let supabaseAccessToken: string | null = null;
+      // ── Step 1: Parse and immediately strip any OAuth tokens/code/errors from URL ──
+      let code: string | null = null;
+      let accessToken: string | null = null;
+      let refreshToken: string | null = null;
+      let errorDesc: string | null = null;
+
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.access_token) {
-          supabaseAccessToken = sessionData.session.access_token;
+        if (typeof window !== 'undefined') {
+          const rawSearch = window.location.search || '';
+          const rawHash = window.location.hash || '';
+
+          const searchParams = new URLSearchParams(rawSearch);
+          code = searchParams.get('code');
+          accessToken = searchParams.get('access_token');
+          refreshToken = searchParams.get('refresh_token');
+          errorDesc = searchParams.get('error_description') || searchParams.get('error');
+
+          if (rawHash) {
+            const hashClean = rawHash.replace(/^#\/?/, '').replace(/^admin_google_callback&?/, '');
+            const hashParams = new URLSearchParams(hashClean);
+            if (!code) code = hashParams.get('code');
+            if (!accessToken) accessToken = hashParams.get('access_token');
+            if (!refreshToken) refreshToken = hashParams.get('refresh_token');
+            if (!errorDesc) errorDesc = hashParams.get('error_description') || hashParams.get('error');
+          }
+
+          const hasUrlTokens = Boolean(
+            code ||
+            accessToken ||
+            errorDesc ||
+            rawHash.includes('access_token') ||
+            rawHash.includes('admin_google_callback') ||
+            rawSearch.includes('code=')
+          );
+
+          // CRITICAL SECURITY FIX: IMMEDIATELY sanitize the browser address bar
+          // Access tokens, refresh tokens, and OAuth codes must NEVER remain visible in the URL!
+          if (hasUrlTokens && window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', `/${secretEnvRoute}`);
+          }
         }
       } catch (_) {}
 
-      // Scenario 1: Returning from Google OAuth callback
-      const isOAuthCallback =
-        (typeof window !== 'undefined' && (
-          window.location.hash.includes('admin_google_callback') ||
-          window.location.hash.includes('access_token') ||
-          window.location.hash.includes('error')
-        )) || (!token && supabaseAccessToken);
-
-      if (isOAuthCallback && supabaseAccessToken) {
-        try {
-          console.log('🔑 Validating Google OAuth token with backend authorized allowlist...');
-          setIsCheckingSession(true);
-          const googleRes = await authApi.googleAdminLogin(supabaseAccessToken);
-
-          if (!isMounted) return;
-
-          if (googleRes.data && googleRes.data.success && googleRes.data.token) {
-            const now = Date.now();
-            const absoluteExpiry = now + 30 * 60 * 1000;
-            localStorage.setItem('zenemoo_session_start', now.toString());
-            localStorage.setItem('zenemoo_jwt_token', googleRes.data.token);
-            localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
-            setSessionStartTime(now);
-            setSessionDurationSec(0);
-            setSessionExpiresInSec(1800);
-
-            setIsAuthenticated(true);
-            setPassError('');
-            if (googleRes.data.user?.email) {
-              setAdminEmail(googleRes.data.user.email);
-            }
-            if (googleRes.data.user) {
-              setAdminProfile(googleRes.data.user);
-            }
-
-            // Clean up URL hash cleanly
-            const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
-            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-              window.history.replaceState(null, '', `/${secretEnvRoute}`);
-            }
-
-            // Broadcast successful login to other tabs
-            try {
-              if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-                const channel = new BroadcastChannel('zenemoo_admin_session');
-                channel.postMessage({ type: 'ADMIN_LOGIN_SUCCESS', email: googleRes.data.user?.email });
-                channel.close();
-              }
-            } catch (_) {}
-
-            setIsCheckingSession(false);
-            return;
-          }
-        } catch (err: any) {
-          console.warn('Google Admin login authorization failed:', err);
-          try {
-            await supabase.auth.signOut();
-          } catch (_) {}
-
-          if (!isMounted) return;
-
-          const msg = err.response?.data?.message || 'Your Google account is not authorized for Admin access.';
-          setPassError(msg);
-          setIsAuthenticated(false);
-          localStorage.removeItem('zenemoo_jwt_token');
-          localStorage.removeItem('zenemoo_jwt_expiry');
-
-          const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
-          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-            window.history.replaceState(null, '', `/${secretEnvRoute}`);
-          }
-
+      if (errorDesc) {
+        if (isMounted) {
+          setPassError(errorDesc || 'Google authentication was cancelled or failed.');
           setIsCheckingSession(false);
-          return;
         }
+        return;
       }
 
-      // Scenario 2: Existing Zenemoo Admin JWT in localStorage
+      // ── Step 2: Handle PKCE code or implicit access token exchange ──
+      let sbToken: string | null = accessToken;
+
+      if (code) {
+        try {
+          console.log('🔑 Exchanging PKCE code for session with Supabase Auth...');
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!error && data?.session?.access_token) {
+            sbToken = data.session.access_token;
+          }
+        } catch (e) {}
+      } else if (accessToken) {
+        try {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+          if (!error && data?.session?.access_token) {
+            sbToken = data.session.access_token;
+          }
+        } catch (e) {}
+      }
+
+      // If token not in URL, check active Supabase Auth session
+      if (!sbToken) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.access_token) {
+            sbToken = sessionData.session.access_token;
+          }
+        } catch (_) {}
+      }
+
+      // ── Step 3: If Supabase Google token is available and we don't have a valid Admin JWT ──
+      if (sbToken && !token) {
+        const handled = await processGoogleAdminToken(sbToken);
+        if (handled) return;
+      }
+
+      // ── Step 4: Existing Zenemoo Admin JWT in localStorage ──
       if (!token) {
         if (isMounted) setIsCheckingSession(false);
         return;
@@ -1092,6 +1156,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       if (expiry && Date.now() >= parseInt(expiry, 10)) {
         localStorage.removeItem('zenemoo_jwt_token');
         localStorage.removeItem('zenemoo_jwt_expiry');
+        localStorage.removeItem('zenemoo_session_start');
         if (isMounted) {
           setPassError('Your Admin session has expired. Please sign in again.');
           setIsAuthenticated(false);
@@ -1143,6 +1208,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         } else {
           localStorage.removeItem('zenemoo_jwt_token');
           localStorage.removeItem('zenemoo_jwt_expiry');
+          localStorage.removeItem('zenemoo_session_start');
           setIsAuthenticated(false);
           setPassError('Session validation failed. Please sign in again.');
         }
@@ -1153,6 +1219,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         if (err.response && (err.response.status === 401 || err.response.status === 403)) {
           localStorage.removeItem('zenemoo_jwt_token');
           localStorage.removeItem('zenemoo_jwt_expiry');
+          localStorage.removeItem('zenemoo_session_start');
           setIsAuthenticated(false);
           setPassError('Your Admin session has expired. Please sign in again.');
         } else {
@@ -1167,8 +1234,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
     restoreSession();
 
+    // ── Step 5: Listen for Supabase Auth state changes as secondary observer ──
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+      if (session?.access_token && !localStorage.getItem('zenemoo_jwt_token')) {
+        console.log(`🔑 [Supabase onAuthStateChange: ${event}] Processing Admin Google Login...`);
+        await processGoogleAdminToken(session.access_token);
+      }
+    });
+
     return () => {
       isMounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 
