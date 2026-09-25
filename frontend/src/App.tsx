@@ -33,6 +33,7 @@ import { ZenemooAppUpdatePrompt } from './components/ZenemooAppUpdatePrompt';
 import { UnsubscribePage } from './components/UnsubscribePage';
 import { NotFoundPage } from './components/NotFoundPage';
 import { ScrollProgressButton } from './components/ScrollProgressButton';
+import { ZenemooCookieConsent } from './components/ZenemooCookieConsent';
 
 import { TeamLoginPage } from './components/TeamLoginPage';
 import { HRLoginPage } from './components/HRLoginPage';
@@ -1172,6 +1173,18 @@ function AppInner() {
           <ZenemooAppUpdatePrompt />
         </>
       )}
+
+      {/* Global Zenemoo Cookie Consent & Privacy Preference System */}
+      <ZenemooCookieConsent
+        onNavigatePrivacy={() => {
+          window.history.pushState(null, '', '/privacy');
+          setCurrentRoute('privacy');
+        }}
+        onNavigateTerms={() => {
+          window.history.pushState(null, '', '/terms');
+          setCurrentRoute('terms');
+        }}
+      />
     </>
   );
 }

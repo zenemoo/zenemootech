@@ -228,6 +228,16 @@ export const Footer: React.FC = () => {
               Terms &amp; Conditions
             </a>
             <span>·</span>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('zenemoo_open_consent_preferences'));
+              }}
+              className="hover:text-cyan-400 transition-colors cursor-pointer text-slate-400 hover:underline bg-transparent border-0 p-0 font-bold font-mono text-xs"
+            >
+              Cookie Preferences
+            </button>
+            <span>·</span>
             <a
               href="/support-zenemooindia"
               className="hover:text-cyan-400 transition-colors cursor-pointer"
