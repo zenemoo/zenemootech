@@ -630,7 +630,8 @@ export const directoryApi = {
 export const talentRegistrationApi = {
   register: (data: any) => api.post('/talent-registration/register', data),
   getSupportedLanguages: () => api.get('/talent-registration/supported-languages'),
-  getAdminRegistrations: (params?: any) => api.get('/talent-registration/admin/list', { params }),
+  getAdminRegistrations: (params?: any, signal?: AbortSignal) =>
+    api.get('/talent-registration/admin/list', { params, signal }),
   getAdminRegistrationDetail: (id: string) => api.get(`/talent-registration/admin/detail/${id}`),
   updateAdminStatus: (id: string, data: { status?: string; internal_notes?: string; internal_scoring?: number; is_archived?: boolean }) =>
     api.patch(`/talent-registration/admin/status/${id}`, data),
@@ -664,8 +665,8 @@ export const scheduledEmailApi = {
 
 // AI Data Portfolio & Dataset Management API (Timeout set to 3 minutes for large audio/video file uploads)
 export const datasetApi = {
-  getDatasets: (params?: { search?: string; category?: string; status?: string }) =>
-    api.get('/datasets', { params }),
+  getDatasets: (params?: { search?: string; category?: string; status?: string }, signal?: AbortSignal) =>
+    api.get('/datasets', { params, signal }),
   getDatasetBySlugOrId: (identifier: string) =>
     api.get(`/datasets/${identifier}`),
   createDataset: (data: { name: string; description?: string; language?: string }) =>
@@ -715,10 +716,10 @@ export const bookingApi = {
 export const googleGroupApi = {
   getOverview: (params?: { forceRefresh?: boolean }) =>
     api.get('/admin/google-group/overview', { params }),
-  getPendingMembers: (params?: { page?: number; pageSize?: number; search?: string; forceRefresh?: boolean }) =>
-    api.get('/admin/google-group/pending', { params }),
-  getMembers: (params?: { page?: number; pageSize?: number; search?: string; originFilter?: string; forceRefresh?: boolean }) =>
-    api.get('/admin/google-group/members', { params }),
+  getPendingMembers: (params?: { page?: number; pageSize?: number; search?: string; forceRefresh?: boolean }, signal?: AbortSignal) =>
+    api.get('/admin/google-group/pending', { params, signal }),
+  getMembers: (params?: { page?: number; pageSize?: number; search?: string; originFilter?: string; forceRefresh?: boolean }, signal?: AbortSignal) =>
+    api.get('/admin/google-group/members', { params, signal }),
   getExclusions: () =>
     deduplicatedGet('/admin/google-group/exclusions'),
   restoreExclusion: (email: string) =>

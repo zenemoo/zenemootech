@@ -122,8 +122,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     hasPrevious: false,
   });
   const [pendingSearch, setPendingSearch] = useState('');
+  const [debouncedPendingSearch, setDebouncedPendingSearch] = useState('');
   const pendingSearchRef = useRef('');
   const pendingRequestIdRef = useRef(0);
+  const pendingAbortRef = useRef<AbortController | null>(null);
   const [copiedBatch, setCopiedBatch] = useState(false);
 
   // Group Members State (Server-Side Paginated)
@@ -139,10 +141,12 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     hasPrevious: false,
   });
   const [membersSearch, setMembersSearch] = useState('');
+  const [debouncedMembersSearch, setDebouncedMembersSearch] = useState('');
   const membersSearchRef = useRef('');
   const [originFilter, setOriginFilter] = useState<'all' | 'synced' | 'external'>('all');
   const originFilterRef = useRef<'all' | 'synced' | 'external'>('all');
   const membersRequestIdRef = useRef(0);
+  const membersAbortRef = useRef<AbortController | null>(null);
 
   // Exclusions State
   const [exclusions, setExclusions] = useState<GoogleGroupExclusion[]>([]);
@@ -204,8 +208,14 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
   }, [showToast]);
 
-  // 2. Load Pending Candidates (Server-Side 10 per page, Protected Against Race Conditions)
+  // 2. Load Pending Candidates (Server-Side 10 per page, Protected Against Race Conditions & In-Flight Abort)
   const loadPending = useCallback(async (pageToLoad?: number, forceRefresh = false, searchStr?: string) => {
+    if (pendingAbortRef.current) {
+      pendingAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    pendingAbortRef.current = controller;
+
     const targetPage = typeof pageToLoad === 'number' ? pageToLoad : pendingPageRef.current;
     const targetSearch = typeof searchStr === 'string' ? searchStr : pendingSearchRef.current;
     const requestId = ++pendingRequestIdRef.current;
@@ -217,7 +227,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         pageSize: 10,
         search: targetSearch,
         forceRefresh,
-      });
+      }, controller.signal);
 
       // Ignore stale responses if a newer request was dispatched
       if (requestId !== pendingRequestIdRef.current) return;
@@ -231,6 +241,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         }
       }
     } catch (err: any) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
+        return;
+      }
+      if (requestId !== pendingRequestIdRef.current) return;
       console.warn('Failed to load pending members:', err.message);
       if (showToast) {
         showToast('Pending Members Note', 'Could not refresh pending list.', 'info');
@@ -243,8 +257,14 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
   }, [showToast]);
 
-  // 3. Load Live Members (Server-Side Paginated, Protected Against Race Conditions)
+  // 3. Load Live Members (Server-Side Paginated, Protected Against Race Conditions & In-Flight Abort)
   const loadMembers = useCallback(async (pageToLoad?: number, forceRefresh = false, searchStr?: string, filterVal?: 'all' | 'synced' | 'external') => {
+    if (membersAbortRef.current) {
+      membersAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    membersAbortRef.current = controller;
+
     const targetPage = typeof pageToLoad === 'number' ? pageToLoad : membersPageRef.current;
     const targetSearch = typeof searchStr === 'string' ? searchStr : membersSearchRef.current;
     const targetFilter = filterVal || originFilterRef.current;
@@ -258,7 +278,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         search: targetSearch,
         originFilter: targetFilter,
         forceRefresh,
-      });
+      }, controller.signal);
 
       // Ignore stale responses if a newer request was dispatched
       if (requestId !== membersRequestIdRef.current) return;
@@ -271,6 +291,10 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         }
       }
     } catch (err: any) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
+        return;
+      }
+      if (requestId !== membersRequestIdRef.current) return;
       console.warn('Failed to load Google Group members:', err.message);
     } finally {
       if (requestId === membersRequestIdRef.current) {
@@ -279,6 +303,42 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
       }
     }
   }, []);
+
+  // 400ms Debounce for Pending Candidates Search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPendingSearch(pendingSearch.trim());
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [pendingSearch]);
+
+  const isPendingSearchMounted = useRef(false);
+  useEffect(() => {
+    if (!isPendingSearchMounted.current) {
+      isPendingSearchMounted.current = true;
+      return;
+    }
+    setPendingPage(1);
+    loadPending(1, false, debouncedPendingSearch);
+  }, [debouncedPendingSearch, loadPending]);
+
+  // 400ms Debounce for Group Members Search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedMembersSearch(membersSearch.trim());
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [membersSearch]);
+
+  const isMembersSearchMounted = useRef(false);
+  useEffect(() => {
+    if (!isMembersSearchMounted.current) {
+      isMembersSearchMounted.current = true;
+      return;
+    }
+    setMembersPage(1);
+    loadMembers(1, false, debouncedMembersSearch, originFilterRef.current);
+  }, [debouncedMembersSearch, loadMembers]);
 
   // 4. Load Exclusions List
   const loadExclusions = useCallback(async () => {
@@ -1009,10 +1069,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 placeholder="Filter pending by email or source..."
                 value={pendingSearch}
                 onChange={(e) => {
-                  const val = e.target.value;
-                  setPendingSearch(val);
-                  setPendingPage(1);
-                  loadPending(1, false, val);
+                  setPendingSearch(e.target.value);
                 }}
                 className="w-full rounded-xl border border-gray-800 bg-gray-950/70 pl-10 pr-8 py-2 text-xs text-white placeholder-gray-500 transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
@@ -1020,8 +1077,6 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                 <button
                   onClick={() => {
                     setPendingSearch('');
-                    setPendingPage(1);
-                    loadPending(1, false, '');
                   }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
                 >
@@ -1217,10 +1272,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   placeholder="Search by email, role, status, or source..."
                   value={membersSearch}
                   onChange={(e) => {
-                    const val = e.target.value;
-                    setMembersSearch(val);
-                    setMembersPage(1);
-                    loadMembers(1, false, val, originFilter);
+                    setMembersSearch(e.target.value);
                   }}
                   className="w-full rounded-xl border border-gray-800 bg-gray-950/70 pl-10 pr-8 py-2 text-xs text-white placeholder-gray-500 transition-colors focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
@@ -1228,8 +1280,6 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                   <button
                     onClick={() => {
                       setMembersSearch('');
-                      setMembersPage(1);
-                      loadMembers(1, false, '', originFilter);
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
                   >

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Users,
   Search,
@@ -258,6 +258,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('All Languages');
   const [selectedCountry, setSelectedCountry] = useState<string>('All Countries');
   const [selectedState, setSelectedState] = useState<string>('All States');
@@ -273,6 +274,10 @@ export const AdminTalentNetworkTab: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(25);
   const [sortField, setSortField] = useState<string>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Request Cancellation & Monotonic Sequence Refs
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const reqSeqRef = useRef<number>(0);
 
   // Selection & UI Modals
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
@@ -292,13 +297,35 @@ export const AdminTalentNetworkTab: React.FC = () => {
   const [activeAdminTab, setActiveAdminTab] = useState<'roster' | 'analytics' | 'languages'>('roster');
   const [editingCandidate, setEditingCandidate] = useState<any | null>(null);
 
-  const fetchRegistrations = async () => {
+  // 400ms Debounce on search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = searchQuery.trim();
+      setDebouncedSearch((prev) => {
+        if (prev !== trimmed) {
+          setCurrentPage(1);
+        }
+        return trimmed;
+      });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchRegistrations = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const reqSeq = ++reqSeqRef.current;
+
     setLoading(true);
     try {
       const params: any = {
         page: currentPage,
         pageSize: pageSize,
-        search: searchQuery.trim(),
+        search: debouncedSearch,
         language: selectedLanguage === 'All Languages' ? '' : selectedLanguage,
         country: selectedCountry === 'All Countries' ? '' : selectedCountry,
         state: selectedState === 'All States' ? '' : selectedState,
@@ -312,7 +339,11 @@ export const AdminTalentNetworkTab: React.FC = () => {
         sortOrder,
       };
 
-      const res = await talentRegistrationApi.getAdminRegistrations(params);
+      const res = await talentRegistrationApi.getAdminRegistrations(params, controller.signal);
+      
+      // Reject out-of-order stale responses
+      if (reqSeq !== reqSeqRef.current) return;
+
       if (res?.data?.success) {
         const fetchedData = res.data.data || [];
         setRegistrations(fetchedData);
@@ -321,67 +352,22 @@ export const AdminTalentNetworkTab: React.FC = () => {
           setStats(res.data.stats);
         }
       }
-    } catch (err) {
-      console.error('Fetch Registrations Error:', err);
+    } catch (err: any) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
+        return;
+      }
+      if (reqSeq === reqSeqRef.current) {
+        console.error('Fetch Registrations Error:', err);
+      }
     } finally {
-      setLoading(false);
+      if (reqSeq === reqSeqRef.current) {
+        setLoading(false);
+      }
     }
-  };
-
-  // Static / curated filter options augmented with dynamic active languages (Zero full-table scans!)
-  const uniqueRegisteredLanguages = useMemo(() => {
-    const list = new Set(LANGUAGES_LIST.filter((l) => l !== 'All Languages'));
-    if (Array.isArray(stats?.activeLanguages)) {
-      stats.activeLanguages.forEach((l: string) => {
-        if (l && l !== 'Other') list.add(l);
-      });
-    }
-    return Array.from(list).sort();
-  }, [stats?.activeLanguages]);
-
-  const uniqueRegisteredStates = useMemo(() => {
-    return INDIAN_STATES_UT.filter((s) => s !== 'All States');
-  }, []);
-
-  const uniqueRegisteredRoles = useMemo(() => {
-    return ROLES_LIST.filter((r) => r !== 'All Roles');
-  }, []);
-
-  const uniqueRegisteredWorkTypes = useMemo(() => {
-    return WORK_TYPES_LIST.filter((w) => w !== 'All Work Types');
-  }, []);
-
-  const handleAnalyticsFilterSelect = (filterType: string, value: string) => {
-    if (filterType === 'language') {
-      setSelectedLanguage(value);
-      setActionSuccessMsg(`Filtered Talent Network by Language: ${value}`);
-    } else if (filterType === 'role') {
-      setSelectedRole(value);
-      setActionSuccessMsg(`Filtered Talent Network by Role: ${value}`);
-    } else if (filterType === 'state') {
-      setSelectedState(value);
-      setActionSuccessMsg(`Filtered Talent Network by State: ${value}`);
-    } else if (filterType === 'availability') {
-      setSelectedAvailability(value);
-      setActionSuccessMsg(`Filtered Talent Network by Availability: ${value}`);
-    } else if (filterType === 'workType') {
-      setSelectedWorkType(value);
-      setActionSuccessMsg(`Filtered Talent Network by Work Type: ${value}`);
-    } else if (filterType === 'status') {
-      setSelectedStatus(value);
-      setActionSuccessMsg(`Filtered Talent Network by Status: ${value.toUpperCase()}`);
-    }
-    setCurrentPage(1);
-    setShowAnalytics(false);
-    setTimeout(() => setActionSuccessMsg(''), 4000);
-  };
-
-  useEffect(() => {
-    fetchRegistrations();
   }, [
     currentPage,
     pageSize,
-    searchQuery,
+    debouncedSearch,
     selectedLanguage,
     selectedCountry,
     selectedState,
@@ -395,11 +381,15 @@ export const AdminTalentNetworkTab: React.FC = () => {
     sortOrder,
   ]);
 
-  // Reset pagination on filter change
+  // Main data fetch effect
+  useEffect(() => {
+    fetchRegistrations();
+  }, [fetchRegistrations]);
+
+  // Reset pagination on non-search filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [
-    searchQuery,
     selectedLanguage,
     selectedCountry,
     selectedState,
@@ -492,6 +482,17 @@ export const AdminTalentNetworkTab: React.FC = () => {
     setSelectedStatus('all');
     setShowArchived(false);
     setCurrentPage(1);
+  };
+
+  const handleAnalyticsFilterSelect = (filterType: string, filterValue: string) => {
+    if (filterType === 'language') setSelectedLanguage(filterValue);
+    else if (filterType === 'country') setSelectedCountry(filterValue);
+    else if (filterType === 'state') setSelectedState(filterValue);
+    else if (filterType === 'role') setSelectedRole(filterValue);
+    else if (filterType === 'workType') setSelectedWorkType(filterValue);
+    else if (filterType === 'status') setSelectedStatus(filterValue);
+    setActiveAdminTab('roster');
+    setShowAnalytics(false);
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
@@ -797,7 +798,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All Languages">All Languages</option>
-            {uniqueRegisteredLanguages.map((l) => (
+            {LANGUAGES_LIST.filter((l) => l !== 'All Languages').map((l) => (
               <option key={l} value={l}>
                 {l}
               </option>
@@ -825,7 +826,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All States">All States</option>
-            {uniqueRegisteredStates.map((s) => (
+            {INDIAN_STATES_UT.filter((s) => s !== 'All States').map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -839,7 +840,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All Roles">All Roles</option>
-            {uniqueRegisteredRoles.map((r) => (
+            {ROLES_LIST.filter((r) => r !== 'All Roles').map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
@@ -853,7 +854,7 @@ export const AdminTalentNetworkTab: React.FC = () => {
             className="px-3 py-2.5 rounded-xl bg-black/80 border border-white/15 text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All Work Types">All Work Types</option>
-            {uniqueRegisteredWorkTypes.map((wt) => (
+            {WORK_TYPES_LIST.filter((wt) => wt !== 'All Work Types').map((wt) => (
               <option key={wt} value={wt}>
                 {wt}
               </option>

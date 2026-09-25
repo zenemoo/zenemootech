@@ -720,7 +720,7 @@ export const submitPublicTeamMember = async (req, res) => {
 
 /**
  * GET /api/admin/talent-teams
- * Admin endpoint: Retrieves all Vendor / Agency talent registrations with their team member counts.
+ * Admin endpoint: Retrieves paginated Vendor / Agency talent registrations sorted by member count DESC.
  */
 export const getAdminTalentTeamsOverview = async (req, res) => {
   try {
@@ -728,12 +728,89 @@ export const getAdminTalentTeamsOverview = async (req, res) => {
       return res.status(500).json({ success: false, message: 'Database connection unavailable' });
     }
 
-    // Query all talent registrations except Individual Participant
-    const { data: vendors, error: vendorErr } = await supabase
+    const {
+      page = 1,
+      pageSize = 25,
+      limit = 25,
+      search = '',
+      q = '',
+      sort = 'member_count',
+      order = 'desc',
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const requestedSize = parseInt(pageSize || limit, 10);
+    const validSizes = [10, 25, 50];
+    const limitNum = validSizes.includes(requestedSize) ? requestedSize : 25;
+    const rawSearch = (search || q || '').trim();
+    const cleanSearch = sanitizePostgrestFilter(rawSearch);
+    const sortField = (sort || 'member_count').trim().toLowerCase();
+    const sortOrder = (order || 'desc').trim().toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    // 1. First attempt: Database-side stored function for 100% database-side aggregation
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_admin_talent_teams_paginated', {
+        p_page: pageNum,
+        p_page_size: limitNum,
+        p_search: cleanSearch,
+        p_sort_field: sortField,
+        p_sort_order: sortOrder,
+      });
+
+      if (!rpcErr && Array.isArray(rpcData)) {
+        const totalMatching = rpcData.length > 0 ? Number(rpcData[0].total_count || 0) : 0;
+        const vendors = rpcData.map((r) => ({
+          id: r.id,
+          full_name: r.full_name,
+          email: r.email,
+          phone: r.phone,
+          state: r.state,
+          city_district: r.city_district,
+          registration_code: r.registration_code,
+          primary_role: r.primary_role,
+          status: r.status,
+          created_at: r.created_at,
+          totalMembers: Number(r.total_members || 0),
+          activeMembers: Number(r.active_members || 0),
+        }));
+
+        // Retrieve system-wide stats efficiently via HEAD count
+        const [{ count: totalVendors }, { count: totalTeamMembers }] = await Promise.all([
+          supabase.from('talent_registrations').select('*', { count: 'exact', head: true }).neq('primary_role', 'Individual Participant'),
+          supabase.from('talent_team_members').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+        ]);
+
+        const totalPages = Math.ceil(totalMatching / limitNum) || 1;
+
+        return res.json({
+          success: true,
+          data: vendors,
+          vendors,
+          total: totalMatching,
+          totalVendors: totalVendors || 0,
+          totalTeamMembers: totalTeamMembers || 0,
+          page: pageNum,
+          pageSize: limitNum,
+          totalPages,
+        });
+      }
+    } catch (rpcCatchErr) {
+      // Fall through to PostgREST query path
+    }
+
+    // 2. Fallback query path with minimal egress and efficient vendor member counts
+    let vendorQuery = supabase
       .from('talent_registrations')
-      .select('id, full_name, email, phone, state, city_district, registration_code, primary_role, status, created_at')
-      .neq('primary_role', 'Individual Participant')
-      .order('created_at', { ascending: false });
+      .select('id, full_name, email, phone, state, city_district, registration_code, primary_role, status, created_at', { count: 'exact' })
+      .neq('primary_role', 'Individual Participant');
+
+    if (cleanSearch) {
+      vendorQuery = vendorQuery.or(
+        `full_name.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%,phone.ilike.%${cleanSearch}%,registration_code.ilike.%${cleanSearch}%,city_district.ilike.%${cleanSearch}%,state.ilike.%${cleanSearch}%`
+      );
+    }
+
+    const { data: vendors, count: matchingVendorCount, error: vendorErr } = await vendorQuery;
 
     if (vendorErr) {
       console.error('[getAdminTalentTeamsOverview Error]:', vendorErr.message);
@@ -741,32 +818,81 @@ export const getAdminTalentTeamsOverview = async (req, res) => {
     }
 
     const vendorList = vendors || [];
+    const totalMatching = matchingVendorCount !== null && matchingVendorCount !== undefined ? matchingVendorCount : vendorList.length;
+
+    // Fetch system-wide summary counts via 0-byte payload HEAD queries
+    const [{ count: totalVendorsCount }, { count: totalTeamMembersCount }] = await Promise.all([
+      supabase.from('talent_registrations').select('*', { count: 'exact', head: true }).neq('primary_role', 'Individual Participant'),
+      supabase.from('talent_team_members').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    ]);
+
     if (vendorList.length === 0) {
-      return res.json({ success: true, vendors: [], totalVendors: 0, totalTeamMembers: 0 });
+      return res.json({
+        success: true,
+        data: [],
+        vendors: [],
+        total: 0,
+        totalVendors: totalVendorsCount || 0,
+        totalTeamMembers: totalTeamMembersCount || 0,
+        page: pageNum,
+        pageSize: limitNum,
+        totalPages: 1,
+      });
     }
 
-    // Query team member counts per vendor
-    const { data: members, error: memberErr } = await supabase
+    // Query team member counts for matching vendors only (only ID, vendor_id, status)
+    const matchingVendorIds = vendorList.map((v) => v.id);
+    const { data: memberSummaries } = await supabase
       .from('talent_team_members')
-      .select('id, vendor_registration_id, status, created_at')
+      .select('id, vendor_registration_id, status')
+      .in('vendor_registration_id', matchingVendorIds)
       .is('deleted_at', null);
 
-    const memberList = members || [];
+    const countMap = new Map();
+    (memberSummaries || []).forEach((m) => {
+      const entry = countMap.get(m.vendor_registration_id) || { total: 0, active: 0 };
+      entry.total += 1;
+      if (m.status === 'active') entry.active += 1;
+      countMap.set(m.vendor_registration_id, entry);
+    });
 
-    const vendorsWithMetrics = vendorList.map((v) => {
-      const vMembers = memberList.filter((m) => m.vendor_registration_id === v.id);
+    const enrichedVendors = vendorList.map((v) => {
+      const counts = countMap.get(v.id) || { total: 0, active: 0 };
       return {
         ...v,
-        totalMembers: vMembers.length,
-        activeMembers: vMembers.filter((m) => m.status === 'active').length,
+        totalMembers: counts.total,
+        activeMembers: counts.active,
       };
     });
 
+    // Default sorting: team member count DESC, then full_name ASC, created_at DESC (deterministic stable sort)
+    enrichedVendors.sort((a, b) => {
+      if (sortField === 'member_count') {
+        if (sortOrder === 'asc') {
+          if (a.totalMembers !== b.totalMembers) return a.totalMembers - b.totalMembers;
+        } else {
+          if (b.totalMembers !== a.totalMembers) return b.totalMembers - a.totalMembers;
+        }
+      }
+      const nameCompare = (a.full_name || '').localeCompare(b.full_name || '');
+      if (nameCompare !== 0) return nameCompare;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+
+    const from = (pageNum - 1) * limitNum;
+    const paginatedVendors = enrichedVendors.slice(from, from + limitNum);
+    const totalPages = Math.ceil(totalMatching / limitNum) || 1;
+
     return res.json({
       success: true,
-      vendors: vendorsWithMetrics,
-      totalVendors: vendorList.length,
-      totalTeamMembers: memberList.length,
+      data: paginatedVendors,
+      vendors: paginatedVendors,
+      total: totalMatching,
+      totalVendors: totalVendorsCount || 0,
+      totalTeamMembers: totalTeamMembersCount || 0,
+      page: pageNum,
+      pageSize: limitNum,
+      totalPages,
     });
   } catch (err) {
     console.error('[getAdminTalentTeamsOverview Catch Error]:', err);

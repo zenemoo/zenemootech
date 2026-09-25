@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   FolderPlus,
   Upload,
@@ -74,8 +74,11 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
   const [datasets, setDatasets] = useState<DatasetItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'draft'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const reqSeqRef = useRef<number>(0);
 
   // Selected dataset detail state
   const [selectedDataset, setSelectedDataset] = useState<DatasetItem | null>(null);
@@ -110,25 +113,47 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load Datasets List
-  const fetchDatasets = async () => {
+  // 400ms Debounce on Search Query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Load Datasets List (Protected with AbortController and Monotonic Sequence)
+  const fetchDatasets = useCallback(async (search = debouncedSearch, status = statusFilter) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const reqSeq = ++reqSeqRef.current;
+
     setIsLoading(true);
     try {
-      const res = await datasetApi.getDatasets({ search: searchQuery, status: statusFilter });
+      const res = await datasetApi.getDatasets({ search, status }, controller.signal);
+      if (reqSeq !== reqSeqRef.current) return;
       if (res.data && res.data.success) {
         setDatasets(res.data.datasets || []);
       }
     } catch (err: any) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
+        return;
+      }
+      if (reqSeq !== reqSeqRef.current) return;
       console.error('Fetch datasets error:', err);
       addToast('Error', 'Failed to fetch datasets.', 'error');
     } finally {
-      setIsLoading(false);
+      if (reqSeq === reqSeqRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [debouncedSearch, statusFilter, addToast]);
 
   useEffect(() => {
     fetchDatasets();
-  }, [searchQuery, statusFilter]);
+  }, [fetchDatasets]);
 
   // Load Selected Dataset Files
   const fetchDatasetDetails = async (identifier: string) => {
@@ -548,8 +573,16 @@ export const AdminDataPortfolioTab: React.FC<AdminDataPortfolioTabProps> = ({ ad
                 placeholder="Search datasets..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">

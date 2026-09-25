@@ -140,10 +140,16 @@ export const talentTeamApi = {
 
   // ── ADMIN TALENT TEAMS ENDPOINTS (JWT Token with Admin/HR role) ──
 
-  async getAdminTeamsOverview(adminToken: string): Promise<any> {
+  async getAdminTeamsOverview(
+    adminToken: string,
+    params: { page?: number; pageSize?: number; limit?: number; search?: string; q?: string; sort?: string; order?: string } = {},
+    signal?: AbortSignal
+  ): Promise<any> {
     const baseUrl = getApiBaseUrl();
     const response = await axios.get(`${baseUrl}/admin/talent-teams`, {
       headers: { Authorization: `Bearer ${adminToken}` },
+      params,
+      signal,
     });
     return response.data;
   },
@@ -151,12 +157,14 @@ export const talentTeamApi = {
   async getAdminVendorMembers(
     adminToken: string,
     vendorId: string,
-    params: { page?: number; limit?: number; q?: string } = {}
+    params: { page?: number; limit?: number; q?: string } = {},
+    signal?: AbortSignal
   ): Promise<any> {
     const baseUrl = getApiBaseUrl();
     const response = await axios.get(`${baseUrl}/admin/talent-teams/${vendorId}/members`, {
       headers: { Authorization: `Bearer ${adminToken}` },
       params,
+      signal,
     });
     return response.data;
   },

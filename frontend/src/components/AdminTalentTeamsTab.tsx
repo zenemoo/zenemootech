@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -9,29 +9,18 @@ import {
   FileText,
   FileCode,
   Eye,
-  Mail,
-  Phone,
-  MapPin,
-  Globe,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Check,
   Building,
-  ShieldCheck,
   X,
   Clock,
-  CheckCircle2,
-  AlertCircle,
   ArrowLeft,
-  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { talentTeamApi, TeamMember } from '../services/talentTeamApi';
 import {
   exportTeamToCSV,
   exportTeamToXLSX,
   exportTeamToPDF,
-  downloadBlob,
 } from '../utils/teamExportUtils';
 
 interface VendorOverview {
@@ -55,30 +44,44 @@ interface AdminTalentTeamsTabProps {
 export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showToast }) => {
   const adminToken = typeof window !== 'undefined' ? localStorage.getItem('zenemoo_jwt_token') || '' : '';
 
+  // ── VENDOR LIST & SERVER-SIDE PAGINATION STATE ──
   const [vendors, setVendors] = useState<VendorOverview[]>([]);
   const [loadingVendors, setLoadingVendors] = useState(true);
+  const [vendorPage, setVendorPage] = useState(1);
+  const [vendorPageSize, setVendorPageSize] = useState<10 | 25 | 50>(25);
+  const [vendorTotalPages, setVendorTotalPages] = useState(1);
+  const [vendorTotalMatching, setVendorTotalMatching] = useState(0);
+
+  // Overall system metrics
   const [totalVendors, setTotalVendors] = useState(0);
   const [totalTeamMembers, setTotalTeamMembers] = useState(0);
+
+  // Search in vendor list (immediate + debounced)
+  const [vendorSearchQuery, setVendorSearchQuery] = useState('');
+  const [debouncedVendorSearch, setDebouncedVendorSearch] = useState('');
 
   // Drilldown selection
   const [selectedVendor, setSelectedVendor] = useState<VendorOverview | null>(null);
   const [vendorMembers, setVendorMembers] = useState<TeamMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [debouncedMemberSearch, setDebouncedMemberSearch] = useState('');
   const [memberPage, setMemberPage] = useState(1);
-  const [memberLimit, setMemberLimit] = useState(20);
+  const [memberLimit] = useState(20);
   const [memberTotalPages, setMemberTotalPages] = useState(1);
   const [memberTotalCount, setMemberTotalCount] = useState(0);
-
-  // Search in vendor list
-  const [vendorSearchQuery, setVendorSearchQuery] = useState('');
 
   // Active member for View Details modal
   const [viewingMember, setViewingMember] = useState<TeamMember | null>(null);
 
-  // Copy notification & Export state
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Export dropdown state
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+
+  // Cancellation and Sequence Refs to prevent stale response overwrite
+  const vendorAbortRef = useRef<AbortController | null>(null);
+  const vendorReqSeqRef = useRef<number>(0);
+  const memberAbortRef = useRef<AbortController | null>(null);
+  const memberReqSeqRef = useRef<number>(0);
 
   const notify = (title: string, message?: string, type: 'success' | 'error' = 'success') => {
     if (showToast) {
@@ -86,81 +89,167 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
     }
   };
 
-  const handleCopy = (text: string, key: string) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    notify('Copied', `${key} copied to clipboard`);
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
-
-  // Fetch Vendors Overview
-  const fetchVendorsOverview = useCallback(async () => {
-    if (!adminToken) return;
-    setLoadingVendors(true);
-    try {
-      const res = await talentTeamApi.getAdminTeamsOverview(adminToken);
-      if (res.success) {
-        setVendors(res.vendors || []);
-        setTotalVendors(res.totalVendors || 0);
-        setTotalTeamMembers(res.totalTeamMembers || 0);
-      }
-    } catch (err: any) {
-      console.error('Failed to load admin vendor teams:', err);
-      notify('Error', 'Failed to retrieve vendor teams overview', 'error');
-    } finally {
-      setLoadingVendors(false);
-    }
-  }, [adminToken]);
-
+  // ── DEBOUNCE VENDOR SEARCH (400ms) ──
   useEffect(() => {
-    fetchVendorsOverview();
-  }, [fetchVendorsOverview]);
-
-  // Fetch drilldown vendor members
-  const fetchVendorMembers = useCallback(async () => {
-    if (!adminToken || !selectedVendor) return;
-    setLoadingMembers(true);
-    try {
-      const res = await talentTeamApi.getAdminVendorMembers(adminToken, selectedVendor.id, {
-        page: memberPage,
-        limit: memberLimit,
-        q: memberSearchQuery,
+    const timer = setTimeout(() => {
+      const trimmed = vendorSearchQuery.trim();
+      setDebouncedVendorSearch((prev) => {
+        if (prev !== trimmed) {
+          setVendorPage(1); // Reset to page 1 on new search
+        }
+        return trimmed;
       });
-      if (res.success) {
-        setVendorMembers(res.members || []);
-        setMemberTotalPages(res.pagination.totalPages);
-        setMemberTotalCount(res.pagination.totalCount);
-      }
-    } catch (err: any) {
-      console.error('Failed to load vendor team members:', err);
-      notify('Error', 'Failed to retrieve team members', 'error');
-    } finally {
-      setLoadingMembers(false);
-    }
-  }, [adminToken, selectedVendor, memberPage, memberLimit, memberSearchQuery]);
+    }, 400);
 
+    return () => clearTimeout(timer);
+  }, [vendorSearchQuery]);
+
+  // ── DEBOUNCE DRILLDOWN MEMBER SEARCH (400ms) ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = memberSearchQuery.trim();
+      setDebouncedMemberSearch((prev) => {
+        if (prev !== trimmed) {
+          setMemberPage(1);
+        }
+        return trimmed;
+      });
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [memberSearchQuery]);
+
+  // ── FETCH VENDORS OVERVIEW (Paginated, Searchable, Sorted by Member Count DESC) ──
+  const fetchVendorsOverview = useCallback(
+    async (targetPage = vendorPage, targetSize = vendorPageSize, targetSearch = debouncedVendorSearch) => {
+      if (!adminToken) {
+        setLoadingVendors(false);
+        return;
+      }
+
+      // Abort previous in-flight request
+      if (vendorAbortRef.current) {
+        vendorAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      vendorAbortRef.current = controller;
+      const reqSeq = ++vendorReqSeqRef.current;
+
+      setLoadingVendors(true);
+      try {
+        const res = await talentTeamApi.getAdminTeamsOverview(
+          adminToken,
+          {
+            page: targetPage,
+            pageSize: targetSize,
+            search: targetSearch,
+            sort: 'member_count',
+            order: 'desc',
+          },
+          controller.signal
+        );
+
+        // Discard stale response
+        if (reqSeq !== vendorReqSeqRef.current) return;
+
+        if (res && res.success) {
+          const fetchedVendors = res.vendors || res.data || [];
+          setVendors(fetchedVendors);
+          const totalMatching = typeof res.total === 'number' ? res.total : fetchedVendors.length;
+          setVendorTotalMatching(totalMatching);
+          setVendorTotalPages(res.totalPages || Math.ceil(totalMatching / targetSize) || 1);
+          setTotalVendors(res.totalVendors || totalMatching);
+          setTotalTeamMembers(res.totalTeamMembers || 0);
+        }
+      } catch (err: any) {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
+          return; // Expected abort of stale search request
+        }
+        if (reqSeq === vendorReqSeqRef.current) {
+          console.error('Failed to load admin vendor teams:', err);
+          notify('Error', 'Failed to retrieve vendor teams overview', 'error');
+        }
+      } finally {
+        if (reqSeq === vendorReqSeqRef.current) {
+          setLoadingVendors(false);
+        }
+      }
+    },
+    [adminToken, vendorPage, vendorPageSize, debouncedVendorSearch]
+  );
+
+  // Controlled Vendor fetch effect
+  useEffect(() => {
+    if (!selectedVendor) {
+      fetchVendorsOverview(vendorPage, vendorPageSize, debouncedVendorSearch);
+    }
+  }, [adminToken, vendorPage, vendorPageSize, debouncedVendorSearch, selectedVendor]);
+
+  // ── FETCH DRILLDOWN VENDOR MEMBERS ──
+  const fetchVendorMembers = useCallback(
+    async (
+      targetVendorId = selectedVendor?.id,
+      targetPage = memberPage,
+      targetLimit = memberLimit,
+      targetSearch = debouncedMemberSearch
+    ) => {
+      if (!adminToken || !targetVendorId) {
+        setLoadingMembers(false);
+        return;
+      }
+
+      if (memberAbortRef.current) {
+        memberAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      memberAbortRef.current = controller;
+      const reqSeq = ++memberReqSeqRef.current;
+
+      setLoadingMembers(true);
+      try {
+        const res = await talentTeamApi.getAdminVendorMembers(
+          adminToken,
+          targetVendorId,
+          {
+            page: targetPage,
+            limit: targetLimit,
+            q: targetSearch,
+          },
+          controller.signal
+        );
+
+        if (reqSeq !== memberReqSeqRef.current) return;
+
+        if (res && res.success) {
+          setVendorMembers(res.members || []);
+          setMemberTotalPages(res.pagination?.totalPages || 1);
+          setMemberTotalCount(res.pagination?.totalCount || 0);
+        }
+      } catch (err: any) {
+        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
+          return;
+        }
+        if (reqSeq === memberReqSeqRef.current) {
+          console.error('Failed to load vendor team members:', err);
+          notify('Error', 'Failed to retrieve team members', 'error');
+        }
+      } finally {
+        if (reqSeq === memberReqSeqRef.current) {
+          setLoadingMembers(false);
+        }
+      }
+    },
+    [adminToken, selectedVendor?.id, memberPage, memberLimit, debouncedMemberSearch]
+  );
+
+  // Controlled Member fetch effect
   useEffect(() => {
     if (selectedVendor) {
-      fetchVendorMembers();
+      fetchVendorMembers(selectedVendor.id, memberPage, memberLimit, debouncedMemberSearch);
     }
-  }, [selectedVendor, fetchVendorMembers]);
+  }, [selectedVendor, memberPage, memberLimit, debouncedMemberSearch, fetchVendorMembers]);
 
-  // Filtered Vendors for search
-  const filteredVendors = useMemo(() => {
-    if (!vendorSearchQuery.trim()) return vendors;
-    const q = vendorSearchQuery.toLowerCase();
-    return vendors.filter(
-      (v) =>
-        v.full_name?.toLowerCase().includes(q) ||
-        v.email?.toLowerCase().includes(q) ||
-        v.registration_code?.toLowerCase().includes(q) ||
-        v.state?.toLowerCase().includes(q) ||
-        v.city_district?.toLowerCase().includes(q)
-    );
-  }, [vendors, vendorSearchQuery]);
-
-  // Master Export (all vendors or single vendor)
+  // ── MASTER EXPORT (ISOLATED - NEVER CALLED DURING NORMAL PAGE LOAD) ──
   const handleMasterExport = async (format: 'pdf' | 'csv' | 'xlsx') => {
     setShowExportDropdown(false);
     if (!adminToken) return;
@@ -224,13 +313,17 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => {
-                if (selectedVendor) fetchVendorMembers();
-                else fetchVendorsOverview();
+                if (selectedVendor) {
+                  fetchVendorMembers(selectedVendor.id, memberPage, memberLimit, debouncedMemberSearch);
+                } else {
+                  fetchVendorsOverview(vendorPage, vendorPageSize, debouncedVendorSearch);
+                }
               }}
-              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors"
+              disabled={loadingVendors || loadingMembers}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
               title="Refresh Data"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 ${loadingVendors || loadingMembers ? 'animate-spin text-sky-400' : ''}`} />
             </button>
 
             {/* Export Dropdown */}
@@ -247,21 +340,21 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
                 <div className="absolute right-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl py-1.5 z-30">
                   <button
                     onClick={() => handleMasterExport('pdf')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2.5"
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
                   >
                     <FileText className="w-4 h-4 text-rose-400" />
                     Export as PDF
                   </button>
                   <button
                     onClick={() => handleMasterExport('csv')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2.5"
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
                   >
                     <FileCode className="w-4 h-4 text-emerald-400" />
                     Export as CSV
                   </button>
                   <button
                     onClick={() => handleMasterExport('xlsx')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2.5"
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-sky-400" />
                     Export as Excel (XLSX)
@@ -316,8 +409,10 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
               onClick={() => {
                 setSelectedVendor(null);
                 setVendorMembers([]);
+                setMemberSearchQuery('');
+                setDebouncedMemberSearch('');
               }}
-              className="flex items-center gap-2 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors"
+              className="flex items-center gap-2 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to All Vendors
@@ -328,7 +423,7 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
             </div>
           </div>
 
-          {/* Member Search */}
+          {/* Member Search (Debounced ~400ms) */}
           <div className="relative max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
@@ -349,73 +444,108 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
               </div>
             ) : vendorMembers.length === 0 ? (
               <div className="py-16 text-center text-slate-400 text-xs">
-                No team members found for this vendor.
+                {debouncedMemberSearch ? `No team members found matching "${debouncedMemberSearch}".` : 'No team members found for this vendor.'}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950/60 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                    <tr>
-                      <th className="py-3.5 px-4 font-semibold">Member</th>
-                      <th className="py-3.5 px-4 font-semibold">Contact Details</th>
-                      <th className="py-3.5 px-4 font-semibold">Location</th>
-                      <th className="py-3.5 px-4 font-semibold">Languages</th>
-                      <th className="py-3.5 px-4 font-semibold">Availability</th>
-                      <th className="py-3.5 px-4 font-semibold">Added Date</th>
-                      <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {vendorMembers.map((member) => (
-                      <tr key={member.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-100">{member.full_name}</div>
-                          <div className="text-[11px] font-mono text-sky-400">{member.member_code}</div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="text-slate-200">{member.email || '-'}</div>
-                          <div className="text-slate-400">{member.phone ? `${member.country_code || '+91'} ${member.phone}` : '-'}</div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {member.city_district || '-'}
-                          {member.state ? `, ${member.state}` : ''}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex flex-wrap gap-1">
-                            {Array.isArray(member.languages) && member.languages.length > 0 ? (
-                              member.languages.map((l, i) => (
-                                <span key={i} className="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded">
-                                  {l}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-slate-500">-</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">{member.availability || 'Immediately'}</td>
-                        <td className="py-3.5 px-4 text-slate-400">
-                          {member.created_at ? new Date(member.created_at).toLocaleDateString('en-IN') : '-'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <button
-                            onClick={() => setViewingMember(member)}
-                            className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-sky-400 rounded-lg"
-                            title="Inspect Details"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950/60 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th className="py-3.5 px-4 font-semibold">Member</th>
+                        <th className="py-3.5 px-4 font-semibold">Contact Details</th>
+                        <th className="py-3.5 px-4 font-semibold">Location</th>
+                        <th className="py-3.5 px-4 font-semibold">Languages</th>
+                        <th className="py-3.5 px-4 font-semibold">Availability</th>
+                        <th className="py-3.5 px-4 font-semibold">Added Date</th>
+                        <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {vendorMembers.map((member) => (
+                        <tr key={member.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="font-semibold text-slate-100">{member.full_name}</div>
+                            <div className="text-[11px] font-mono text-sky-400">{member.member_code}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="text-slate-200">{member.email || '-'}</div>
+                            <div className="text-slate-400">{member.phone ? `${member.country_code || '+91'} ${member.phone}` : '-'}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {member.city_district || '-'}
+                            {member.state ? `, ${member.state}` : ''}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-wrap gap-1">
+                              {Array.isArray(member.languages) && member.languages.length > 0 ? (
+                                member.languages.map((l, i) => (
+                                  <span key={i} className="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded">
+                                    {l}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-slate-500">-</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">{member.availability || 'Immediately'}</td>
+                          <td className="py-3.5 px-4 text-slate-400">
+                            {member.created_at ? new Date(member.created_at).toLocaleDateString('en-IN') : '-'}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => setViewingMember(member)}
+                              className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-sky-400 rounded-lg cursor-pointer"
+                              title="Inspect Details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Drilldown Pagination Bar */}
+                {memberTotalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 bg-slate-950/60 border-t border-slate-800 text-xs text-slate-400">
+                    <div>
+                      Showing{' '}
+                      <span className="font-bold text-slate-200">{(memberPage - 1) * memberLimit + 1}</span> to{' '}
+                      <span className="font-bold text-slate-200">{Math.min(memberPage * memberLimit, memberTotalCount)}</span> of{' '}
+                      <span className="font-bold text-slate-200">{memberTotalCount}</span> members
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setMemberPage((p) => Math.max(1, p - 1))}
+                        disabled={memberPage === 1}
+                        className="p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        title="Previous Page"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="px-2 text-xs font-mono text-slate-300">
+                        {memberPage} / {memberTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setMemberPage((p) => Math.min(memberTotalPages, p + 1))}
+                        disabled={memberPage === memberTotalPages}
+                        className="p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        title="Next Page"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
       ) : (
-        /* ── LEVEL 1: ALL VENDORS TABLE ── */
+        /* ── LEVEL 1: ALL VENDORS TABLE (SERVER-SIDE PAGINATED & SEARCHABLE) ── */
         <div className="space-y-4">
           <div className="relative max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -434,55 +564,150 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
                 <RefreshCw className="w-6 h-6 animate-spin text-sky-400 mb-3" />
                 <span className="text-xs">Loading vendor list...</span>
               </div>
-            ) : filteredVendors.length === 0 ? (
+            ) : vendors.length === 0 ? (
               <div className="py-16 text-center text-slate-400 text-xs">
-                No vendor profiles found.
+                {debouncedVendorSearch ? `No vendors found matching "${debouncedVendorSearch}".` : 'No vendor profiles found.'}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950/60 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                    <tr>
-                      <th className="py-3.5 px-4 font-semibold">Vendor / Agency</th>
-                      <th className="py-3.5 px-4 font-semibold">Registration Code</th>
-                      <th className="py-3.5 px-4 font-semibold">Location</th>
-                      <th className="py-3.5 px-4 font-semibold">Total Team Members</th>
-                      <th className="py-3.5 px-4 font-semibold">Active Members</th>
-                      <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {filteredVendors.map((vendor) => (
-                      <tr key={vendor.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-100">{vendor.full_name}</div>
-                          <div className="text-slate-400 text-[11px]">{vendor.email}</div>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono font-semibold text-sky-400">
-                          {vendor.registration_code || '-'}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {vendor.city_district || '-'}
-                          {vendor.state ? `, ${vendor.state}` : ''}
-                        </td>
-                        <td className="py-3.5 px-4 font-bold text-slate-100">{vendor.totalMembers}</td>
-                        <td className="py-3.5 px-4 font-semibold text-emerald-400">{vendor.activeMembers}</td>
-                        <td className="py-3.5 px-4 text-right">
-                          <button
-                            onClick={() => {
-                              setSelectedVendor(vendor);
-                              setMemberPage(1);
-                            }}
-                            className="bg-sky-500 hover:bg-sky-400 text-white font-semibold text-[11px] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                          >
-                            View Team ({vendor.totalMembers})
-                          </button>
-                        </td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950/60 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th className="py-3.5 px-4 font-semibold">Vendor / Agency</th>
+                        <th className="py-3.5 px-4 font-semibold">Registration Code</th>
+                        <th className="py-3.5 px-4 font-semibold">Location</th>
+                        <th className="py-3.5 px-4 font-semibold">Total Team Members</th>
+                        <th className="py-3.5 px-4 font-semibold">Active Members</th>
+                        <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                      {vendors.map((vendor) => (
+                        <tr key={vendor.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="font-semibold text-slate-100">{vendor.full_name}</div>
+                            <div className="text-slate-400 text-[11px]">{vendor.email}</div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-semibold text-sky-400">
+                            {vendor.registration_code || '-'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {vendor.city_district || '-'}
+                            {vendor.state ? `, ${vendor.state}` : ''}
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-slate-100">{vendor.totalMembers}</td>
+                          <td className="py-3.5 px-4 font-semibold text-emerald-400">{vendor.activeMembers}</td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedVendor(vendor);
+                                setMemberPage(1);
+                                setMemberSearchQuery('');
+                                setDebouncedMemberSearch('');
+                              }}
+                              className="bg-sky-500 hover:bg-sky-400 text-white font-semibold text-[11px] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            >
+                              View Team ({vendor.totalMembers})
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ── PAGINATION CONTROLS (Page size: 10, 25, 50 & Server-side page changer) ── */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3.5 bg-slate-950/60 border-t border-slate-800 text-xs text-slate-400">
+                  <div className="flex items-center gap-3">
+                    <span>
+                      {vendorTotalMatching === 0 ? (
+                        'Showing 0 of 0 vendors'
+                      ) : (
+                        <>
+                          Showing{' '}
+                          <span className="font-bold text-slate-200">
+                            {(vendorPage - 1) * vendorPageSize + 1}
+                          </span>{' '}
+                          to{' '}
+                          <span className="font-bold text-slate-200">
+                            {Math.min(vendorPage * vendorPageSize, vendorTotalMatching)}
+                          </span>{' '}
+                          of{' '}
+                          <span className="font-bold text-slate-200">{vendorTotalMatching}</span> vendors
+                        </>
+                      )}
+                    </span>
+
+                    <div className="flex items-center gap-1.5 ml-2 border-l border-slate-800 pl-3">
+                      <span className="text-[11px] text-slate-500">Page size:</span>
+                      <select
+                        value={vendorPageSize}
+                        onChange={(e) => {
+                          const newSize = parseInt(e.target.value, 10) as 10 | 25 | 50;
+                          setVendorPageSize(newSize);
+                          setVendorPage(1);
+                        }}
+                        className="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-sky-500 cursor-pointer"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {vendorTotalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setVendorPage((p) => Math.max(1, p - 1))}
+                        disabled={vendorPage === 1}
+                        className="p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        title="Previous Page"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+
+                      <div className="flex items-center gap-1 px-1">
+                        {Array.from({ length: Math.min(5, vendorTotalPages) }, (_, i) => {
+                          let pageNumber: number;
+                          if (vendorTotalPages <= 5) {
+                            pageNumber = i + 1;
+                          } else if (vendorPage <= 3) {
+                            pageNumber = i + 1;
+                          } else if (vendorPage >= vendorTotalPages - 2) {
+                            pageNumber = vendorTotalPages - 4 + i;
+                          } else {
+                            pageNumber = vendorPage - 2 + i;
+                          }
+                          return (
+                            <button
+                              key={pageNumber}
+                              onClick={() => setVendorPage(pageNumber)}
+                              className={`min-w-[28px] h-7 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                                vendorPage === pageNumber
+                                  ? 'bg-sky-500 text-white shadow-md shadow-sky-500/20'
+                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800'
+                              }`}
+                            >
+                              {pageNumber}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => setVendorPage((p) => Math.min(vendorTotalPages, p + 1))}
+                        disabled={vendorPage === vendorTotalPages}
+                        className="p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        title="Next Page"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -505,7 +730,7 @@ export const AdminTalentTeamsTab: React.FC<AdminTalentTeamsTabProps> = ({ showTo
                 </div>
                 <button
                   onClick={() => setViewingMember(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg"
+                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
