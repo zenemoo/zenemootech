@@ -436,11 +436,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     return (initialTab && isValidAdminTab(initialTab) ? initialTab : 'team') as AdminTabType;
   });
 
-  // Persist active tab across page refreshes and keep URL clean
+  // Persist active tab across page refreshes and keep URL clean (only when authenticated or after session check)
   useEffect(() => {
     if (typeof window !== 'undefined' && isValidAdminTab(activeTab)) {
       try {
         localStorage.setItem('zenemoo_admin_active_tab', activeTab);
+
+        // CRITICAL: NEVER sanitize or strip URL while OAuth callback parameters are present and unconsumed!
+        const hasOAuthParams =
+          window.location.hash.includes('access_token') ||
+          window.location.hash.includes('code=') ||
+          window.location.search.includes('code=') ||
+          window.location.search.includes('access_token=') ||
+          window.location.search.includes('error=') ||
+          window.location.hash.includes('error=');
+
+        if (hasOAuthParams && !isAuthenticated) {
+          return;
+        }
+
         const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
         const currentPath = window.location.pathname.replace(/\/$/, '') || `/${secretEnvRoute}`;
         const basePath = currentPath.startsWith(`/${secretEnvRoute}`) ? `/${secretEnvRoute}` : currentPath;
@@ -460,7 +474,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         }
       } catch (e) {}
     }
-  }, [activeTab]);
+  }, [activeTab, isAuthenticated]);
 
   const handleNavigateToTab = useCallback((tabName: string) => {
     if (isValidAdminTab(tabName)) {
@@ -1154,13 +1168,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
     const processGoogleAdminToken = async (sbToken: string) => {
       try {
-        console.log('🔑 Validating Google OAuth token with backend authorized allowlist...');
         setIsCheckingSession(true);
         const googleRes = await authApi.googleAdminLogin(sbToken);
 
         if (!isMounted) return false;
 
         if (googleRes.data && googleRes.data.success && googleRes.data.token) {
+          console.log('[Google OAuth] Admin JWT received: true');
+          console.log('[Google OAuth] admin authorization: success');
+
           const token = googleRes.data.token;
           const now = Date.now();
           const absoluteExpiry = now + 30 * 60 * 1000;
@@ -1201,9 +1217,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           setIsAuthenticated(true);
           setPassError('');
 
+          // ONLY NOW: Sanitize browser URL and preserve requested valid tab!
           if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-            const currentTab = isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null;
-            const targetUrl = currentTab ? `/${secretEnvRoute}?tab=${currentTab}` : `/${secretEnvRoute}`;
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryTab = urlParams.get('tab');
+            const storedTab = localStorage.getItem('zenemoo_admin_active_tab');
+            const targetTab = (queryTab && isValidAdminTab(queryTab))
+              ? queryTab
+              : (isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : (storedTab && isValidAdminTab(storedTab) && storedTab !== 'team' ? storedTab : null));
+            const targetUrl = targetTab ? `/${secretEnvRoute}?tab=${targetTab}` : `/${secretEnvRoute}`;
             window.history.replaceState(null, '', targetUrl);
           }
 
@@ -1218,8 +1240,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
           setIsCheckingSession(false);
           return true;
+        } else {
+          console.log('[Google OAuth] Admin JWT received: false');
+          console.log('[Google OAuth] admin authorization: failure');
+          const msg = googleRes.data?.message || 'Your Google account is not authorized for Admin access.';
+          setPassError(msg);
+          setIsAuthenticated(false);
+          setIsCheckingSession(false);
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            const currentTab = isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null;
+            const targetUrl = currentTab ? `/${secretEnvRoute}?tab=${currentTab}` : `/${secretEnvRoute}`;
+            window.history.replaceState(null, '', targetUrl);
+          }
+          return false;
         }
       } catch (err: any) {
+        console.log('[Google OAuth] admin authorization: failure');
         console.warn('Google Admin login authorization failed:', err);
         try {
           await supabase.auth.signOut();
@@ -1235,20 +1271,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         localStorage.removeItem('zenemoo_session_start');
         delete api.defaults.headers.common['Authorization'];
         setIsCheckingSession(false);
+
+        if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+          const currentTab = isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null;
+          const targetUrl = currentTab ? `/${secretEnvRoute}?tab=${currentTab}` : `/${secretEnvRoute}`;
+          window.history.replaceState(null, '', targetUrl);
+        }
         return false;
       }
-      return false;
     };
 
     const restoreSession = async () => {
       const token = localStorage.getItem('zenemoo_jwt_token');
       const expiry = localStorage.getItem('zenemoo_jwt_expiry');
 
-      // ── Step 1: Parse and immediately strip any OAuth tokens/code/errors from URL ──
+      // ── Step 1: Parse OAuth tokens/code/errors into memory (DO NOT sanitize URL yet!) ──
       let code: string | null = null;
       let accessToken: string | null = null;
       let refreshToken: string | null = null;
       let errorDesc: string | null = null;
+      let isOAuthCallback = false;
 
       try {
         if (typeof window !== 'undefined') {
@@ -1266,7 +1308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           refreshToken = getParam('refresh_token');
           errorDesc = getParam('error_description') || getParam('error');
 
-          const hasUrlTokens = Boolean(
+          isOAuthCallback = Boolean(
             code ||
             accessToken ||
             refreshToken ||
@@ -1277,34 +1319,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             rawSearch.includes('access_token=')
           );
 
-          // CRITICAL SECURITY FIX: IMMEDIATELY sanitize the browser address bar
-          // Access tokens, refresh tokens, and OAuth codes must NEVER remain visible in the URL!
-          if (hasUrlTokens && window.history && window.history.replaceState) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const queryTab = urlParams.get('tab');
-            const targetTab = (queryTab && isValidAdminTab(queryTab))
-              ? queryTab
-              : (isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null);
-            const sanitizedPath = targetTab ? `/${secretEnvRoute}?tab=${targetTab}` : `/${secretEnvRoute}`;
-            window.history.replaceState(null, '', sanitizedPath);
+          if (isOAuthCallback) {
+            console.log('[Google OAuth] callback detected');
           }
         }
       } catch (_) {}
 
       if (errorDesc) {
+        console.log('[Google OAuth] session established: false');
         if (isMounted) {
           setPassError(errorDesc || 'Google authentication was cancelled or failed.');
           setIsCheckingSession(false);
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            const currentTab = isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null;
+            const targetUrl = currentTab ? `/${secretEnvRoute}?tab=${currentTab}` : `/${secretEnvRoute}`;
+            window.history.replaceState(null, '', targetUrl);
+          }
         }
         return;
       }
 
-      // ── Step 2: Handle PKCE code or implicit access token exchange ──
+      // ── Step 2: Let Supabase process PKCE code or implicit access token exchange ──
       let sbToken: string | null = accessToken;
 
       if (code) {
         try {
-          console.log('🔑 Exchanging PKCE code for session with Supabase Auth...');
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           if (!error && data?.session?.access_token) {
             sbToken = data.session.access_token;
@@ -1322,10 +1361,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         } catch (e) {}
       }
 
+      // If sbToken is still not extracted and this was an OAuth callback, check getSession()
+      if (!sbToken && isOAuthCallback) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session?.access_token) {
+            sbToken = data.session.access_token;
+          }
+        } catch (_) {}
+      }
+
+      if (isOAuthCallback) {
+        console.log(`[Google OAuth] session established: ${Boolean(sbToken)}`);
+      }
+
       // ── Step 3: If Supabase Google token was returned via OAuth callback and we don't have a valid Admin JWT ──
       if (sbToken && !token) {
         const handled = await processGoogleAdminToken(sbToken);
         if (handled) return;
+      }
+
+      if (!token && isOAuthCallback && !sbToken) {
+        if (isMounted) {
+          setPassError('Google authentication was cancelled or the session could not be established.');
+          setIsCheckingSession(false);
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            const currentTab = isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null;
+            const targetUrl = currentTab ? `/${secretEnvRoute}?tab=${currentTab}` : `/${secretEnvRoute}`;
+            window.history.replaceState(null, '', targetUrl);
+          }
+        }
+        return;
       }
 
       // ── Step 4: Existing Zenemoo Admin JWT in localStorage ──
