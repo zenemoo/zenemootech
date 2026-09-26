@@ -493,7 +493,20 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
     };
   }
 
-  const parsedTo = parseRecipients(recipients);
+  let fromAddress = 'Zenemoo Security <contact@zenemoo.in>';
+  if (typeof sender === 'string' && sender.trim()) {
+    fromAddress = sender.trim();
+  } else if (sender && typeof sender === 'object') {
+    if (sender.name && sender.email) {
+      fromAddress = `"${sender.name}" <${sender.email}>`;
+    } else if (sender.email) {
+      fromAddress = sender.email;
+    } else if (sender.address) {
+      fromAddress = sender.name ? `"${sender.name}" <${sender.address}>` : sender.address;
+    }
+  }
+
+  const parsedTo = parseRecipients(recipients || to);
   const parsedCc = parseRecipients(cc);
   const parsedBcc = parseRecipients(bcc);
   const safeHtml = sanitizeHtml(html);
@@ -502,7 +515,7 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
   const startTime = Date.now();
   try {
     const info = await transporter.sendMail({
-      from: sender || 'contact@zenemoo.in',
+      from: fromAddress,
       to: parsedTo,
       cc: parsedCc.length > 0 ? parsedCc : undefined,
       bcc: parsedBcc.length > 0 ? parsedBcc : undefined,
@@ -547,7 +560,8 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
 /**
  * Master Dispatcher with Request ID Tracking & Stage Logs
  */
-export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
+export const sendMailViaBrevo = async ({ sender, recipients, to, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
+  const targetRecipients = recipients || to;
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const startTime = Date.now();
 
@@ -559,7 +573,7 @@ export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, h
 
   // 1. Attempt Primary REST API
   try {
-    const res = await sendViaBrevoRestApi({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
+    const res = await sendViaBrevoRestApi({ requestId, sender, recipients: targetRecipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
     console.log(`🎯 [${requestId}] Execution Finished. Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (err) {
@@ -569,7 +583,7 @@ export const sendMailViaBrevo = async ({ sender, recipients, cc, bcc, subject, h
 
   // 2. Attempt SMTP Fallback ONLY if REST API fails
   try {
-    const res = await sendViaNodemailerSmtp({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
+    const res = await sendViaNodemailerSmtp({ requestId, sender, recipients: targetRecipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
     console.log(`🎯 [${requestId}] Execution Finished (SMTP Fallback). Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (smtpError) {
