@@ -76,6 +76,22 @@ export const authOtpRateLimiter = rateLimit({
 });
 
 /**
+ * Admin Email Verification Rate Limiter
+ * Max 15 checks per IP every 15 minutes
+ */
+export const authCheckEmailRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,
+  message: {
+    success: false,
+    message: 'Too many email verification requests. Please try again after 15 minutes.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+
+/**
  * Talent Registration Rate Limiter
  * Max 5 registrations per IP every 30 minutes
  */

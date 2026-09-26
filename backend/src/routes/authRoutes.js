@@ -18,7 +18,7 @@ import {
 } from '../controllers/authController.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
-import { authLoginRateLimiter, authOtpRateLimiter } from '../middleware/rateLimiter.js';
+import { authLoginRateLimiter, authOtpRateLimiter, authCheckEmailRateLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -38,7 +38,7 @@ router.post('/authorized-emails', verifyToken, requireRole(['admin']), upsertAut
 router.delete('/authorized-emails/:idOrEmail', verifyToken, requireRole(['admin']), deleteAuthorizedAdminEmail);
 
 // Password Recovery Workflows
-router.post('/check-email', authOtpRateLimiter, checkEmail);
+router.post('/check-email', authCheckEmailRateLimiter, checkEmail);
 router.post('/forgot-password', authOtpRateLimiter, forgotPassword);
 router.post('/verify-otp', authOtpRateLimiter, verifyOtp);
 router.post('/reset-password', authOtpRateLimiter, resetPassword);

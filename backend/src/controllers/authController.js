@@ -652,7 +652,7 @@ export const verifyOtp = async (req, res) => {
     console.log('-----------------------------------------------------');
     console.log('🔑 OTP VERIFICATION ATTEMPT');
     console.log('   - Recipient:', cleanEmail);
-    console.log('   - Input OTP:', cleanOtp);
+    console.log('   - Input OTP: [REDACTED]');
     console.log('-----------------------------------------------------');
 
     if (!cleanEmail || !cleanOtp) {
@@ -730,7 +730,7 @@ export const verifyOtp = async (req, res) => {
 
     if (record.hash !== hashedInput) {
       const newAttempts = record.attempts + 1;
-      console.warn(`❌ OTP verification mismatch: Input ${cleanOtp} (Hash: ${hashedInput}) does not match stored hash: ${record.hash}. Attempt ${newAttempts} of 5.`);
+      console.warn(`❌ OTP verification mismatch for ${cleanEmail}. Attempt ${newAttempts} of 5.`);
       
       if (supabase && record.id) {
         try {
@@ -774,7 +774,7 @@ export const resetPassword = async (req, res) => {
     console.log('-----------------------------------------------------');
     console.log('🔒 PASSWORD RESET FLOW INITIATED');
     console.log('   - Recipient:', cleanEmail);
-    console.log('   - Verify OTP:', cleanOtp);
+    console.log('   - Verify OTP: [REDACTED]');
     console.log('-----------------------------------------------------');
 
     if (!cleanEmail || !cleanOtp || !newPassword) {
