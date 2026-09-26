@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Mail, ArrowRight, RefreshCw, Key } from 'lucide-react';
+import { ArrowLeft, Mail, ArrowRight, RefreshCw, Key, Send, Check } from 'lucide-react';
 import { authApi } from '../services/api';
 
 interface ForgotPasswordPageProps {
-  onNavigateVerify: (email: string) => void;
+  onNavigateVerify: (email: string, channel: 'telegram' | 'email') => void;
   onReturnLogin: () => void;
 }
 
@@ -12,6 +12,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
   onReturnLogin,
 }) => {
   const [email, setEmail] = useState('');
+  const [channel, setChannel] = useState<'telegram' | 'email'>('telegram');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -29,10 +30,10 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
     setErrorMsg('');
 
     try {
-      await authApi.forgotPassword(cleanEmail);
-      onNavigateVerify(cleanEmail);
+      await authApi.forgotPassword(cleanEmail, channel);
+      onNavigateVerify(cleanEmail, channel);
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Failed to dispatch Telegram OTP. Please retry.';
+      const msg = err.response?.data?.message || err.message || `Failed to dispatch ${channel === 'email' ? 'Email' : 'Telegram'} OTP. Please retry.`;
       setErrorMsg(msg);
       setIsSubmitting(false);
     }
@@ -51,7 +52,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
             <Key className="w-6 h-6 text-cyan-400" /> Forgot Password
           </h2>
           <p className="text-xs font-mono text-slate-400 mt-1.5 leading-relaxed">
-            Enter your registered administrator email address to receive a Telegram verification code.
+            Enter your registered administrator email and select your preferred OTP delivery method.
           </p>
         </div>
 
@@ -75,13 +76,79 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
               disabled={isSubmitting}
               className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-colors text-xs disabled:opacity-50"
             />
-
-            {errorMsg && (
-              <div className="text-xs p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 mt-2 font-mono">
-                {errorMsg}
-              </div>
-            )}
           </div>
+
+          {/* Delivery Method Selection */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-300 mb-2 font-mono uppercase tracking-wider">
+              Select Delivery Option:
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Telegram Option */}
+              <button
+                type="button"
+                onClick={() => {
+                  setChannel('telegram');
+                  if (errorMsg) setErrorMsg('');
+                }}
+                disabled={isSubmitting}
+                className={`p-3 rounded-xl border text-left transition-all relative cursor-pointer ${
+                  channel === 'telegram'
+                    ? 'bg-cyan-500/15 border-cyan-400/80 shadow-lg shadow-cyan-500/15 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-1.5 text-xs font-bold font-display text-white">
+                    <Send className="w-3.5 h-3.5 text-cyan-400" /> Telegram
+                  </span>
+                  {channel === 'telegram' && (
+                    <div className="w-4 h-4 rounded-full bg-cyan-400 text-black flex items-center justify-center">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Instant alert to your linked Telegram chat
+                </p>
+              </button>
+
+              {/* Email Option */}
+              <button
+                type="button"
+                onClick={() => {
+                  setChannel('email');
+                  if (errorMsg) setErrorMsg('');
+                }}
+                disabled={isSubmitting}
+                className={`p-3 rounded-xl border text-left transition-all relative cursor-pointer ${
+                  channel === 'email'
+                    ? 'bg-cyan-500/15 border-cyan-400/80 shadow-lg shadow-cyan-500/15 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-1.5 text-xs font-bold font-display text-white">
+                    <Mail className="w-3.5 h-3.5 text-purple-400" /> Email
+                  </span>
+                  {channel === 'email' && (
+                    <div className="w-4 h-4 rounded-full bg-purple-400 text-black flex items-center justify-center">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Dispatched via Brevo to administrator inbox
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div className="text-xs p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 mt-2 font-mono">
+              {errorMsg}
+            </div>
+          )}
 
           <button
             type="submit"
@@ -94,7 +161,8 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
           >
             {isSubmitting ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-black" /> Dispatching Telegram OTP...
+                <RefreshCw className="w-4 h-4 animate-spin text-black" />{' '}
+                {channel === 'email' ? 'Sending Email OTP...' : 'Dispatching Telegram OTP...'}
               </>
             ) : (
               <>

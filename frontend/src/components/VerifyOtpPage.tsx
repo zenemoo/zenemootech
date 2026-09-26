@@ -4,12 +4,14 @@ import { authApi } from '../services/api';
 
 interface VerifyOtpPageProps {
   email: string;
+  channel?: 'telegram' | 'email';
   onNavigateReset: (otp: string) => void;
   onBackToEmail: () => void;
 }
 
 export const VerifyOtpPage: React.FC<VerifyOtpPageProps> = ({
   email,
+  channel = 'telegram',
   onNavigateReset,
   onBackToEmail,
 }) => {
@@ -100,10 +102,10 @@ export const VerifyOtpPage: React.FC<VerifyOtpPageProps> = ({
     setSuccessMsg('');
 
     try {
-      await authApi.forgotPassword(email);
+      await authApi.forgotPassword(email, channel);
       setTimeLeft(300);
       setOtpDigits(['', '', '', '', '', '']);
-      setSuccessMsg('New 6-digit OTP code dispatched via Telegram!');
+      setSuccessMsg(`New 6-digit OTP code dispatched via ${channel === 'email' ? 'Email' : 'Telegram'}!`);
       inputRefs.current[0]?.focus();
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to resend OTP. Please wait before retrying.';
@@ -126,7 +128,15 @@ export const VerifyOtpPage: React.FC<VerifyOtpPageProps> = ({
             Enter Verification Code
           </h2>
           <p className="text-xs font-mono text-slate-400 mt-1.5 leading-relaxed">
-            A verification code has been sent to your <span className="text-cyan-300 font-bold">linked Telegram account</span>.
+            {channel === 'email' ? (
+              <>
+                A verification code has been sent to your <span className="text-cyan-300 font-bold">administrator email</span> ({email}).
+              </>
+            ) : (
+              <>
+                A verification code has been sent to your <span className="text-cyan-300 font-bold">linked Telegram account</span>.
+              </>
+            )}
           </p>
         </div>
 

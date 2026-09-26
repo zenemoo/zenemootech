@@ -134,9 +134,9 @@ export const authApi = {
     return await api.post('/auth/check-email', { email: cleanEmail });
   },
 
-  forgotPassword: async (email: string) => {
+  forgotPassword: async (email: string, channel: 'telegram' | 'email' = 'telegram') => {
     const cleanEmail = email.trim().toLowerCase();
-    return await api.post('/auth/forgot-password', { email: cleanEmail });
+    return await api.post('/auth/forgot-password', { email: cleanEmail, channel });
   },
 
   verifyOtp: async (email: string, otp: string) => {

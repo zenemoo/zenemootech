@@ -70,6 +70,7 @@ function AppInner() {
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
   const [selectedTeamSlug, setSelectedTeamSlug] = useState<string>('');
   const [resetEmail, setResetEmail] = useState<string>('');
+  const [resetChannel, setResetChannel] = useState<'telegram' | 'email'>('telegram');
   const [verifiedOtp, setVerifiedOtp] = useState<string>('');
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
   const [portalUser, setPortalUser] = useState<any>(() => {
@@ -952,8 +953,9 @@ function AppInner() {
         />
       ) : currentRoute === 'forgot-password' ? (
         <ForgotPasswordPage
-          onNavigateVerify={(email) => {
+          onNavigateVerify={(email, channel) => {
             setResetEmail(email);
+            setResetChannel(channel);
             window.location.hash = '/forgot-password/verify';
             setCurrentRoute('forgot-password-verify');
           }}
@@ -962,6 +964,7 @@ function AppInner() {
       ) : currentRoute === 'forgot-password-verify' ? (
         <VerifyOtpPage
           email={resetEmail || 'mr.prem2006@gmail.com'}
+          channel={resetChannel || 'telegram'}
           onNavigateReset={(otp) => {
             setVerifiedOtp(otp);
             window.location.hash = '/forgot-password/reset';

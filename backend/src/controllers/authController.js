@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { memoryUserAccounts } from './userManagementController.js';
 import { sendTelegramAlert, getClientIp, parseUserAgent, getApproximateLocation } from '../services/telegramService.js';
+import { sendMailViaBrevo } from '../services/emailService.js';
 
 const getJwtSecret = () => {
   const secret = process.env.JWT_SECRET;
@@ -487,16 +488,18 @@ export const checkEmail = async (req, res) => {
 
 /**
  * 3. POST /api/auth/forgot-password
- * Generates OTP, stores SHA-256 hash (5 min expiry), dispatches Brevo Email
+ * Generates ONE cryptographic OTP, stores SHA-256 hash (5 min expiry), dispatches via Telegram or Brevo Email
  */
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, channel = 'telegram' } = req.body;
     const cleanEmail = (email || '').trim().toLowerCase();
+    const selectedChannel = (channel || 'telegram').toLowerCase().trim() === 'email' ? 'email' : 'telegram';
 
     console.log('-----------------------------------------------------');
-    console.log('🔑 TELEGRAM OTP GENERATION & DISPATCH FLOW INITIATED');
+    console.log('🔑 PASSWORD RESET OTP DISPATCH FLOW INITIATED');
     console.log('   - Recipient Email:', cleanEmail);
+    console.log('   - Delivery Channel:', selectedChannel.toUpperCase());
     console.log('-----------------------------------------------------');
 
     if (!cleanEmail) {
@@ -511,38 +514,40 @@ export const forgotPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: '❌ You are not an authorized administrator.' });
     }
 
-    // Lookup linked Telegram Chat ID from database
+    // If Telegram delivery chosen, verify linked Telegram Chat ID from database
     let telegramChatId = null;
-    if (supabase) {
-      try {
-        console.log(`🌐 Querying database for authorized admin email: ${cleanEmail}`);
-        const { data, error } = await supabase
-          .from('authorized_admin_emails')
-          .select('telegram_chat_id')
-          .eq('email', cleanEmail)
-          .maybeSingle();
+    if (selectedChannel === 'telegram') {
+      if (supabase) {
+        try {
+          console.log(`🌐 Querying database for authorized admin email: ${cleanEmail}`);
+          const { data, error } = await supabase
+            .from('authorized_admin_emails')
+            .select('telegram_chat_id')
+            .eq('email', cleanEmail)
+            .maybeSingle();
 
-        if (error) {
-          console.error('❌ Supabase database query error on password recovery:', error.message);
-        } else if (data) {
-          telegramChatId = data.telegram_chat_id;
-          console.log(`✅ DB record found for ${cleanEmail}. Telegram Chat ID:`, telegramChatId || '❌ NONE');
+          if (error) {
+            console.error('❌ Supabase database query error on password recovery:', error.message);
+          } else if (data) {
+            telegramChatId = data.telegram_chat_id;
+            console.log(`✅ DB record found for ${cleanEmail}. Telegram Chat ID:`, telegramChatId || '❌ NONE');
+          }
+        } catch (dbErr) {
+          console.error('❌ Database connection/query exception during password recovery:', dbErr);
         }
-      } catch (dbErr) {
-        console.error('❌ Database connection/query exception during password recovery:', dbErr);
+      }
+
+      if (!telegramChatId) {
+        console.warn(`⚠️ Telegram account is not linked for admin email: ${cleanEmail}`);
+        await writeAuditLog(req, 'PASSWORD_RESET_FAILED_NO_TELEGRAM_LINKED', cleanEmail);
+        return res.status(400).json({
+          success: false,
+          message: 'Telegram account is not linked. Please select Email delivery or contact the system administrator.'
+        });
       }
     }
 
-    if (!telegramChatId) {
-      console.warn(`⚠️ Telegram account is not linked for admin email: ${cleanEmail}`);
-      await writeAuditLog(req, 'PASSWORD_RESET_FAILED_NO_TELEGRAM_LINKED', cleanEmail);
-      return res.status(400).json({
-        success: false,
-        message: 'Telegram account is not linked. Please contact the system administrator.'
-      });
-    }
-
-    // Rate Limiting Check: Max 3 OTP requests per hour per email
+    // Rate Limiting Check (Shared across both channels): Max 3 OTP requests per hour per email
     const now = Date.now();
     const userLimits = rateLimitStore.get(cleanEmail) || [];
     const oneHourAgo = now - 60 * 60 * 1000;
@@ -565,7 +570,7 @@ export const forgotPassword = async (req, res) => {
     const otpHashed = hashOtp(rawOtp);
     const expiresAt = new Date(now + 5 * 60 * 1000); // 5 minutes expiration
 
-    console.log(`🔐 Generated 6-digit OTP for Telegram. Expiry: ${expiresAt.toISOString()}`);
+    console.log(`🔐 Generated 6-digit OTP for ${selectedChannel.toUpperCase()}. Expiry: ${expiresAt.toISOString()}`);
 
     // Delete Previous OTPs for this email in Supabase DB
     if (supabase) {
@@ -604,35 +609,178 @@ export const forgotPassword = async (req, res) => {
     });
     console.log(`✅ Updated in-memory backup cache with OTP hash for ${cleanEmail}`);
 
-    // Send Telegram OTP
     const clientIp = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
-    const location = await getApproximateLocation(clientIp);
+    const isLocalhostRequest =
+      clientIp === '127.0.0.1' ||
+      clientIp === '::1' ||
+      clientIp === 'Local Development' ||
+      clientIp === 'Unknown' ||
+      (req.headers.host && (req.headers.host.includes('localhost') || req.headers.host.includes('127.0.0.1')));
 
-    console.log(`📧 Dispatching OTP via Telegram Bot to chat: ${telegramChatId}`);
-    const telegramResult = await sendTelegramAlert(telegramChatId, 'otp', {
-      email: cleanEmail,
-      otp: rawOtp,
-      ip: clientIp,
-      userAgent: userAgent,
-      location: location
-    });
+    // Dispatch via Selected Channel
+    if (selectedChannel === 'telegram') {
+      const location = await getApproximateLocation(clientIp);
 
-    if (!telegramResult || !telegramResult.success) {
-      console.error(`❌ Telegram delivery failed: ${telegramResult?.error || 'Unknown Telegram API error'}`);
-      return res.status(500).json({
-        success: false,
-        message: `Failed to deliver Telegram OTP code. Details: ${telegramResult?.error || 'Telegram API failure'}`
+      console.log(`📧 Dispatching OTP via Telegram Bot to chat: ${telegramChatId}`);
+      const telegramResult = await sendTelegramAlert(telegramChatId, 'otp', {
+        email: cleanEmail,
+        otp: rawOtp,
+        ip: clientIp,
+        userAgent: userAgent,
+        location: location
       });
+
+      if (!telegramResult || !telegramResult.success) {
+        console.error(`❌ Telegram delivery failed: ${telegramResult?.error || 'Unknown Telegram API error'}`);
+
+        if (isLocalhostRequest) {
+          console.log('\n=====================================================');
+          console.log('🔑 [LOCAL DEV OTP ASSISTANT]');
+          console.log(`   - Recipient: ${cleanEmail}`);
+          console.log(`   - Channel: TELEGRAM`);
+          console.log(`   - 6-Digit OTP: ${rawOtp}`);
+          console.log('   - Note: External Telegram token unauthorized in local dev.');
+          console.log('           OTP hash is active in Supabase & memory cache.');
+          console.log('=====================================================\n');
+          await writeAuditLog(req, 'PASSWORD_RESET_TELEGRAM_OTP_SENT_LOCAL_DEV', cleanEmail);
+          return res.json({
+            success: true,
+            channel: 'telegram',
+            message: `A verification code has been sent to your linked Telegram account. (Localhost: Check terminal console for OTP)`,
+          });
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: `Failed to deliver Telegram OTP code. Details: ${telegramResult?.error || 'Telegram API failure'}`
+        });
+      }
+
+      console.log(`✅ Telegram OTP delivered successfully! Message ID: ${telegramResult.messageId}`);
+      await writeAuditLog(req, 'PASSWORD_RESET_TELEGRAM_OTP_SENT', cleanEmail);
+
+      return res.json({
+        success: true,
+        channel: 'telegram',
+        message: `A verification code has been sent to your linked Telegram account.`,
+      });
+    } else {
+      // Dispatch via Brevo Transactional Email Engine
+      console.log(`📧 Dispatching OTP via Brevo Email Engine to: ${cleanEmail}`);
+
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zenemoo Password Reset Code</title>
+</head>
+<body style="margin: 0; padding: 24px; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e2e8f0;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 540px; margin: 0 auto; background-color: #111827; border: 1px solid rgba(6, 182, 212, 0.25); border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+    <!-- Header -->
+    <tr>
+      <td style="padding: 36px 28px 24px 28px; text-align: center; background: linear-gradient(180deg, rgba(6, 182, 212, 0.12) 0%, rgba(17, 24, 39, 0) 100%);">
+        <div style="width: 54px; height: 54px; margin: 0 auto 16px auto; border-radius: 50%; background: linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6); padding: 2px;">
+          <img src="https://www.zenemoo.in/assets/logo.png" alt="Zenemoo" width="50" height="50" style="display: block; border-radius: 50%; background-color: #ffffff; padding: 1px;" />
+        </div>
+        <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">Zenemoo Security Alert</h1>
+        <p style="margin: 8px 0 0 0; font-size: 13px; color: #94a3b8; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">Administrator Password Reset</p>
+      </td>
+    </tr>
+
+    <!-- Body Content -->
+    <tr>
+      <td style="padding: 0 28px 28px 28px;">
+        <p style="font-size: 14px; line-height: 1.6; color: #cbd5e1; margin: 0 0 20px 0;">
+          A password reset request has been initiated for your administrator account (<strong style="color: #38bdf8;">${cleanEmail}</strong>).
+        </p>
+
+        <!-- OTP Code Box -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 24px 0;">
+          <tr>
+            <td align="center" style="background-color: rgba(6, 182, 212, 0.08); border: 2px dashed #06b6d4; border-radius: 14px; padding: 22px 16px;">
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #38bdf8; margin-bottom: 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">One-Time Verification Code</div>
+              <div style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #22d3ee; line-height: 1.2;">
+                ${rawOtp}
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <p style="font-size: 13px; color: #94a3b8; line-height: 1.5; margin: 0 0 24px 0; text-align: center;">
+          ⏱ This OTP is valid for <strong style="color: #f1f5f9;">5 minutes</strong> and can only be used once.
+        </p>
+
+        <!-- Security Warning & Metadata -->
+        <div style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px; margin-top: 16px;">
+          <p style="margin: 0 0 8px 0; font-size: 12px; color: #fbbf24; font-weight: 600;">
+            ⚠️ Security Notice:
+          </p>
+          <p style="margin: 0 0 12px 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+            If you did not initiate this password reset request, please do NOT share this code with anyone and secure your administrator account immediately.
+          </p>
+          <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.4; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;">
+            Requested from IP: ${clientIp} &bull; ${new Date().toISOString()}
+          </p>
+        </div>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="padding: 20px 28px; text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.08); background-color: rgba(0, 0, 0, 0.2); font-size: 11px; color: #64748b;">
+        &copy; ${new Date().getFullYear()} Zenemoo Technologies &bull; Automated Security Dispatcher
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+      `;
+
+      try {
+        const emailResult = await sendMailViaBrevo({
+          sender: { name: 'Zenemoo Security', email: 'contact@zenemoo.in' },
+          recipients: [cleanEmail],
+          subject: '🔐 Password Reset Verification Code — Zenemoo Administrator',
+          html: emailHtml,
+        });
+
+        console.log(`✅ Brevo OTP email delivered successfully! Message ID: ${emailResult.messageId}`);
+        await writeAuditLog(req, 'PASSWORD_RESET_EMAIL_OTP_SENT', cleanEmail);
+
+        return res.json({
+          success: true,
+          channel: 'email',
+          message: `A verification code has been sent to your administrator email address.`,
+        });
+      } catch (emailErr) {
+        console.error(`❌ Brevo email delivery failed:`, emailErr?.message || emailErr);
+
+        if (isLocalhostRequest) {
+          console.log('\n=====================================================');
+          console.log('🔑 [LOCAL DEV OTP ASSISTANT]');
+          console.log(`   - Recipient: ${cleanEmail}`);
+          console.log(`   - Channel: EMAIL`);
+          console.log(`   - 6-Digit OTP: ${rawOtp}`);
+          console.log('   - Note: External Brevo API failed in local dev.');
+          console.log('           OTP hash is active in Supabase & memory cache.');
+          console.log('=====================================================\n');
+          await writeAuditLog(req, 'PASSWORD_RESET_EMAIL_OTP_SENT_LOCAL_DEV', cleanEmail);
+          return res.json({
+            success: true,
+            channel: 'email',
+            message: `A verification code has been sent to your administrator email address. (Localhost: Check terminal console for OTP)`,
+          });
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: `Failed to deliver OTP email via Brevo. Please try again or choose Telegram delivery.`
+        });
+      }
     }
-
-    console.log(`✅ Telegram OTP delivered successfully! Message ID: ${telegramResult.messageId}`);
-    await writeAuditLog(req, 'PASSWORD_RESET_TELEGRAM_OTP_SENT', cleanEmail);
-
-    return res.json({
-      success: true,
-      message: `A verification code has been sent to your linked Telegram account.`,
-    });
   } catch (err) {
     console.error('🔥 forgotPassword Error:', err);
     return res.status(500).json({ success: false, message: err.message || 'Failed to process password reset request.' });
