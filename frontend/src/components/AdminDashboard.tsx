@@ -36,9 +36,137 @@ import { AdminGoogleGroupTab } from './AdminGoogleGroupTab';
 import { AdminMessageHistoryTab } from './AdminMessageHistoryTab';
 import DOMPurify from 'dompurify';
 
+export type AdminTabType =
+  | 'team'
+  | 'partners'
+  | 'opportunities'
+  | 'inquiries'
+  | 'subscribers'
+  | 'google-group'
+  | 'history'
+  | 'telemetry'
+  | 'keys'
+  | 'ai-analytics'
+  | 'rbac'
+  | 'notifications-admin'
+  | 'notifications'
+  | 'directory'
+  | 'support-tickets'
+  | 'support-contributions'
+  | 'payment-links'
+  | 'payment-management'
+  | 'reviews'
+  | 'talent-network'
+  | 'referrals'
+  | 'talent-teams'
+  | 'admin-hr-ai'
+  | 'datasets'
+  | 'data-upload'
+  | 'data-folders'
+  | 'call-bookings'
+  | 'email-inbox';
+
+export const VALID_ADMIN_TABS: AdminTabType[] = [
+  'notifications',
+  'team',
+  'directory',
+  'rbac',
+  'keys',
+  'admin-hr-ai',
+  'email-inbox',
+  'history',
+  'notifications-admin',
+  'subscribers',
+  'google-group',
+  'support-contributions',
+  'payment-links',
+  'payment-management',
+  'support-tickets',
+  'inquiries',
+  'reviews',
+  'call-bookings',
+  'partners',
+  'opportunities',
+  'referrals',
+  'talent-network',
+  'talent-teams',
+  'datasets',
+  'data-upload',
+  'data-folders',
+  'ai-analytics',
+  'telemetry',
+];
+
+const OAUTH_KEYWORDS = [
+  'access_token',
+  'refresh_token',
+  'expires_at',
+  'expires_in',
+  'provider_token',
+  'token_type',
+  'bearer',
+  'code',
+  'error',
+  'error_description',
+  'state',
+  'token',
+];
+
+export const isValidAdminTab = (tab: any): tab is AdminTabType => {
+  if (!tab || typeof tab !== 'string') return false;
+  const clean = tab.trim().toLowerCase();
+  for (const kw of OAUTH_KEYWORDS) {
+    if (clean.includes(kw)) return false;
+  }
+  return (VALID_ADMIN_TABS as string[]).includes(clean);
+};
+
+export const ADMIN_TAB_TITLES: Record<string, string> = {
+  'notifications': 'Notifications Center',
+  'team': 'Team Roster',
+  'directory': 'Team Directory',
+  'rbac': 'User Access & RBAC',
+  'keys': 'Authorized Administrators',
+  'admin-hr-ai': 'Admin & HR AI',
+  'email-inbox': 'Email Inbox',
+  'history': 'Message History',
+  'notifications-admin': 'Notification Dispatcher',
+  'subscribers': 'Newsletter Subscribers',
+  'google-group': 'Google Group Management',
+  'support-contributions': 'Support Contributions',
+  'payment-links': 'Payment Links',
+  'payment-management': 'Payment Management',
+  'support-tickets': 'Support Tickets',
+  'inquiries': 'Contact Inquiries',
+  'reviews': 'Review Management',
+  'call-bookings': 'Call Bookings',
+  'partners': 'Enterprise Partners',
+  'opportunities': 'Program Opportunities',
+  'referrals': 'Talent Referrals',
+  'talent-network': 'AI Data Network',
+  'talent-teams': 'Talent Teams',
+  'datasets': 'Datasets',
+  'data-upload': 'Data Upload',
+  'data-folders': 'Data Folders',
+  'ai-analytics': 'AI Analytics',
+  'telemetry': 'Site Settings & Branding',
+};
+
+export const getAdminTabTitle = (tab: string | null | undefined): string => {
+  if (!tab || typeof tab !== 'string') return 'Team Roster';
+  const clean = tab.trim().toLowerCase();
+  if (ADMIN_TAB_TITLES[clean]) {
+    return ADMIN_TAB_TITLES[clean];
+  }
+  if (isValidAdminTab(clean)) {
+    return clean.replace(/-/g, ' ');
+  }
+  return 'Team Roster';
+};
+
 interface AdminDashboardProps {
   onExit: () => void;
-  initialTab?: 'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'payment-management' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox';
+  initialTab?: AdminTabType;
   isStandaloneEmailView?: boolean;
 }
 
@@ -285,36 +413,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'team' | 'partners' | 'opportunities' | 'inquiries' | 'subscribers' | 'google-group' | 'history' | 'telemetry' | 'keys' | 'ai-analytics' | 'rbac' | 'notifications-admin' | 'notifications' | 'directory' | 'support-tickets' | 'support-contributions' | 'payment-links' | 'payment-management' | 'reviews' | 'talent-network' | 'referrals' | 'talent-teams' | 'admin-hr-ai' | 'datasets' | 'data-upload' | 'data-folders' | 'call-bookings' | 'email-inbox'>(() => {
+  const [activeTab, setActiveTab] = useState<AdminTabType>(() => {
     if (typeof window !== 'undefined') {
       try {
         const urlParams = new URLSearchParams(window.location.search);
-        const urlTab = urlParams.get('tab') || window.location.hash.replace('#', '');
-        if (urlTab) return urlTab as any;
+        const queryTab = urlParams.get('tab');
+        if (queryTab && isValidAdminTab(queryTab)) {
+          return queryTab;
+        }
+
+        const rawHash = window.location.hash.replace(/^#\/?/, '').split('&')[0].split('=')[0];
+        if (rawHash && isValidAdminTab(rawHash)) {
+          return rawHash;
+        }
 
         const storedTab = localStorage.getItem('zenemoo_admin_active_tab');
-        if (storedTab) return storedTab as any;
+        if (storedTab && isValidAdminTab(storedTab)) {
+          return storedTab;
+        }
       } catch (e) {}
     }
-    return (initialTab as any) || 'team';
+    return (initialTab && isValidAdminTab(initialTab) ? initialTab : 'team') as AdminTabType;
   });
 
-  // Persist active tab across page refreshes
+  // Persist active tab across page refreshes and keep URL clean
   useEffect(() => {
-    if (typeof window !== 'undefined' && activeTab) {
+    if (typeof window !== 'undefined' && isValidAdminTab(activeTab)) {
       try {
         localStorage.setItem('zenemoo_admin_active_tab', activeTab);
-        const url = new URL(window.location.href);
-        if (url.searchParams.get('tab') !== activeTab) {
-          url.searchParams.set('tab', activeTab);
-          window.history.replaceState(null, '', url.toString());
+        const secretEnvRoute = ((import.meta as any).env?.VITE_ADMIN_ROUTE || '/portal/9KqvA2Nz8').replace(/^\//, '');
+        const currentPath = window.location.pathname.replace(/\/$/, '') || `/${secretEnvRoute}`;
+        const basePath = currentPath.startsWith(`/${secretEnvRoute}`) ? `/${secretEnvRoute}` : currentPath;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const hadTabQuery = urlParams.has('tab');
+
+        // Preserve tab parameter if activeTab is not default 'team' or if tab was explicitly requested
+        let cleanUrl = basePath;
+        if (activeTab !== 'team' || hadTabQuery) {
+          cleanUrl = `${basePath}?tab=${activeTab}`;
+        }
+
+        const currentFullUrl = window.location.pathname + (window.location.search ? window.location.search : '');
+        if (currentFullUrl !== cleanUrl || window.location.hash) {
+          window.history.replaceState(null, '', cleanUrl);
         }
       } catch (e) {}
     }
   }, [activeTab]);
 
   const handleNavigateToTab = useCallback((tabName: string) => {
-    setActiveTab(tabName as any);
+    if (isValidAdminTab(tabName)) {
+      setActiveTab(tabName);
+    }
   }, []);
 
   const handleOpenProfileDrawer = () => {
@@ -1051,7 +1202,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           setPassError('');
 
           if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-            window.history.replaceState(null, '', `/${secretEnvRoute}`);
+            const currentTab = isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null;
+            const targetUrl = currentTab ? `/${secretEnvRoute}?tab=${currentTab}` : `/${secretEnvRoute}`;
+            window.history.replaceState(null, '', targetUrl);
           }
 
           // Broadcast successful login to other tabs
@@ -1127,7 +1280,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           // CRITICAL SECURITY FIX: IMMEDIATELY sanitize the browser address bar
           // Access tokens, refresh tokens, and OAuth codes must NEVER remain visible in the URL!
           if (hasUrlTokens && window.history && window.history.replaceState) {
-            window.history.replaceState(null, '', `/${secretEnvRoute}`);
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryTab = urlParams.get('tab');
+            const targetTab = (queryTab && isValidAdminTab(queryTab))
+              ? queryTab
+              : (isValidAdminTab(activeTab) && activeTab !== 'team' ? activeTab : null);
+            const sanitizedPath = targetTab ? `/${secretEnvRoute}?tab=${targetTab}` : `/${secretEnvRoute}`;
+            window.history.replaceState(null, '', sanitizedPath);
           }
         }
       } catch (_) {}
@@ -3082,7 +3241,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             </div>
             <div>
               <h1 className="text-base font-bold font-display text-white tracking-tight flex items-center gap-2 capitalize">
-                {activeTab === 'keys' ? 'API Credentials' : activeTab === 'telemetry' ? 'Capacity Metrics' : activeTab === 'team' ? 'Team Roster' : activeTab.replace('-', ' ')}
+                {getAdminTabTitle(activeTab)}
               </h1>
               <p className="text-[10px] font-mono text-slate-500 hidden sm:block">
                 Zenemoo Platform • Sequential Reordering Engine
