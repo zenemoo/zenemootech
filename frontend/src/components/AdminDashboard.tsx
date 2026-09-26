@@ -7,7 +7,7 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, getAllOpportunitiesForAdmin, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi, isTempId } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk, resendCandidateAcceptanceEmail } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { api, contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
+import { api, clearInFlightGetCache, contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
 import { sanitizeZenemooUrl, isValidZenemooUrlInput } from '../services/notificationService';
 import { supabase } from '../lib/supabaseClient';
 import { getAllReviewsForAdmin, ReviewItem } from '../lib/reviewStore';
@@ -1163,17 +1163,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         } catch (e) {}
       }
 
-      // If token not in URL, check active Supabase Auth session
-      if (!sbToken) {
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session?.access_token) {
-            sbToken = sessionData.session.access_token;
-          }
-        } catch (_) {}
-      }
-
-      // ── Step 3: If Supabase Google token is available and we don't have a valid Admin JWT ──
+      // ── Step 3: If Supabase Google token was returned via OAuth callback and we don't have a valid Admin JWT ──
       if (sbToken && !token) {
         const handled = await processGoogleAdminToken(sbToken);
         if (handled) return;
@@ -2022,6 +2012,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     try {
       const cleanEmail = adminEmail.trim().toLowerCase();
       const cleanPass = passcode.trim();
+
+      // Clear any pre-login cached in-flight requests
+      clearInFlightGetCache();
 
       const response = await authApi.login(cleanPass, cleanEmail);
       console.log('🔑 [Manual Login]: Login response success:', !!response.data?.success, 'token exists:', !!response.data?.token, 'token length:', response.data?.token?.length || 0);

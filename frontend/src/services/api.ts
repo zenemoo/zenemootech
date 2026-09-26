@@ -39,6 +39,10 @@ export const deduplicatedGet = <T = any>(url: string, config?: any): Promise<T> 
   return promise as unknown as Promise<T>;
 };
 
+export const clearInFlightGetCache = () => {
+  inFlightGetRequests.clear();
+};
+
 // Initialize default authorization header from storage if session exists on startup
 if (typeof window !== 'undefined') {
   const initialToken = localStorage.getItem('zenemoo_jwt_token');
@@ -51,17 +55,19 @@ if (typeof window !== 'undefined') {
 api.interceptors.request.use((config) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('zenemoo_jwt_token') : null;
   if (token) {
+    const bearer = `Bearer ${token}`;
     if (config.headers && typeof config.headers.set === 'function') {
-      config.headers.set('Authorization', `Bearer ${token}`);
-    } else {
-      config.headers = config.headers || {};
-      config.headers['Authorization'] = `Bearer ${token}`;
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.set('Authorization', bearer);
+    }
+    if (config.headers) {
+      config.headers['Authorization'] = bearer;
+      config.headers.Authorization = bearer;
     }
   } else {
     if (config.headers && typeof config.headers.delete === 'function') {
       config.headers.delete('Authorization');
-    } else if (config.headers) {
+    }
+    if (config.headers) {
       delete config.headers['Authorization'];
       delete config.headers.Authorization;
     }
