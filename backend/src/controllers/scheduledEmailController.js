@@ -1,3 +1,4 @@
+import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import {
   sendMailViaBrevo,
@@ -320,7 +321,7 @@ export const getScheduledEmails = async (req, res, next) => {
     const to = from + limitNum - 1;
 
     // Lightweight columns for list rows - STRICTLY EXCLUDES heavy 'body_html', 'body_text', 'html' to eliminate Supabase egress
-    const LIST_COLUMNS = 'id, user_id, user_email, from_email, sender, to_emails, recipients, cc_emails, cc, bcc_emails, bcc, subject, attachments, status, scheduled_at, timezone, created_at, updated_at, failure_reason';
+    const LIST_COLUMNS = 'id, user_id, user_email, from_email, to_emails, cc_emails, bcc_emails, subject, attachments, status, scheduled_at, timezone, created_at, updated_at, failure_reason';
 
     let items = [];
     let totalCount = 0;
