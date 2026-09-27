@@ -687,7 +687,7 @@ export const talentRegistrationApi = {
 
 // Zenemoo Scheduled Email Engine API
 export const scheduledEmailApi = {
-  getScheduled: (params?: { status?: string }) => api.get('/emails/scheduled', { params }),
+  getScheduled: (params?: { status?: string; page?: number; pageSize?: number; limit?: number }) => api.get('/emails/scheduled', { params }),
   getScheduledById: (id: string) => api.get(`/emails/scheduled/${id}`),
   createScheduled: (data: any) => api.post('/emails/scheduled', data),
   updateScheduled: (id: string, data: any) => api.patch(`/emails/scheduled/${id}`, data),

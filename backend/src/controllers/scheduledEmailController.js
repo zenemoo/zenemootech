@@ -58,7 +58,76 @@ export const processScheduledEmailsEndpoint = async (req, res, next) => {
 };
 
 /**
- * Helper to normalize scheduled email record for response
+ * Helper to normalize scheduled email record for LIGHTWEIGHT LIST projection
+ * NEVER returns body_html, body_text, or full base64 attachment content!
+ */
+const normalizeScheduledListRecord = (rec) => {
+  if (!rec) return null;
+
+  let decryptedTo = rec.to_emails || rec.recipients || [];
+  if (typeof decryptedTo === 'string' && (decryptedTo.startsWith('enc_') || decryptedTo.length > 30)) {
+    try { decryptedTo = decrypt(decryptedTo); } catch (_) {}
+  }
+  if (typeof decryptedTo === 'string') {
+    decryptedTo = parseRecipients(decryptedTo);
+  }
+
+  let decryptedCc = rec.cc_emails || rec.cc || [];
+  if (typeof decryptedCc === 'string' && (decryptedCc.startsWith('enc_') || decryptedCc.length > 30)) {
+    try { decryptedCc = decrypt(decryptedCc); } catch (_) {}
+  }
+  if (typeof decryptedCc === 'string') {
+    decryptedCc = parseRecipients(decryptedCc);
+  }
+
+  let decryptedBcc = rec.bcc_emails || rec.bcc || [];
+  if (typeof decryptedBcc === 'string' && (decryptedBcc.startsWith('enc_') || decryptedBcc.length > 30)) {
+    try { decryptedBcc = decrypt(decryptedBcc); } catch (_) {}
+  }
+  if (typeof decryptedBcc === 'string') {
+    decryptedBcc = parseRecipients(decryptedBcc);
+  }
+
+  let decryptedSubject = rec.subject || '';
+  if (typeof decryptedSubject === 'string' && (decryptedSubject.startsWith('enc_') || decryptedSubject.length > 30)) {
+    try { decryptedSubject = decrypt(decryptedSubject); } catch (_) {}
+  }
+
+  // Sanitize attachments to metadata ONLY (strip content / base64)
+  const sanitizedAttachments = Array.isArray(rec.attachments)
+    ? rec.attachments.map((a, idx) => ({
+        name: a.name || a.filename || `attachment_${idx + 1}`,
+        filename: a.filename || a.name || `attachment_${idx + 1}`,
+        type: a.type || a.contentType || 'application/octet-stream',
+        size: typeof a.size === 'number' ? a.size : 0,
+      }))
+    : [];
+
+  return {
+    id: String(rec.id),
+    from_email: rec.from_email || rec.sender || 'contact@zenemoo.in',
+    to_emails: Array.isArray(decryptedTo) ? decryptedTo : parseRecipients(decryptedTo),
+    cc_emails: Array.isArray(decryptedCc) ? decryptedCc : parseRecipients(decryptedCc),
+    bcc_emails: Array.isArray(decryptedBcc) ? decryptedBcc : parseRecipients(decryptedBcc),
+    subject: decryptedSubject || '(No Subject)',
+    attachments: sanitizedAttachments,
+    scheduled_at: rec.scheduled_at,
+    timezone: rec.timezone || 'Asia/Kolkata',
+    status: rec.status || 'scheduled',
+    created_at: rec.created_at || new Date().toISOString(),
+    updated_at: rec.updated_at || new Date().toISOString(),
+    sent_at: rec.sent_at || null,
+    provider_message_id: rec.provider_message_id || rec.message_id || null,
+    failure_reason: rec.failure_reason
+      ? (String(rec.failure_reason).replace(/\s+/g, ' ').trim().length > 250
+          ? String(rec.failure_reason).replace(/\s+/g, ' ').trim().substring(0, 247) + '...'
+          : String(rec.failure_reason).replace(/\s+/g, ' ').trim())
+      : null,
+  };
+};
+
+/**
+ * Helper to normalize scheduled email record for FULL DETAIL response (on-demand single record)
  */
 const normalizeScheduledRecord = (rec) => {
   if (!rec) return null;
@@ -238,39 +307,100 @@ export const createScheduledEmail = async (req, res, next) => {
 };
 
 /**
- * GET /api/emails/scheduled — List scheduled emails
+ * GET /api/emails/scheduled — List upcoming scheduled or failed emails (Server-Side Paginated & Low Egress Projection)
  */
 export const getScheduledEmails = async (req, res, next) => {
   try {
-    const { status = 'scheduled' } = req.query;
+    const { page = 1, pageSize = 10, limit = 10, status = 'scheduled' } = req.query;
+
+    const targetStatus = status === 'failed' ? 'failed' : 'scheduled';
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(50, parseInt(pageSize || limit, 10) || 10));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
+
+    // Lightweight columns for list rows - STRICTLY EXCLUDES heavy 'body_html', 'body_text', 'html' to eliminate Supabase egress
+    const LIST_COLUMNS = 'id, user_id, user_email, from_email, sender, to_emails, recipients, cc_emails, cc, bcc_emails, bcc, subject, attachments, status, scheduled_at, timezone, created_at, updated_at, failure_reason';
 
     let items = [];
-    try {
-      const dbItems = await supabaseService.selectAll('scheduled_emails', 'scheduled_at', true);
-      items = (dbItems || []).map(normalizeScheduledRecord);
-    } catch (_) {
-      items = memoryScheduledEmails.map(normalizeScheduledRecord);
-    }
+    let totalCount = 0;
+    let scheduledCount = 0;
+    let failedCount = 0;
+    let fetchedFromDb = false;
 
-    // Merge memory items with DB items avoiding duplicates
-    const dbIds = new Set(items.map((i) => i.id));
-    memoryScheduledEmails.forEach((memItem) => {
-      if (!dbIds.has(memItem.id)) {
-        items.push(normalizeScheduledRecord(memItem));
+    if (supabase) {
+      try {
+        const orderColumn = targetStatus === 'failed' ? 'updated_at' : 'scheduled_at';
+        const isAscending = targetStatus === 'scheduled';
+
+        // 1. Primary paginated list query for the active status
+        const listQuery = supabase
+          .from('scheduled_emails')
+          .select(LIST_COLUMNS, { count: 'exact' })
+          .eq('status', targetStatus)
+          .order(orderColumn, { ascending: isAscending })
+          .range(from, to);
+
+        // 2. Parallel lightweight head count for the other status (zero row transfer, HTTP HEAD count only)
+        const otherStatus = targetStatus === 'scheduled' ? 'failed' : 'scheduled';
+        const otherCountQuery = supabase
+          .from('scheduled_emails')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', otherStatus);
+
+        const [listRes, otherRes] = await Promise.all([listQuery, otherCountQuery]);
+
+        if (!listRes.error && Array.isArray(listRes.data)) {
+          items = listRes.data.map(normalizeScheduledListRecord);
+          totalCount = typeof listRes.count === 'number' ? listRes.count : listRes.data.length;
+
+          if (targetStatus === 'scheduled') {
+            scheduledCount = totalCount;
+            failedCount = typeof otherRes.count === 'number' ? otherRes.count : 0;
+          } else {
+            failedCount = totalCount;
+            scheduledCount = typeof otherRes.count === 'number' ? otherRes.count : 0;
+          }
+          fetchedFromDb = true;
+        }
+      } catch (dbErr) {
+        console.warn('Supabase scheduled_emails list query note:', dbErr.message);
       }
-    });
-
-    if (status && status !== 'all') {
-      items = items.filter((i) => i.status === status);
     }
 
-    // Sort soonest scheduled first
-    items.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+    if (!fetchedFromDb) {
+      const memoryScheduled = memoryScheduledEmails.filter((i) => i.status === 'scheduled');
+      const memoryFailed = memoryScheduledEmails.filter((i) => i.status === 'failed');
+
+      scheduledCount = memoryScheduled.length;
+      failedCount = memoryFailed.length;
+
+      const targetList = targetStatus === 'failed'
+        ? memoryFailed.sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+        : memoryScheduled.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+
+      totalCount = targetList.length;
+      items = targetList.slice(from, to + 1).map(normalizeScheduledListRecord);
+    }
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
 
     return res.json({
       success: true,
       count: items.length,
+      status: targetStatus,
       scheduled: items,
+      items: items,
+      scheduled_count: scheduledCount,
+      failed_count: failedCount,
+      pagination: {
+        page: pageNum,
+        pageSize: limitNum,
+        total: totalCount,
+        totalPages,
+        scheduled_count: scheduledCount,
+        failed_count: failedCount,
+      },
     });
   } catch (error) {
     next(error);
@@ -278,12 +408,28 @@ export const getScheduledEmails = async (req, res, next) => {
 };
 
 /**
- * GET /api/emails/scheduled/:id — Get single scheduled email
+ * GET /api/emails/scheduled/:id — Get single scheduled email with full content on demand
  */
 export const getScheduledEmailById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    let record = memoryScheduledEmails.find((item) => item.id === id);
+    let record = memoryScheduledEmails.find((item) => String(item.id) === String(id));
+
+    if (!record && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('scheduled_emails')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (!error && data) {
+          record = data;
+        }
+      } catch (dbErr) {
+        console.warn('Supabase fetch scheduled email detail note:', dbErr.message);
+      }
+    }
 
     if (!record) {
       try {

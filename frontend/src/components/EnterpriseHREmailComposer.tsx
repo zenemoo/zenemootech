@@ -41,6 +41,8 @@ import {
   Code2,
   Handshake,
   Briefcase,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { emailApi, scheduledEmailApi, userManagementApi } from '../services/api';
 import {
@@ -339,12 +341,17 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
   useEffect(() => {
     loadUserHistory();
-    loadScheduledLogs('all');
+    loadScheduledLogs(1, 'scheduled');
   }, []);
 
-  // 10. Scheduled Emails State & Handlers
+  // 10. Scheduled Emails State & Handlers (Strict Server-Side Paginated Upcoming & Failed Queues)
   const [scheduledLogs, setScheduledLogs] = useState<any[]>([]);
-  const [scheduledFilter, setScheduledFilter] = useState<string>('scheduled');
+  const [activeScheduledTab, setActiveScheduledTab] = useState<'scheduled' | 'failed'>('scheduled');
+  const [scheduledPage, setScheduledPage] = useState<number>(1);
+  const [scheduledPageSize, setScheduledPageSize] = useState<number>(10);
+  const [scheduledTotalPages, setScheduledTotalPages] = useState<number>(1);
+  const [scheduledTotalCount, setScheduledTotalCount] = useState<number>(0);
+  const [scheduledFailedCount, setScheduledFailedCount] = useState<number>(0);
   const [isScheduledListModalOpen, setIsScheduledListModalOpen] = useState(false);
   const [isLoadingScheduled, setIsLoadingScheduled] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -356,12 +363,40 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const [scheduleTimezone, setScheduleTimezone] = useState<string>('Asia/Kolkata');
   const [isSchedulingSubmit, setIsSchedulingSubmit] = useState<boolean>(false);
 
-  const loadScheduledLogs = async (statusFilter?: string) => {
+  const loadScheduledLogs = async (targetPage = 1, statusTab?: 'scheduled' | 'failed') => {
     setIsLoadingScheduled(true);
+    const targetStatus = statusTab || activeScheduledTab;
     try {
-      const res = await scheduledEmailApi.getScheduled({ status: statusFilter || 'all' });
-      if (res.data && res.data.success && Array.isArray(res.data.scheduled)) {
-        setScheduledLogs(res.data.scheduled);
+      const res = await scheduledEmailApi.getScheduled({ page: targetPage, pageSize: 10, status: targetStatus });
+      const data = res.data || {};
+      if (data.success && (Array.isArray(data.scheduled) || Array.isArray(data.items))) {
+        const items = Array.isArray(data.scheduled) ? data.scheduled : (data.items || []);
+        setScheduledLogs(items);
+        const total = typeof data.pagination?.total === 'number'
+          ? data.pagination.total
+          : (typeof data.count === 'number' ? data.count : items.length);
+        const totalPgs = typeof data.pagination?.totalPages === 'number'
+          ? data.pagination.totalPages
+          : Math.max(1, Math.ceil(total / 10));
+        const pNum = typeof data.pagination?.page === 'number' ? data.pagination.page : targetPage;
+
+        if (typeof data.scheduled_count === 'number') {
+          setScheduledTotalCount(data.scheduled_count);
+        } else if (targetStatus === 'scheduled') {
+          setScheduledTotalCount(total);
+        }
+
+        if (typeof data.failed_count === 'number') {
+          setScheduledFailedCount(data.failed_count);
+        } else if (targetStatus === 'failed') {
+          setScheduledFailedCount(total);
+        }
+
+        setScheduledTotalPages(totalPgs);
+        setScheduledPage(pNum);
+        if (statusTab) {
+          setActiveScheduledTab(statusTab);
+        }
       }
     } catch (e) {
       console.warn('Failed to load scheduled logs:', e);
@@ -369,8 +404,6 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       setIsLoadingScheduled(false);
     }
   };
-
-  const activeScheduledCount = scheduledLogs.filter((item) => item.status === 'scheduled').length;
 
   const handleOpenScheduleModal = () => {
     let currentTo = [...toChips];
@@ -482,7 +515,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       setAttachments([]);
       localStorage.removeItem(draftKey);
       setIsScheduleModalOpen(false);
-      loadScheduledLogs('all');
+      loadScheduledLogs(1);
     } catch (err: any) {
       showToast(err.response?.data?.message || err.message || 'Failed to schedule email.', 'error');
     } finally {
@@ -490,33 +523,46 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     }
   };
 
-  const handleEditScheduledItem = (item: any) => {
+  const handleEditScheduledItem = async (item: any) => {
     setIsScheduledListModalOpen(false);
-    setEditingScheduledId(item.id);
-    setSelectedSender(item.from_email || 'contact@zenemoo.in');
+    setIsLoadingScheduled(true);
+    let fullRecord = item;
+    try {
+      const res = await scheduledEmailApi.getScheduledById(item.id);
+      if (res.data && res.data.success && res.data.entry) {
+        fullRecord = res.data.entry;
+      }
+    } catch (e) {
+      console.warn('Note on fetching full scheduled record, using cached item:', e);
+    } finally {
+      setIsLoadingScheduled(false);
+    }
 
-    const toArr = Array.isArray(item.to_emails) ? item.to_emails : (item.to_emails ? [item.to_emails] : []);
+    setEditingScheduledId(fullRecord.id);
+    setSelectedSender(fullRecord.from_email || 'contact@zenemoo.in');
+
+    const toArr = Array.isArray(fullRecord.to_emails) ? fullRecord.to_emails : (fullRecord.to_emails ? [fullRecord.to_emails] : []);
     setToChips(toArr);
 
-    const ccArr = Array.isArray(item.cc_emails) ? item.cc_emails : [];
+    const ccArr = Array.isArray(fullRecord.cc_emails) ? fullRecord.cc_emails : [];
     setCcChips(ccArr);
     if (ccArr.length > 0) setShowCC(true);
 
-    const bccArr = Array.isArray(item.bcc_emails) ? item.bcc_emails : [];
+    const bccArr = Array.isArray(fullRecord.bcc_emails) ? fullRecord.bcc_emails : [];
     setBccChips(bccArr);
     if (bccArr.length > 0) setShowBCC(true);
 
-    setSubject(item.subject || '');
-    setHtmlContent(item.body_html || '');
-    if (editorRef.current) editorRef.current.innerHTML = item.body_html || '';
+    setSubject(fullRecord.subject || '');
+    setHtmlContent(fullRecord.body_html || '');
+    if (editorRef.current) editorRef.current.innerHTML = fullRecord.body_html || '';
 
-    if (Array.isArray(item.attachments)) {
-      const restored = item.attachments.map((att: any, idx: number) => ({
+    if (Array.isArray(fullRecord.attachments)) {
+      const restored = fullRecord.attachments.map((att: any, idx: number) => ({
         id: `att-restored-${idx}`,
-        file: new File([], att.name || 'attachment'),
+        file: new File([], att.name || att.filename || 'attachment'),
         name: att.name || att.filename || 'attachment',
-        size: att.size || 1024,
-        type: att.contentType || 'application/octet-stream',
+        size: typeof att.size === 'number' ? att.size : 1024,
+        type: att.contentType || att.type || 'application/octet-stream',
         content: att.content || '',
         progress: 100,
         status: 'ready' as const,
@@ -524,18 +570,17 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       setAttachments(restored);
     }
 
-    const itemTz = item.timezone || 'Asia/Kolkata';
+    const itemTz = fullRecord.timezone || 'Asia/Kolkata';
     setScheduleTimezone(itemTz);
 
-    if (item.scheduled_at) {
-      const utcDate = new Date(item.scheduled_at);
+    if (fullRecord.scheduled_at) {
+      const utcDate = new Date(fullRecord.scheduled_at);
       const { dateStr, timeStr } = getDateTimeInTimezone(utcDate, itemTz);
       setScheduleDate(dateStr);
       setScheduleTime(timeStr);
     }
-    if (item.timezone) setScheduleTimezone(item.timezone);
 
-    showToast(`Editing scheduled email "${item.subject}". Click "Schedule Send" to update.`, 'success');
+    showToast(`Editing scheduled email "${fullRecord.subject || '(No Subject)'}". Click "Schedule Send" to update.`, 'success');
   };
 
   const handleCancelScheduledItem = async (id: string) => {
@@ -545,7 +590,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       const res = await scheduledEmailApi.cancelScheduled(id);
       if (res.data && res.data.success) {
         showToast('✓ Scheduled email cancelled.', 'success');
-        loadScheduledLogs('all');
+        loadScheduledLogs(scheduledPage);
       }
     } catch (err: any) {
       showToast(err.response?.data?.message || err.message || 'Failed to cancel scheduled email.', 'error');
@@ -557,7 +602,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       const res = await scheduledEmailApi.retryScheduled(id);
       if (res.data && res.data.success) {
         showToast('🚀 Scheduled email re-queued for sending.', 'success');
-        loadScheduledLogs('all');
+        loadScheduledLogs(scheduledPage);
       }
     } catch (err: any) {
       showToast(err.response?.data?.message || err.message || 'Failed to retry scheduled email.', 'error');
@@ -1172,11 +1217,16 @@ ${customPara}
             type="button"
             onClick={() => {
               setIsScheduledListModalOpen(true);
-              loadScheduledLogs('all');
+              loadScheduledLogs(1, 'scheduled');
             }}
             className="flex-1 sm:flex-none min-h-[40px] px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
           >
-            <Clock className="w-3.5 h-3.5 text-amber-400" /> Scheduled ({activeScheduledCount})
+            <Clock className="w-3.5 h-3.5 text-amber-400" /> Scheduled ({scheduledTotalCount})
+            {scheduledFailedCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-300 text-[10px] font-bold border border-red-500/30">
+                {scheduledFailedCount} failed
+              </span>
+            )}
           </button>
 
           <button
@@ -2334,27 +2384,38 @@ ${customPara}
         </div>
       )}
 
-      {/* 9. SCHEDULED EMAILS MANAGEMENT MODAL */}
+      {/* 9. SCHEDULED & FAILED EMAILS MANAGEMENT MODAL */}
       {isScheduledListModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full max-w-3xl bg-[#090d16] border-t sm:border border-white/15 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl font-mono text-xs max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="w-full max-w-3xl bg-[#090d16] border-t sm:border border-white/15 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl font-mono text-xs max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
               <div>
                 <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-amber-400" /> Scheduled Emails
+                  {activeScheduledTab === 'scheduled' ? (
+                    <Clock className="w-5 h-5 text-amber-400" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                  )}
+                  Scheduled Emails Queue
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Emails waiting to be sent automatically.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {activeScheduledTab === 'scheduled'
+                    ? 'Emails waiting to be sent automatically.'
+                    : 'Emails that could not be delivered.'}
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => loadScheduledLogs(scheduledFilter)}
+                  type="button"
+                  onClick={() => loadScheduledLogs(scheduledPage, activeScheduledTab)}
                   className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 font-bold flex items-center gap-1 cursor-pointer text-[11px]"
                   title="Refresh list"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScheduled ? 'animate-spin' : ''}`} /> Refresh
                 </button>
                 <button
+                  type="button"
                   onClick={() => setIsScheduledListModalOpen(false)}
                   className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
                 >
@@ -2363,87 +2424,108 @@ ${customPara}
               </div>
             </div>
 
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-[11px]">
-              {['scheduled', 'processing', 'sent', 'failed', 'cancelled', 'all'].map((st) => (
-                <button
-                  key={st}
-                  onClick={() => {
-                    setScheduledFilter(st);
-                    loadScheduledLogs(st);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl font-bold uppercase transition-all shrink-0 cursor-pointer ${
-                    scheduledFilter === st
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
-                  }`}
-                >
-                  {st}
-                </button>
-              ))}
+            {/* Queue Section Selector Tabs */}
+            <div className="flex items-center gap-2 pb-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => loadScheduledLogs(1, 'scheduled')}
+                className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 cursor-pointer text-xs ${
+                  activeScheduledTab === 'scheduled'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+                    : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Scheduled ({scheduledTotalCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => loadScheduledLogs(1, 'failed')}
+                className={`px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 cursor-pointer text-xs ${
+                  activeScheduledTab === 'failed'
+                    ? 'bg-red-500/20 text-red-300 border border-red-500/40 shadow-lg shadow-red-500/10'
+                    : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
+                }`}
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Failed ({scheduledFailedCount})</span>
+              </button>
             </div>
 
             {/* Cards List */}
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="space-y-3 overflow-y-auto flex-1 pr-1">
               {isLoadingScheduled ? (
                 <div className="p-8 text-center text-slate-400 font-mono text-xs flex flex-col items-center gap-2">
                   <RefreshCw className="w-6 h-6 animate-spin text-amber-400" />
-                  <span>Loading scheduled email records...</span>
+                  <span>Loading {activeScheduledTab} email records...</span>
                 </div>
               ) : scheduledLogs.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 font-mono text-xs space-y-1">
-                  <Clock className="w-8 h-8 text-slate-600 mx-auto" />
-                  <div className="font-bold text-slate-300">No Scheduled Emails Found</div>
-                  <div>No emails found matching status filter "{scheduledFilter}".</div>
+                <div className="p-8 text-center text-slate-400 font-mono text-xs space-y-1.5 bg-white/[0.02] rounded-2xl border border-white/5">
+                  {activeScheduledTab === 'scheduled' ? (
+                    <>
+                      <Clock className="w-8 h-8 text-amber-400/40 mx-auto" />
+                      <div className="font-bold text-white text-sm">No scheduled emails</div>
+                      <p className="text-slate-400 text-xs">You are all caught up.</p>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400/40 mx-auto" />
+                      <div className="font-bold text-white text-sm">No failed emails</div>
+                      <p className="text-slate-400 text-xs">All scheduled emails have been delivered successfully.</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 scheduledLogs.map((item) => {
-                  const toDisplay = Array.isArray(item.to_emails) ? item.to_emails.join(', ') : item.to_emails;
+                  const toDisplay = Array.isArray(item.to_emails) ? item.to_emails.join(', ') : (item.to_emails || '');
                   const attCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
                   const scheduledDateFormatted = formatScheduledDateInTimezone(item.scheduled_at, item.timezone || 'Asia/Kolkata');
-
-                  let statusBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-                  if (item.status === 'sent') statusBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
-                  if (item.status === 'failed') statusBadgeClass = 'bg-red-500/20 text-red-300 border-red-500/40';
-                  if (item.status === 'cancelled') statusBadgeClass = 'bg-slate-500/20 text-slate-400 border-slate-500/40';
-                  if (item.status === 'processing') statusBadgeClass = 'bg-amber-500/30 text-amber-200 border-amber-500/50 animate-pulse';
+                  const isFailed = item.status === 'failed';
 
                   return (
                     <div
                       key={item.id}
-                      className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5 font-mono text-xs relative"
+                      className={`p-4 rounded-2xl bg-white/[0.03] border space-y-2.5 font-mono text-xs relative transition-all ${
+                        isFailed
+                          ? 'border-red-500/30 hover:border-red-500/50 bg-red-500/[0.02]'
+                          : 'border-white/10 hover:border-amber-500/30'
+                      }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-2">
                         <div className="min-w-0">
-                          <div className="font-bold text-white truncate text-xs">{item.from_email}</div>
+                          <div className="font-bold text-white truncate text-xs">{item.from_email || 'contact@zenemoo.in'}</div>
                           <div className="text-[11px] text-slate-400 truncate">To: <span className="text-cyan-300 font-bold">{toDisplay}</span></div>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase ${statusBadgeClass}`}>
-                            {item.status}
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase ${
+                              isFailed
+                                ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}
+                          >
+                            {isFailed ? 'FAILED' : 'SCHEDULED'}
                           </span>
                         </div>
                       </div>
 
                       <div className="space-y-1">
-                        <div className="font-bold text-amber-200 text-xs">{item.subject}</div>
-                        {item.body_text && (
-                          <div className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
-                            {item.body_text}
-                          </div>
-                        )}
+                        <div className={`font-bold text-xs ${isFailed ? 'text-red-200' : 'text-amber-200'}`}>
+                          {item.subject}
+                        </div>
                       </div>
 
-                      {item.failure_reason && (
-                        <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-[10px]">
-                          <strong>Failure:</strong> {item.failure_reason}
+                      {isFailed && item.failure_reason && (
+                        <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-[11px] space-y-0.5">
+                          <strong className="text-red-200">Delivery Error:</strong> {item.failure_reason}
                         </div>
                       )}
 
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/5 text-[11px]">
                         <div className="flex items-center gap-3 text-slate-400">
-                          <span className="flex items-center gap-1 text-amber-300 font-bold">
+                          <span className={`flex items-center gap-1 font-bold ${isFailed ? 'text-red-300' : 'text-amber-300'}`}>
                             <Clock className="w-3.5 h-3.5" /> Scheduled: {scheduledDateFormatted} ({item.timezone || 'IST'})
                           </span>
                           {attCount > 0 && (
@@ -2452,35 +2534,21 @@ ${customPara}
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {item.status === 'scheduled' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleEditScheduledItem(item)}
-                                className="px-3 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold cursor-pointer transition-all"
-                              >
-                                Edit
-                              </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditScheduledItem(item)}
+                            className="px-3 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold cursor-pointer transition-all"
+                          >
+                            {isFailed ? 'Edit & Reschedule' : 'Edit'}
+                          </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleCancelScheduledItem(item.id)}
-                                className="px-3 py-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 font-bold cursor-pointer transition-all"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          )}
-
-                          {item.status === 'failed' && (
-                            <button
-                              type="button"
-                              onClick={() => handleRetryScheduledItem(item.id)}
-                              className="px-3 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold cursor-pointer transition-all"
-                            >
-                              Retry
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCancelScheduledItem(item.id)}
+                            className="px-3 py-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 font-bold cursor-pointer transition-all"
+                          >
+                            Cancel
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -2488,6 +2556,33 @@ ${customPara}
                 })
               )}
             </div>
+
+            {/* Server-Side Pagination Controls */}
+            {scheduledTotalPages > 1 && (
+              <div className="flex items-center justify-between pt-3 border-t border-white/10 font-mono text-xs shrink-0">
+                <button
+                  type="button"
+                  disabled={scheduledPage <= 1 || isLoadingScheduled}
+                  onClick={() => loadScheduledLogs(scheduledPage - 1, activeScheduledTab)}
+                  className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed font-bold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  &larr; Previous
+                </button>
+
+                <span className="text-slate-400 font-bold">
+                  Page <span className="text-amber-300">{scheduledPage}</span> of <span className="text-white">{scheduledTotalPages}</span>
+                </span>
+
+                <button
+                  type="button"
+                  disabled={scheduledPage >= scheduledTotalPages || isLoadingScheduled}
+                  onClick={() => loadScheduledLogs(scheduledPage + 1, activeScheduledTab)}
+                  className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 disabled:opacity-30 disabled:cursor-not-allowed font-bold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  Next &rarr;
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
