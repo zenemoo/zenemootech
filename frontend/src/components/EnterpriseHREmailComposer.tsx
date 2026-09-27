@@ -38,6 +38,9 @@ import {
   Users,
   Clock,
   Calendar,
+  Code2,
+  Handshake,
+  Briefcase,
 } from 'lucide-react';
 import { emailApi, scheduledEmailApi, userManagementApi } from '../services/api';
 import {
@@ -46,6 +49,7 @@ import {
   formatScheduledDateInTimezone,
 } from '../utils/timezoneUtils';
 import DOMPurify from 'dompurify';
+import { HtmlEmailBuilderModal } from './HtmlEmailBuilderModal';
 
 interface EnterpriseHREmailComposerProps {
   showToast: (text: string, type: 'success' | 'error') => void;
@@ -59,6 +63,8 @@ export interface HRTemplate {
   category: string;
   subject: string;
   body: string;
+  description?: string;
+  featured?: boolean;
 }
 
 export interface HRSignature {
@@ -67,10 +73,30 @@ export interface HRSignature {
   title: string;
   department: string;
   email: string;
-  phone: string;
+  phone?: string;
 }
 
 export const PRESET_HR_TEMPLATES: HRTemplate[] = [
+  {
+    id: 'vendor_delivery_partner_intro',
+    name: 'Vendor / Delivery Partner Introduction',
+    category: 'Partnership',
+    featured: true,
+    description: 'Respond to companies interested in partnering with Zenemoo.',
+    subject: 'Vendor / Delivery Partnership Opportunity | Zenemoo',
+    body: `<p>Dear {{RECIPIENT_NAME}},</p>
+<p>Thank you for reaching out to Zenemoo and for sharing <strong>{{COMPANY_NAME}}</strong>’s company details and capability profile. We appreciate your interest in working with Zenemoo.</p>
+<p>Based on the capabilities you shared, we would be interested in exploring <strong>{{COMPANY_NAME}}</strong> as a Vendor / Delivery Partner for Zenemoo’s current and upcoming AI data projects.</p>
+<p>For the initial onboarding, we request you to complete your Vendor Registration on our platform using the link below:</p>
+<p><strong>Vendor Registration:</strong><br/><a href="https://www.zenemoo.in/talent-registration" target="_blank" style="color:#0284c7; text-decoration:underline;">https://www.zenemoo.in/talent-registration</a></p>
+<p>While completing the registration, please select &ldquo;Vendor / Agency&rdquo; and provide your company details, service capabilities, workforce capacity, and other relevant information.</p>
+<p>Once registered, you can access and manage your profile through our Talent Hub:</p>
+<p><strong>Talent Hub:</strong><br/><a href="https://www.zenemoo.in/talent-hub" target="_blank" style="color:#0284c7; text-decoration:underline;">https://www.zenemoo.in/talent-hub</a></p>
+<p>After your registration is completed, our team will review your profile and connect with you regarding suitable current or upcoming opportunities and potential project collaboration.</p>
+<p>We would also be happy to schedule a short discussion to understand <strong>{{COMPANY_NAME}}</strong>’s capabilities and explore how we can work together.</p>
+<p><strong>Meeting:</strong><br/><a href="https://www.zenemoo.in/30min" target="_blank" style="color:#0284c7; text-decoration:underline;">Schedule a meeting with Zenemoo</a></p>
+<p>Thank you for your interest in partnering with Zenemoo. We look forward to exploring a mutually beneficial collaboration.</p>`,
+  },
   {
     id: 'interview_invite',
     name: 'Interview Invitation',
@@ -205,7 +231,6 @@ export const PRESET_SIGNATURES: HRSignature[] = [
     title: 'Enterprise Customer Operations',
     department: 'Client Partner Support',
     email: 'support@zenemoo.in',
-    phone: '+91 (080) 4920-1200',
   },
   {
     id: 'prem',
@@ -213,7 +238,6 @@ export const PRESET_SIGNATURES: HRSignature[] = [
     title: 'Founder & CEO',
     department: 'Leadership & AI Platform',
     email: 'prem@zenemoo.in',
-    phone: '+91 (080) 4920-1000',
   },
   {
     id: 'sangita',
@@ -221,7 +245,6 @@ export const PRESET_SIGNATURES: HRSignature[] = [
     title: 'HR & Quality Assurance Lead',
     department: 'Human Resources & QA',
     email: 'sangita@zenemoo.in',
-    phone: '+91 (080) 4920-1100',
   },
 ];
 
@@ -276,10 +299,12 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
   // 5. Signature State
   const [selectedSignatureId, setSelectedSignatureId] = useState<string>('support');
+  const [templateCompanyName, setTemplateCompanyName] = useState<string>('');
 
   // 6. UI Modals
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [isHtmlBuilderModalOpen, setIsHtmlBuilderModalOpen] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
@@ -826,8 +851,31 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       fullHtml += `<br/><div style="margin-top:20px; padding-top:14px; border-top:1px solid #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;"><p style="color:#0891b2; font-size:14px; font-weight:bold; margin:0 0 3px 0;">${sig.name}</p><p style="color:#334155; font-size:12px; margin:0 0 2px 0;">${sig.title} &bull; ${sig.department}</p><p style="color:#64748b; font-size:11px; margin:0;">Zenemoo AI Solutions | <a href="https://www.zenemoo.in" target="_blank" style="color:#0284c7; text-decoration:underline;">www.zenemoo.in</a> | ${sig.email}</p></div>`;
     }
     setHtmlContent(fullHtml);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = fullHtml;
+    }
     setIsTemplateModalOpen(false);
     showToast(`Template "${template.name}" applied with signature!`, 'success');
+  };
+
+  const handleReplaceCompanyName = (customName?: string) => {
+    const val = (customName !== undefined ? customName : templateCompanyName).trim();
+    if (!val) {
+      showToast('Please enter a company name to replace {{COMPANY_NAME}}.', 'error');
+      return;
+    }
+    const current = editorRef.current ? editorRef.current.innerHTML : htmlContent;
+    const matchesCount = (current.match(/\{\{COMPANY_NAME\}\}/g) || []).length;
+    if (matchesCount === 0) {
+      showToast('No {{COMPANY_NAME}} placeholders found in current body.', 'error');
+      return;
+    }
+    const updated = current.replace(/\{\{COMPANY_NAME\}\}/g, val);
+    setHtmlContent(updated);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = updated;
+    }
+    showToast(`✓ Replaced {{COMPANY_NAME}} with "${val}" across all ${matchesCount} occurrence${matchesCount > 1 ? 's' : ''}!`, 'success');
   };
 
   const handleAppendSignature = () => {
@@ -1154,6 +1202,14 @@ ${customPara}
           >
             <Eye className="w-3.5 h-3.5 text-emerald-400" /> Preview
           </button>
+
+          <button
+            type="button"
+            onClick={() => setIsHtmlBuilderModalOpen(true)}
+            className="flex-1 sm:flex-none min-h-[40px] px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-purple-500/10"
+          >
+            <Code2 className="w-3.5 h-3.5 text-purple-400" /> HTML Builder
+          </button>
         </div>
       </div>
 
@@ -1458,6 +1514,44 @@ ${customPara}
         </div>
         {/* Row F: Responsive Formatting Toolbar & Editor */}
         <div className="space-y-2 w-full max-w-full">
+          {/* Template Variable Helper Bar */}
+          {htmlContent.includes('{{COMPANY_NAME}}') && (
+            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-mono animate-in fade-in duration-200">
+              <div className="flex items-center gap-2">
+                <Building className="w-4 h-4 text-cyan-400 shrink-0" />
+                <div>
+                  <span className="text-white font-bold">Template Variable: </span>
+                  <span className="text-cyan-300 font-mono font-bold">{`{{COMPANY_NAME}}`}</span>
+                  <span className="text-slate-400 text-[11px] ml-1.5 hidden sm:inline">(3 occurrences in body)</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <input
+                  type="text"
+                  placeholder="e.g. Cameo Corporate Services Limited"
+                  value={templateCompanyName}
+                  onChange={(e) => setTemplateCompanyName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleReplaceCompanyName();
+                    }
+                  }}
+                  className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-black/60 border border-white/15 focus:border-cyan-400 text-white placeholder-slate-500 text-xs font-mono outline-none min-w-[200px] sm:min-w-[240px]"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleReplaceCompanyName()}
+                  disabled={!templateCompanyName.trim()}
+                  className="px-3.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 shrink-0"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Replace All</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <label className="block text-slate-300 font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
               Email Body Content *
@@ -1800,21 +1894,33 @@ ${customPara}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
-              {PRESET_HR_TEMPLATES.map((tmpl) => (
-                <div
-                  key={tmpl.id}
-                  onClick={() => handleApplyTemplate(tmpl)}
-                  className="p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 hover:border-cyan-400/50 space-y-2 cursor-pointer transition-all group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white group-hover:text-cyan-300 text-xs">{tmpl.name}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[9px] font-bold">
-                      {tmpl.category}
-                    </span>
+              {PRESET_HR_TEMPLATES.map((tmpl) => {
+                const isPartnership = tmpl.category === 'Partnership' || tmpl.id === 'vendor_delivery_partner_intro';
+                return (
+                  <div
+                    key={tmpl.id}
+                    onClick={() => handleApplyTemplate(tmpl)}
+                    className={`p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border space-y-2 cursor-pointer transition-all group relative overflow-hidden ${
+                      isPartnership
+                        ? 'border-cyan-500/50 hover:border-cyan-400 bg-cyan-950/10'
+                        : 'border-white/10 hover:border-cyan-400/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white group-hover:text-cyan-300 text-xs flex items-center gap-1.5">
+                        {isPartnership ? <Handshake className="w-4 h-4 text-cyan-400 shrink-0" /> : <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                        <span>{tmpl.name}</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                        isPartnership ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/40' : 'bg-white/10 text-slate-300'
+                      }`}>
+                        {tmpl.category}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 truncate">{tmpl.description || tmpl.subject}</p>
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate">{tmpl.subject}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2386,7 +2492,29 @@ ${customPara}
         </div>
       )}
 
-      {/* 7. PROFESSIONAL FOOTER */}
+      {/* 7. HTML EMAIL BUILDER MODAL */}
+      <HtmlEmailBuilderModal
+        isOpen={isHtmlBuilderModalOpen}
+        onClose={() => setIsHtmlBuilderModalOpen(false)}
+        onInsertHtml={(sanitizedHtml, updatedSubject) => {
+          setHtmlContent(sanitizedHtml);
+          if (editorRef.current) {
+            editorRef.current.innerHTML = sanitizedHtml;
+          }
+          if (updatedSubject && updatedSubject.trim()) {
+            setSubject(updatedSubject);
+          }
+          showToast('✓ HTML template inserted into email editor!', 'success');
+        }}
+        hasExistingContent={Boolean(
+          (editorRef.current?.innerHTML &&
+            editorRef.current.innerHTML.trim() !== '' &&
+            editorRef.current.innerHTML !== '<br>') ||
+            (htmlContent && htmlContent.trim() !== '' && htmlContent !== '<br>')
+        )}
+      />
+
+      {/* 8. PROFESSIONAL FOOTER */}
       <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row items-center justify-between text-[10px] text-slate-500 font-mono gap-2">
         <div>© 2026 Zenemoo Enterprise Email System. All Rights Reserved.</div>
         <div className="flex items-center gap-3">
