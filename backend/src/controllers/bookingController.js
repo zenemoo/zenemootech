@@ -10,6 +10,12 @@ import { createGoogleMeetForBooking } from '../services/googleMeetService.js';
 import { sendBookingNotification } from '../services/telegramNotificationService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
+import {
+  generateCustomerBookingEmailHtml,
+  generateAdminBookingEmailHtml,
+  generateCustomerReminderEmailHtml,
+  generateAdminReminderEmailHtml,
+} from '../services/bookingEmailTemplate.js';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups.com';
 const TURNSTILE_SECRET = (process.env.TURNSTILE_SECRET_KEY || '').trim();
