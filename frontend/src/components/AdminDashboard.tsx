@@ -167,6 +167,32 @@ export const getAdminTabTitle = (tab: string | null | undefined): string => {
   return 'Team Roster';
 };
 
+export interface DecodedAdminJwt {
+  id?: string;
+  role?: string;
+  email?: string;
+  session_start?: number; // seconds
+  exp?: number; // seconds
+  iat?: number; // seconds
+}
+
+export const parseAdminJwt = (token: string): DecodedAdminJwt | null => {
+  try {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(payloadBase64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      return JSON.parse(jsonPayload);
+    }
+  } catch (_) {}
+  return null;
+};
+
 interface AdminDashboardProps {
   onExit: () => void;
   initialTab?: AdminTabType;
@@ -1181,11 +1207,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           console.log('[Google OAuth] admin authorization: success');
 
           const token = googleRes.data.token;
+          const decoded = parseAdminJwt(token);
           const now = Date.now();
-          const absoluteExpiry = now + 30 * 60 * 1000;
-          localStorage.setItem('zenemoo_session_start', now.toString());
+          const absoluteExpiry = decoded?.exp ? decoded.exp * 1000 : (now + 30 * 60 * 1000);
+          const sessionStart = decoded?.session_start ? decoded.session_start * 1000 : (decoded?.iat ? decoded.iat * 1000 : now);
+          localStorage.setItem('zenemoo_session_start', sessionStart.toString());
           localStorage.setItem('zenemoo_jwt_token', token);
           localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
+          setSessionStartTime(sessionStart);
+          setSessionExpiresInSec(Math.max(0, Math.ceil((absoluteExpiry - now) / 1000)));
+          setSessionDurationSec(Math.max(0, Math.floor((now - sessionStart) / 1000)));
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
           let verifiedUser = googleRes.data.user;
@@ -1438,12 +1469,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           }
           // Preserve session start across page reloads
           const storedStart = localStorage.getItem('zenemoo_session_start');
+          const decoded = token ? parseAdminJwt(token) : null;
           if (storedStart) {
             const parsedStart = parseInt(storedStart, 10);
             if (!isNaN(parsedStart) && parsedStart > 0) {
               setSessionStartTime(parsedStart);
               setSessionDurationSec(Math.max(0, Math.floor((Date.now() - parsedStart) / 1000)));
             }
+          } else if (decoded?.session_start) {
+            const derivedStart = decoded.session_start * 1000;
+            localStorage.setItem('zenemoo_session_start', derivedStart.toString());
+            setSessionStartTime(derivedStart);
+            setSessionDurationSec(Math.max(0, Math.floor((Date.now() - derivedStart) / 1000)));
+          } else if (decoded?.iat) {
+            const derivedStart = decoded.iat * 1000;
+            localStorage.setItem('zenemoo_session_start', derivedStart.toString());
+            setSessionStartTime(derivedStart);
+            setSessionDurationSec(Math.max(0, Math.floor((Date.now() - derivedStart) / 1000)));
           } else if (expiry) {
             const expMs = parseInt(expiry, 10);
             if (!isNaN(expMs)) {
@@ -1458,6 +1500,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             if (!isNaN(expMs)) {
               setSessionExpiresInSec(Math.max(0, Math.ceil((expMs - Date.now()) / 1000)));
             }
+          } else if (decoded?.exp) {
+            const expMs = decoded.exp * 1000;
+            localStorage.setItem('zenemoo_jwt_expiry', expMs.toString());
+            setSessionExpiresInSec(Math.max(0, Math.ceil((expMs - Date.now()) / 1000)));
           }
           console.log('✅ Session validated successfully.');
         } else {
@@ -2249,9 +2295,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
       if (response.data && response.data.success && response.data.token) {
         const token = response.data.token;
+        const decoded = parseAdminJwt(token);
         const now = Date.now();
-        const absoluteExpiry = now + 30 * 60 * 1000;
-        localStorage.setItem('zenemoo_session_start', now.toString());
+        const absoluteExpiry = decoded?.exp ? decoded.exp * 1000 : (now + 30 * 60 * 1000);
+        const sessionStart = decoded?.session_start ? decoded.session_start * 1000 : (decoded?.iat ? decoded.iat * 1000 : now);
+        localStorage.setItem('zenemoo_session_start', sessionStart.toString());
         localStorage.setItem('zenemoo_jwt_token', token);
         localStorage.setItem('zenemoo_jwt_expiry', absoluteExpiry.toString());
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -2275,9 +2323,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               setAdminConnection(profileRes.data.connection);
             }
 
-            setSessionStartTime(now);
-            setSessionDurationSec(0);
-            setSessionExpiresInSec(1800);
+            setSessionStartTime(sessionStart);
+            setSessionDurationSec(Math.max(0, Math.floor((now - sessionStart) / 1000)));
+            setSessionExpiresInSec(Math.max(0, Math.ceil((absoluteExpiry - now) / 1000)));
             setIsAuthenticated(true);
             setPassError('');
 
@@ -2696,11 +2744,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     ].join(':');
   };
 
-  // Helper to format remaining time as "29m 14s"
+  // Helper to format remaining time as "1h 45m 12s" or "29m 14s"
   const formatRemainingTime = (totalSeconds: number): string => {
     if (totalSeconds <= 0) return 'Expired';
-    const mins = Math.floor(totalSeconds / 60);
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
     const secs = totalSeconds % 60;
+    if (hrs > 0) {
+      return `${hrs}h ${mins}m ${secs}s`;
+    }
     return `${mins}m ${secs}s`;
   };
 
@@ -7740,7 +7792,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                       <span className="text-2xl font-extrabold text-amber-300 tracking-widest font-mono block">
                         {formatRemainingTime(sessionExpiresInSec)}
                       </span>
-                      <span className="text-[9px] text-slate-400 block mt-1">Absolute 30-min policy active</span>
+                      <span className="text-[9px] text-slate-400 block mt-1">Dynamic secure session active</span>
                     </div>
                   </div>
                 </div>

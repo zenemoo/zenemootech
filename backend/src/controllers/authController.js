@@ -94,6 +94,18 @@ const hashOtp = (otp) => {
 };
 
 /**
+ * Generates a randomized admin session duration in seconds.
+ * Randomly selects duration between 30 minutes (1800s) and 3 hours 30 minutes (12600s / 210 minutes).
+ * This randomizes the lifetime for each admin login session.
+ */
+export const getRandomAdminSessionDurationSec = () => {
+  const minMinutes = 30;
+  const maxMinutes = 210; // 3 hours 30 minutes (3.5 hours)
+  const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
+  return randomMinutes * 60;
+};
+
+/**
  * 1. Admin Passcode/Password Login
  */
 export const login = async (req, res, next) => {
@@ -185,10 +197,11 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid admin passcode.' });
     }
 
-    // Strict 30-minute absolute session expiration
+    // Dynamic randomized session expiration between 30 min and 3.5 hrs (210 min)
     const secret = getJwtSecret();
     const nowSec = Math.floor(Date.now() / 1000);
-    const absoluteExpirySec = nowSec + 30 * 60; // 30 minutes from now
+    const sessionDurationSec = getRandomAdminSessionDurationSec();
+    const absoluteExpirySec = nowSec + sessionDurationSec;
 
     const token = jwt.sign(
       {
@@ -204,7 +217,7 @@ export const login = async (req, res, next) => {
       secret
     );
 
-    console.log(`🎉 LOGIN SUCCESS! Generated strict 30-min JWT token for ${cleanEmail}`);
+    console.log(`🎉 LOGIN SUCCESS! Generated dynamic JWT token for ${cleanEmail} (expires in ${Math.round(sessionDurationSec / 60)}m)`);
 
     // Detect new device before writing audit log
     let isNewDevice = false;
@@ -384,10 +397,11 @@ export const googleAdminLogin = async (req, res, next) => {
       });
     }
 
-    // 7. Issue strict 30-minute Zenemoo Admin JWT
+    // 7. Issue dynamic randomized Zenemoo Admin JWT (between 30 min and 3.5 hrs)
     const secret = getJwtSecret();
     const nowSec = Math.floor(Date.now() / 1000);
-    const absoluteExpirySec = nowSec + 30 * 60; // Exact 30 minutes from now
+    const sessionDurationSec = getRandomAdminSessionDurationSec();
+    const absoluteExpirySec = nowSec + sessionDurationSec;
 
     const tokenPayload = {
       id: adminRecord.id,
@@ -402,7 +416,7 @@ export const googleAdminLogin = async (req, res, next) => {
 
     const zenemooAdminJwt = jwt.sign(tokenPayload, secret);
 
-    console.log(`🎉 [Google Admin Login] SUCCESS: Generated Admin JWT for ${cleanEmail} (expires in 30m)`);
+    console.log(`🎉 [Google Admin Login] SUCCESS: Generated Admin JWT for ${cleanEmail} (expires in ${Math.round(sessionDurationSec / 60)}m)`);
 
     // Audit log
     await writeAuditLog(req, 'GOOGLE_LOGIN_SUCCESS', cleanEmail, {
