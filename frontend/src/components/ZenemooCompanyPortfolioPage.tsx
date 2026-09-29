@@ -38,7 +38,6 @@ interface PdfPageItemProps {
   totalPages: number;
   naturalAspectRatio: string;
   naturalWidth: number;
-  onIntersect: (pageNum: number) => void;
   registerRef: (pageNum: number, el: HTMLDivElement | null) => void;
 }
 
@@ -50,7 +49,6 @@ const PdfPageItem: React.FC<PdfPageItemProps> = React.memo(
     totalPages,
     naturalAspectRatio,
     naturalWidth,
-    onIntersect,
     registerRef,
   }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -59,7 +57,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = React.memo(
     const [isRendered, setIsRendered] = useState<boolean>(false);
     const [isInView, setIsInView] = useState<boolean>(pageNum <= 3); // Preload first 3 pages immediately
 
-    // Viewport Intersection Observer
+    // Viewport Intersection Observer for lazy preloading
     useEffect(() => {
       const el = containerRef.current;
       if (!el) return;
@@ -71,12 +69,11 @@ const PdfPageItem: React.FC<PdfPageItemProps> = React.memo(
           const entry = entries[0];
           if (entry && entry.isIntersecting) {
             setIsInView(true);
-            onIntersect(pageNum);
           }
         },
         {
           rootMargin: '900px 0px 900px 0px', // Buffer ahead before user scrolls into page
-          threshold: [0.1, 0.4],
+          threshold: [0.05, 0.2],
         }
       );
 
@@ -85,7 +82,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = React.memo(
         observer.disconnect();
         registerRef(pageNum, null);
       };
-    }, [pageNum, onIntersect, registerRef]);
+    }, [pageNum, registerRef]);
 
     // Canvas render with clean await & cancellation management
     useEffect(() => {
@@ -556,11 +553,14 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isReadingMode, showThumbnails]);
 
-  // Auto-Hide floating toolbar on scroll down
+  const isProgrammaticScrollRef = useRef<boolean>(false);
+
+  // Auto-Hide floating toolbar on scroll down & Calculate precise active page with zero jitter
   const handleMainScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const currentScrollTop = e.currentTarget.scrollTop;
     const delta = currentScrollTop - lastScrollTopRef.current;
 
+    // Toolbar hide/show
     if (delta > 8 && currentScrollTop > 80) {
       setIsToolbarVisible(false);
     } else if (delta < -6 || currentScrollTop <= 40) {
@@ -568,6 +568,32 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     }
 
     lastScrollTopRef.current = currentScrollTop;
+
+    if (isProgrammaticScrollRef.current) return;
+
+    // Calculate active page strictly from vertical viewport geometry
+    if (containerRef.current && totalPages > 0) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const focusY = containerRect.top + containerRect.height * 0.35; // Focal point in upper 35% of view
+
+      let bestPage = 1;
+      let minDistance = Infinity;
+
+      for (let i = 1; i <= totalPages; i++) {
+        const el = pageRefs.current[i];
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const pageMid = (rect.top + rect.bottom) / 2;
+          const dist = Math.abs(pageMid - focusY);
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestPage = i;
+          }
+        }
+      }
+
+      setCurrentPage((prev) => (prev !== bestPage ? bestPage : prev));
+    }
   };
 
   // Zoom and Fit Width handlers
@@ -594,14 +620,14 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
       if (window.innerWidth < 768) {
         setShowThumbnails(false);
       }
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      isProgrammaticScrollRef.current = true;
       setCurrentPage(pageNum);
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 700);
     }
   };
-
-  const handlePageIntersect = useCallback((pageNum: number) => {
-    setCurrentPage(pageNum);
-  }, []);
 
   const registerPageRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
     pageRefs.current[pageNum] = el;
@@ -986,7 +1012,6 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                     totalPages={totalPages}
                     naturalAspectRatio={naturalAspectRatio}
                     naturalWidth={naturalPageWidthRef.current}
-                    onIntersect={handlePageIntersect}
                     registerRef={registerPageRef}
                   />
                 ))}
