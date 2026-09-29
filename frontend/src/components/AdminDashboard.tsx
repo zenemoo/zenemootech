@@ -20,6 +20,7 @@ import { CandidateApplicationsModal } from './CandidateApplicationsModal';
 import { EnterpriseOpportunityEditorModal } from './EnterpriseOpportunityEditorModal';
 import { AdminReviewsTab } from './AdminReviewsTab';
 import { AdminBrandLogoSettings } from './AdminBrandLogoSettings';
+import { AdminPortfolioSettings } from './AdminPortfolioSettings';
 import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
 import { Folder } from 'lucide-react';
 import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
@@ -64,7 +65,8 @@ export type AdminTabType =
   | 'data-upload'
   | 'data-folders'
   | 'call-bookings'
-  | 'email-inbox';
+  | 'email-inbox'
+  | 'portfolio';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
   'notifications',
@@ -95,6 +97,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'data-folders',
   'ai-analytics',
   'telemetry',
+  'portfolio',
 ];
 
 const OAUTH_KEYWORDS = [
@@ -2897,6 +2900,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       group: 'SYSTEM & BRANDING',
       items: [
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
+        { id: 'portfolio', name: 'Company Portfolio', icon: FileText },
       ],
     },
   ];
@@ -7095,6 +7099,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {activeTab === 'telemetry' && (
           <div className="space-y-8 font-sans">
             <AdminBrandLogoSettings />
+          </div>
+        )}
+
+        {/* TAB: COMPANY PORTFOLIO MANAGEMENT */}
+        {activeTab === 'portfolio' && (
+          <div className="space-y-8 font-sans">
+            <AdminPortfolioSettings />
           </div>
         )}
 

@@ -18,3 +18,25 @@ export const upload = multer({
     cb(new Error('Only image, audio, and video files are supported!'));
   },
 });
+
+// Dedicated PDF Upload Multer (Max 15MB for Company Portfolio)
+export const uploadPdf = multer({
+  storage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const isPdfExt = ext === '.pdf';
+    const isPdfMime =
+      file.mimetype === 'application/pdf' ||
+      file.mimetype === 'application/x-pdf' ||
+      file.mimetype === 'application/acrobat' ||
+      file.mimetype === 'applications/vnd.pdf' ||
+      file.mimetype === 'text/pdf';
+
+    if (isPdfExt || isPdfMime) {
+      return cb(null, true);
+    }
+    cb(new Error('Only PDF files (.pdf) are allowed!'));
+  },
+});
+

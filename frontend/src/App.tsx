@@ -53,6 +53,7 @@ import { SupportZenemooPage } from './components/SupportZenemooPage';
 import { ZenemooPayPage } from './components/ZenemooPayPage';
 import { ZenemooReceiptVerifyPage } from './components/ZenemooReceiptVerifyPage';
 import { ZenemooApplicationVerifyPage } from './components/ZenemooApplicationVerifyPage';
+import { ZenemooCompanyPortfolioPage } from './components/ZenemooCompanyPortfolioPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 import { ZenemooTeamJoinPage } from './components/ZenemooTeamJoinPage';
 import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
@@ -63,7 +64,7 @@ import { extractAndStoreReferralCode } from './lib/opportunityApplicationStore';
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'application-verify' | 'portfolio' | '404'
   >('home');
   const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
@@ -300,6 +301,7 @@ function AppInner() {
         | 'pay'
         | 'receipt-verify'
         | 'application-verify'
+        | 'portfolio'
         | '404' = 'home';
 
       // ── Capture Referral Code from URL parameters & persist across sessions ──
@@ -651,6 +653,17 @@ function AppInner() {
         hash.startsWith('#sitemap')
       ) {
         matchedRoute = 'sitemap';
+      } else if (
+        path === '/portfolio' ||
+        path === '/portfolio/' ||
+        path === '/company-portfolio' ||
+        path === '/company-portfolio/' ||
+        hash === '#portfolio' ||
+        hash === '#/portfolio' ||
+        hash === '#company-portfolio' ||
+        hash === '#/company-portfolio'
+      ) {
+        matchedRoute = 'portfolio';
       } else if (path === '/' || path === '' || path === '/subscribe' || path === '/subscribe/') {
         matchedRoute = 'home';
       } else {
@@ -1125,6 +1138,8 @@ function AppInner() {
             setCurrentRoute('talent-hub');
           }}
         />
+      ) : currentRoute === 'portfolio' ? (
+        <ZenemooCompanyPortfolioPage />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

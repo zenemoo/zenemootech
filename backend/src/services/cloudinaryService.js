@@ -12,7 +12,7 @@ export const cloudinaryService = {
       }, 25000);
 
       const uploadParams = {
-        resource_type: 'auto',
+        resource_type: options.resource_type || 'auto',
       };
 
       if (options.public_id) {
@@ -42,8 +42,9 @@ export const cloudinaryService = {
             asset_id: result.asset_id || result.public_id,
             width: result.width || 0,
             height: result.height || 0,
-            format: result.format || 'png',
+            format: result.format || 'pdf',
             bytes: result.bytes || 0,
+            resource_type: result.resource_type || uploadParams.resource_type,
           });
         }
       );
@@ -55,14 +56,19 @@ export const cloudinaryService = {
   /**
    * Permanently delete asset from Cloudinary by public_id
    */
-  async deleteMedia(publicId) {
+  async deleteMedia(publicId, options = {}) {
     if (!publicId) return null;
     return new Promise((resolve, reject) => {
       const timeoutTimer = setTimeout(() => {
         resolve({ result: 'timeout_fallback' });
       }, 10000);
 
-      cloudinary.uploader.destroy(publicId, { invalidate: true }, (error, result) => {
+      const destroyOptions = {
+        invalidate: true,
+        resource_type: options.resource_type || 'image',
+      };
+
+      cloudinary.uploader.destroy(publicId, destroyOptions, (error, result) => {
         clearTimeout(timeoutTimer);
         if (error) {
           console.warn('Cloudinary Delete Warning:', error.message);

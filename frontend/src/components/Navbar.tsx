@@ -329,6 +329,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onBack, showBackButton, backButt
                 <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform shrink-0" />
               </button>
 
+              {/* Talent Hub / Login Icon Button (Desktop & Mobile) */}
+              <a
+                href="https://www.zenemoo.in/talent-hub"
+                className="relative p-2 sm:p-2.5 rounded-2xl border bg-slate-900/90 border-white/10 hover:border-cyan-500/40 text-slate-300 hover:text-white transition-all duration-300 shadow-sm hover:shadow-cyan-500/10 active:scale-95 flex items-center justify-center group cursor-pointer"
+                title="Zenemoo Login"
+                aria-label="Zenemoo Login"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-cyan-400 group-hover:scale-110 transition-transform duration-200"
+                  aria-hidden="true"
+                >
+                  {/* Doorway Frame */}
+                  <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+                  {/* Head */}
+                  <circle cx="8.5" cy="5" r="1.5" />
+                  {/* Torso */}
+                  <path d="M8.5 7.5v6" />
+                  {/* Arms walking */}
+                  <path d="M5.5 12.5l3-2.5 3 2 3-1.5" />
+                  {/* Back Leg */}
+                  <path d="M7.5 14.5l-2 6" />
+                  {/* Front Leg stepping into door */}
+                  <path d="M9.5 13.5l2 3.5 3-1" />
+                </svg>
+              </a>
+
               {/* Centralized Notification Center Bell (Desktop & Mobile) */}
               <NotificationCenter />
 

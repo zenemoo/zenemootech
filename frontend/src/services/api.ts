@@ -286,6 +286,38 @@ export const brandingApi = {
   deleteLogo: () => api.delete('/branding/logo'),
 };
 
+export interface CompanyPortfolioItem {
+  id?: string;
+  title: string;
+  filename: string;
+  original_filename: string;
+  file_size_bytes: number;
+  file_size_formatted: string;
+  public_url: string;
+  storage_public_id?: string;
+  storage_provider?: string;
+  version?: string;
+  is_published: boolean;
+  page_count?: number;
+  uploaded_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Zenemoo Official Company Portfolio Management APIs
+export const portfolioApi = {
+  getPublicPortfolio: () => deduplicatedGet('/portfolio'),
+  getAdminPortfolio: () => api.get('/portfolio/admin'),
+  uploadPortfolio: (formData: FormData) =>
+    api.post('/portfolio/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    }),
+  toggleStatus: (isPublished: boolean) =>
+    api.patch('/portfolio/status', { is_published: isPublished }),
+  deletePortfolio: () => api.delete('/portfolio'),
+};
+
 // Cloudinary + Supabase Media APIs
 export const mediaApi = {
   getAll: () => api.get('/media'),
