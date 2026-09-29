@@ -27,35 +27,370 @@ declare global {
   }
 }
 
+// ----------------------------------------------------------------------
+// Dedicated High-Performance Page Canvas Component
+// Guarantees zero concurrent canvas render collisions & prevents white screens
+// ----------------------------------------------------------------------
+interface PdfPageItemProps {
+  pdfDoc: any;
+  pageNum: number;
+  scale: number;
+  totalPages: number;
+  naturalAspectRatio: string;
+  naturalWidth: number;
+  onIntersect: (pageNum: number) => void;
+  registerRef: (pageNum: number, el: HTMLDivElement | null) => void;
+}
+
+const PdfPageItem: React.FC<PdfPageItemProps> = React.memo(
+  ({
+    pdfDoc,
+    pageNum,
+    scale,
+    totalPages,
+    naturalAspectRatio,
+    naturalWidth,
+    onIntersect,
+    registerRef,
+  }) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const renderTaskRef = useRef<any>(null);
+    const [isRendered, setIsRendered] = useState<boolean>(false);
+    const [isInView, setIsInView] = useState<boolean>(pageNum <= 3); // Preload first 3 pages immediately
+
+    // Viewport Intersection Observer
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+
+      registerRef(pageNum, el);
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (entry && entry.isIntersecting) {
+            setIsInView(true);
+            onIntersect(pageNum);
+          }
+        },
+        {
+          rootMargin: '900px 0px 900px 0px', // Buffer ahead before user scrolls into page
+          threshold: [0.1, 0.4],
+        }
+      );
+
+      observer.observe(el);
+      return () => {
+        observer.disconnect();
+        registerRef(pageNum, null);
+      };
+    }, [pageNum, onIntersect, registerRef]);
+
+    // Canvas render with clean await & cancellation management
+    useEffect(() => {
+      if (!isInView || !pdfDoc || !canvasRef.current) return;
+
+      let isCancelled = false;
+
+      const performRender = async () => {
+        // Cancel and safely await previous in-flight render on this canvas
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+            await renderTaskRef.current.promise;
+          } catch (_) {
+            // Expected RenderingCancelledException
+          }
+          renderTaskRef.current = null;
+        }
+
+        if (isCancelled) return;
+
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          if (isCancelled) return;
+
+          const viewport = page.getViewport({ scale });
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+
+          const context = canvas.getContext('2d', { alpha: false });
+          if (!context) return;
+
+          const outputScale = window.devicePixelRatio || 1;
+          canvas.width = Math.floor(viewport.width * outputScale);
+          canvas.height = Math.floor(viewport.height * outputScale);
+          canvas.style.width = '100%';
+          canvas.style.height = 'auto';
+
+          const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+          const renderTask = page.render({
+            canvasContext: context,
+            transform: transform,
+            viewport: viewport,
+          });
+
+          renderTaskRef.current = renderTask;
+          await renderTask.promise;
+          renderTaskRef.current = null;
+
+          if (!isCancelled) {
+            setIsRendered(true);
+          }
+        } catch (err: any) {
+          if (err?.name !== 'RenderingCancelledException') {
+            console.warn(`Page ${pageNum} render notice:`, err?.message || err);
+          }
+        }
+      };
+
+      performRender();
+
+      return () => {
+        isCancelled = true;
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch (_) {}
+        }
+      };
+    }, [isInView, pdfDoc, pageNum, scale]);
+
+    const targetWidth = naturalWidth ? Math.floor(naturalWidth * scale) : undefined;
+
+    return (
+      <div
+        ref={(el) => {
+          containerRef.current = el;
+          registerRef(pageNum, el);
+        }}
+        data-page-number={pageNum}
+        className="relative group rounded-lg sm:rounded-2xl overflow-hidden shadow-xl sm:shadow-2xl shadow-cyan-950/30 border border-white/10 bg-slate-900 transition-all flex items-center justify-center shrink-0"
+        style={{
+          width: targetWidth ? `${targetWidth}px` : '100%',
+          maxWidth: '100%',
+          aspectRatio: naturalAspectRatio,
+        }}
+      >
+        {/* Floating Page Number Pill */}
+        <div className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 z-10 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] font-mono text-cyan-300 opacity-60 group-hover:opacity-100 transition-opacity select-none">
+          {pageNum}/{totalPages}
+        </div>
+
+        {/* Crisp Document Canvas */}
+        <canvas
+          ref={canvasRef}
+          className="block bg-white transition-opacity duration-200"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+          }}
+        />
+
+        {/* Loading placeholder shown only before first render */}
+        {!isRendered && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm z-0">
+            <RefreshCw className="w-5 h-5 text-cyan-400/70 animate-spin mb-2" />
+            <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">Loading page {pageNum}...</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+
+// ----------------------------------------------------------------------
+// Dedicated Landscape Widescreen Thumbnail Item Component
+// ----------------------------------------------------------------------
+interface PdfThumbnailItemProps {
+  pdfDoc: any;
+  pageNum: number;
+  isCurrent: boolean;
+  naturalAspectRatio: string;
+  onClick: () => void;
+  registerRef: (pageNum: number, el: HTMLDivElement | null) => void;
+}
+
+const PdfThumbnailItem: React.FC<PdfThumbnailItemProps> = React.memo(
+  ({
+    pdfDoc,
+    pageNum,
+    isCurrent,
+    naturalAspectRatio,
+    onClick,
+    registerRef,
+  }) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const renderTaskRef = useRef<any>(null);
+    const [isRendered, setIsRendered] = useState<boolean>(false);
+    const [isInView, setIsInView] = useState<boolean>(pageNum <= 5);
+
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+
+      registerRef(pageNum, el);
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0] && entries[0].isIntersecting) {
+            setIsInView(true);
+          }
+        },
+        { rootMargin: '500px 0px 500px 0px', threshold: 0.1 }
+      );
+
+      observer.observe(el);
+      return () => {
+        observer.disconnect();
+        registerRef(pageNum, null);
+      };
+    }, [pageNum, registerRef]);
+
+    useEffect(() => {
+      if (!isInView || !pdfDoc || !canvasRef.current) return;
+
+      let isCancelled = false;
+
+      const renderThumb = async () => {
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+            await renderTaskRef.current.promise;
+          } catch (_) {}
+          renderTaskRef.current = null;
+        }
+
+        if (isCancelled) return;
+
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          if (isCancelled) return;
+
+          const baseViewport = page.getViewport({ scale: 1.0 });
+          const thumbScale = Math.min(0.25, 240 / (baseViewport.width || 1000));
+          const viewport = page.getViewport({ scale: thumbScale });
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+
+          const context = canvas.getContext('2d', { alpha: false });
+          if (!context) return;
+
+          const outputScale = window.devicePixelRatio || 1;
+          canvas.width = Math.floor(viewport.width * outputScale);
+          canvas.height = Math.floor(viewport.height * outputScale);
+          canvas.style.width = '100%';
+          canvas.style.height = '100%';
+
+          const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+          const renderTask = page.render({
+            canvasContext: context,
+            transform: transform,
+            viewport: viewport,
+          });
+
+          renderTaskRef.current = renderTask;
+          await renderTask.promise;
+          renderTaskRef.current = null;
+
+          if (!isCancelled) {
+            setIsRendered(true);
+          }
+        } catch (err: any) {
+          if (err?.name !== 'RenderingCancelledException') {
+            console.warn(`Thumbnail ${pageNum} notice:`, err?.message || err);
+          }
+        }
+      };
+
+      renderThumb();
+
+      return () => {
+        isCancelled = true;
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch (_) {}
+        }
+      };
+    }, [isInView, pdfDoc, pageNum]);
+
+    return (
+      <div
+        ref={(el) => {
+          containerRef.current = el;
+          registerRef(pageNum, el);
+        }}
+        data-thumb-page={pageNum}
+        onClick={onClick}
+        className={`group relative rounded-xl p-2 border transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
+          isCurrent
+            ? 'bg-cyan-500/15 border-cyan-400 shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400/50'
+            : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/5 hover:border-white/20'
+        }`}
+      >
+        {/* Horizontal Landscape 16:9 Thumbnail Box */}
+        <div
+          className="w-full bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-white/10 relative shadow-sm"
+          style={{
+            aspectRatio: naturalAspectRatio,
+          }}
+        >
+          <canvas
+            ref={canvasRef}
+            className="block w-full h-full object-contain bg-white transition-opacity"
+          />
+          {!isRendered && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90">
+              <span className="text-[9px] font-mono text-slate-500">{pageNum}</span>
+            </div>
+          )}
+        </div>
+        <span
+          className={`text-[11px] font-mono font-bold transition-colors ${
+            isCurrent ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
+          }`}
+        >
+          Page {pageNum}
+        </span>
+      </div>
+    );
+  }
+);
+
+// ----------------------------------------------------------------------
+// Main Zenemoo Company Portfolio Page
+// ----------------------------------------------------------------------
 export const ZenemooCompanyPortfolioPage: React.FC = () => {
   const { logoUrl } = useActiveLogo();
   const [portfolio, setPortfolio] = useState<CompanyPortfolioItem | null>(null);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
 
-  // PDF.js State
+  // PDF.js Engine State
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
   const [isFitWidth, setIsFitWidth] = useState<boolean>(true);
   const [isLoadingPdf, setIsLoadingPdf] = useState<boolean>(false);
-  const [renderedPages, setRenderedPages] = useState<{ [pageNum: number]: boolean }>({});
-  const [renderedThumbnails, setRenderedThumbnails] = useState<{ [pageNum: number]: boolean }>({});
 
-  // UI Modes
+  // UI State
   const [showThumbnails, setShowThumbnails] = useState<boolean>(false);
   const [isReadingMode, setIsReadingMode] = useState<boolean>(false);
   const [isToolbarVisible, setIsToolbarVisible] = useState<boolean>(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<{ [pageNum: number]: HTMLDivElement | null }>({});
-  const canvasRefs = useRef<{ [pageNum: number]: HTMLCanvasElement | null }>({});
   const thumbnailRefs = useRef<{ [pageNum: number]: HTMLDivElement | null }>({});
-  const thumbnailCanvasRefs = useRef<{ [pageNum: number]: HTMLCanvasElement | null }>({});
   const lastScrollTopRef = useRef<number>(0);
-  const naturalPageWidthRef = useRef<number>(0);
-  const naturalPageHeightRef = useRef<number>(0);
+  const naturalPageWidthRef = useRef<number>(1920); // Default widescreen 16:9
+  const naturalPageHeightRef = useRef<number>(1080);
 
   // Fetch Portfolio Metadata
   const fetchMetadata = useCallback(async () => {
@@ -82,7 +417,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     fetchMetadata();
   }, [fetchMetadata]);
 
-  // Load PDF.js dynamically on demand
+  // Load PDF.js engine from CDN on demand
   const loadPdfJsScript = (): Promise<any> => {
     return new Promise((resolve, reject) => {
       if (window.pdfjsLib) {
@@ -107,24 +442,20 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     });
   };
 
-  // Dynamic Fit-Width Scale Calculator based on actual unscaled PDF viewport & available container width
+  // Accurate Fit-to-Width Scale Calculator
   const calculateFitScale = useCallback(() => {
     if (!containerRef.current || !naturalPageWidthRef.current) return 1.0;
 
     const isMobile = window.innerWidth < 768;
-    // On mobile, container width is full width (since sidebar is an overlay)
-    // On desktop, if sidebar is open, containerRef.clientWidth already reflects remaining width
     const containerWidth = containerRef.current.clientWidth;
-
-    // Margin padding: 16px on mobile, 48px on desktop
     const horizontalPadding = isMobile ? 16 : 48;
-    const availableWidth = Math.max(200, containerWidth - horizontalPadding);
+    const availableWidth = Math.max(180, containerWidth - horizontalPadding);
 
     const fit = +(availableWidth / naturalPageWidthRef.current).toFixed(3);
-    return Math.max(0.25, Math.min(3.0, fit));
+    return Math.max(0.15, Math.min(3.0, fit));
   }, []);
 
-  // Load PDF Document when metadata is ready
+  // Load PDF document when portfolio metadata is ready
   useEffect(() => {
     if (!portfolio?.public_url) return;
 
@@ -138,7 +469,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           url: portfolio.public_url,
           cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
           cMapPacked: true,
-          disableRange: false, // HTTP Range 206 partial streaming
+          disableRange: false, // HTTP Range 206 stream support
           disableStream: false,
           disableAutoFetch: false,
         });
@@ -150,14 +481,14 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
 
-        // Fetch page 1 natural viewport dimensions
+        // Extract native dimensions from page 1
         try {
           const page1 = await pdf.getPage(1);
           const naturalViewport = page1.getViewport({ scale: 1.0 });
-          naturalPageWidthRef.current = naturalViewport.width;
-          naturalPageHeightRef.current = naturalViewport.height;
+          naturalPageWidthRef.current = naturalViewport.width || 1920;
+          naturalPageHeightRef.current = naturalViewport.height || 1080;
 
-          // Compute initial fit-to-width scale
+          // Compute fit scale
           const initialFit = calculateFitScale();
           setScale(initialFit);
           setIsFitWidth(true);
@@ -179,139 +510,6 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     };
   }, [portfolio?.public_url, calculateFitScale]);
 
-  // Render a full-size page canvas
-  const renderPage = useCallback(
-    async (pageNum: number) => {
-      if (!pdfDoc) return;
-      const canvas = canvasRefs.current[pageNum];
-      if (!canvas) return;
-
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale });
-        const context = canvas.getContext('2d');
-        if (!context) return;
-
-        const outputScale = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = Math.floor(viewport.width) + 'px';
-        canvas.style.height = Math.floor(viewport.height) + 'px';
-
-        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-
-        await page.render({
-          canvasContext: context,
-          transform: transform,
-          viewport: viewport,
-        }).promise;
-
-        setRenderedPages((prev) => ({ ...prev, [pageNum]: true }));
-      } catch (e: any) {
-        if (e?.name !== 'RenderingCancelledException') {
-          console.warn(`Error rendering page ${pageNum}:`, e);
-        }
-      }
-    },
-    [pdfDoc, scale]
-  );
-
-  // Render a small thumbnail canvas lazily
-  const renderThumbnail = useCallback(
-    async (pageNum: number) => {
-      if (!pdfDoc) return;
-      const canvas = thumbnailCanvasRefs.current[pageNum];
-      if (!canvas) return;
-
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        const thumbScale = 0.22; // Small thumbnail scale
-        const viewport = page.getViewport({ scale: thumbScale });
-        const context = canvas.getContext('2d');
-        if (!context) return;
-
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-        canvas.style.width = Math.floor(viewport.width) + 'px';
-        canvas.style.height = Math.floor(viewport.height) + 'px';
-
-        await page.render({
-          canvasContext: context,
-          viewport: viewport,
-        }).promise;
-
-        setRenderedThumbnails((prev) => ({ ...prev, [pageNum]: true }));
-      } catch (e: any) {
-        if (e?.name !== 'RenderingCancelledException') {
-          console.warn(`Thumbnail render notice (page ${pageNum}):`, e);
-        }
-      }
-    },
-    [pdfDoc]
-  );
-
-  // Main Document IntersectionObserver for Virtualized Rendering + Active Page Tracking
-  useEffect(() => {
-    if (!pdfDoc || totalPages === 0 || !containerRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const pageNum = parseInt(entry.target.getAttribute('data-page-number') || '1', 10);
-          if (entry.isIntersecting) {
-            renderPage(pageNum);
-            setCurrentPage(pageNum);
-
-            // Buffer next and previous pages
-            if (pageNum + 1 <= totalPages) renderPage(pageNum + 1);
-            if (pageNum - 1 >= 1) renderPage(pageNum - 1);
-          }
-        });
-      },
-      {
-        root: containerRef.current,
-        rootMargin: '300px 0px 300px 0px',
-        threshold: [0.15, 0.5],
-      }
-    );
-
-    for (let i = 1; i <= totalPages; i++) {
-      const el = pageRefs.current[i];
-      if (el) observer.observe(el);
-    }
-
-    return () => observer.disconnect();
-  }, [pdfDoc, totalPages, renderPage]);
-
-  // Thumbnail Sidebar Lazy Rendering IntersectionObserver
-  useEffect(() => {
-    if (!pdfDoc || totalPages === 0 || !showThumbnails) return;
-
-    const thumbObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const pageNum = parseInt(entry.target.getAttribute('data-thumb-page') || '1', 10);
-          if (entry.isIntersecting) {
-            renderThumbnail(pageNum);
-            if (pageNum + 1 <= totalPages) renderThumbnail(pageNum + 1);
-          }
-        });
-      },
-      {
-        root: null,
-        rootMargin: '120px 0px 120px 0px',
-        threshold: 0.1,
-      }
-    );
-
-    for (let i = 1; i <= totalPages; i++) {
-      const el = thumbnailRefs.current[i];
-      if (el) thumbObserver.observe(el);
-    }
-
-    return () => thumbObserver.disconnect();
-  }, [pdfDoc, totalPages, showThumbnails, renderThumbnail]);
-
   // Auto-scroll active thumbnail into view when page changes
   useEffect(() => {
     if (currentPage && thumbnailRefs.current[currentPage] && showThumbnails) {
@@ -322,20 +520,10 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     }
   }, [currentPage, showThumbnails]);
 
-  // Re-render visible pages on scale change
-  useEffect(() => {
-    if (!pdfDoc) return;
-    setRenderedPages({});
-    renderPage(currentPage);
-    if (currentPage + 1 <= totalPages) renderPage(currentPage + 1);
-    if (currentPage - 1 >= 1) renderPage(currentPage - 1);
-  }, [scale, pdfDoc, renderPage, currentPage, totalPages]);
-
-  // Responsive ResizeObserver to dynamically recalculate fit-width and adapt sidebar
+  // Responsive resize listener
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
-      // Default sidebar visibility: open on desktop (>= 1024px), closed on tablet/mobile (< 1024px)
       if (width >= 1024) {
         setShowThumbnails(true);
       } else {
@@ -349,7 +537,6 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     };
 
     window.addEventListener('resize', handleResize);
-    // Initial run
     if (window.innerWidth >= 1024) {
       setShowThumbnails(true);
     }
@@ -357,7 +544,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, [isFitWidth, calculateFitScale]);
 
-  // Keyboard shortcut listener (Esc to exit reading mode or close drawer)
+  // Keyboard shortcut listener (Esc to exit reading mode or drawer)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -369,23 +556,21 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isReadingMode, showThumbnails]);
 
-  // Performant Scroll-Direction Detection (Smooth Auto-Hide for Center Toolbar)
+  // Auto-Hide floating toolbar on scroll down
   const handleMainScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const currentScrollTop = e.currentTarget.scrollTop;
     const delta = currentScrollTop - lastScrollTopRef.current;
 
-    // Scrolling down past top threshold (80px) -> hide toolbar
     if (delta > 8 && currentScrollTop > 80) {
       setIsToolbarVisible(false);
     } else if (delta < -6 || currentScrollTop <= 40) {
-      // Scrolling up or near top -> show toolbar
       setIsToolbarVisible(true);
     }
 
     lastScrollTopRef.current = currentScrollTop;
   };
 
-  // Zoom Controls
+  // Zoom and Fit Width handlers
   const handleZoomIn = () => {
     setIsFitWidth(false);
     setScale((s) => Math.min(3.0, +(s + 0.15).toFixed(2)));
@@ -393,7 +578,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
   const handleZoomOut = () => {
     setIsFitWidth(false);
-    setScale((s) => Math.max(0.3, +(s - 0.15).toFixed(2)));
+    setScale((s) => Math.max(0.2, +(s - 0.15).toFixed(2)));
   };
 
   const handleFitWidth = () => {
@@ -402,11 +587,10 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     setIsFitWidth(true);
   };
 
-  // Smooth Scroll to Target Page
+  // Scroll smoothly to target page
   const scrollToPage = (pageNum: number) => {
     const el = pageRefs.current[pageNum];
     if (el) {
-      // On mobile, close thumbnail drawer when navigating
       if (window.innerWidth < 768) {
         setShowThumbnails(false);
       }
@@ -415,9 +599,26 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     }
   };
 
+  const handlePageIntersect = useCallback((pageNum: number) => {
+    setCurrentPage(pageNum);
+  }, []);
+
+  const registerPageRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
+    pageRefs.current[pageNum] = el;
+  }, []);
+
+  const registerThumbRef = useCallback((pageNum: number, el: HTMLDivElement | null) => {
+    thumbnailRefs.current[pageNum] = el;
+  }, []);
+
+  const naturalAspectRatio =
+    naturalPageWidthRef.current && naturalPageHeightRef.current
+      ? `${naturalPageWidthRef.current} / ${naturalPageHeightRef.current}`
+      : '16 / 9';
+
   return (
     <div className="h-screen w-screen bg-[#050505] text-slate-100 flex flex-col font-sans overflow-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* TOP BRANDED WEBSITE HEADER (Hidden in dedicated Reading Mode) */}
+      {/* TOP BRANDED WEBSITE HEADER */}
       {!isReadingMode && (
         <header className="shrink-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 py-2 sm:py-2.5 transition-all flex items-center justify-between gap-2 shadow-md">
           {/* Logo & Breadcrumb */}
@@ -444,7 +645,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
             </a>
           </div>
 
-          {/* Action Suite (Back Home, Reading Mode, Prominent Download) */}
+          {/* Action Suite */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             <a
               href="/"
@@ -544,7 +745,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
       {/* MAIN BODY AREA (FLEX CONTAINER: SIDEBAR + INDEPENDENT PDF VIEWER) */}
       <div className="flex-1 flex w-full overflow-hidden relative">
-        {/* MOBILE THUMBNAIL BACKDROP (Screens < 768px) */}
+        {/* MOBILE THUMBNAIL BACKDROP */}
         {showThumbnails && portfolio && (
           <div
             className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm md:hidden transition-opacity"
@@ -553,7 +754,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           />
         )}
 
-        {/* THUMBNAIL NAVIGATOR SIDEBAR (Desktop: Relative Column / Mobile: Slide-in Drawer) */}
+        {/* THUMBNAIL NAVIGATOR SIDEBAR */}
         {portfolio && (
           <aside
             className={`
@@ -562,7 +763,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
               flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-2xl md:shadow-none
               ${
                 showThumbnails
-                  ? 'w-[75vw] max-w-[280px] md:w-56 lg:w-60 translate-x-0'
+                  ? 'w-[75vw] max-w-[280px] md:w-56 lg:w-64 translate-x-0'
                   : '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0'
               }
             `}
@@ -586,50 +787,22 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
             {/* Independent Thumbnail Scrollable Container */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-                const isCurrent = currentPage === pageNum;
-                return (
-                  <div
-                    key={pageNum}
-                    data-thumb-page={pageNum}
-                    ref={(el) => {
-                      thumbnailRefs.current[pageNum] = el;
-                    }}
-                    onClick={() => scrollToPage(pageNum)}
-                    className={`group relative rounded-xl p-2 border transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
-                      isCurrent
-                        ? 'bg-cyan-500/15 border-cyan-400 shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400/50'
-                        : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/5 hover:border-white/20'
-                    }`}
-                  >
-                    <div className="w-full aspect-[3/4] bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-white/10 relative shadow-sm">
-                      <canvas
-                        ref={(el) => {
-                          thumbnailCanvasRefs.current[pageNum] = el;
-                        }}
-                        className="block w-full h-full object-contain bg-white"
-                      />
-                      {!renderedThumbnails[pageNum] && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80">
-                          <span className="text-[9px] font-mono text-slate-500">{pageNum}</span>
-                        </div>
-                      )}
-                    </div>
-                    <span
-                      className={`text-[11px] font-mono font-bold transition-colors ${
-                        isCurrent ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-                      }`}
-                    >
-                      Page {pageNum}
-                    </span>
-                  </div>
-                );
-              })}
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <PdfThumbnailItem
+                  key={pageNum}
+                  pdfDoc={pdfDoc}
+                  pageNum={pageNum}
+                  isCurrent={currentPage === pageNum}
+                  naturalAspectRatio={naturalAspectRatio}
+                  onClick={() => scrollToPage(pageNum)}
+                  registerRef={registerThumbRef}
+                />
+              ))}
             </div>
           </aside>
         )}
 
-        {/* MAIN VIEWER SCROLLING CONTAINER (100% Mobile Width & Independent Scroll Region) */}
+        {/* MAIN VIEWER SCROLLING CONTAINER */}
         <main
           className="flex-1 h-full flex flex-col items-center justify-start p-2 sm:p-4 md:p-6 overflow-y-auto overflow-x-auto w-full relative custom-scrollbar pb-24 sm:pb-12"
           ref={containerRef}
@@ -694,7 +867,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           {/* ACTIVE PDF VIEWER */}
           {!isLoadingMetadata && portfolio && (
             <div className="w-full flex flex-col items-center max-w-full">
-              {/* STICKY FLOATING CONTROL TOOLBAR (Responsive with Auto-Hide on Scroll Down) */}
+              {/* STICKY FLOATING CONTROL TOOLBAR */}
               {!isReadingMode && (
                 <div
                   className={`sticky top-2 sm:top-3 z-30 mb-3 sm:mb-4 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl bg-[#080912]/92 border border-white/15 backdrop-blur-2xl shadow-2xl shadow-black/80 flex items-center justify-between gap-1.5 sm:gap-4 max-w-2xl w-full transition-all duration-300 ease-out ${
@@ -795,7 +968,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                 </div>
               )}
 
-              {/* CANVASES STREAM (Centered, Responsive, Auto-Fitting) */}
+              {/* CANVASES STREAM (Centered, Responsive, Exact Aspect Ratio) */}
               <div className="w-full flex flex-col items-center gap-3 sm:gap-6 py-1 max-w-full">
                 {isLoadingPdf && (
                   <div className="py-16 flex flex-col items-center justify-center">
@@ -805,42 +978,17 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                 )}
 
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                  <div
+                  <PdfPageItem
                     key={pageNum}
-                    data-page-number={pageNum}
-                    ref={(el) => {
-                      pageRefs.current[pageNum] = el;
-                    }}
-                    className="relative group rounded-lg sm:rounded-2xl overflow-hidden shadow-xl sm:shadow-2xl shadow-cyan-950/30 border border-white/10 bg-slate-900/90 transition-all flex items-center justify-center"
-                    style={{
-                      minHeight: scale * 250,
-                      maxWidth: '100%',
-                    }}
-                  >
-                    {/* Floating Page Tag */}
-                    <div className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 z-10 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] font-mono text-cyan-300 opacity-60 group-hover:opacity-100 transition-opacity select-none">
-                      {pageNum}/{totalPages}
-                    </div>
-
-                    {/* Canvas Render Element */}
-                    <canvas
-                      ref={(el) => {
-                        canvasRefs.current[pageNum] = el;
-                      }}
-                      className="block bg-white transition-transform max-w-full h-auto"
-                    />
-
-                    {/* Lazy skeleton loader if page canvas not rendered yet */}
-                    {!renderedPages[pageNum] && (
-                      <div
-                        className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm"
-                        style={{ minHeight: scale * 250 }}
-                      >
-                        <RefreshCw className="w-5 h-5 text-cyan-400/60 animate-spin mb-2" />
-                        <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">Loading page {pageNum}...</span>
-                      </div>
-                    )}
-                  </div>
+                    pdfDoc={pdfDoc}
+                    pageNum={pageNum}
+                    scale={scale}
+                    totalPages={totalPages}
+                    naturalAspectRatio={naturalAspectRatio}
+                    naturalWidth={naturalPageWidthRef.current}
+                    onIntersect={handlePageIntersect}
+                    registerRef={registerPageRef}
+                  />
                 ))}
               </div>
 
