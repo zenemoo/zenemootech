@@ -994,12 +994,12 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
               {/* FOOTER SPECS */}
               {!isReadingMode && (
-                <div className="mt-8 mb-6 text-center text-xs font-mono text-slate-500 space-y-1">
-                  <p>
-                    Official Zenemoo Company Portfolio &bull; {portfolio.file_size_formatted || 'PDF Document'} &bull; {totalPages || 1} Pages
+                <div className="mt-8 mb-6 text-center text-xs font-mono text-slate-400 space-y-1">
+                  <p className="text-slate-400 font-medium">
+                    Copyright &copy; 2026 Zenemoo. All Rights Reserved.
                   </p>
-                  <p className="text-[10px] sm:text-[11px] text-slate-600">
-                    Direct Cloud CDN Streaming &bull; Continuous Scroll &bull; Zero Server Egress
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-semibold">
+                    Official Zenemoo Company Portfolio &bull; {portfolio.file_size_formatted || '614.6 KB'} &bull; {totalPages || 9} Pages
                   </p>
                 </div>
               )}
