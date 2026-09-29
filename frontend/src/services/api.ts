@@ -304,19 +304,97 @@ export interface CompanyPortfolioItem {
   updated_at?: string;
 }
 
-// Zenemoo Official Company Portfolio Management APIs
+// Cloudflare R2 & D1 Portfolio API Worker URL Resolver
+const getPortfolioApiBaseUrl = (): string => {
+  const envUrl = (import.meta as any).env?.VITE_PORTFOLIO_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return envUrl.replace(/\/+$/, '');
+  }
+  return 'https://zenemoo-portfolio-api.zenemootech.workers.dev';
+};
+
+const getPortfolioAuthHeaders = () => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('zenemoo_jwt_token') : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+// Zenemoo Official Company Portfolio Management APIs (Cloudflare Worker direct + Express Fallback)
 export const portfolioApi = {
-  getPublicPortfolio: () => deduplicatedGet('/portfolio'),
-  getAdminPortfolio: () => api.get('/portfolio/admin'),
-  uploadPortfolio: (formData: FormData) =>
-    api.post('/portfolio/upload', formData, {
+  getPublicPortfolio: async () => {
+    try {
+      const workerUrl = getPortfolioApiBaseUrl();
+      const res = await axios.get(`${workerUrl}/api/portfolio`, { timeout: 8000 });
+      if (res.data) return res;
+    } catch (_) {}
+    return deduplicatedGet('/portfolio');
+  },
+
+  getAdminPortfolio: async () => {
+    try {
+      const workerUrl = getPortfolioApiBaseUrl();
+      const res = await axios.get(`${workerUrl}/api/portfolio/admin`, {
+        headers: {
+          ...getPortfolioAuthHeaders(),
+        },
+        timeout: 8000,
+      });
+      if (res.data) return res;
+    } catch (_) {}
+    return api.get('/portfolio/admin');
+  },
+
+  uploadPortfolio: async (formData: FormData) => {
+    try {
+      const workerUrl = getPortfolioApiBaseUrl();
+      const res = await axios.post(`${workerUrl}/api/portfolio/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...getPortfolioAuthHeaders(),
+        },
+        timeout: 60000,
+      });
+      if (res.data) return res;
+    } catch (_) {}
+    return api.post('/portfolio/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
-    }),
-  toggleStatus: (isPublished: boolean) =>
-    api.patch('/portfolio/status', { is_published: isPublished }),
-  deletePortfolio: () => api.delete('/portfolio'),
+    });
+  },
+
+  toggleStatus: async (isPublished: boolean) => {
+    try {
+      const workerUrl = getPortfolioApiBaseUrl();
+      const res = await axios.patch(
+        `${workerUrl}/api/portfolio/status`,
+        { is_published: isPublished },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...getPortfolioAuthHeaders(),
+          },
+          timeout: 8000,
+        }
+      );
+      if (res.data) return res;
+    } catch (_) {}
+    return api.patch('/portfolio/status', { is_published: isPublished });
+  },
+
+  deletePortfolio: async () => {
+    try {
+      const workerUrl = getPortfolioApiBaseUrl();
+      const res = await axios.delete(`${workerUrl}/api/portfolio`, {
+        headers: {
+          ...getPortfolioAuthHeaders(),
+        },
+        timeout: 8000,
+      });
+      if (res.data) return res;
+    } catch (_) {}
+    return api.delete('/portfolio');
+  },
 };
+
 
 // Cloudinary + Supabase Media APIs
 export const mediaApi = {

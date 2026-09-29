@@ -25,10 +25,15 @@ backend/.env
 # Editor & OS files
 .DS_Store
 .vscode/
-.idea/
-
 # Scratch & temp test scripts
 scratch/
 backend/scratch/
 frontend/scratch/
+
+# Cloudflare Workers build & dependencies
+cloudflare-workers/**/node_modules/
+cloudflare-workers/**/.wrangler/
+.wrangler/
+
+
 

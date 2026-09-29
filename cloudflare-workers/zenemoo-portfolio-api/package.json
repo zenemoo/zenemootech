@@ -1,0 +1,14 @@
+{
+  "name": "zenemoo-portfolio-api",
+  "version": "1.0.0",
+  "description": "Zenemoo Company Portfolio API Cloudflare Worker with native R2 & D1 bindings",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.137.0"
+  }
+}

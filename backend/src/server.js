@@ -35,6 +35,14 @@ app.listen(PORT, async () => {
   // Cloudflare Cron Scheduled Email Processor Active Notice
   console.log('⚡ [Scheduled Email Processor] Cloudflare Cron Trigger Active (* * * * * → POST /api/emails/scheduled/process)');
 
+  // Cloudflare D1 Portfolio Schema Verification
+  try {
+    const { d1Service } = await import('./services/d1Service.js');
+    await d1Service.initTable();
+  } catch (d1Err) {
+    console.warn('[D1 Portfolio Table Init Note]:', d1Err.message);
+  }
+
   // Automatic App Release Notification Check
   try {
     await checkAndNotifyAppRelease();

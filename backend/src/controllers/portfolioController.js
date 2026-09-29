@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { cloudinaryService } from '../services/cloudinaryService.js';
-import { supabase } from '../config/supabase.js';
+import { r2Service } from '../services/r2Service.js';
+import { d1Service } from '../services/d1Service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,9 +17,6 @@ const ALLOWED_MIME_TYPES = [
 ];
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 
-const EXPLICIT_COLUMNS =
-  'id, title, filename, original_filename, file_size_bytes, file_size_formatted, public_url, storage_public_id, storage_provider, version, is_published, page_count, uploaded_by, created_at, updated_at';
-
 // In-Memory Public Cache (15-Minute TTL for zero database egress on repeated visits)
 let portfolioCache = {
   data: undefined,
@@ -31,7 +28,7 @@ export const invalidatePortfolioCache = () => {
   portfolioCache = { data: undefined, timestamp: 0 };
 };
 
-// Disk persistence helpers to survive server restarts/idle cold boots on Render
+// Disk persistence helpers for resilience across server restarts
 const loadDiskActivePortfolio = () => {
   try {
     if (fs.existsSync(PERSISTENT_FILE_PATH)) {
@@ -44,7 +41,7 @@ const loadDiskActivePortfolio = () => {
       }
     }
   } catch (e) {
-    console.warn('Error reading active_portfolio.json persistent file:', e.message);
+    console.warn('[Portfolio] Error reading active_portfolio.json persistent file:', e.message);
   }
   return null;
 };
@@ -60,12 +57,12 @@ const saveDiskActivePortfolio = (payload) => {
     } else {
       fs.writeFileSync(
         PERSISTENT_FILE_PATH,
-        JSON.stringify({ is_published: false, public_url: null, filename: null }, null, 2),
+        JSON.stringify({ is_published: false, status: 'deleted', public_url: null, filename: null }, null, 2),
         'utf-8'
       );
     }
   } catch (e) {
-    console.warn('Error writing active_portfolio.json persistent file:', e.message);
+    console.warn('[Portfolio] Error writing active_portfolio.json persistent file:', e.message);
   }
 };
 
@@ -83,14 +80,45 @@ const formatBytes = (bytes) => {
 };
 
 /**
+ * Transforms D1 row to canonical API response payload
+ */
+const formatPortfolioRecord = (record) => {
+  if (!record || record.status === 'deleted') return null;
+
+  const fileSize = Number(record.file_size_bytes) || 0;
+  const isPublished = record.status === 'active';
+
+  return {
+    id: record.id || 'company_portfolio_main',
+    title: 'Zenemoo Official Company Portfolio',
+    filename: record.filename || 'zenemoo-company-portfolio.pdf',
+    original_filename: record.filename || 'zenemoo-company-portfolio.pdf',
+    file_size_bytes: fileSize,
+    file_size_formatted: formatBytes(fileSize),
+    public_url: record.public_url,
+    r2_key: record.r2_key,
+    storage_provider: 'cloudflare_r2',
+    is_published: isPublished,
+    status: record.status || 'active',
+    page_count: Number(record.page_count) || 0,
+    last_action: record.last_action || 'uploaded',
+    created_at: record.created_at || new Date().toISOString(),
+    updated_at: record.updated_at || new Date().toISOString(),
+    deleted_at: record.deleted_at || null,
+    deleted_by: record.deleted_by || null,
+  };
+};
+
+/**
  * GET /api/portfolio
- * Public endpoint to fetch currently active and published company portfolio metadata.
+ * Public endpoint to fetch currently active company portfolio metadata.
+ * Streams metadata only (< 1KB). Public visitor streams PDF directly from Cloudflare R2/CDN.
  * NEVER proxies the PDF file itself. NEVER returns 404.
  */
 export const getPortfolio = async (req, res) => {
   try {
     const now = Date.now();
-    // 1. Return in-memory cache if valid (0 Supabase egress)
+    // 1. Return in-memory cache if valid (0 D1 / 0 R2 egress)
     if (portfolioCache.data !== undefined && now - portfolioCache.timestamp < PORTFOLIO_CACHE_TTL) {
       return res.status(200).json({
         success: true,
@@ -100,95 +128,40 @@ export const getPortfolio = async (req, res) => {
     }
 
     let activeRecord = null;
-    let dbSuccess = false;
+    let d1Attempted = false;
 
-    // 2. Query Supabase using strictly explicit columns (NO SELECT *)
-    if (supabase) {
+    // 2. Query Cloudflare D1
+    if (d1Service.isConfigured()) {
       try {
-        const { data, error } = await supabase
-          .from('company_portfolio')
-          .select(EXPLICIT_COLUMNS)
-          .eq('is_published', true)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error) {
-          dbSuccess = true;
-          activeRecord = data;
-        } else {
-          // If table does not exist yet, fallback to site_branding table check
-          const { data: brandData, error: brandErr } = await supabase
-            .from('site_branding')
-            .select('id, asset_type, asset_name, cloudinary_public_id, cloudinary_secure_url, bytes, is_active, created_at, updated_at')
-            .eq('asset_type', 'company_portfolio')
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-
-          if (!brandErr && brandData) {
-            dbSuccess = true;
-            activeRecord = {
-              id: brandData.id,
-              title: brandData.asset_name || 'Zenemoo Company Portfolio',
-              filename: 'zenemoo-company-portfolio.pdf',
-              original_filename: 'zenemoo-company-portfolio.pdf',
-              file_size_bytes: brandData.bytes || 0,
-              file_size_formatted: formatBytes(brandData.bytes),
-              public_url: brandData.cloudinary_secure_url,
-              storage_public_id: brandData.cloudinary_public_id,
-              storage_provider: 'cloudinary',
-              version: 'v1',
-              is_published: true,
-              page_count: 0,
-              uploaded_by: 'admin',
-              created_at: brandData.created_at,
-              updated_at: brandData.updated_at,
-            };
-          }
+        d1Attempted = true;
+        const d1Row = await d1Service.getActivePortfolio();
+        if (d1Row && d1Row.status === 'active' && d1Row.public_url) {
+          activeRecord = formatPortfolioRecord(d1Row);
         }
-      } catch (dbErr) {
-        console.warn('Supabase portfolio select warning:', dbErr.message);
+      } catch (d1Err) {
+        console.warn('[Portfolio] D1 select notice:', d1Err.message);
       }
     }
 
-    // 3. If database returned active published record
-    if (activeRecord && activeRecord.public_url) {
-      const payload = {
-        id: activeRecord.id,
-        title: activeRecord.title || 'Zenemoo Official Company Portfolio',
-        filename: activeRecord.filename || 'zenemoo-company-portfolio.pdf',
-        original_filename: activeRecord.original_filename || 'zenemoo-company-portfolio.pdf',
-        file_size_bytes: activeRecord.file_size_bytes || 0,
-        file_size_formatted: activeRecord.file_size_formatted || formatBytes(activeRecord.file_size_bytes),
-        public_url: activeRecord.public_url,
-        storage_public_id: activeRecord.storage_public_id,
-        storage_provider: activeRecord.storage_provider || 'cloudinary',
-        version: activeRecord.version || 'v1',
-        is_published: true,
-        page_count: activeRecord.page_count || 0,
-        uploaded_by: activeRecord.uploaded_by || 'admin',
-        created_at: activeRecord.created_at || new Date().toISOString(),
-        updated_at: activeRecord.updated_at || new Date().toISOString(),
-      };
-
-      inMemoryActivePortfolio = payload;
-      saveDiskActivePortfolio(payload);
-      portfolioCache = { data: payload, timestamp: Date.now() };
-      return res.status(200).json({ success: true, data: payload });
+    // 3. If active record found in D1
+    if (activeRecord) {
+      inMemoryActivePortfolio = activeRecord;
+      saveDiskActivePortfolio(activeRecord);
+      portfolioCache = { data: activeRecord, timestamp: Date.now() };
+      return res.status(200).json({ success: true, data: activeRecord });
     }
 
-    // 4. If database query succeeded and NO published record exists, it means portfolio is unpublished or deleted
-    if (dbSuccess && !activeRecord) {
+    // 4. If D1 succeeded and confirmed no active record exists
+    if (d1Attempted && !activeRecord) {
       inMemoryActivePortfolio = null;
       saveDiskActivePortfolio(null);
       portfolioCache = { data: null, timestamp: Date.now() };
       return res.status(200).json({ success: true, data: null });
     }
 
-    // 5. Fallback to disk snapshot if DB is temporarily unreachable
+    // 5. Fallback to local snapshot if D1 is temporarily unconfigured or unreachable
     const diskFallback = inMemoryActivePortfolio || loadDiskActivePortfolio();
-    if (diskFallback && diskFallback.is_published && diskFallback.public_url) {
+    if (diskFallback && (diskFallback.is_published || diskFallback.status === 'active') && diskFallback.public_url) {
       portfolioCache = { data: diskFallback, timestamp: Date.now() };
       return res.status(200).json({ success: true, data: diskFallback });
     }
@@ -196,85 +169,75 @@ export const getPortfolio = async (req, res) => {
     portfolioCache = { data: null, timestamp: Date.now() };
     return res.status(200).json({ success: true, data: null });
   } catch (err) {
-    console.error('getPortfolio Server Error:', err.message);
+    console.error('[Portfolio] getPortfolio Server Error:', err.message);
     return res.status(200).json({ success: true, data: null });
   }
 };
 
 /**
  * GET /api/portfolio/admin
- * Admin endpoint to fetch current portfolio regardless of published state.
+ * Admin endpoint to fetch current portfolio regardless of published/deleted state.
  */
 export const getAdminPortfolio = async (req, res) => {
   try {
-    let activeRecord = null;
+    let currentRecord = null;
 
-    if (supabase) {
+    if (d1Service.isConfigured()) {
       try {
-        const { data, error } = await supabase
-          .from('company_portfolio')
-          .select(EXPLICIT_COLUMNS)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && data) {
-          activeRecord = data;
-        } else {
-          const { data: brandData } = await supabase
-            .from('site_branding')
-            .select('id, asset_type, asset_name, cloudinary_public_id, cloudinary_secure_url, bytes, is_active, created_at, updated_at')
-            .eq('asset_type', 'company_portfolio')
-            .limit(1)
-            .maybeSingle();
-
-          if (brandData) {
-            activeRecord = {
-              id: brandData.id,
-              title: brandData.asset_name || 'Zenemoo Company Portfolio',
-              filename: 'zenemoo-company-portfolio.pdf',
-              original_filename: 'zenemoo-company-portfolio.pdf',
-              file_size_bytes: brandData.bytes || 0,
-              file_size_formatted: formatBytes(brandData.bytes),
-              public_url: brandData.cloudinary_secure_url,
-              storage_public_id: brandData.cloudinary_public_id,
-              storage_provider: 'cloudinary',
-              version: 'v1',
-              is_published: brandData.is_active === true,
-              page_count: 0,
-              uploaded_by: 'admin',
-              created_at: brandData.created_at,
-              updated_at: brandData.updated_at,
-            };
-          }
+        const d1Row = await d1Service.getAdminPortfolio();
+        if (d1Row) {
+          currentRecord = {
+            id: d1Row.id || 'company_portfolio_main',
+            title: 'Zenemoo Official Company Portfolio',
+            filename: d1Row.filename,
+            original_filename: d1Row.filename,
+            file_size_bytes: Number(d1Row.file_size_bytes) || 0,
+            file_size_formatted: formatBytes(d1Row.file_size_bytes),
+            public_url: d1Row.public_url,
+            r2_key: d1Row.r2_key,
+            storage_provider: 'cloudflare_r2',
+            is_published: d1Row.status === 'active',
+            status: d1Row.status,
+            page_count: Number(d1Row.page_count) || 0,
+            last_action: d1Row.last_action,
+            created_at: d1Row.created_at,
+            updated_at: d1Row.updated_at,
+            deleted_at: d1Row.deleted_at,
+            deleted_by: d1Row.deleted_by,
+          };
         }
-      } catch (dbErr) {
-        console.warn('Supabase getAdminPortfolio select warning:', dbErr.message);
+      } catch (d1Err) {
+        console.warn('[Portfolio] D1 getAdminPortfolio warning:', d1Err.message);
       }
     }
 
-    if (activeRecord) {
-      return res.status(200).json({ success: true, data: activeRecord });
+    if (currentRecord) {
+      return res.status(200).json({ success: true, data: currentRecord });
     }
 
     const diskFallback = inMemoryActivePortfolio || loadDiskActivePortfolio();
     return res.status(200).json({ success: true, data: diskFallback || null });
   } catch (err) {
-    console.error('getAdminPortfolio Server Error:', err.message);
+    console.error('[Portfolio] getAdminPortfolio Server Error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to retrieve admin portfolio metadata.' });
   }
 };
 
 /**
  * POST /api/portfolio/upload (also handles PUT /api/portfolio)
- * Safe upload/replace flow:
- * 1. Upload new PDF to Cloudinary under folder zenemoo/company/portfolio
- * 2. Verify Cloudinary returns valid secure URL & bytes
- * 3. Update Supabase metadata record
- * 4. Invalidate cache
- * 5. Safely delete previous Cloudinary raw asset
+ * Safe Atomic Upload / Replace Flow:
+ * 1. Validate MIME type (application/pdf) & size <= 15MB
+ * 2. Generate unique R2 key: company/portfolio/zenemoo-company-portfolio-${timestamp}.pdf
+ * 3. Upload buffer to Cloudflare R2 bucket
+ * 4. Verify new R2 object exists & byte length matches
+ * 5. Query existing D1 row to capture old r2_key
+ * 6. Update single D1 row (status = 'active', last_action = 'uploaded' / 'replaced')
+ * 7. ONLY after successful D1 update: delete old R2 object
+ * 8. Invalidate in-memory cache and update disk snapshot
  */
 export const uploadOrReplacePortfolio = async (req, res) => {
+  let uploadedR2Key = null;
+
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -301,189 +264,144 @@ export const uploadOrReplacePortfolio = async (req, res) => {
       });
     }
 
-    // Step 1: Check and remember existing active storage_public_id for safe cleanup later
-    let oldStoragePublicId = null;
-    if (supabase) {
+    // Step 1: Check existing D1 row to know if this is a fresh upload or a replacement
+    let oldR2Key = null;
+    let isReplacement = false;
+
+    if (d1Service.isConfigured()) {
       try {
-        const { data: current } = await supabase
-          .from('company_portfolio')
-          .select('storage_public_id')
-          .limit(1)
-          .maybeSingle();
-
-        if (current && current.storage_public_id) {
-          oldStoragePublicId = current.storage_public_id;
-        } else {
-          const { data: brandCurrent } = await supabase
-            .from('site_branding')
-            .select('cloudinary_public_id')
-            .eq('asset_type', 'company_portfolio')
-            .limit(1)
-            .maybeSingle();
-          if (brandCurrent) oldStoragePublicId = brandCurrent.cloudinary_public_id;
+        const existing = await d1Service.getAdminPortfolio();
+        if (existing && existing.r2_key && existing.status === 'active') {
+          oldR2Key = existing.r2_key;
+          isReplacement = true;
         }
-      } catch (e) {}
-    }
-
-    // Step 2: Upload new PDF to Cloudinary as RAW asset
-    const timestamp = Date.now();
-    const folder = 'zenemoo/company/portfolio';
-    const customPublicId = `${folder}/zenemoo-company-portfolio-${timestamp}`;
-
-    const cloudinaryRes = await cloudinaryService.uploadStream(req.file.buffer, folder, {
-      public_id: customPublicId,
-      resource_type: 'raw',
-    });
-
-    if (!cloudinaryRes || !cloudinaryRes.secure_url) {
-      throw new Error('Cloudinary upload did not return a valid secure URL.');
-    }
-
-    const title = req.body?.title || 'Zenemoo Official Company Portfolio';
-    const originalFilename = req.file.originalname || 'zenemoo-company-portfolio.pdf';
-    const filename = `zenemoo-company-portfolio-${timestamp}.pdf`;
-    const fileSizeFormatted = formatBytes(cloudinaryRes.bytes || req.file.size);
-
-    const metadataPayload = {
-      title,
-      filename,
-      original_filename: originalFilename,
-      file_size_bytes: cloudinaryRes.bytes || req.file.size,
-      file_size_formatted: fileSizeFormatted,
-      public_url: cloudinaryRes.secure_url,
-      storage_public_id: cloudinaryRes.public_id,
-      storage_provider: 'cloudinary',
-      version: String(timestamp),
-      is_published: true,
-      page_count: req.body?.page_count ? parseInt(req.body.page_count, 10) : 0,
-      uploaded_by: req.user?.email || 'admin',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    // Step 3: Insert / Update Database Record
-    let savedRecord = null;
-    if (supabase) {
-      try {
-        // Deactivate older portfolio records
-        await supabase
-          .from('company_portfolio')
-          .update({ is_published: false, updated_at: new Date().toISOString() })
-          .neq('id', '00000000-0000-0000-0000-000000000000');
-
-        const { data, error } = await supabase
-          .from('company_portfolio')
-          .insert([metadataPayload])
-          .select(EXPLICIT_COLUMNS)
-          .maybeSingle();
-
-        if (!error && data) {
-          savedRecord = data;
-        } else {
-          // Fallback to site_branding table
-          await supabase
-            .from('site_branding')
-            .update({ is_active: false })
-            .eq('asset_type', 'company_portfolio');
-
-          await supabase.from('site_branding').insert([
-            {
-              asset_type: 'company_portfolio',
-              asset_name: title,
-              cloudinary_public_id: cloudinaryRes.public_id,
-              cloudinary_secure_url: cloudinaryRes.secure_url,
-              resource_type: 'raw',
-              format: 'pdf',
-              bytes: cloudinaryRes.bytes || req.file.size,
-              version: String(timestamp),
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              updated_by: req.user?.email || 'admin',
-            },
-          ]);
-        }
-      } catch (dbErr) {
-        console.warn('Supabase company_portfolio save warning:', dbErr.message);
+      } catch (e) {
+        console.warn('[Portfolio] Existing D1 check note:', e.message);
       }
     }
 
-    const responseData = savedRecord || {
-      id: `portfolio_${timestamp}`,
-      ...metadataPayload,
+    // Step 2: Generate unique server-side R2 key
+    const timestamp = Date.now();
+    const r2Key = `company/portfolio/zenemoo-company-portfolio-${timestamp}.pdf`;
+    uploadedR2Key = r2Key;
+
+    // Step 3: Upload buffer to Cloudflare R2
+    const r2UploadRes = await r2Service.uploadObject({
+      buffer: req.file.buffer,
+      key: r2Key,
+      contentType: 'application/pdf',
+    });
+
+    if (!r2UploadRes || !r2UploadRes.publicUrl) {
+      throw new Error('Cloudflare R2 upload did not return a valid public URL.');
+    }
+
+    // Step 4: Verify uploaded R2 object exists and byte size matches
+    const verification = await r2Service.verifyObjectExists(r2Key);
+    if (!verification.exists || verification.contentLength !== req.file.size) {
+      throw new Error('Cloudflare R2 object verification failed after upload.');
+    }
+
+    const filename = req.file.originalname || `zenemoo-company-portfolio-${timestamp}.pdf`;
+    const lastAction = isReplacement ? 'replaced' : 'uploaded';
+    const pageCount = req.body?.page_count ? parseInt(req.body.page_count, 10) : 0;
+
+    // Step 5: Upsert D1 record in single-row architecture
+    let savedRow = null;
+    if (d1Service.isConfigured()) {
+      try {
+        savedRow = await d1Service.upsertPortfolio({
+          filename,
+          r2Key,
+          publicUrl: r2UploadRes.publicUrl,
+          fileSizeBytes: req.file.size,
+          pageCount,
+          lastAction,
+        });
+      } catch (d1Err) {
+        console.error('[Portfolio] D1 upsert error, rolling back newly uploaded R2 object:', d1Err.message);
+        // Clean up newly uploaded object to prevent orphaned storage
+        await r2Service.deleteObject(r2Key);
+        throw new Error(`Failed to update portfolio metadata in D1: ${d1Err.message}`);
+      }
+    }
+
+    const responsePayload = formatPortfolioRecord(savedRow) || {
+      id: 'company_portfolio_main',
+      title: 'Zenemoo Official Company Portfolio',
+      filename,
+      original_filename: filename,
+      file_size_bytes: req.file.size,
+      file_size_formatted: formatBytes(req.file.size),
+      public_url: r2UploadRes.publicUrl,
+      r2_key: r2Key,
+      storage_provider: 'cloudflare_r2',
+      is_published: true,
+      status: 'active',
+      page_count: pageCount,
+      last_action: lastAction,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+      deleted_by: null,
     };
 
-    // Step 4: Update in-memory cache and disk persistence snapshot
-    inMemoryActivePortfolio = responseData;
-    saveDiskActivePortfolio(responseData);
+    // Step 6: Update cache and disk snapshot
+    inMemoryActivePortfolio = responsePayload;
+    saveDiskActivePortfolio(responsePayload);
     invalidatePortfolioCache();
 
-    // Step 5: Safe post-cleanup: delete previous Cloudinary asset ONLY after success
-    if (oldStoragePublicId && oldStoragePublicId !== cloudinaryRes.public_id) {
+    // Step 7: Safely delete previous R2 object only AFTER new upload and D1 update succeeded
+    if (oldR2Key && oldR2Key !== r2Key) {
       try {
-        await cloudinaryService.deleteMedia(oldStoragePublicId, { resource_type: 'raw' });
+        await r2Service.deleteObject(oldR2Key);
       } catch (delErr) {
-        console.warn('Cloudinary previous asset cleanup note:', delErr.message);
+        console.warn('[Portfolio] Previous R2 object cleanup note (non-critical):', delErr.message);
       }
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Company portfolio PDF uploaded and published successfully.',
-      data: responseData,
+      message: `Company portfolio PDF ${isReplacement ? 'replaced' : 'uploaded'} and published successfully.`,
+      data: responsePayload,
     });
   } catch (err) {
-    console.error('uploadOrReplacePortfolio Server Error:', err.message);
+    console.error('[Portfolio] uploadOrReplacePortfolio Server Error:', err.message);
     return res.status(500).json({
       success: false,
-      message: err.message || 'Failed to upload and activate company portfolio PDF.',
+      message: err.message || 'Failed to upload and activate company portfolio PDF in Cloudflare R2.',
     });
   }
 };
 
 /**
  * DELETE /api/portfolio
- * Removes active portfolio from publication and cleans up Cloudinary asset.
+ * Soft-deletes portfolio in D1 (retains record with status='deleted') and destroys R2 PDF binary.
  */
 export const deletePortfolio = async (req, res) => {
   try {
-    let storagePublicIdToDelete = null;
+    let r2KeyToDelete = null;
 
-    if (supabase) {
+    if (d1Service.isConfigured()) {
       try {
-        const { data } = await supabase
-          .from('company_portfolio')
-          .select('id, storage_public_id')
-          .limit(1)
-          .maybeSingle();
-
-        if (data) {
-          storagePublicIdToDelete = data.storage_public_id;
-          await supabase.from('company_portfolio').delete().eq('id', data.id);
-        } else {
-          const { data: brandData } = await supabase
-            .from('site_branding')
-            .select('id, cloudinary_public_id')
-            .eq('asset_type', 'company_portfolio');
-
-          if (Array.isArray(brandData)) {
-            for (const r of brandData) {
-              if (r.cloudinary_public_id) storagePublicIdToDelete = r.cloudinary_public_id;
-              await supabase.from('site_branding').delete().eq('id', r.id);
-            }
-          }
+        const current = await d1Service.getAdminPortfolio();
+        if (current && current.r2_key) {
+          r2KeyToDelete = current.r2_key;
         }
-      } catch (dbErr) {
-        console.warn('Supabase portfolio delete warning:', dbErr.message);
+
+        const adminEmail = req.user?.email || 'admin@zenemoo.in';
+        await d1Service.markDeleted({ adminEmail });
+      } catch (d1Err) {
+        console.warn('[Portfolio] D1 delete record note:', d1Err.message);
       }
     }
 
-    // Safely destroy Cloudinary raw asset
-    if (storagePublicIdToDelete) {
+    // Step 2: Delete actual PDF binary from Cloudflare R2
+    if (r2KeyToDelete) {
       try {
-        await cloudinaryService.deleteMedia(storagePublicIdToDelete, { resource_type: 'raw' });
-      } catch (cErr) {
-        console.warn('Cloudinary raw asset delete note:', cErr.message);
+        await r2Service.deleteObject(r2KeyToDelete);
+      } catch (r2Err) {
+        console.warn('[Portfolio] R2 object deletion warning:', r2Err.message);
       }
     }
 
@@ -497,7 +415,7 @@ export const deletePortfolio = async (req, res) => {
       data: null,
     });
   } catch (err) {
-    console.error('deletePortfolio Server Error:', err.message);
+    console.error('[Portfolio] deletePortfolio Server Error:', err.message);
     return res.status(500).json({
       success: false,
       message: 'Unable to delete company portfolio. Please try again.',
@@ -507,30 +425,24 @@ export const deletePortfolio = async (req, res) => {
 
 /**
  * PATCH /api/portfolio/status
- * Toggle is_published status
+ * Toggle publish / unpublish status in D1
  */
 export const togglePortfolioStatus = async (req, res) => {
   try {
     const isPublished = Boolean(req.body?.is_published ?? req.body?.isPublished);
+    const nextStatus = isPublished ? 'active' : 'deleted';
 
-    if (supabase) {
+    if (d1Service.isConfigured()) {
       try {
-        await supabase
-          .from('company_portfolio')
-          .update({ is_published: isPublished, updated_at: new Date().toISOString() })
-          .neq('id', '00000000-0000-0000-0000-000000000000');
-
-        await supabase
-          .from('site_branding')
-          .update({ is_active: isPublished, updated_at: new Date().toISOString() })
-          .eq('asset_type', 'company_portfolio');
-      } catch (dbErr) {
-        console.warn('Supabase togglePortfolioStatus warning:', dbErr.message);
+        await d1Service.updateStatus(nextStatus);
+      } catch (d1Err) {
+        console.warn('[Portfolio] D1 toggle status warning:', d1Err.message);
       }
     }
 
     if (inMemoryActivePortfolio) {
       inMemoryActivePortfolio.is_published = isPublished;
+      inMemoryActivePortfolio.status = nextStatus;
       saveDiskActivePortfolio(inMemoryActivePortfolio);
     }
 
@@ -540,9 +452,10 @@ export const togglePortfolioStatus = async (req, res) => {
       success: true,
       message: `Portfolio is now ${isPublished ? 'Published' : 'Unpublished'}.`,
       is_published: isPublished,
+      status: nextStatus,
     });
   } catch (err) {
-    console.error('togglePortfolioStatus Server Error:', err.message);
+    console.error('[Portfolio] togglePortfolioStatus Server Error:', err.message);
     return res.status(500).json({
       success: false,
       message: 'Failed to update portfolio publication status.',
