@@ -2,15 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   FileText,
   Download,
-  Share2,
   ZoomIn,
   ZoomOut,
   Maximize2,
-  Minimize2,
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   ArrowLeft,
   AlertCircle,
   RefreshCw,
@@ -19,13 +16,10 @@ import {
   BookOpen,
   X,
   Layers,
-  Check,
-  Copy,
 } from 'lucide-react';
 import { portfolioApi, CompanyPortfolioItem } from '../services/api';
 import { SeoImage } from '../seo/components/SeoImage';
 import { useActiveLogo } from '../lib/useActiveLogo';
-import { PortfolioShareModal } from './PortfolioShareModal';
 
 declare global {
   interface Window {
@@ -43,23 +37,27 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.2);
+  const [scale, setScale] = useState<number>(1.0);
+  const [isFitWidth, setIsFitWidth] = useState<boolean>(true);
   const [isLoadingPdf, setIsLoadingPdf] = useState<boolean>(false);
   const [renderedPages, setRenderedPages] = useState<{ [pageNum: number]: boolean }>({});
   const [renderedThumbnails, setRenderedThumbnails] = useState<{ [pageNum: number]: boolean }>({});
 
   // UI Modes
-  const [showThumbnails, setShowThumbnails] = useState<boolean>(true);
+  const [showThumbnails, setShowThumbnails] = useState<boolean>(false);
   const [isReadingMode, setIsReadingMode] = useState<boolean>(false);
-  const [showShareModal, setShowShareModal] = useState<boolean>(false);
+  const [isToolbarVisible, setIsToolbarVisible] = useState<boolean>(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<{ [pageNum: number]: HTMLDivElement | null }>({});
   const canvasRefs = useRef<{ [pageNum: number]: HTMLCanvasElement | null }>({});
   const thumbnailRefs = useRef<{ [pageNum: number]: HTMLDivElement | null }>({});
   const thumbnailCanvasRefs = useRef<{ [pageNum: number]: HTMLCanvasElement | null }>({});
+  const lastScrollTopRef = useRef<number>(0);
+  const naturalPageWidthRef = useRef<number>(0);
+  const naturalPageHeightRef = useRef<number>(0);
 
-  // Fetch Portfolio Metadata (15-min cached, near-zero egress)
+  // Fetch Portfolio Metadata
   const fetchMetadata = useCallback(async () => {
     setIsLoadingMetadata(true);
     setError('');
@@ -84,7 +82,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     fetchMetadata();
   }, [fetchMetadata]);
 
-  // Load PDF.js dynamically on demand to preserve lightweight initial bundle
+  // Load PDF.js dynamically on demand
   const loadPdfJsScript = (): Promise<any> => {
     return new Promise((resolve, reject) => {
       if (window.pdfjsLib) {
@@ -109,6 +107,23 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     });
   };
 
+  // Dynamic Fit-Width Scale Calculator based on actual unscaled PDF viewport & available container width
+  const calculateFitScale = useCallback(() => {
+    if (!containerRef.current || !naturalPageWidthRef.current) return 1.0;
+
+    const isMobile = window.innerWidth < 768;
+    // On mobile, container width is full width (since sidebar is an overlay)
+    // On desktop, if sidebar is open, containerRef.clientWidth already reflects remaining width
+    const containerWidth = containerRef.current.clientWidth;
+
+    // Margin padding: 16px on mobile, 48px on desktop
+    const horizontalPadding = isMobile ? 16 : 48;
+    const availableWidth = Math.max(200, containerWidth - horizontalPadding);
+
+    const fit = +(availableWidth / naturalPageWidthRef.current).toFixed(3);
+    return Math.max(0.25, Math.min(3.0, fit));
+  }, []);
+
   // Load PDF Document when metadata is ready
   useEffect(() => {
     if (!portfolio?.public_url) return;
@@ -130,10 +145,26 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
         return loadingTask.promise;
       })
-      .then((pdf) => {
+      .then(async (pdf) => {
         if (!isMounted) return;
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
+
+        // Fetch page 1 natural viewport dimensions
+        try {
+          const page1 = await pdf.getPage(1);
+          const naturalViewport = page1.getViewport({ scale: 1.0 });
+          naturalPageWidthRef.current = naturalViewport.width;
+          naturalPageHeightRef.current = naturalViewport.height;
+
+          // Compute initial fit-to-width scale
+          const initialFit = calculateFitScale();
+          setScale(initialFit);
+          setIsFitWidth(true);
+        } catch (vpErr) {
+          console.warn('Page viewport extraction notice:', vpErr);
+        }
+
         setIsLoadingPdf(false);
       })
       .catch((err) => {
@@ -146,7 +177,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [portfolio?.public_url]);
+  }, [portfolio?.public_url, calculateFitScale]);
 
   // Render a full-size page canvas
   const renderPage = useCallback(
@@ -221,7 +252,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
   // Main Document IntersectionObserver for Virtualized Rendering + Active Page Tracking
   useEffect(() => {
-    if (!pdfDoc || totalPages === 0) return;
+    if (!pdfDoc || totalPages === 0 || !containerRef.current) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -238,9 +269,9 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
         });
       },
       {
-        root: null,
+        root: containerRef.current,
         rootMargin: '300px 0px 300px 0px',
-        threshold: [0.1, 0.5],
+        threshold: [0.15, 0.5],
       }
     );
 
@@ -268,7 +299,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
       },
       {
         root: null,
-        rootMargin: '100px 0px 100px 0px',
+        rootMargin: '120px 0px 120px 0px',
         threshold: 0.1,
       }
     );
@@ -281,6 +312,16 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     return () => thumbObserver.disconnect();
   }, [pdfDoc, totalPages, showThumbnails, renderThumbnail]);
 
+  // Auto-scroll active thumbnail into view when page changes
+  useEffect(() => {
+    if (currentPage && thumbnailRefs.current[currentPage] && showThumbnails) {
+      thumbnailRefs.current[currentPage]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [currentPage, showThumbnails]);
+
   // Re-render visible pages on scale change
   useEffect(() => {
     if (!pdfDoc) return;
@@ -290,150 +331,174 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     if (currentPage - 1 >= 1) renderPage(currentPage - 1);
   }, [scale, pdfDoc, renderPage, currentPage, totalPages]);
 
-  // Adjust default scale and sidebar on resize
+  // Responsive ResizeObserver to dynamically recalculate fit-width and adapt sidebar
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
-      if (width < 640) {
-        setScale(0.75);
-        setShowThumbnails(false);
-      } else if (width < 1024) {
-        setScale(0.95);
-        setShowThumbnails(false);
-      } else {
-        setScale(1.2);
+      // Default sidebar visibility: open on desktop (>= 1024px), closed on tablet/mobile (< 1024px)
+      if (width >= 1024) {
         setShowThumbnails(true);
+      } else {
+        setShowThumbnails(false);
+      }
+
+      if (isFitWidth && naturalPageWidthRef.current) {
+        const nextFit = calculateFitScale();
+        setScale(nextFit);
       }
     };
-    handleResize();
-  }, []);
 
-  // Keyboard shortcut listener (Esc to exit reading mode)
+    window.addEventListener('resize', handleResize);
+    // Initial run
+    if (window.innerWidth >= 1024) {
+      setShowThumbnails(true);
+    }
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isFitWidth, calculateFitScale]);
+
+  // Keyboard shortcut listener (Esc to exit reading mode or close drawer)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isReadingMode) {
-        setIsReadingMode(false);
+      if (e.key === 'Escape') {
+        if (isReadingMode) setIsReadingMode(false);
+        if (showThumbnails && window.innerWidth < 768) setShowThumbnails(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReadingMode]);
+  }, [isReadingMode, showThumbnails]);
 
-  // Zoom Controls
-  const handleZoomIn = () => setScale((s) => Math.min(2.5, +(s + 0.15).toFixed(2)));
-  const handleZoomOut = () => setScale((s) => Math.max(0.5, +(s - 0.15).toFixed(2)));
-  const handleFitWidth = () => {
-    if (containerRef.current) {
-      const containerWidth = containerRef.current.clientWidth - (showThumbnails ? 260 : 48);
-      const targetScale = Math.max(0.5, Math.min(2.0, +(containerWidth / 620).toFixed(2)));
-      setScale(targetScale);
+  // Performant Scroll-Direction Detection (Smooth Auto-Hide for Center Toolbar)
+  const handleMainScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const currentScrollTop = e.currentTarget.scrollTop;
+    const delta = currentScrollTop - lastScrollTopRef.current;
+
+    // Scrolling down past top threshold (80px) -> hide toolbar
+    if (delta > 8 && currentScrollTop > 80) {
+      setIsToolbarVisible(false);
+    } else if (delta < -6 || currentScrollTop <= 40) {
+      // Scrolling up or near top -> show toolbar
+      setIsToolbarVisible(true);
     }
+
+    lastScrollTopRef.current = currentScrollTop;
   };
 
-  // Scroll to Page
+  // Zoom Controls
+  const handleZoomIn = () => {
+    setIsFitWidth(false);
+    setScale((s) => Math.min(3.0, +(s + 0.15).toFixed(2)));
+  };
+
+  const handleZoomOut = () => {
+    setIsFitWidth(false);
+    setScale((s) => Math.max(0.3, +(s - 0.15).toFixed(2)));
+  };
+
+  const handleFitWidth = () => {
+    const nextFit = calculateFitScale();
+    setScale(nextFit);
+    setIsFitWidth(true);
+  };
+
+  // Smooth Scroll to Target Page
   const scrollToPage = (pageNum: number) => {
     const el = pageRefs.current[pageNum];
     if (el) {
+      // On mobile, close thumbnail drawer when navigating
+      if (window.innerWidth < 768) {
+        setShowThumbnails(false);
+      }
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setCurrentPage(pageNum);
     }
   };
 
   return (
-    <div className={`bg-[#050505] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200 ${isReadingMode ? 'fixed inset-0 z-50 overflow-hidden' : 'min-h-screen'}`}>
+    <div className="h-screen w-screen bg-[#050505] text-slate-100 flex flex-col font-sans overflow-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* TOP BRANDED WEBSITE HEADER (Hidden in dedicated Reading Mode) */}
       {!isReadingMode && (
-        <header className="sticky top-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-4 sm:px-6 py-3 transition-all">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-            {/* Logo & Breadcrumb */}
-            <div className="flex items-center gap-3 min-w-0">
-              <a href="/" className="flex items-center gap-2.5 group shrink-0" aria-label="Return to Zenemoo Home">
-                <div className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:scale-105 transition-transform shrink-0">
-                  <SeoImage
-                    src={logoUrl || '/assets/logo.png'}
-                    alt="Zenemoo Official Logo"
-                    width={40}
-                    height={40}
-                    className="w-full h-full object-contain rounded-full bg-white p-0.5"
-                    fallbackSrc="/assets/logo.png"
-                  />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-base sm:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-tight truncate">
-                    ZENEMOO
-                  </span>
-                  <span className="text-[10px] font-mono text-cyan-400/90 tracking-tight hidden sm:block">
-                    Company Portfolio
-                  </span>
-                </div>
-              </a>
-            </div>
+        <header className="shrink-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 py-2 sm:py-2.5 transition-all flex items-center justify-between gap-2 shadow-md">
+          {/* Logo & Breadcrumb */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+            <a href="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0" aria-label="Return to Zenemoo Home">
+              <div className="relative h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:scale-105 transition-transform shrink-0">
+                <SeoImage
+                  src={logoUrl || '/assets/logo.png'}
+                  alt="Zenemoo Official Logo"
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                  fallbackSrc="/assets/logo.png"
+                />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm sm:text-lg font-extrabold tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-tight truncate">
+                  ZENEMOO
+                </span>
+                <span className="text-[9px] sm:text-[10px] font-mono text-cyan-400/90 tracking-tight hidden xs:block">
+                  Company Portfolio
+                </span>
+              </div>
+            </a>
+          </div>
 
-            {/* Prominent Download Button & Action Suite */}
-            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Action Suite (Back Home, Reading Mode, Prominent Download) */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            <a
+              href="/"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 text-xs font-mono transition-all cursor-pointer"
+              title="Return to Home"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Back Home</span>
+            </a>
+
+            <button
+              onClick={() => setIsReadingMode(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 hover:text-white border border-white/10 hover:border-cyan-500/40 text-xs font-semibold transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Reading Mode (Fullscreen)"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden md:inline">Reading Mode</span>
+            </button>
+
+            {portfolio?.public_url && (
               <a
-                href="/"
-                className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 text-xs font-mono transition-all cursor-pointer"
+                href={portfolio.public_url}
+                download={portfolio.filename || 'zenemoo-company-portfolio.pdf'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 via-cyan-400 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-black font-extrabold text-xs font-mono shadow-lg shadow-cyan-500/25 transition-all cursor-pointer active:scale-95"
+                title="Download Official Company Portfolio PDF"
               >
-                <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Back Home</span>
+                <Download className="w-3.5 h-3.5 text-black stroke-[2.5]" />
+                <span className="hidden sm:inline">Download Company Portfolio</span>
+                <span className="sm:hidden">Download</span>
               </a>
-
-              <button
-                onClick={() => setIsReadingMode(true)}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 hover:text-white border border-white/10 hover:border-cyan-500/40 text-xs font-semibold transition-all cursor-pointer active:scale-95 shadow-sm"
-                title="Reading Mode (Fullscreen)"
-              >
-                <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Reading Mode</span>
-              </button>
-
-              <button
-                onClick={() => setShowShareModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 hover:text-white border border-white/10 hover:border-cyan-500/40 text-xs font-semibold transition-all cursor-pointer active:scale-95 shadow-sm"
-                title="Share Portfolio + QR"
-                aria-label="Share Portfolio"
-              >
-                <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="hidden sm:inline">Share</span>
-              </button>
-
-              {portfolio?.public_url && (
-                <a
-                  href={portfolio.public_url}
-                  download={portfolio.filename || 'zenemoo-company-portfolio.pdf'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-cyan-500 via-cyan-400 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-black font-extrabold text-xs font-mono shadow-lg shadow-cyan-500/25 transition-all cursor-pointer active:scale-95"
-                >
-                  <Download className="w-3.5 h-3.5 text-black stroke-[2.5]" />
-                  <span className="hidden md:inline">Download Company Portfolio</span>
-                  <span className="md:hidden">Download</span>
-                </a>
-              )}
-            </div>
+            )}
           </div>
         </header>
       )}
 
       {/* READING MODE TOP COMPACT FLOATING BAR */}
       {isReadingMode && (
-        <div className="z-50 bg-[#080912]/95 backdrop-blur-xl border-b border-white/15 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 shadow-2xl shrink-0">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-xs font-extrabold font-display tracking-wider text-white">ZENEMOO PORTFOLIO</span>
-            <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-lg border border-cyan-500/30">
-              Page {currentPage} / {totalPages || 1}
+        <div className="shrink-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/15 px-3 sm:px-6 py-2 flex items-center justify-between gap-2 shadow-2xl">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-extrabold font-display tracking-wider text-white truncate">ZENEMOO PORTFOLIO</span>
+            <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-lg border border-cyan-500/30 shrink-0">
+              {currentPage}/{totalPages || 1}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setShowThumbnails(!showThumbnails)}
               className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1 cursor-pointer"
-              title="Toggle Thumbnails"
+              title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
             >
               {showThumbnails ? <PanelLeftClose className="w-4 h-4 text-cyan-400" /> : <PanelLeft className="w-4 h-4 text-cyan-400" />}
-              <span className="hidden md:inline text-[11px]">{showThumbnails ? 'Hide' : 'Thumbnails'}</span>
             </button>
 
             <button
@@ -443,7 +508,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
             >
               <ZoomOut className="w-4 h-4 text-cyan-400" />
             </button>
-            <span className="text-xs font-mono font-bold text-slate-300 min-w-[36px] text-center">
+            <span className="text-xs font-mono font-bold text-slate-300 min-w-[34px] text-center">
               {Math.round(scale * 100)}%
             </span>
             <button
@@ -454,45 +519,53 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
               <ZoomIn className="w-4 h-4 text-cyan-400" />
             </button>
 
-            <button
-              onClick={() => setShowShareModal(true)}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
-              title="Share"
-            >
-              <Share2 className="w-4 h-4 text-cyan-400" />
-            </button>
-
             {portfolio?.public_url && (
               <a
                 href={portfolio.public_url}
                 download={portfolio.filename || 'zenemoo-company-portfolio.pdf'}
-                className="px-3 py-1.5 rounded-lg bg-cyan-500 text-black text-xs font-mono font-bold flex items-center gap-1 cursor-pointer shadow-md shadow-cyan-500/20"
+                className="px-2.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-mono font-bold flex items-center gap-1 cursor-pointer shadow-md shadow-cyan-500/20"
+                title="Download PDF"
               >
                 <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span className="hidden sm:inline">Download</span>
               </a>
             )}
 
             <button
               onClick={() => setIsReadingMode(false)}
-              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-mono font-bold flex items-center gap-1 cursor-pointer ml-1"
+              className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-mono font-bold flex items-center gap-1 cursor-pointer ml-1"
               title="Exit Reading Mode (Esc)"
             >
               <X className="w-4 h-4 text-slate-300" />
-              <span>Exit</span>
+              <span className="hidden xs:inline">Exit</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* MAIN BODY AREA WITH SIDEBAR + VIEWER */}
-      <div className={`flex-1 flex w-full max-w-full overflow-hidden ${isReadingMode ? 'h-[calc(100vh-52px)]' : ''}`}>
-        {/* COLLAPSIBLE PAGE THUMBNAIL NAVIGATOR SIDEBAR */}
+      {/* MAIN BODY AREA (FLEX CONTAINER: SIDEBAR + INDEPENDENT PDF VIEWER) */}
+      <div className="flex-1 flex w-full overflow-hidden relative">
+        {/* MOBILE THUMBNAIL BACKDROP (Screens < 768px) */}
         {showThumbnails && portfolio && (
+          <div
+            className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm md:hidden transition-opacity"
+            onClick={() => setShowThumbnails(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* THUMBNAIL NAVIGATOR SIDEBAR (Desktop: Relative Column / Mobile: Slide-in Drawer) */}
+        {portfolio && (
           <aside
-            className={`shrink-0 border-r border-white/10 bg-[#06070b]/90 backdrop-blur-xl flex flex-col transition-all duration-300 z-30 ${
-              isReadingMode ? 'w-48 sm:w-56' : 'w-48 sm:w-56 md:w-60'
-            }`}
+            className={`
+              fixed md:relative top-0 bottom-0 left-0 z-50 md:z-20
+              h-full shrink-0 border-r border-white/10 bg-[#06070b]/98 md:bg-[#06070b]/95 backdrop-blur-2xl
+              flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-2xl md:shadow-none
+              ${
+                showThumbnails
+                  ? 'w-[75vw] max-w-[280px] md:w-56 lg:w-60 translate-x-0'
+                  : '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0'
+              }
+            `}
           >
             {/* Sidebar Header */}
             <div className="p-3 border-b border-white/10 flex items-center justify-between shrink-0">
@@ -503,13 +576,15 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
               <button
                 onClick={() => setShowThumbnails(false)}
                 className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                title="Collapse Sidebar"
+                title="Close Sidebar"
+                aria-label="Close Thumbnail Sidebar"
               >
-                <PanelLeftClose className="w-4 h-4" />
+                <X className="w-4 h-4 md:hidden" />
+                <PanelLeftClose className="w-4 h-4 hidden md:block" />
               </button>
             </div>
 
-            {/* Thumbnail Scrollable List */}
+            {/* Independent Thumbnail Scrollable Container */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
                 const isCurrent = currentPage === pageNum;
@@ -523,7 +598,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                     onClick={() => scrollToPage(pageNum)}
                     className={`group relative rounded-xl p-2 border transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
                       isCurrent
-                        ? 'bg-cyan-500/15 border-cyan-400 shadow-md shadow-cyan-500/20'
+                        ? 'bg-cyan-500/15 border-cyan-400 shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400/50'
                         : 'bg-white/[0.02] hover:bg-white/[0.06] border-white/5 hover:border-white/20'
                     }`}
                   >
@@ -554,14 +629,15 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           </aside>
         )}
 
-        {/* MAIN VIEWER SCROLLING CONTAINER */}
+        {/* MAIN VIEWER SCROLLING CONTAINER (100% Mobile Width & Independent Scroll Region) */}
         <main
-          className="flex-1 flex flex-col items-center justify-start p-3 sm:p-6 overflow-y-auto w-full relative custom-scrollbar"
+          className="flex-1 h-full flex flex-col items-center justify-start p-2 sm:p-4 md:p-6 overflow-y-auto overflow-x-auto w-full relative custom-scrollbar pb-24 sm:pb-12"
           ref={containerRef}
+          onScroll={handleMainScroll}
         >
           {/* LOADING SKELETON */}
           {isLoadingMetadata && (
-            <div className="w-full max-w-3xl my-12 flex flex-col items-center justify-center p-12 rounded-3xl bg-slate-900/50 border border-white/10 backdrop-blur-md">
+            <div className="w-full max-w-3xl my-12 flex flex-col items-center justify-center p-8 sm:p-12 rounded-3xl bg-slate-900/50 border border-white/10 backdrop-blur-md">
               <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mb-4" />
               <p className="text-sm font-mono text-cyan-300">Loading Zenemoo Portfolio...</p>
               <p className="text-xs text-slate-500 mt-1">Connecting to official CDN asset</p>
@@ -570,17 +646,17 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
           {/* EMPTY STATE */}
           {!isLoadingMetadata && !portfolio && !error && (
-            <div className="w-full max-w-xl my-16 text-center p-8 sm:p-12 rounded-3xl bg-slate-900/70 border border-white/10 backdrop-blur-md">
-              <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto mb-5">
-                <FileText className="w-8 h-8 text-cyan-400" />
+            <div className="w-full max-w-xl my-12 text-center p-6 sm:p-12 rounded-3xl bg-slate-900/70 border border-white/10 backdrop-blur-md shadow-2xl">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto mb-4 sm:mb-5">
+                <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-400" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold font-display text-white mb-2">Company Portfolio Coming Soon</h2>
-              <p className="text-sm text-slate-400 max-w-md mx-auto mb-6">
+              <h2 className="text-lg sm:text-2xl font-bold font-display text-white mb-2">Company Portfolio Coming Soon</h2>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-5 sm:mb-6">
                 Our official enterprise company portfolio document is currently being updated.
               </p>
               <a
                 href="/"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold hover:bg-cyan-500/30 transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold hover:bg-cyan-500/30 transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Return to Zenemoo Home</span>
@@ -590,14 +666,14 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
           {/* ERROR STATE */}
           {error && (
-            <div className="w-full max-w-lg my-12 p-6 rounded-3xl bg-red-950/40 border border-red-500/30 text-center backdrop-blur-md">
-              <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-white mb-1">Portfolio Unavailable</h3>
-              <p className="text-xs text-red-300/80 mb-5">{error}</p>
+            <div className="w-full max-w-lg my-12 p-5 sm:p-6 rounded-3xl bg-red-950/40 border border-red-500/30 text-center backdrop-blur-md">
+              <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-red-400 mx-auto mb-3" />
+              <h3 className="text-sm sm:text-base font-bold text-white mb-1">Portfolio Unavailable</h3>
+              <p className="text-xs text-red-300/80 mb-4 sm:mb-5">{error}</p>
               <div className="flex items-center justify-center gap-3">
                 <button
                   onClick={fetchMetadata}
-                  className="px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-all cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-all cursor-pointer"
                 >
                   Retry Loading
                 </button>
@@ -606,7 +682,7 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                     href={portfolio.public_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold hover:bg-cyan-500/30 transition-all"
+                    className="px-3.5 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold hover:bg-cyan-500/30 transition-all"
                   >
                     Direct Open
                   </a>
@@ -617,16 +693,23 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
           {/* ACTIVE PDF VIEWER */}
           {!isLoadingMetadata && portfolio && (
-            <div className="w-full flex flex-col items-center">
-              {/* STICKY FLOATING CONTROL TOOLBAR (When not in reading mode) */}
+            <div className="w-full flex flex-col items-center max-w-full">
+              {/* STICKY FLOATING CONTROL TOOLBAR (Responsive with Auto-Hide on Scroll Down) */}
               {!isReadingMode && (
-                <div className="sticky top-2 z-30 mb-4 px-3 py-2 rounded-2xl bg-[#080912]/90 border border-white/15 backdrop-blur-2xl shadow-2xl flex items-center justify-between gap-2 sm:gap-4 max-w-2xl w-full">
+                <div
+                  className={`sticky top-2 sm:top-3 z-30 mb-3 sm:mb-4 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl bg-[#080912]/92 border border-white/15 backdrop-blur-2xl shadow-2xl shadow-black/80 flex items-center justify-between gap-1.5 sm:gap-4 max-w-2xl w-full transition-all duration-300 ease-out ${
+                    isToolbarVisible
+                      ? 'opacity-100 translate-y-0 pointer-events-auto'
+                      : 'opacity-0 -translate-y-6 pointer-events-none'
+                  }`}
+                >
                   {/* Left: Thumbnail Sidebar Toggle & Page Stepper */}
-                  <div className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 shrink-0">
+                  <div className="flex items-center gap-1 text-xs font-mono text-cyan-300 shrink-0">
                     <button
                       onClick={() => setShowThumbnails(!showThumbnails)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
                       title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
+                      aria-label="Toggle Thumbnail Sidebar"
                     >
                       {showThumbnails ? <PanelLeftClose className="w-4 h-4 text-cyan-400" /> : <PanelLeft className="w-4 h-4 text-cyan-400" />}
                     </button>
@@ -639,8 +722,8 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                     >
                       <ChevronLeft className="w-4 h-4 text-cyan-400" />
                     </button>
-                    <span className="font-bold">
-                      {currentPage} <span className="text-slate-500">/</span> {totalPages || 1}
+                    <span className="font-bold text-[11px] sm:text-xs select-none">
+                      {currentPage}<span className="text-slate-500">/</span>{totalPages || 1}
                     </span>
                     <button
                       onClick={() => scrollToPage(Math.min(totalPages, currentPage + 1))}
@@ -653,39 +736,48 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                   </div>
 
                   {/* Middle: Zoom Controls */}
-                  <div className="flex items-center gap-1 bg-white/[0.04] p-1 rounded-xl border border-white/5">
+                  <div className="flex items-center gap-0.5 sm:gap-1 bg-white/[0.04] p-0.5 sm:p-1 rounded-xl border border-white/5">
                     <button
                       onClick={handleZoomOut}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
                       title="Zoom Out"
+                      aria-label="Zoom Out"
                     >
                       <ZoomOut className="w-3.5 h-3.5 text-cyan-400" />
                     </button>
-                    <span className="text-[11px] font-mono font-bold text-slate-300 px-1.5 min-w-[42px] text-center">
+                    <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-300 px-1 min-w-[34px] sm:min-w-[40px] text-center select-none">
                       {Math.round(scale * 100)}%
                     </span>
                     <button
                       onClick={handleZoomIn}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
                       title="Zoom In"
+                      aria-label="Zoom In"
                     >
                       <ZoomIn className="w-3.5 h-3.5 text-cyan-400" />
                     </button>
                   </div>
 
-                  {/* Right: Fit Width & Reading Mode */}
+                  {/* Right: Fit Width & Fullscreen Controls */}
                   <div className="flex items-center gap-1">
                     <button
                       onClick={handleFitWidth}
-                      className="hidden sm:inline-flex px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] text-[11px] font-mono text-slate-300 hover:text-white border border-white/5 transition-colors cursor-pointer"
-                      title="Fit to Width"
+                      className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-mono transition-colors cursor-pointer ${
+                        isFitWidth
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                          : 'bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/5'
+                      }`}
+                      title="Fit Page to Screen Width"
+                      aria-label="Fit Width"
                     >
                       Fit Width
                     </button>
+
                     <button
                       onClick={() => setIsReadingMode(true)}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden xs:inline-flex"
                       title="Enter Reading Mode"
+                      aria-label="Enter Reading Mode"
                     >
                       <Maximize2 className="w-4 h-4 text-cyan-400" />
                     </button>
@@ -693,8 +785,9 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                       href={portfolio.public_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                      title="Open in New Tab"
+                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
+                      title="Open PDF in New Tab"
+                      aria-label="Open in New Tab"
                     >
                       <ExternalLink className="w-4 h-4 text-cyan-400" />
                     </a>
@@ -702,8 +795,8 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                 </div>
               )}
 
-              {/* CANVASES STREAM */}
-              <div className="w-full flex flex-col items-center gap-4 sm:gap-6 py-2 overflow-x-auto max-w-full">
+              {/* CANVASES STREAM (Centered, Responsive, Auto-Fitting) */}
+              <div className="w-full flex flex-col items-center gap-3 sm:gap-6 py-1 max-w-full">
                 {isLoadingPdf && (
                   <div className="py-16 flex flex-col items-center justify-center">
                     <RefreshCw className="w-7 h-7 text-cyan-400 animate-spin mb-3" />
@@ -718,14 +811,15 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                     ref={(el) => {
                       pageRefs.current[pageNum] = el;
                     }}
-                    className="relative group rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl shadow-cyan-950/40 border border-white/10 bg-slate-900/90 transition-all"
+                    className="relative group rounded-lg sm:rounded-2xl overflow-hidden shadow-xl sm:shadow-2xl shadow-cyan-950/30 border border-white/10 bg-slate-900/90 transition-all flex items-center justify-center"
                     style={{
-                      minHeight: scale * 400,
+                      minHeight: scale * 250,
+                      maxWidth: '100%',
                     }}
                   >
                     {/* Floating Page Tag */}
-                    <div className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/10 text-[10px] font-mono text-cyan-300 opacity-60 group-hover:opacity-100 transition-opacity">
-                      Page {pageNum} of {totalPages}
+                    <div className="absolute top-2 right-2 sm:top-2.5 sm:right-2.5 z-10 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] font-mono text-cyan-300 opacity-60 group-hover:opacity-100 transition-opacity select-none">
+                      {pageNum}/{totalPages}
                     </div>
 
                     {/* Canvas Render Element */}
@@ -733,17 +827,17 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
                       ref={(el) => {
                         canvasRefs.current[pageNum] = el;
                       }}
-                      className="block bg-white transition-transform"
+                      className="block bg-white transition-transform max-w-full h-auto"
                     />
 
                     {/* Lazy skeleton loader if page canvas not rendered yet */}
                     {!renderedPages[pageNum] && (
                       <div
                         className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm"
-                        style={{ minHeight: scale * 400 }}
+                        style={{ minHeight: scale * 250 }}
                       >
                         <RefreshCw className="w-5 h-5 text-cyan-400/60 animate-spin mb-2" />
-                        <span className="text-[11px] font-mono text-slate-400">Loading page {pageNum}...</span>
+                        <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">Loading page {pageNum}...</span>
                       </div>
                     )}
                   </div>
@@ -752,11 +846,11 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
               {/* FOOTER SPECS */}
               {!isReadingMode && (
-                <div className="mt-8 mb-12 text-center text-xs font-mono text-slate-500 space-y-1">
+                <div className="mt-8 mb-6 text-center text-xs font-mono text-slate-500 space-y-1">
                   <p>
                     Official Zenemoo Company Portfolio &bull; {portfolio.file_size_formatted || 'PDF Document'} &bull; {totalPages || 1} Pages
                   </p>
-                  <p className="text-[11px] text-slate-600">
+                  <p className="text-[10px] sm:text-[11px] text-slate-600">
                     Direct Cloud CDN Streaming &bull; Continuous Scroll &bull; Zero Server Egress
                   </p>
                 </div>
@@ -765,13 +859,6 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           )}
         </main>
       </div>
-
-      {/* SHARE PORTFOLIO MODAL WITH QR CODE */}
-      <PortfolioShareModal
-        isOpen={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        publicUrl="https://www.zenemoo.in/portfolio"
-      />
     </div>
   );
 };
