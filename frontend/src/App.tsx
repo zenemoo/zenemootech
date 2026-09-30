@@ -767,6 +767,10 @@ function AppInner() {
         pageTitle = 'Zenemoo Website Directory | AI, Data Solutions, Careers & More';
         canonicalUrl = 'https://www.zenemoo.in/sitemap';
         metaDescription = 'Explore the official Zenemoo website directory for AI and data solutions, multilingual technology, scheduling, careers, applications, company information, resources, contact options, and legal pages.';
+      } else if (matchedRoute === 'portfolio' || path === '/portfolio' || path === '/company-portfolio' || hash.includes('portfolio') || hash.includes('company-portfolio')) {
+        pageTitle = 'Zenemoo Company Portfolio | AI Data & Language Solutions';
+        canonicalUrl = 'https://www.zenemoo.in/portfolio';
+        metaDescription = "Explore Zenemoo's company portfolio, including AI data services, language data solutions, transcription, data annotation, multilingual voice services, and project capabilities.";
       }
 
       document.title = pageTitle;
@@ -810,7 +814,80 @@ function AppInner() {
         document.head.appendChild(schemaScript);
       }
 
-      if (matchedRoute === 'book-a-call' || path.startsWith('/30min')) {
+      if (matchedRoute === 'portfolio' || path === '/portfolio' || path === '/company-portfolio') {
+        schemaScript.text = JSON.stringify({
+          '@context': 'https://schema.org',
+          '@graph': [
+            {
+              '@type': 'Organization',
+              '@id': 'https://www.zenemoo.in/#organization',
+              name: 'Zenemoo',
+              legalName: 'Zenemoo',
+              alternateName: 'Formerly known as QuantumCoders Data Solution',
+              url: 'https://www.zenemoo.in/',
+              logo: {
+                '@type': 'ImageObject',
+                '@id': 'https://www.zenemoo.in/#logo',
+                url: 'https://www.zenemoo.in/assets/logo.png',
+                contentUrl: 'https://www.zenemoo.in/assets/logo.png',
+                caption: 'Zenemoo Official Logo',
+                width: '512',
+                height: '512',
+              },
+              email: 'contact@zenemoo.in',
+              address: {
+                '@type': 'PostalAddress',
+                streetAddress: 'K. Barida, Main Road',
+                addressLocality: 'Ganjam',
+                addressRegion: 'Odisha',
+                postalCode: '761031',
+                addressCountry: 'IN',
+              },
+            },
+            {
+              '@type': 'WebSite',
+              '@id': 'https://www.zenemoo.in/#website',
+              url: 'https://www.zenemoo.in/',
+              name: 'Zenemoo',
+              publisher: {
+                '@id': 'https://www.zenemoo.in/#organization',
+              },
+            },
+            {
+              '@type': 'WebPage',
+              '@id': 'https://www.zenemoo.in/portfolio#webpage',
+              url: 'https://www.zenemoo.in/portfolio',
+              name: 'Zenemoo Company Portfolio | AI Data & Language Solutions',
+              description: metaDescription,
+              isPartOf: {
+                '@id': 'https://www.zenemoo.in/#website',
+              },
+              about: {
+                '@id': 'https://www.zenemoo.in/#organization',
+              },
+              inLanguage: 'en-US',
+            },
+            {
+              '@type': 'BreadcrumbList',
+              '@id': 'https://www.zenemoo.in/portfolio#breadcrumb',
+              itemListElement: [
+                {
+                  '@type': 'ListItem',
+                  position: 1,
+                  name: 'Home',
+                  item: 'https://www.zenemoo.in/',
+                },
+                {
+                  '@type': 'ListItem',
+                  position: 2,
+                  name: 'Company Portfolio',
+                  item: 'https://www.zenemoo.in/portfolio',
+                },
+              ],
+            },
+          ],
+        });
+      } else if (matchedRoute === 'book-a-call' || path.startsWith('/30min')) {
         schemaScript.text = JSON.stringify({
           '@context': 'https://schema.org',
           '@type': 'Service',

@@ -123,4 +123,41 @@
     </image:image>
   </url>
 
+  <!-- 13. Official Zenemoo Company Portfolio -->
+  <url>
+    <loc>https://www.zenemoo.in/portfolio</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.90</priority>
+    <image:image>
+      <image:loc>https://www.zenemoo.in/assets/logo.png</image:loc>
+      <image:title>Zenemoo Company Portfolio | AI Data &amp; Language Solutions</image:title>
+      <image:caption>Official Zenemoo Company Portfolio &amp; Enterprise Capabilities Presentation</image:caption>
+    </image:image>
+  </url>
+
+  <!-- 14. AI Data Portfolio & Public Benchmark Corpora -->
+  <url>
+    <loc>https://www.zenemoo.in/ai-data</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.90</priority>
+  </url>
+
+  <!-- 15. Book a 30-Minute AI Discovery Call -->
+  <url>
+    <loc>https://www.zenemoo.in/30min</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+  </url>
+
+  <!-- 16. Official Website Directory & Sitemap Hub -->
+  <url>
+    <loc>https://www.zenemoo.in/sitemap</loc>
+    <lastmod>2026-09-07</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.70</priority>
+  </url>
+
 </urlset>

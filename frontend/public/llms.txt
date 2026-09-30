@@ -25,6 +25,8 @@ Zenemoo (https://zenemoo.in) is an AI-powered language and data services company
 
 ## Official Links
 - Homepage: https://zenemoo.in/
+- Official Company Portfolio: https://zenemoo.in/portfolio
+- AI Data Portfolio: https://zenemoo.in/ai-data
 - Program Opportunities Portal: https://zenemoo.in/#opportunities
 - Direct Contact: https://zenemoo.in/#contact
 - Privacy Policy: https://zenemoo.in/#privacy

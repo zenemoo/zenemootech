@@ -28,6 +28,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabaseClient';
 import { useTalentHubAuth } from './TalentHubAuthContext';
+import { ContributorJourneyModal } from './ContributorJourneyModal';
 import {
   paymentWorkerApi,
   PaymentRecord,
@@ -40,6 +41,9 @@ export const TalentHubPayments: React.FC = () => {
 
   // Active view: 'history' or 'leaderboard'
   const [activeTab, setActiveTab] = useState<'history' | 'leaderboard'>('history');
+
+  // Journey 3D Modal state
+  const [isJourneyModalOpen, setIsJourneyModalOpen] = useState<boolean>(false);
 
   // Transactions State
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -170,58 +174,135 @@ export const TalentHubPayments: React.FC = () => {
     }
   }, [activeTab, loadLeaderboardData]);
 
-  // Grade Helpers
-  const getGradeInfo = (grade: string = 'Bronze') => {
-    switch (grade) {
-      case 'Diamond':
-        return {
-          name: 'Diamond Contributor',
-          icon: Sparkles,
-          badgeBg: 'bg-cyan-500/15 border-cyan-400/30 text-cyan-300',
-          gradient: 'from-cyan-500/20 via-blue-500/20 to-indigo-500/20',
-          nextMilestone: null,
-          nextThreshold: 50000,
-        };
-      case 'Platinum':
-        return {
-          name: 'Platinum Contributor',
-          icon: Crown,
-          badgeBg: 'bg-purple-500/15 border-purple-400/30 text-purple-300',
-          gradient: 'from-purple-500/20 via-indigo-500/20 to-blue-500/20',
-          nextMilestone: 'Diamond',
-          nextThreshold: 50000,
-        };
-      case 'Gold':
-        return {
-          name: 'Gold Contributor',
-          icon: Trophy,
-          badgeBg: 'bg-amber-500/15 border-amber-400/30 text-amber-300',
-          gradient: 'from-amber-500/20 via-yellow-500/20 to-orange-500/20',
-          nextMilestone: 'Platinum',
-          nextThreshold: 25000,
-        };
-      case 'Silver':
-        return {
-          name: 'Silver Contributor',
-          icon: Medal,
-          badgeBg: 'bg-slate-300/15 border-slate-300/30 text-slate-200',
-          gradient: 'from-slate-400/20 via-slate-500/20 to-zinc-600/20',
-          nextMilestone: 'Gold',
-          nextThreshold: 10000,
-        };
-      default:
-        return {
-          name: 'Bronze Contributor',
-          icon: Shield,
-          badgeBg: 'bg-amber-700/15 border-amber-700/30 text-amber-400',
-          gradient: 'from-amber-700/20 via-amber-800/20 to-stone-800/20',
-          nextMilestone: 'Silver',
-          nextThreshold: 5000,
-        };
-    }
+  // ── Unified Contributor Tier Design Token System ──
+  interface TierConfig {
+    id: 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond';
+    name: string;
+    badgeLabel: string;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    primaryColor: string;
+    secondaryColor: string;
+    glowColor: string;
+    badgeBg: string;
+    badgeBorder: string;
+    badgeText: string;
+    badgeGlow: string;
+    heroBorder: string;
+    heroAmbientGlow: string;
+    progressGradient: string;
+    minThreshold: number;
+    nextThreshold: number;
+    nextMilestone: string | null;
+  }
+
+  const TIER_CONFIG: Record<string, TierConfig> = {
+    Bronze: {
+      id: 'Bronze',
+      name: 'Bronze Contributor',
+      badgeLabel: 'BRONZE CONTRIBUTOR',
+      icon: Shield,
+      primaryColor: '#CD7F32',
+      secondaryColor: '#A0522D',
+      glowColor: 'rgba(205, 127, 50, 0.35)',
+      badgeBg: 'rgba(205, 127, 50, 0.12)',
+      badgeBorder: 'rgba(205, 127, 50, 0.35)',
+      badgeText: '#E69A53',
+      badgeGlow: '0 0 16px rgba(205, 127, 50, 0.22)',
+      heroBorder: 'rgba(205, 127, 50, 0.20)',
+      heroAmbientGlow: 'radial-gradient(circle at top right, rgba(205, 127, 50, 0.12), transparent 70%)',
+      progressGradient: 'linear-gradient(90deg, #CD7F32 0%, #E69A53 100%)',
+      minThreshold: 0,
+      nextThreshold: 5000,
+      nextMilestone: 'Silver',
+    },
+    Silver: {
+      id: 'Silver',
+      name: 'Silver Contributor',
+      badgeLabel: 'SILVER CONTRIBUTOR',
+      icon: Medal,
+      primaryColor: '#C0C7D1',
+      secondaryColor: '#94A3B8',
+      glowColor: 'rgba(192, 199, 209, 0.35)',
+      badgeBg: 'rgba(192, 199, 209, 0.12)',
+      badgeBorder: 'rgba(192, 199, 209, 0.35)',
+      badgeText: '#E2E8F0',
+      badgeGlow: '0 0 16px rgba(192, 199, 209, 0.22)',
+      heroBorder: 'rgba(192, 199, 209, 0.20)',
+      heroAmbientGlow: 'radial-gradient(circle at top right, rgba(192, 199, 209, 0.12), transparent 70%)',
+      progressGradient: 'linear-gradient(90deg, #94A3B8 0%, #E2E8F0 100%)',
+      minThreshold: 5000,
+      nextThreshold: 10000,
+      nextMilestone: 'Gold',
+    },
+    Gold: {
+      id: 'Gold',
+      name: 'Gold Contributor',
+      badgeLabel: 'GOLD CONTRIBUTOR',
+      icon: Trophy,
+      primaryColor: '#F5C542',
+      secondaryColor: '#EAB308',
+      glowColor: 'rgba(245, 197, 66, 0.38)',
+      badgeBg: 'rgba(245, 197, 66, 0.12)',
+      badgeBorder: 'rgba(245, 197, 66, 0.40)',
+      badgeText: '#FDE047',
+      badgeGlow: '0 0 18px rgba(245, 197, 66, 0.25)',
+      heroBorder: 'rgba(245, 197, 66, 0.22)',
+      heroAmbientGlow: 'radial-gradient(circle at top right, rgba(245, 197, 66, 0.14), transparent 70%)',
+      progressGradient: 'linear-gradient(90deg, #EAB308 0%, #FDE047 100%)',
+      minThreshold: 10000,
+      nextThreshold: 25000,
+      nextMilestone: 'Platinum',
+    },
+    Platinum: {
+      id: 'Platinum',
+      name: 'Platinum Contributor',
+      badgeLabel: 'PLATINUM CONTRIBUTOR',
+      icon: Crown,
+      primaryColor: '#67E8F9',
+      secondaryColor: '#38BDF8',
+      glowColor: 'rgba(103, 232, 249, 0.38)',
+      badgeBg: 'rgba(103, 232, 249, 0.12)',
+      badgeBorder: 'rgba(103, 232, 249, 0.40)',
+      badgeText: '#A5F3FC',
+      badgeGlow: '0 0 18px rgba(103, 232, 249, 0.25)',
+      heroBorder: 'rgba(103, 232, 249, 0.22)',
+      heroAmbientGlow: 'radial-gradient(circle at top right, rgba(103, 232, 249, 0.14), transparent 70%)',
+      progressGradient: 'linear-gradient(90deg, #38BDF8 0%, #A5F3FC 100%)',
+      minThreshold: 25000,
+      nextThreshold: 50000,
+      nextMilestone: 'Diamond',
+    },
+    Diamond: {
+      id: 'Diamond',
+      name: 'Diamond Contributor',
+      badgeLabel: 'DIAMOND CONTRIBUTOR',
+      icon: Sparkles,
+      primaryColor: '#7DD3FC',
+      secondaryColor: '#C084FC',
+      glowColor: 'rgba(125, 211, 252, 0.42)',
+      badgeBg: 'rgba(125, 211, 252, 0.14)',
+      badgeBorder: 'rgba(125, 211, 252, 0.42)',
+      badgeText: '#BAE6FD',
+      badgeGlow: '0 0 20px rgba(125, 211, 252, 0.30), 0 0 35px rgba(192, 132, 252, 0.15)',
+      heroBorder: 'rgba(125, 211, 252, 0.25)',
+      heroAmbientGlow: 'radial-gradient(circle at top right, rgba(125, 211, 252, 0.14), rgba(192, 132, 252, 0.08), transparent 70%)',
+      progressGradient: 'linear-gradient(90deg, #7DD3FC 0%, #C084FC 100%)',
+      minThreshold: 50000,
+      nextThreshold: 50000,
+      nextMilestone: null,
+    },
   };
 
-  const currentGrade = getGradeInfo(summary.user_grade || 'Bronze');
+  const resolveUserTier = (totalPaid: number, userGrade?: string): TierConfig => {
+    if (totalPaid >= 50000 || userGrade === 'Diamond') return TIER_CONFIG.Diamond;
+    if (totalPaid >= 25000 || userGrade === 'Platinum') return TIER_CONFIG.Platinum;
+    if (totalPaid >= 10000 || userGrade === 'Gold') return TIER_CONFIG.Gold;
+    if (totalPaid >= 5000 || userGrade === 'Silver') return TIER_CONFIG.Silver;
+    return TIER_CONFIG.Bronze;
+  };
+
+  const currentTier = resolveUserTier(summary.total_paid, summary.user_grade);
+  const TierIcon = currentTier.icon;
   const userRank = summary.user_rank;
 
   // Ordinal Presentation Helper (1st, 2nd, 3rd, 4th...)
@@ -278,27 +359,81 @@ export const TalentHubPayments: React.FC = () => {
     }
   };
 
+  // Helper for small grade badge rendering in tables
+  const renderGradeBadge = (gradeStr: string = 'Bronze') => {
+    const tier = TIER_CONFIG[gradeStr] || TIER_CONFIG.Bronze;
+    const IconComponent = tier.icon;
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
+        style={{
+          backgroundColor: tier.badgeBg,
+          border: `1px solid ${tier.badgeBorder}`,
+          color: tier.badgeText,
+        }}
+      >
+        <IconComponent className="w-3 h-3" style={{ color: tier.primaryColor }} />
+        <span>{tier.id}</span>
+      </span>
+    );
+  };
+
+  // Tier design tokens as CSS Variables on hero card
+  const tierCssVars = {
+    '--tier-color': currentTier.primaryColor,
+    '--tier-secondary': currentTier.secondaryColor,
+    '--tier-glow': currentTier.glowColor,
+    '--tier-badge-bg': currentTier.badgeBg,
+    '--tier-badge-border': currentTier.badgeBorder,
+    '--tier-badge-text': currentTier.badgeText,
+    '--tier-badge-glow': currentTier.badgeGlow,
+    '--tier-card-border': currentTier.heroBorder,
+    '--tier-progress-gradient': currentTier.progressGradient,
+  } as React.CSSProperties;
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 selection:bg-emerald-500/30">
-      {/* ── Top Hero Card (Financial & Leaderboard Status) ── */}
+      {/* ── Top Hero Card (Financial & Dynamic Contributor Tier Status) ── */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="bg-gradient-to-r from-[#0B0D1B] via-[#0E1326] to-[#0B0D1B] border border-white/10 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden"
+        style={{ ...tierCssVars, borderColor: currentTier.heroBorder }}
+        className="bg-gradient-to-r from-[#0B0D1B] via-[#0E1326] to-[#0B0D1B] border rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden transition-all duration-300"
       >
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          {/* Left Column: Earnings & Title */}
-          <div className="space-y-3">
+          {/* Left Column: Earnings & Dynamic Tier Badge */}
+          <div className="space-y-3.5">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 shadow-sm">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 shadow-sm select-none">
                 <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
                 Verified Compensation
               </span>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border shadow-sm ${currentGrade.badgeBg}`}>
-                <currentGrade.icon className="w-3.5 h-3.5" />
-                {currentGrade.name}
+
+              {/* Dynamic Contributor Tier Badge */}
+              <span
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider border shadow-sm transition-all duration-300 select-none"
+                style={{
+                  backgroundColor: currentTier.badgeBg,
+                  borderColor: currentTier.badgeBorder,
+                  color: currentTier.badgeText,
+                  boxShadow: currentTier.badgeGlow,
+                }}
+              >
+                <TierIcon className="w-3.5 h-3.5 shrink-0" style={{ color: currentTier.primaryColor }} />
+                <span>{currentTier.badgeLabel}</span>
               </span>
+
+              {/* ✦ Contributor Journey Button */}
+              <button
+                onClick={() => setIsJourneyModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold font-mono uppercase tracking-wider bg-gradient-to-r from-cyan-500/15 via-purple-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-purple-500/25 text-cyan-300 hover:text-white border border-cyan-400/35 hover:border-cyan-400/60 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/25 transition-all duration-300 cursor-pointer active:scale-95 group select-none"
+                title="View your 3D Contributor Journey & Tier Progression"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 transition-transform" />
+                <span>Contributor Journey</span>
+                <ChevronRight className="w-3 h-3 text-cyan-400/70 group-hover:translate-x-0.5 transition-transform" />
+              </button>
             </div>
 
             <div>
@@ -317,8 +452,11 @@ export const TalentHubPayments: React.FC = () => {
             </p>
           </div>
 
-          {/* Right Column: Leaderboard Standings Badge & Progress */}
-          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 sm:p-5 lg:min-w-[280px] space-y-3 backdrop-blur-md">
+          {/* Right Column: Leaderboard Standings Badge & Dynamic Tier Progress */}
+          <div
+            className="bg-white/[0.03] border rounded-2xl p-4 sm:p-5 lg:min-w-[290px] space-y-3.5 backdrop-blur-md transition-all duration-300"
+            style={{ borderColor: currentTier.badgeBorder }}
+          >
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
               <span>Leaderboard Standings</span>
               <Trophy className="w-4 h-4 text-amber-400" />
@@ -333,20 +471,43 @@ export const TalentHubPayments: React.FC = () => {
               </span>
             </div>
 
-            {/* Next Milestone Progress */}
-            {currentGrade.nextMilestone && (
+            {/* Next Milestone Progress with Dynamic Tier Gradient */}
+            {currentTier.nextMilestone ? (
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Next: <strong className="text-white">{currentGrade.nextMilestone}</strong></span>
                   <span>
-                    ₹{Math.max(0, currentGrade.nextThreshold - summary.total_paid).toLocaleString('en-IN')} needed
+                    Next: <strong style={{ color: currentTier.primaryColor }}>{currentTier.nextMilestone}</strong>
+                  </span>
+                  <span className="font-mono">
+                    ₹{Math.max(0, currentTier.nextThreshold - summary.total_paid).toLocaleString('en-IN')} needed
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden p-[1px]">
                   <div
-                    className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400 rounded-full transition-all duration-700"
+                    className="h-full rounded-full transition-all duration-700 shadow-sm"
                     style={{
-                      width: `${Math.min(100, Math.max(5, (summary.total_paid / currentGrade.nextThreshold) * 100))}%`,
+                      background: currentTier.progressGradient,
+                      width: `${Math.min(100, Math.max(5, (summary.total_paid / currentTier.nextThreshold) * 100))}%`,
+                      boxShadow: `0 0 10px ${currentTier.glowColor}`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold flex items-center gap-1" style={{ color: currentTier.primaryColor }}>
+                    <Sparkles className="w-3 h-3" />
+                    Pinnacle Tier Unlocked
+                  </span>
+                  <span className="text-slate-400 text-[10px] font-mono">Top Tier</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden p-[1px]">
+                  <div
+                    className="h-full rounded-full w-full shadow-sm"
+                    style={{
+                      background: currentTier.progressGradient,
+                      boxShadow: `0 0 12px ${currentTier.glowColor}`,
                     }}
                   />
                 </div>
@@ -355,8 +516,11 @@ export const TalentHubPayments: React.FC = () => {
           </div>
         </div>
 
-        {/* Ambient background glow */}
-        <div className="absolute right-0 top-0 w-80 h-80 bg-gradient-to-bl from-emerald-500/10 via-cyan-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+        {/* Dynamic Tier Ambient Background Glow */}
+        <div
+          className="absolute right-0 top-0 w-88 h-88 rounded-full blur-3xl pointer-events-none transition-all duration-500 opacity-80"
+          style={{ background: currentTier.heroAmbientGlow }}
+        />
       </motion.div>
 
       {/* ── Sub-Tab Navigation Header ── */}
@@ -693,9 +857,7 @@ export const TalentHubPayments: React.FC = () => {
                         </span>
                       </div>
 
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300 font-medium">
-                        {entry.grade}
-                      </span>
+                      {renderGradeBadge(entry.grade)}
                     </div>
                   </motion.div>
                 );
@@ -806,9 +968,7 @@ export const TalentHubPayments: React.FC = () => {
                           </td>
 
                           <td className="py-3.5 px-4">
-                            <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-medium">
-                              {item.grade}
-                            </span>
+                            {renderGradeBadge(item.grade)}
                           </td>
 
                           <td className="py-3.5 px-4 text-right font-black text-emerald-400 text-base whitespace-nowrap">
@@ -872,9 +1032,7 @@ export const TalentHubPayments: React.FC = () => {
                                   </td>
 
                                   <td className="py-3.5 px-4">
-                                    <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-medium">
-                                      {item.grade}
-                                    </span>
+                                    {renderGradeBadge(item.grade)}
                                   </td>
 
                                   <td className="py-3.5 px-4 text-right font-black text-emerald-400 text-base whitespace-nowrap">
@@ -934,11 +1092,11 @@ export const TalentHubPayments: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
                         <p className="text-sm font-black text-emerald-400">
                           ₹{item.total_paid.toLocaleString('en-IN')}
                         </p>
-                        <span className="text-[10px] text-slate-400">{item.grade}</span>
+                        {renderGradeBadge(item.grade)}
                       </div>
                     </div>
                   ))}
@@ -983,11 +1141,11 @@ export const TalentHubPayments: React.FC = () => {
                                 </div>
                               </div>
 
-                              <div className="text-right shrink-0">
+                              <div className="text-right shrink-0 flex flex-col items-end gap-1">
                                 <p className="text-sm font-black text-emerald-400">
                                   ₹{item.total_paid.toLocaleString('en-IN')}
                                 </p>
-                                <span className="text-[10px] text-slate-400">{item.grade}</span>
+                                {renderGradeBadge(item.grade)}
                               </div>
                             </div>
                           ))}
@@ -1024,6 +1182,19 @@ export const TalentHubPayments: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── 3D CONTRIBUTOR JOURNEY MODAL ── */}
+      <ContributorJourneyModal
+        isOpen={isJourneyModalOpen}
+        onClose={() => setIsJourneyModalOpen(false)}
+        summary={summary}
+        talentProfile={talentProfile}
+        user={user}
+        leaderboard={leaderboard}
+        userRank={userRank ?? null}
+        currentTier={currentTier}
+        allTiers={TIER_CONFIG}
+      />
     </div>
   );
 };

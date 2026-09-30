@@ -51,11 +51,16 @@ Allow: /favicon.ico
 Allow: /favicon.png
 Allow: /manifest.json
 Allow: /app/android-release.json
+Allow: /portfolio
+Allow: /portfolio/
+Allow: /company-portfolio
 Allow: /opportunities
 Allow: /talent-registration
 Allow: /review
 Allow: /team-directory
 Allow: /ai-data
+Allow: /30min
+Allow: /sitemap
 Allow: /privacy
 Allow: /terms
 

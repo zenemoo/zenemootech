@@ -191,6 +191,7 @@ export const Footer: React.FC = () => {
               Organization
             </h4>
             <ul className="space-y-2.5 text-xs font-mono">
+              <li><a href="/portfolio" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold flex items-center gap-1.5"><FileText className="w-3 h-3 text-cyan-400" /> Company Portfolio</a></li>
               <li><a href="/ai-data" className="hover:text-cyan-400 transition-colors text-cyan-400 font-bold flex items-center gap-1.5"><Database className="w-3 h-3 text-cyan-400" /> AI Data Portfolio</a></li>
               <li><a href="/talent-registration" className="hover:text-cyan-400 transition-colors text-emerald-300 font-bold flex items-center gap-1.5"><Users className="w-3 h-3" /> Join AI Data Network</a></li>
               <li><a href="/review" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">Community &amp; Client Reviews</a></li>

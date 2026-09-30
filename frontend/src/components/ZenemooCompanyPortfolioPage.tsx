@@ -167,7 +167,7 @@ const PdfPageItem: React.FC<PdfPageItemProps> = React.memo(
         className="relative group rounded-lg sm:rounded-2xl overflow-hidden shadow-xl sm:shadow-2xl shadow-cyan-950/30 border border-white/10 bg-slate-900 transition-all flex items-center justify-center shrink-0"
         style={{
           width: targetWidth ? `${targetWidth}px` : '100%',
-          maxWidth: '100%',
+          maxWidth: targetWidth ? `${targetWidth}px` : '100%',
           aspectRatio: naturalAspectRatio,
         }}
       >
@@ -555,15 +555,32 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
   const isProgrammaticScrollRef = useRef<boolean>(false);
 
+  // Auto-Hide floating toolbar on scroll down & show on scroll up
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      const currentScrollY = window.scrollY || document.documentElement.scrollTop;
+      const delta = currentScrollY - lastScrollTopRef.current;
+      if (delta > 6 && currentScrollY > 60) {
+        setIsToolbarVisible(false);
+      } else if (delta < -4 || currentScrollY <= 40) {
+        setIsToolbarVisible(true);
+      }
+      lastScrollTopRef.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleWindowScroll);
+  }, []);
+
   // Auto-Hide floating toolbar on scroll down & Calculate precise active page with zero jitter
   const handleMainScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const currentScrollTop = e.currentTarget.scrollTop;
     const delta = currentScrollTop - lastScrollTopRef.current;
 
     // Toolbar hide/show
-    if (delta > 8 && currentScrollTop > 80) {
+    if (delta > 6 && currentScrollTop > 60) {
       setIsToolbarVisible(false);
-    } else if (delta < -6 || currentScrollTop <= 40) {
+    } else if (delta < -4 || currentScrollTop <= 40) {
       setIsToolbarVisible(true);
     }
 
@@ -596,15 +613,15 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
     }
   };
 
-  // Zoom and Fit Width handlers
+  // Zoom and Fit Width handlers (strictly capped between 40% and 110%)
   const handleZoomIn = () => {
     setIsFitWidth(false);
-    setScale((s) => Math.min(3.0, +(s + 0.15).toFixed(2)));
+    setScale((s) => Math.min(1.10, +(s + 0.10).toFixed(2)));
   };
 
   const handleZoomOut = () => {
     setIsFitWidth(false);
-    setScale((s) => Math.max(0.2, +(s - 0.15).toFixed(2)));
+    setScale((s) => Math.max(0.40, +(s - 0.10).toFixed(2)));
   };
 
   const handleFitWidth = () => {
@@ -643,10 +660,10 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
       : '16 / 9';
 
   return (
-    <div className="h-screen w-screen bg-[#050505] text-slate-100 flex flex-col font-sans overflow-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen w-full bg-[#050505] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* TOP BRANDED WEBSITE HEADER */}
       {!isReadingMode && (
-        <header className="shrink-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 py-2 sm:py-2.5 transition-all flex items-center justify-between gap-2 shadow-md">
+        <header className="sticky top-0 z-40 bg-[#080912]/95 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 py-2 sm:py-2.5 transition-all flex items-center justify-between gap-2 shadow-md">
           {/* Logo & Breadcrumb */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
             <a href="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0" aria-label="Return to Zenemoo Home">
@@ -730,18 +747,22 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
 
             <button
               onClick={handleZoomOut}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+              disabled={scale <= 0.40}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white cursor-pointer transition-opacity"
               title="Zoom Out"
+              aria-label="Zoom Out"
             >
               <ZoomOut className="w-4 h-4 text-cyan-400" />
             </button>
-            <span className="text-xs font-mono font-bold text-slate-300 min-w-[34px] text-center">
+            <span className="text-xs font-mono font-bold text-slate-300 min-w-[34px] text-center select-none">
               {Math.round(scale * 100)}%
             </span>
             <button
               onClick={handleZoomIn}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white cursor-pointer"
-              title="Zoom In"
+              disabled={scale >= 1.10}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white cursor-pointer transition-opacity"
+              title="Zoom In (Max 110%)"
+              aria-label="Zoom In"
             >
               <ZoomIn className="w-4 h-4 text-cyan-400" />
             </button>
@@ -769,8 +790,8 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN BODY AREA (FLEX CONTAINER: SIDEBAR + INDEPENDENT PDF VIEWER) */}
-      <div className="flex-1 flex w-full overflow-hidden relative">
+      {/* MAIN BODY AREA (FLEX CONTAINER: SIDEBAR + SCROLLING PORTFOLIO CONTENT) */}
+      <div className="flex-1 flex w-full relative">
         {/* MOBILE THUMBNAIL BACKDROP */}
         {showThumbnails && portfolio && (
           <div
@@ -784,8 +805,8 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
         {portfolio && (
           <aside
             className={`
-              fixed md:relative top-0 bottom-0 left-0 z-50 md:z-20
-              h-full shrink-0 border-r border-white/10 bg-[#06070b]/98 md:bg-[#06070b]/95 backdrop-blur-2xl
+              fixed md:sticky top-0 md:top-14 bottom-0 left-0 z-50 md:z-20
+              h-full md:h-[calc(100vh-3.5rem)] shrink-0 border-r border-white/10 bg-[#06070b]/98 md:bg-[#06070b]/95 backdrop-blur-2xl
               flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-2xl md:shadow-none
               ${
                 showThumbnails
@@ -834,6 +855,9 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           ref={containerRef}
           onScroll={handleMainScroll}
         >
+          {/* Accessible Semantic Heading for Crawlers */}
+          <h1 className="sr-only">Zenemoo Company Portfolio | AI Data &amp; Language Solutions</h1>
+
           {/* LOADING SKELETON */}
           {isLoadingMetadata && (
             <div className="w-full max-w-3xl my-12 flex flex-col items-center justify-center p-8 sm:p-12 rounded-3xl bg-slate-900/50 border border-white/10 backdrop-blur-md">
@@ -893,103 +917,107 @@ export const ZenemooCompanyPortfolioPage: React.FC = () => {
           {/* ACTIVE PDF VIEWER */}
           {!isLoadingMetadata && portfolio && (
             <div className="w-full flex flex-col items-center max-w-full">
-              {/* STICKY FLOATING CONTROL TOOLBAR */}
+              {/* FLOATING GLASS CONTROL TOOLBAR (Vanish on downscroll, reappear on upscroll) */}
               {!isReadingMode && (
                 <div
-                  className={`sticky top-2 sm:top-3 z-30 mb-3 sm:mb-4 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl bg-[#080912]/92 border border-white/15 backdrop-blur-2xl shadow-2xl shadow-black/80 flex items-center justify-between gap-1.5 sm:gap-4 max-w-2xl w-full transition-all duration-300 ease-out ${
+                  className={`fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 z-30 px-3 w-full max-w-2xl flex justify-center pointer-events-none transition-all duration-300 ease-out ${
                     isToolbarVisible
-                      ? 'opacity-100 translate-y-0 pointer-events-auto'
-                      : 'opacity-0 -translate-y-6 pointer-events-none'
+                      ? 'opacity-100 translate-y-0'
+                      : 'opacity-0 -translate-y-16 scale-95'
                   }`}
                 >
-                  {/* Left: Thumbnail Sidebar Toggle & Page Stepper */}
-                  <div className="flex items-center gap-1 text-xs font-mono text-cyan-300 shrink-0">
-                    <button
-                      onClick={() => setShowThumbnails(!showThumbnails)}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                      title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
-                      aria-label="Toggle Thumbnail Sidebar"
-                    >
-                      {showThumbnails ? <PanelLeftClose className="w-4 h-4 text-cyan-400" /> : <PanelLeft className="w-4 h-4 text-cyan-400" />}
-                    </button>
+                  <div className="pointer-events-auto w-full px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl sm:rounded-full bg-[#080912]/85 border border-white/15 backdrop-blur-2xl shadow-2xl shadow-cyan-950/40 flex items-center justify-between gap-1.5 sm:gap-4">
+                    {/* Left: Thumbnail Sidebar Toggle & Page Stepper */}
+                    <div className="flex items-center gap-1 text-xs font-mono text-cyan-300 shrink-0">
+                      <button
+                        onClick={() => setShowThumbnails(!showThumbnails)}
+                        className="p-1.5 rounded-lg sm:rounded-full bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
+                        aria-label="Toggle Thumbnail Sidebar"
+                      >
+                        {showThumbnails ? <PanelLeftClose className="w-4 h-4 text-cyan-400" /> : <PanelLeft className="w-4 h-4 text-cyan-400" />}
+                      </button>
 
-                    <button
-                      onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
-                      disabled={currentPage <= 1}
-                      className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                      aria-label="Previous Page"
-                    >
-                      <ChevronLeft className="w-4 h-4 text-cyan-400" />
-                    </button>
-                    <span className="font-bold text-[11px] sm:text-xs select-none">
-                      {currentPage}<span className="text-slate-500">/</span>{totalPages || 1}
-                    </span>
-                    <button
-                      onClick={() => scrollToPage(Math.min(totalPages, currentPage + 1))}
-                      disabled={currentPage >= totalPages}
-                      className="p-1 rounded-lg hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                      aria-label="Next Page"
-                    >
-                      <ChevronRight className="w-4 h-4 text-cyan-400" />
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
+                        disabled={currentPage <= 1}
+                        className="p-1 rounded-lg sm:rounded-full hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        aria-label="Previous Page"
+                      >
+                        <ChevronLeft className="w-4 h-4 text-cyan-400" />
+                      </button>
+                      <span className="font-bold text-[11px] sm:text-xs select-none">
+                        {currentPage}<span className="text-slate-500">/</span>{totalPages || 1}
+                      </span>
+                      <button
+                        onClick={() => scrollToPage(Math.min(totalPages, currentPage + 1))}
+                        disabled={currentPage >= totalPages}
+                        className="p-1 rounded-lg sm:rounded-full hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        aria-label="Next Page"
+                      >
+                        <ChevronRight className="w-4 h-4 text-cyan-400" />
+                      </button>
+                    </div>
 
-                  {/* Middle: Zoom Controls */}
-                  <div className="flex items-center gap-0.5 sm:gap-1 bg-white/[0.04] p-0.5 sm:p-1 rounded-xl border border-white/5">
-                    <button
-                      onClick={handleZoomOut}
-                      className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                      title="Zoom Out"
-                      aria-label="Zoom Out"
-                    >
-                      <ZoomOut className="w-3.5 h-3.5 text-cyan-400" />
-                    </button>
-                    <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-300 px-1 min-w-[34px] sm:min-w-[40px] text-center select-none">
-                      {Math.round(scale * 100)}%
-                    </span>
-                    <button
-                      onClick={handleZoomIn}
-                      className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                      title="Zoom In"
-                      aria-label="Zoom In"
-                    >
-                      <ZoomIn className="w-3.5 h-3.5 text-cyan-400" />
-                    </button>
-                  </div>
+                    {/* Middle: Zoom Controls */}
+                    <div className="flex items-center gap-0.5 sm:gap-1 bg-white/[0.04] p-0.5 sm:p-1 rounded-xl sm:rounded-full border border-white/5">
+                      <button
+                        onClick={handleZoomOut}
+                        disabled={scale <= 0.40}
+                        className="p-1 sm:p-1.5 rounded-lg sm:rounded-full hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title="Zoom Out"
+                        aria-label="Zoom Out"
+                      >
+                        <ZoomOut className="w-3.5 h-3.5 text-cyan-400" />
+                      </button>
+                      <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-300 px-1 min-w-[34px] sm:min-w-[40px] text-center select-none">
+                        {Math.round(scale * 100)}%
+                      </span>
+                      <button
+                        onClick={handleZoomIn}
+                        disabled={scale >= 1.10}
+                        className="p-1 sm:p-1.5 rounded-lg sm:rounded-full hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title="Zoom In (Max 110%)"
+                        aria-label="Zoom In"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5 text-cyan-400" />
+                      </button>
+                    </div>
 
-                  {/* Right: Fit Width & Fullscreen Controls */}
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={handleFitWidth}
-                      className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-mono transition-colors cursor-pointer ${
-                        isFitWidth
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
-                          : 'bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/5'
-                      }`}
-                      title="Fit Page to Screen Width"
-                      aria-label="Fit Width"
-                    >
-                      Fit Width
-                    </button>
+                    {/* Right: Fit Width & Fullscreen Controls */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={handleFitWidth}
+                        className={`px-2.5 py-1 rounded-lg sm:rounded-full text-[10px] sm:text-[11px] font-mono transition-colors cursor-pointer ${
+                          isFitWidth
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
+                            : 'bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/5'
+                        }`}
+                        title="Fit Page to Screen Width"
+                        aria-label="Fit Width"
+                      >
+                        Fit Width
+                      </button>
 
-                    <button
-                      onClick={() => setIsReadingMode(true)}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden xs:inline-flex"
-                      title="Enter Reading Mode"
-                      aria-label="Enter Reading Mode"
-                    >
-                      <Maximize2 className="w-4 h-4 text-cyan-400" />
-                    </button>
-                    <a
-                      href={portfolio.public_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
-                      title="Open PDF in New Tab"
-                      aria-label="Open in New Tab"
-                    >
-                      <ExternalLink className="w-4 h-4 text-cyan-400" />
-                    </a>
+                      <button
+                        onClick={() => setIsReadingMode(true)}
+                        className="p-1.5 rounded-lg sm:rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden xs:inline-flex"
+                        title="Enter Reading Mode"
+                        aria-label="Enter Reading Mode"
+                      >
+                        <Maximize2 className="w-4 h-4 text-cyan-400" />
+                      </button>
+                      <a
+                        href={portfolio.public_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 rounded-lg sm:rounded-full hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer hidden sm:inline-flex"
+                        title="Open PDF in New Tab"
+                        aria-label="Open in New Tab"
+                      >
+                        <ExternalLink className="w-4 h-4 text-cyan-400" />
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}

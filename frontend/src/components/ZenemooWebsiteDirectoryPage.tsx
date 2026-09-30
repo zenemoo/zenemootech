@@ -189,6 +189,17 @@ const DIRECTORY_ITEMS: DirectoryItem[] = [
 
   // Company & Credentials
   {
+    id: 'company-portfolio',
+    title: 'Zenemoo Company Portfolio',
+    category: 'company',
+    categoryLabel: 'Company & Credentials',
+    description: "Explore Zenemoo's official company presentation, AI data capabilities, transcription, annotation, and multilingual speech services.",
+    url: '/portfolio',
+    badge: 'Official Presentation',
+    icon: FileText,
+    featured: true,
+  },
+  {
     id: 'home',
     title: 'Zenemoo Official Homepage',
     category: 'company',
@@ -225,6 +236,16 @@ const DIRECTORY_ITEMS: DirectoryItem[] = [
     description: 'Subscribe to monthly intelligence digests on Indian AI language corpora, speech benchmarks, and platform updates.',
     url: '/subscribe',
     icon: Mail,
+  },
+  {
+    id: 'sitemap-xml',
+    title: 'Production XML Sitemap',
+    category: 'company',
+    categoryLabel: 'Company & Credentials',
+    description: 'Direct XML sitemap for search engine crawlers and automated discovery of all public Zenemoo URLs.',
+    url: '/sitemap.xml',
+    badge: 'XML Sitemap',
+    icon: Globe,
   },
 
   // Legal & Policies
