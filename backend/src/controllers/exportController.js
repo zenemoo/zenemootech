@@ -19,7 +19,31 @@ export const fetchSectionDataset = async (section, clientData = []) => {
   let dbData = [];
 
   try {
-    if (section === 'users-rbac' || section === 'rbac') {
+    if (section === 'talent-network' || section === 'talent-roster' || section === 'talent' || section === 'talent-database') {
+      try {
+        dbData = await supabaseService.selectAll('talent_registrations', 'created_at', false);
+      } catch (e) {}
+    } else if (section === 'talent-teams' || section === 'talent-members') {
+      try {
+        dbData = await supabaseService.selectAll('talent_team_members', 'created_at', false);
+      } catch (e) {}
+    } else if (section === 'call-bookings' || section === 'bookings') {
+      try {
+        dbData = await supabaseService.selectAll('call_bookings', 'scheduled_date', false);
+      } catch (e) {}
+    } else if (section === 'support-contributions' || section === 'payments' || section === 'payment-management') {
+      try {
+        dbData = await supabaseService.selectAll('support_payments', 'created_at', false);
+      } catch (e) {}
+    } else if (section === 'reviews' || section === 'company-reviews') {
+      try {
+        dbData = await supabaseService.selectAll('reviews', 'created_at', false);
+      } catch (e) {}
+    } else if (section === 'opportunities' || section === 'jobs') {
+      try {
+        dbData = await supabaseService.selectAll('opportunities', 'created_at', false);
+      } catch (e) {}
+    } else if (section === 'users-rbac' || section === 'rbac') {
       try {
         const userAccounts = await supabaseService.selectAll('user_accounts');
         let roster = [];
@@ -71,7 +95,7 @@ export const fetchSectionDataset = async (section, clientData = []) => {
           dbData = await supabaseService.selectAll('subscribers', 'created_at', false);
         } catch (e2) {}
       }
-    } else if (section === 'contact-inquiries' || section === 'inquiries') {
+    } else if (section === 'contact-inquiries' || section === 'inquiries' || section === 'contacts') {
       try {
         dbData = await supabaseService.selectAll('contact_inquiries', 'created_at', false);
       } catch (e) {

@@ -178,14 +178,15 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
   // Helper to sanitize any stray encrypted values if backend cold-start fails
   const formatText = (text?: string): string => {
     if (!text) return '';
-    if (text.startsWith('ENC:')) return '';
-    return text;
+    const trimmed = String(text).trim();
+    if (trimmed === '[Protected Field]' || trimmed.startsWith('ENC:') || /^[0-9a-fA-F]{32}:/.test(trimmed)) return '';
+    return trimmed;
   };
 
   const filteredMembers = members.filter((m) => {
     const q = searchQuery.toLowerCase().trim();
-    const cleanPhone = formatText(m.personal_phone);
-    const cleanEmail = formatText(m.personal_email);
+    const cleanPhone = formatText(m.personal_phone) || formatText(m.company_phone);
+    const cleanEmail = formatText(m.personal_email) || formatText(m.company_email);
     const cleanUpi = formatText(m.upi_id);
     const posStr = String(m.position || '');
     const nameStr = String(m.name || '');
@@ -448,109 +449,114 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
             </div>
 
             {/* Quick Action Contact Cards (Admin & HR) */}
-            {(userRole === 'admin' || userRole === 'hr') && (
-              <div className="space-y-3">
-                <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                  <Phone className="w-4 h-4 text-cyan-400" /> Operational Contact Actions (Decrypted):
-                </div>
+            {(userRole === 'admin' || userRole === 'hr') && (() => {
+              const activeEmail = formatText(selectedMember.personal_email) || formatText(selectedMember.company_email);
+              const activePhone = formatText(selectedMember.personal_phone) || formatText(selectedMember.company_phone);
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Personal Email Card */}
-                  <div className={`p-4 rounded-2xl border ${
-                    formatText(selectedMember.personal_email)
-                      ? 'bg-cyan-500/10 border-cyan-500/30'
-                      : 'bg-white/[0.02] border-white/10 opacity-60'
-                  } space-y-2`}>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
-                      <span>📧 Personal Email</span>
-                      {formatText(selectedMember.personal_email) && (
-                        <span className="text-emerald-400 font-mono">✓ Verified</span>
-                      )}
-                    </div>
-                    <div className="text-xs font-bold text-white truncate font-mono">
-                      {formatText(selectedMember.personal_email) || 'Personal Email Not Added'}
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1">
-                      {formatText(selectedMember.personal_email) ? (
-                        <>
-                          <a
-                            href={`mailto:${formatText(selectedMember.personal_email)}`}
-                            className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1 text-xs transition-all"
-                          >
-                            <Mail className="w-3.5 h-3.5 text-black" /> Email
-                          </a>
-                          <button
-                            onClick={() => copyToClipboard(formatText(selectedMember.personal_email), 'Personal Email')}
-                            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 flex items-center gap-1 text-xs cursor-pointer"
-                          >
-                            <Copy className="w-3.5 h-3.5" /> Copy
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          disabled
-                          className="px-3 py-1.5 rounded-xl bg-white/5 text-slate-500 text-xs font-bold cursor-not-allowed flex items-center gap-1"
-                        >
-                          <Slash className="w-3.5 h-3.5 text-slate-500" /> Personal Email Not Added
-                        </button>
-                      )}
-                    </div>
+              return (
+                <div className="space-y-3">
+                  <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                    <Phone className="w-4 h-4 text-cyan-400" /> Operational Contact Actions (Decrypted):
                   </div>
 
-                  {/* Personal Mobile Phone Card */}
-                  <div className={`p-4 rounded-2xl border ${
-                    formatText(selectedMember.personal_phone)
-                      ? 'bg-emerald-500/10 border-emerald-500/30'
-                      : 'bg-white/[0.02] border-white/10 opacity-60'
-                  } space-y-2`}>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
-                      <span>📞 Personal Mobile Number</span>
-                      {formatText(selectedMember.personal_phone) && (
-                        <span className="text-emerald-400 font-mono">✓ Verified</span>
-                      )}
-                    </div>
-                    <div className="text-xs font-bold text-white truncate font-mono">
-                      {formatText(selectedMember.personal_phone) || 'Phone Number Not Added'}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Personal Email Card */}
+                    <div className={`p-4 rounded-2xl border ${
+                      activeEmail
+                        ? 'bg-cyan-500/10 border-cyan-500/30'
+                        : 'bg-white/[0.02] border-white/10 opacity-60'
+                    } space-y-2`}>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
+                        <span>📧 Personal / Contact Email</span>
+                        {activeEmail && (
+                          <span className="text-emerald-400 font-mono">✓ Verified</span>
+                        )}
+                      </div>
+                      <div className="text-xs font-bold text-white truncate font-mono">
+                        {activeEmail || 'Email Not Added'}
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        {activeEmail ? (
+                          <>
+                            <a
+                              href={`mailto:${activeEmail}`}
+                              className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center gap-1 text-xs transition-all"
+                            >
+                              <Mail className="w-3.5 h-3.5 text-black" /> Email
+                            </a>
+                            <button
+                              onClick={() => copyToClipboard(activeEmail, 'Email Address')}
+                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 flex items-center gap-1 text-xs cursor-pointer"
+                            >
+                              <Copy className="w-3.5 h-3.5" /> Copy
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            disabled
+                            className="px-3 py-1.5 rounded-xl bg-white/5 text-slate-500 text-xs font-bold cursor-not-allowed flex items-center gap-1"
+                          >
+                            <Slash className="w-3.5 h-3.5 text-slate-500" /> Email Not Added
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1 flex-wrap">
-                      {formatText(selectedMember.personal_phone) ? (
-                        <>
-                          <a
-                            href={`tel:${formatText(selectedMember.personal_phone)}`}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold flex items-center gap-1 text-xs transition-all"
-                          >
-                            <Phone className="w-3.5 h-3.5 text-black" /> Call
-                          </a>
-                          <a
-                            href={`https://wa.me/${formatText(selectedMember.personal_phone).replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1 text-xs"
-                          >
-                            <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-                          </a>
+                    {/* Personal Mobile Phone Card */}
+                    <div className={`p-4 rounded-2xl border ${
+                      activePhone
+                        ? 'bg-emerald-500/10 border-emerald-500/30'
+                        : 'bg-white/[0.02] border-white/10 opacity-60'
+                    } space-y-2`}>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
+                        <span>📞 Personal / Contact Mobile Number</span>
+                        {activePhone && (
+                          <span className="text-emerald-400 font-mono">✓ Verified</span>
+                        )}
+                      </div>
+                      <div className="text-xs font-bold text-white truncate font-mono">
+                        {activePhone || 'Phone Number Not Added'}
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1 flex-wrap">
+                        {activePhone ? (
+                          <>
+                            <a
+                              href={`tel:${activePhone}`}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold flex items-center gap-1 text-xs transition-all"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-black" /> Call
+                            </a>
+                            <a
+                              href={`https://wa.me/${activePhone.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1 text-xs"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
+                            </a>
+                            <button
+                              onClick={() => copyToClipboard(activePhone, 'Phone Number')}
+                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 flex items-center gap-1 text-xs cursor-pointer"
+                            >
+                              <Copy className="w-3.5 h-3.5" /> Copy
+                            </button>
+                          </>
+                        ) : (
                           <button
-                            onClick={() => copyToClipboard(formatText(selectedMember.personal_phone), 'Phone Number')}
-                            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 flex items-center gap-1 text-xs cursor-pointer"
+                            disabled
+                            className="px-3 py-1.5 rounded-xl bg-white/5 text-slate-500 text-xs font-bold cursor-not-allowed flex items-center gap-1"
                           >
-                            <Copy className="w-3.5 h-3.5" /> Copy
+                            <Slash className="w-3.5 h-3.5 text-slate-500" /> Phone Number Not Added
                           </button>
-                        </>
-                      ) : (
-                        <button
-                          disabled
-                          className="px-3 py-1.5 rounded-xl bg-white/5 text-slate-500 text-xs font-bold cursor-not-allowed flex items-center gap-1"
-                        >
-                          <Slash className="w-3.5 h-3.5 text-slate-500" /> Phone Number Not Added
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Unsubmitted Profile Warning Banner */}
             {!selectedMember.is_private_profile_completed && (
@@ -663,14 +669,14 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
                   <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
                     <div className="text-[10px] text-slate-400 uppercase">Personal Mobile Phone</div>
                     <div className="text-sm font-bold text-white font-mono">
-                      {formatText(selectedMember.personal_phone) || 'Phone Number Not Added'}
+                      {formatText(selectedMember.personal_phone) || formatText(selectedMember.company_phone) || 'Phone Number Not Added'}
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-1">
                     <div className="text-[10px] text-slate-400 uppercase">Personal Email</div>
                     <div className="text-sm font-bold text-white font-mono">
-                      {formatText(selectedMember.personal_email) || 'Personal Email Not Added'}
+                      {formatText(selectedMember.personal_email) || formatText(selectedMember.company_email) || 'Personal Email Not Added'}
                     </div>
                   </div>
                 </div>

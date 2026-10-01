@@ -531,6 +531,7 @@ export const exportApi = {
     section: string;
     format: 'csv' | 'xlsx' | 'pdf';
     columns?: string[];
+    columnDefs?: any[];
     data?: any[];
     scope?: 'all' | 'filtered';
   }) =>

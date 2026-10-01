@@ -130,6 +130,29 @@ export const getTeamDirectoryMembers = async (req, res) => {
         pending_photo_request: pendingPhotoReq,
       };
 
+      const cleanVal = (val) => {
+        if (!val || typeof val !== 'string') return '';
+        const trimmed = val.trim();
+        if (trimmed === '[Protected Field]' || trimmed === 'ENC:' || trimmed.startsWith('ENC:')) return '';
+        return trimmed;
+      };
+
+      const resolvedPersonalPhone =
+        cleanVal(priv?.personal_mobile) ||
+        cleanVal(priv?.phone_number) ||
+        cleanVal(priv?.mobile_number) ||
+        cleanVal(priv?.alternate_mobile) ||
+        cleanVal(member.company_phone) ||
+        cleanVal(member.phone) ||
+        '';
+
+      const resolvedPersonalEmail =
+        cleanVal(priv?.personal_email) ||
+        cleanVal(priv?.personal_mail) ||
+        cleanVal(member.company_email) ||
+        cleanVal(member.email) ||
+        '';
+
       // TEAM MEMBER ROLE: Return Public Data ONLY
       if (userRole !== 'admin' && userRole !== 'hr') {
         return publicData;
@@ -139,8 +162,8 @@ export const getTeamDirectoryMembers = async (req, res) => {
       if (userRole === 'hr') {
         return {
           ...publicData,
-          personal_phone: priv?.personal_mobile || priv?.phone_number || priv?.mobile_number || priv?.alternate_mobile || '',
-          personal_email: priv?.personal_email || priv?.personal_mail || '',
+          personal_phone: resolvedPersonalPhone,
+          personal_email: resolvedPersonalEmail,
           address_current: priv?.current_address || priv?.address || '',
           address_permanent: priv?.permanent_address || '',
           emergency_contact_person: priv?.emergency_contact_name || priv?.emergency_contact_person || priv?.emergency_contact || '',
@@ -167,8 +190,8 @@ export const getTeamDirectoryMembers = async (req, res) => {
       // ADMIN ROLE: Return Full Decrypted Unrestricted Dataset
       return {
         ...publicData,
-        personal_phone: priv?.personal_mobile || priv?.phone_number || priv?.mobile_number || priv?.alternate_mobile || '',
-        personal_email: priv?.personal_email || priv?.personal_mail || '',
+        personal_phone: resolvedPersonalPhone,
+        personal_email: resolvedPersonalEmail,
         address_current: priv?.current_address || priv?.address || '',
         address_permanent: priv?.permanent_address || '',
         emergency_contact_person: priv?.emergency_contact_name || priv?.emergency_contact_person || priv?.emergency_contact || '',

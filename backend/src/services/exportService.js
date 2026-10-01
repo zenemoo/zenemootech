@@ -103,6 +103,110 @@ export const EXPORT_CONFIGS = {
       { key: 'created_at', label: 'Application Date' },
     ],
   },
+  'talent-network': {
+    id: 'talent-network',
+    sectionName: 'AI Data Network & Talent Registrations',
+    allowedRoles: ['super_admin', 'admin', 'administrator', 'hr'],
+    tableName: 'talent_registrations',
+    defaultColumns: [
+      { key: 'registration_code', label: 'Registration ID' },
+      { key: 'full_name', label: 'Candidate Name' },
+      { key: 'email', label: 'Email Address' },
+      { key: 'country', label: 'Country' },
+      { key: 'phone', label: 'Phone Number' },
+      { key: 'primary_role', label: 'Primary Role' },
+      { key: 'languages', label: 'Languages' },
+      { key: 'state', label: 'State' },
+      { key: 'city_district', label: 'City' },
+      { key: 'work_capabilities', label: 'Capabilities' },
+      { key: 'availability', label: 'Availability' },
+      { key: 'status', label: 'Status' },
+      { key: 'created_at', label: 'Registration Date' },
+    ],
+  },
+  'talent-teams': {
+    id: 'talent-teams',
+    sectionName: 'Talent Team Members',
+    allowedRoles: ['super_admin', 'admin', 'administrator', 'hr'],
+    tableName: 'talent_team_members',
+    defaultColumns: [
+      { key: 'id', label: 'Member ID' },
+      { key: 'name', label: 'Full Name' },
+      { key: 'email', label: 'Email Address' },
+      { key: 'phone', label: 'Phone Number' },
+      { key: 'team_name', label: 'Team Name' },
+      { key: 'role', label: 'Assigned Role' },
+      { key: 'status', label: 'Status' },
+      { key: 'created_at', label: 'Created At' },
+    ],
+  },
+  'call-bookings': {
+    id: 'call-bookings',
+    sectionName: 'Call Bookings & Consultations',
+    allowedRoles: ['super_admin', 'admin', 'administrator'],
+    tableName: 'call_bookings',
+    defaultColumns: [
+      { key: 'id', label: 'Booking ID' },
+      { key: 'name', label: 'Client Name' },
+      { key: 'email', label: 'Email Address' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'company', label: 'Company / Project' },
+      { key: 'scheduled_date', label: 'Date' },
+      { key: 'scheduled_time', label: 'Time' },
+      { key: 'status', label: 'Status' },
+      { key: 'meeting_link', label: 'Meeting Link' },
+      { key: 'notes', label: 'Notes' },
+      { key: 'created_at', label: 'Booked At' },
+    ],
+  },
+  'support-contributions': {
+    id: 'support-contributions',
+    sectionName: 'Support Contributions & Payments',
+    allowedRoles: ['super_admin', 'admin', 'administrator'],
+    tableName: 'support_payments',
+    defaultColumns: [
+      { key: 'payment_id', label: 'Payment ID' },
+      { key: 'customer_name', label: 'Supporter Name' },
+      { key: 'customer_email', label: 'Email' },
+      { key: 'amount', label: 'Amount' },
+      { key: 'currency', label: 'Currency' },
+      { key: 'order_id', label: 'Order ID' },
+      { key: 'status', label: 'Status' },
+      { key: 'payment_time', label: 'Payment Date' },
+      { key: 'purpose', label: 'Purpose' },
+    ],
+  },
+  'reviews': {
+    id: 'reviews',
+    sectionName: 'Company Reviews & Feedback',
+    allowedRoles: ['super_admin', 'admin', 'administrator'],
+    tableName: 'reviews',
+    defaultColumns: [
+      { key: 'id', label: 'Review ID' },
+      { key: 'name', label: 'Author Name' },
+      { key: 'role', label: 'Role / Designation' },
+      { key: 'company', label: 'Company' },
+      { key: 'rating', label: 'Rating' },
+      { key: 'review', label: 'Review Content' },
+      { key: 'is_visible', label: 'Published' },
+      { key: 'created_at', label: 'Date' },
+    ],
+  },
+  'opportunities': {
+    id: 'opportunities',
+    sectionName: 'Program Opportunities',
+    allowedRoles: ['super_admin', 'admin', 'administrator'],
+    tableName: 'opportunities',
+    defaultColumns: [
+      { key: 'id', label: 'Opportunity ID' },
+      { key: 'title', label: 'Title' },
+      { key: 'type', label: 'Type' },
+      { key: 'status', label: 'Status' },
+      { key: 'location', label: 'Location' },
+      { key: 'deadline', label: 'Deadline' },
+      { key: 'created_at', label: 'Created At' },
+    ],
+  },
 };
 
 // Section ID Aliases mapping
@@ -111,8 +215,18 @@ EXPORT_CONFIGS['directory'] = EXPORT_CONFIGS['team-directory'];
 EXPORT_CONFIGS['team'] = EXPORT_CONFIGS['team-roster'];
 EXPORT_CONFIGS['subscribers'] = EXPORT_CONFIGS['newsletter'];
 EXPORT_CONFIGS['inquiries'] = EXPORT_CONFIGS['contact-inquiries'];
+EXPORT_CONFIGS['contacts'] = EXPORT_CONFIGS['contact-inquiries'];
 EXPORT_CONFIGS['opportunity-applications'] = EXPORT_CONFIGS['candidate-applications'];
 EXPORT_CONFIGS['applications'] = EXPORT_CONFIGS['candidate-applications'];
+EXPORT_CONFIGS['talent-roster'] = EXPORT_CONFIGS['talent-network'];
+EXPORT_CONFIGS['talent'] = EXPORT_CONFIGS['talent-network'];
+EXPORT_CONFIGS['talent-database'] = EXPORT_CONFIGS['talent-network'];
+EXPORT_CONFIGS['talent-members'] = EXPORT_CONFIGS['talent-teams'];
+EXPORT_CONFIGS['bookings'] = EXPORT_CONFIGS['call-bookings'];
+EXPORT_CONFIGS['payment-management'] = EXPORT_CONFIGS['support-contributions'];
+EXPORT_CONFIGS['payments'] = EXPORT_CONFIGS['support-contributions'];
+EXPORT_CONFIGS['company-reviews'] = EXPORT_CONFIGS['reviews'];
+EXPORT_CONFIGS['jobs'] = EXPORT_CONFIGS['opportunities'];
 
 /**
  * Helper: Extract value for a record using primary key and aliases

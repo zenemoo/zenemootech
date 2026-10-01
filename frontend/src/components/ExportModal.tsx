@@ -305,18 +305,54 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       .replace(/-+/g, '-');
 
     try {
-      // 2. Asynchronously notify backend audit logger (non-blocking)
+      if (exportScope === 'all') {
+        // Master Download: Export full database records from server without UI pagination
+        try {
+          const res = await exportApi.exportData({
+            section: sectionId,
+            format: exportFormat,
+            columns: selectedColumns.map((c) => c.key),
+            columnDefs: selectedColumns,
+            scope: 'all',
+          });
+
+          if (res.data) {
+            const filename = `${baseFilename}.${fileExtension}`;
+            const mimeType =
+              exportFormat === 'xlsx'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : exportFormat === 'pdf'
+                ? 'application/pdf'
+                : 'text/csv;charset=utf-8;';
+
+            triggerFileDownload(res.data, filename, mimeType);
+
+            if (showToast) {
+              showToast(
+                `🚀 Full ${meta.sectionName} database exported successfully (${selectedColumns.length} columns)`,
+                'success'
+              );
+            }
+            onClose();
+            return;
+          }
+        } catch (serverErr) {
+          console.warn('[Server Export Fallback to Client]:', serverErr);
+        }
+      }
+
+      // 2. Client-side or Filtered View Export
       exportApi.exportData({
         section: sectionId,
         format: exportFormat,
         columns: selectedColumns.map((c) => c.key),
+        columnDefs: selectedColumns,
         data: activeDataset,
         scope: exportScope,
       }).catch((auditErr: any) => {
         console.warn('[Export Audit Logger Warning]:', auditErr?.message);
       });
 
-      // 3. Direct Client-Side Multilingual Export Engine with full columns & raw data
       if (exportFormat === 'csv') {
         const csvStr = exportCSV(activeDataset, selectedColumns, meta.sectionName);
         const filename = `${baseFilename}.csv`;

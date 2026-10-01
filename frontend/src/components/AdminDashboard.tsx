@@ -7,7 +7,7 @@ import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromA
 import { OpportunityProgram, CustomQuestion, getStoredOpportunities, getAllOpportunitiesForAdmin, saveOpportunityToApi, deleteOpportunityFromApi, reorderOpportunityInApi, isTempId } from '../lib/opportunityStore';
 import { CandidateApplication, getStoredCandidateApplications, updateCandidateApplicationStatus, deleteCandidateApplication, resyncSingleCandidateApplication, resyncOpportunityApplicationsBulk, resendCandidateAcceptanceEmail } from '../lib/opportunityApplicationStore';
 import { SiteConfig, TelemetryConfig, ContactInquiry, AuthorizedEmailAccount, MessageHistoryRecord, getSiteConfig, saveSiteConfig, getTelemetryConfig, saveTelemetryConfig, uploadImageToCloudinary, getContactInquiries, updateContactInquiry, getStoredAuthorizedEmails, saveAuthorizedEmailToSupabase, updateAuthorizedEmailInSupabase, deleteAuthorizedEmailFromSupabase, getStoredMessageHistoryRecords, getStoredAdminPhoto } from '../lib/adminStore';
-import { api, clearInFlightGetCache, contactApi, subscriberApi, authApi, emailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
+import { api, clearInFlightGetCache, contactApi, subscriberApi, authApi, emailApi, scheduledEmailApi, userManagementApi, notificationApi, pendingProfileUpdatesApi, supportApi, bookingApi } from '../services/api';
 import { sanitizeZenemooUrl, isValidZenemooUrlInput } from '../services/notificationService';
 import { supabase } from '../lib/supabaseClient';
 import { getAllReviewsForAdmin, ReviewItem } from '../lib/reviewStore';
@@ -346,6 +346,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   // Brevo SMTP Email Engine & Encrypted Supabase Storage State
   const [emailLogs, setEmailLogs] = useState<any[]>([]);
   const [emailHistoryTotalCount, setEmailHistoryTotalCount] = useState<number>(0);
+  const [scheduledEmailCount, setScheduledEmailCount] = useState<number>(0);
   const [emailDrafts, setEmailDrafts] = useState<any[]>([]);
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
   const [isSendingBrevoMail, setIsSendingBrevoMail] = useState(false);
@@ -1672,6 +1673,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         }
       } catch (e) {}
 
+      // Fetch scheduled emails count (zero-payload count query for sidebar badge)
+      try {
+        const resScheduled = await scheduledEmailApi.getScheduled({ pageSize: 1, status: 'scheduled' });
+        if (resScheduled.data && typeof resScheduled.data.scheduled_count === 'number') {
+          setScheduledEmailCount(resScheduled.data.scheduled_count);
+        }
+      } catch (e) {}
+
       // Fetch authenticated user profile and connection metadata
       try {
         const resProfile = await authApi.getProfile();
@@ -1714,11 +1723,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       if (!isMounted || document.visibilityState !== 'visible') return;
       lastPollTimestamp = Date.now();
       try {
-        const [contactData, appsData, resLogs, resB] = await Promise.all([
+        const [contactData, appsData, resLogs, resB, resSched] = await Promise.all([
           getContactInquiries(),
           getStoredCandidateApplications(),
           authApi.getAuditLogs().catch(() => null),
           bookingApi.getAdminBookings().catch(() => null),
+          scheduledEmailApi.getScheduled({ pageSize: 1, status: 'scheduled' }).catch(() => null),
         ]);
         if (!isMounted) return;
         setInquiries(contactData);
@@ -1728,6 +1738,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         }
         if (resB?.data?.actionableCount !== undefined) {
           setCallBookingsActionableCount(resB.data.actionableCount);
+        }
+        if (resSched?.data && typeof resSched.data.scheduled_count === 'number') {
+          setScheduledEmailCount(resSched.data.scheduled_count);
         }
         await loadSupportTickets();
       } catch (err) {}
@@ -1772,6 +1785,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
             const resB = await bookingApi.getAdminBookings();
             if (isMounted && resB.data?.actionableCount !== undefined) {
               setCallBookingsActionableCount(resB.data.actionableCount);
+            }
+          } catch (e) {}
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_emails' }, () => {
+        debounceTrigger('scheduled_emails', async () => {
+          try {
+            const resSched = await scheduledEmailApi.getScheduled({ pageSize: 1, status: 'scheduled' });
+            if (isMounted && resSched.data && typeof resSched.data.scheduled_count === 'number') {
+              setScheduledEmailCount(resSched.data.scheduled_count);
             }
           } catch (e) {}
         });
@@ -2909,7 +2932,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       group: 'COMMUNICATION',
       items: [
         { id: 'email-inbox', name: 'Email Inbox', icon: Mail, count: emailInboxUnreadCount },
-        { id: 'history', name: 'Message History', icon: Send, count: emailHistoryTotalCount || emailLogs.length || undefined },
+        { id: 'history', name: 'Message History', icon: Send, count: scheduledEmailCount || undefined },
         { id: 'notifications-admin', name: 'Notification Dispatcher', icon: Send },
         { id: 'subscribers', name: 'Newsletter Subscribers', icon: Sparkles, count: subUnsubscribedCount },
         { id: 'google-group', name: 'Google Group Management', icon: Users },
