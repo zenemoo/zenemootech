@@ -89,8 +89,60 @@ export const uploadMedia = async (req, res, next) => {
   }
 };
 
+const MEDIA_PROJECTION_COLUMNS = 'id, entity_type, entity_id, asset_type, original_filename, seo_filename, alt_text, title, description, caption, folder, cloudinary_public_id, cloudinary_secure_url, public_id, image_url, asset_id, width, height, format, bytes, is_active, created_at, updated_at';
+
 export const getMedia = async (req, res, next) => {
   try {
+    const { page, limit, pageSize, folder, search } = req.query;
+
+    if (supabase) {
+      try {
+        let query = supabase
+          .from('media')
+          .select(MEDIA_PROJECTION_COLUMNS, { count: (page || limit || pageSize) ? 'exact' : undefined })
+          .order('created_at', { ascending: false });
+
+        if (folder && folder !== 'all') {
+          query = query.eq('folder', folder);
+        }
+        if (search && search.trim()) {
+          const clean = search.trim();
+          query = query.or(`title.ilike.%${clean}%,alt_text.ilike.%${clean}%,original_filename.ilike.%${clean}%`);
+        }
+
+        if (page || limit || pageSize) {
+          const pageNum = Math.max(1, parseInt(page, 10) || 1);
+          const limitNum = Math.max(1, Math.min(100, parseInt(limit || pageSize, 10) || 30));
+          const from = (pageNum - 1) * limitNum;
+          const to = from + limitNum - 1;
+          query = query.range(from, to);
+
+          const { data, count, error } = await query;
+          if (!error && Array.isArray(data)) {
+            return res.json({
+              success: true,
+              count: data.length,
+              total: count !== null && count !== undefined ? count : data.length,
+              page: pageNum,
+              limit: limitNum,
+              data,
+            });
+          }
+        } else {
+          const { data, error } = await query;
+          if (!error && Array.isArray(data)) {
+            return res.json({
+              success: true,
+              count: data.length,
+              data,
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Supabase getMedia query fallback:', dbErr.message);
+      }
+    }
+
     const data = await supabaseService.selectAll('media', 'created_at', false);
     res.json({
       success: true,

@@ -173,7 +173,7 @@ export const runScheduledEmailProcessorTick = async () => {
       if (supabase) {
         const { data: dbRecords, error: dbError } = await supabase
           .from('scheduled_emails')
-          .select('id, user_id, user_email, from_email, sender, to_emails, recipients, cc_emails, cc, bcc_emails, bcc, subject, body_html, html, attachments, status, scheduled_at, retry_count, max_retries, created_at, updated_at')
+          .select('id, user_id, user_email, from_email, to_emails, cc_emails, bcc_emails, subject, body_html, attachments, status, scheduled_at, created_at, updated_at')
           .eq('status', 'scheduled')
           .lte('scheduled_at', now.toISOString())
           .order('scheduled_at', { ascending: true })

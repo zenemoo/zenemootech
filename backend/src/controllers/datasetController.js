@@ -83,13 +83,16 @@ function generateZenemooFileName(datasetName, language, fileType, originalName, 
   };
 }
 
+const DATASET_COLUMNS = 'id, name, slug, description, language, drive_folder_id, status, total_files, total_size_bytes, created_at, updated_at';
+const DATASET_FOLDER_COLUMNS = 'id, dataset_id, name, folder_type, drive_folder_id, parent_folder_id, created_at, updated_at';
+
 export const getDatasets = async (req, res) => {
   try {
     const { search, category, status } = req.query;
 
     if (supabase) {
       try {
-        let query = supabase.from('datasets').select('*').order('created_at', { ascending: false });
+        let query = supabase.from('datasets').select(DATASET_COLUMNS).order('created_at', { ascending: false });
 
         if (status && status !== 'all') {
           query = query.eq('status', status);
@@ -147,7 +150,7 @@ export const getDatasetBySlugOrId = async (req, res) => {
     if (supabase) {
       try {
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
-        let dsQuery = supabase.from('datasets').select('*');
+        let dsQuery = supabase.from('datasets').select(DATASET_COLUMNS);
         if (isUuid) {
           dsQuery = dsQuery.eq('id', identifier);
         } else {
@@ -164,7 +167,7 @@ export const getDatasetBySlugOrId = async (req, res) => {
               .select('id, dataset_id, file_name, original_file_name, file_type, mime_type, file_size, drive_file_id, drive_folder_id, drive_url, thumbnail_url, status, created_at, updated_at')
               .eq('dataset_id', dataset.id)
               .order('created_at', { ascending: false }),
-            supabase.from('dataset_folders').select('*').eq('dataset_id', dataset.id),
+            supabase.from('dataset_folders').select(DATASET_FOLDER_COLUMNS).eq('dataset_id', dataset.id),
           ]);
           files = filesRes.data || [];
           folders = foldersRes.data || [];

@@ -1744,14 +1744,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
 
     const channel = supabase
       .channel('live-dashboard-notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_inquiries' }, () => {
-        debounceTrigger('contact_inquiries', async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => {
+        debounceTrigger('contacts', async () => {
           const data = await getContactInquiries();
           if (isMounted) setInquiries(data);
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'newsletter_subscribers' }, () => {
-        debounceTrigger('newsletter_subscribers', async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subscribers' }, () => {
+        debounceTrigger('subscribers', async () => {
           await loadSubscribers();
         });
       })
@@ -1761,14 +1761,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           if (isMounted) setAllCandidateApps(apps);
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_companies' }, () => {
-        debounceTrigger('partner_companies', async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'partners' }, () => {
+        debounceTrigger('partners', async () => {
           await loadPartnersData();
-        });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
-        debounceTrigger('support_tickets', async () => {
-          await loadSupportTickets();
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'call_bookings' }, () => {

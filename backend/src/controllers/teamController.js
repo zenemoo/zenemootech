@@ -63,6 +63,8 @@ const normalizeAndSavePositions = async (customList = null) => {
   }
 };
 
+const TEAM_ROSTER_COLUMNS = 'id, position, name, designation, department, badge, skills, bio, image_url, public_id, linkedin, github, twitter, email, phone, status, slug, employee_id, joining_date, experience, location, languages, availability, portfolio, long_bio, ai_summary, projects_completed, accuracy, datasets_processed, hours_worked, completion_rate, quality_score, timeline, achievements, created_at, updated_at';
+
 // GET /api/team - Return members ordered by position ASC with 5-minute server cache
 export const getTeam = async (req, res, next) => {
   try {
@@ -75,7 +77,25 @@ export const getTeam = async (req, res, next) => {
       });
     }
 
-    const data = await supabaseService.selectAll('team', 'position', true);
+    let data = [];
+    if (supabase) {
+      try {
+        const { data: dbData, error } = await supabase
+          .from('team')
+          .select(TEAM_ROSTER_COLUMNS)
+          .order('position', { ascending: true });
+        if (!error && Array.isArray(dbData)) {
+          data = dbData;
+        }
+      } catch (dbErr) {
+        console.warn('Supabase getTeam query fallback:', dbErr.message);
+      }
+    }
+
+    if (!data || data.length === 0) {
+      data = await supabaseService.selectAll('team', 'position', true);
+    }
+
     teamRosterCache = { data, timestamp: now };
 
     res.json({

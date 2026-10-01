@@ -545,7 +545,9 @@ export const getAdminBookings = async (req, res, next) => {
     await processAutomaticBookingCompletion();
 
     // 2. Build Query
-    let query = supabase.from('call_bookings').select('*', { count: 'exact' });
+    const BOOKING_LIST_COLUMNS = 'id, booking_id, full_name, email, phone, company_name, notes, meeting_type, meeting_duration, booking_date, start_time, end_time, timezone, status, admin_notes, reminder_sent, meeting_status, google_calendar_event_id, google_meet_url, meeting_error, customer_email_status, admin_email_status, customer_reminder_status, admin_reminder_status, created_at, updated_at, confirmed_at, cancelled_at, completed_at';
+
+    let query = supabase.from('call_bookings').select(BOOKING_LIST_COLUMNS, { count: 'exact' });
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -595,23 +597,35 @@ export const getAdminBookings = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Failed to fetch bookings.' });
     }
 
-    // 3. Compute Actionable Count for Sidebar Badge (Upcoming confirmed, pending, failed meet, failed email)
+    // 3. Compute Actionable Count for Sidebar Badge via targeted Supabase HEAD/exact count query (Zero payload egress)
     let actionableCount = 0;
     try {
-      const { data: allActive } = await supabase
+      const nowIso = new Date().toISOString();
+      const { count: headCount, error: headErr } = await supabase
         .from('call_bookings')
-        .select('id, status, end_time, meeting_status, customer_email_status, admin_email_status')
-        .in('status', ['confirmed', 'pending']);
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['confirmed', 'pending'])
+        .or(`status.eq.pending,end_time.gt.${nowIso},meeting_status.eq.failed,customer_email_status.eq.failed,admin_email_status.eq.failed`);
 
-      if (allActive) {
-        const nowMs = Date.now();
-        actionableCount = allActive.filter((b) => {
-          if (b.status === 'pending') return true;
-          if (b.status === 'confirmed' && new Date(b.end_time).getTime() > nowMs) return true;
-          if (b.meeting_status === 'failed') return true;
-          if (b.customer_email_status === 'failed' || b.admin_email_status === 'failed') return true;
-          return false;
-        }).length;
+      if (!headErr && typeof headCount === 'number') {
+        actionableCount = headCount;
+      } else {
+        const { data: allActive } = await supabase
+          .from('call_bookings')
+          .select('id, status, end_time, meeting_status, customer_email_status, admin_email_status')
+          .in('status', ['confirmed', 'pending'])
+          .limit(200);
+
+        if (allActive) {
+          const nowMs = Date.now();
+          actionableCount = allActive.filter((b) => {
+            if (b.status === 'pending') return true;
+            if (b.status === 'confirmed' && new Date(b.end_time).getTime() > nowMs) return true;
+            if (b.meeting_status === 'failed') return true;
+            if (b.customer_email_status === 'failed' || b.admin_email_status === 'failed') return true;
+            return false;
+          }).length;
+        }
       }
     } catch (_) {}
 
