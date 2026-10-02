@@ -36,6 +36,7 @@ import publicTeamInviteRoutes from './routes/publicTeamInviteRoutes.js';
 import adminTalentTeamsRoutes from './routes/adminTalentTeamsRoutes.js';
 import googleGroupSyncRoutes from './routes/googleGroupSyncRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import announcementRoutes from './routes/announcementRoutes.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -181,6 +182,8 @@ app.use('/api/public/team-invite', publicTeamInviteRoutes);
 app.use('/api/admin/talent-teams', adminTalentTeamsRoutes);
 app.use('/api/admin/google-group', googleGroupSyncRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/admin/announcements', announcementRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);

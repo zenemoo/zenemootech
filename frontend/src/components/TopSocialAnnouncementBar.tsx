@@ -1,13 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FaWhatsapp, FaLinkedin, FaXTwitter, FaInstagram, FaYoutube } from 'react-icons/fa6';
 import { ZENEMOO_SOCIAL_LINKS, SocialLinkItem } from './SocialData';
+import { announcementApi, PublicAnnouncementItem } from '../services/api';
 
 interface TopSocialAnnouncementBarProps {
   className?: string;
 }
 
+// Fallback initial items while loading or offline
+const DEFAULT_FALLBACK_ANNOUNCEMENTS: PublicAnnouncementItem[] = [
+  {
+    id: 'ann_fallback_01',
+    message: 'Are you a vendor or looking for work?',
+    linkUrl: 'https://www.zenemoo.in/talent-registration',
+    linkText: 'Join with us →',
+    icon: '✦',
+  },
+  {
+    id: 'ann_fallback_02',
+    message: 'Looking for part-time work?',
+    linkUrl: 'https://www.zenemoo.in/opportunities',
+    linkText: 'Explore opportunities →',
+    icon: '✦',
+  },
+  {
+    id: 'ann_fallback_03',
+    message: 'Want to know more about Zenemoo?',
+    linkUrl: 'https://www.zenemoo.in/30min',
+    linkText: 'Book a 30-minute meeting →',
+    icon: '✦',
+  },
+];
+
 export const TopSocialAnnouncementBar: React.FC<TopSocialAnnouncementBarProps> = ({ className = '' }) => {
   const [isVisible, setIsVisible] = useState(true);
+  const [announcements, setAnnouncements] = useState<PublicAnnouncementItem[]>(DEFAULT_FALLBACK_ANNOUNCEMENTS);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
   const prevScrollYRef = useRef(0);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -87,6 +116,38 @@ export const TopSocialAnnouncementBar: React.FC<TopSocialAnnouncementBarProps> =
     },
   ];
 
+  // Fetch active announcements from D1 API
+  useEffect(() => {
+    let isMounted = true;
+    announcementApi
+      .getActiveAnnouncements()
+      .then((res: any) => {
+        const responseData = res?.data?.data || res?.data || res;
+        const list: PublicAnnouncementItem[] = Array.isArray(responseData)
+          ? responseData
+          : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : [];
+        if (isMounted) {
+          if (list.length > 0) {
+            setAnnouncements(list);
+          } else {
+            setAnnouncements([]);
+          }
+        }
+      })
+      .catch((err: any) => {
+        console.warn('[TopSocialAnnouncementBar] Failed to load active announcements:', err?.message || err);
+      })
+      .finally(() => {
+        if (isMounted) setHasLoaded(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Scroll Listener for smart reveal/hide on desktop
   useEffect(() => {
     const handleScroll = () => {
@@ -115,7 +176,9 @@ export const TopSocialAnnouncementBar: React.FC<TopSocialAnnouncementBarProps> =
   useEffect(() => {
     const updateOffset = () => {
       const isDesktop = window.innerWidth >= 900;
-      if (isDesktop && isVisible && barRef.current) {
+      const hasContent = !hasLoaded || announcements.length > 0;
+
+      if (isDesktop && isVisible && hasContent && barRef.current) {
         const height = barRef.current.offsetHeight || 44;
         document.documentElement.style.setProperty('--announcement-offset', `${height}px`);
       } else {
@@ -130,7 +193,12 @@ export const TopSocialAnnouncementBar: React.FC<TopSocialAnnouncementBarProps> =
       window.removeEventListener('resize', updateOffset);
       document.documentElement.style.setProperty('--announcement-offset', '0px');
     };
-  }, [isVisible]);
+  }, [isVisible, announcements.length, hasLoaded]);
+
+  // If loaded and there are zero announcements, hide bar cleanly
+  if (hasLoaded && announcements.length === 0) {
+    return null;
+  }
 
   // Single announcement sequence renderer
   const renderTickerSequence = (keyPrefix: string, isAriaHidden = false) => (
@@ -139,53 +207,52 @@ export const TopSocialAnnouncementBar: React.FC<TopSocialAnnouncementBarProps> =
       className="inline-flex items-center gap-6 sm:gap-8 shrink-0 pr-6 sm:pr-8"
       aria-hidden={isAriaHidden}
     >
-      {/* 1. Vendor / Talent */}
-      <div className="inline-flex items-center gap-2">
-        <span className="relative flex h-2 w-2 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-        </span>
-        <a
-          href="https://www.zenemoo.in/talent-registration"
-          className="text-xs font-mono font-medium text-slate-200 hover:text-cyan-300 transition-colors whitespace-nowrap group inline-flex items-center gap-1"
-          title="Vendor & Talent Registration"
-        >
-          <span>Are you a vendor or looking for work? <span className="text-cyan-300 underline underline-offset-4 decoration-cyan-500/40 group-hover:decoration-cyan-400">Join with us →</span></span>
-        </a>
-      </div>
+      {/* Dynamic Database Announcements */}
+      {announcements.map((item, idx) => {
+        const isFirst = idx === 0;
+        return (
+          <React.Fragment key={`${keyPrefix}-${item.id || idx}`}>
+            <div className="inline-flex items-center gap-2">
+              {isFirst && (
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                </span>
+              )}
+              {item.linkUrl ? (
+                <a
+                  href={item.linkUrl}
+                  target={item.linkUrl.startsWith('http') ? '_blank' : '_self'}
+                  rel={item.linkUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+                  className="text-xs font-mono font-medium text-slate-200 hover:text-cyan-300 transition-colors whitespace-nowrap group inline-flex items-center gap-1.5"
+                  title={item.message}
+                  tabIndex={isAriaHidden ? -1 : 0}
+                >
+                  <span className="text-cyan-400/90">{item.icon || '✦'}</span>
+                  <span>
+                    {item.message}{' '}
+                    {item.linkText && (
+                      <span className="text-cyan-300 underline underline-offset-4 decoration-cyan-500/40 group-hover:decoration-cyan-400 font-semibold">
+                        {item.linkText}
+                      </span>
+                    )}
+                  </span>
+                </a>
+              ) : (
+                <div className="text-xs font-mono font-medium text-slate-200 whitespace-nowrap inline-flex items-center gap-1.5">
+                  <span className="text-cyan-400/90">{item.icon || '✦'}</span>
+                  <span>{item.message}</span>
+                </div>
+              )}
+            </div>
 
-      {/* Separator */}
-      <span className="text-cyan-400/40 text-[10px] select-none">✦</span>
+            {/* Separator */}
+            <span className="text-cyan-400/40 text-[10px] select-none">✦</span>
+          </React.Fragment>
+        );
+      })}
 
-      {/* 2. Part-Time Work */}
-      <div className="inline-flex items-center gap-2">
-        <a
-          href="https://www.zenemoo.in/opportunities"
-          className="text-xs font-mono font-medium text-slate-200 hover:text-cyan-300 transition-colors whitespace-nowrap group inline-flex items-center gap-1"
-          title="Part-Time Work Opportunities"
-        >
-          <span>Looking for part-time work? <span className="text-cyan-300 underline underline-offset-4 decoration-cyan-500/40 group-hover:decoration-cyan-400">Explore opportunities →</span></span>
-        </a>
-      </div>
-
-      {/* Separator */}
-      <span className="text-cyan-400/40 text-[10px] select-none">✦</span>
-
-      {/* 3. Know More About Zenemoo */}
-      <div className="inline-flex items-center gap-2">
-        <a
-          href="https://www.zenemoo.in/30min"
-          className="text-xs font-mono font-medium text-slate-200 hover:text-cyan-300 transition-colors whitespace-nowrap group inline-flex items-center gap-1"
-          title="Book a 30-Minute Meeting"
-        >
-          <span>Want to know more about Zenemoo? <span className="text-cyan-300 underline underline-offset-4 decoration-cyan-500/40 group-hover:decoration-cyan-400">Book a 30-minute meeting →</span></span>
-        </a>
-      </div>
-
-      {/* Separator */}
-      <span className="text-cyan-400/40 text-[10px] select-none">✦</span>
-
-      {/* 4. Social Media with Links */}
+      {/* Official Social Media Strip */}
       <div className="inline-flex items-center gap-3">
         <span className="text-xs font-mono font-medium text-slate-200 whitespace-nowrap">
           Join Our Social Media →

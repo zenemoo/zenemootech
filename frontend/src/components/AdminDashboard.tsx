@@ -35,6 +35,8 @@ import { AdminReferralsTab } from './AdminReferralsTab';
 import { AdminTalentTeamsTab } from './AdminTalentTeamsTab';
 import { AdminGoogleGroupTab } from './AdminGoogleGroupTab';
 import { AdminMessageHistoryTab } from './AdminMessageHistoryTab';
+import { AdminAnnouncementsTab } from './AdminAnnouncementsTab';
+import { Megaphone } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 export type AdminTabType =
@@ -43,6 +45,7 @@ export type AdminTabType =
   | 'opportunities'
   | 'inquiries'
   | 'subscribers'
+  | 'announcements'
   | 'google-group'
   | 'history'
   | 'telemetry'
@@ -98,6 +101,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'ai-analytics',
   'telemetry',
   'portfolio',
+  'announcements',
 ];
 
 const OAUTH_KEYWORDS = [
@@ -153,6 +157,8 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'data-folders': 'Data Folders',
   'ai-analytics': 'AI Analytics',
   'telemetry': 'Site Settings & Branding',
+  'portfolio': 'Company Portfolio',
+  'announcements': 'Announcements Ticker',
 };
 
 export const getAdminTabTitle = (tab: string | null | undefined): string => {
@@ -2969,6 +2975,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'SYSTEM & BRANDING',
       items: [
+        { id: 'announcements', name: 'Announcements', icon: Megaphone },
         { id: 'telemetry', name: 'Site Settings & Branding', icon: Globe, count: hasCustomLogo ? 'Y' : 'N' },
         { id: 'portfolio', name: 'Company Portfolio', icon: FileText },
       ],
@@ -7169,6 +7176,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {activeTab === 'telemetry' && (
           <div className="space-y-8 font-sans">
             <AdminBrandLogoSettings />
+          </div>
+        )}
+
+        {/* TAB: ANNOUNCEMENTS MANAGEMENT */}
+        {activeTab === 'announcements' && (
+          <div className="space-y-8 font-sans">
+            <AdminAnnouncementsTab addToast={addToast} showConfirm={showConfirm} />
           </div>
         )}
 

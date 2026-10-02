@@ -1,0 +1,50 @@
+[
+  {
+    "id": "ann_default_01",
+    "title": "New Opportunities",
+    "message": "New opportunities are available",
+    "link_url": "/opportunities",
+    "link_text": "Explore Now →",
+    "icon": "✦",
+    "active": 1,
+    "priority": 10,
+    "sort_order": 1,
+    "start_at": null,
+    "end_at": null,
+    "created_at": "2026-10-01T00:00:00.000Z",
+    "updated_at": "2026-10-01T00:00:00.000Z",
+    "created_by": "system@zenemoo.in"
+  },
+  {
+    "id": "ann_default_02",
+    "title": "Join Zenemoo",
+    "message": "Vendors & talent are welcome",
+    "link_url": "https://www.zenemoo.in/talent-registration",
+    "link_text": "Register with Zenemoo →",
+    "icon": "●",
+    "active": 1,
+    "priority": 8,
+    "sort_order": 2,
+    "start_at": null,
+    "end_at": null,
+    "created_at": "2026-10-01T00:00:00.000Z",
+    "updated_at": "2026-10-01T00:00:00.000Z",
+    "created_by": "system@zenemoo.in"
+  },
+  {
+    "id": "ann_default_03",
+    "title": "Book a Meeting",
+    "message": "Want to work with Zenemoo?",
+    "link_url": "https://www.zenemoo.in/30min",
+    "link_text": "Book a 30-minute meeting →",
+    "icon": "✦",
+    "active": 1,
+    "priority": 6,
+    "sort_order": 3,
+    "start_at": null,
+    "end_at": null,
+    "created_at": "2026-10-01T00:00:00.000Z",
+    "updated_at": "2026-10-01T00:00:00.000Z",
+    "created_by": "system@zenemoo.in"
+  }
+]

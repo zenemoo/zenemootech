@@ -939,5 +939,60 @@ export const googleGroupApi = {
     api.delete(`/admin/google-group/members/${encodeURIComponent(email)}`),
 };
 
+// ZENEMOO Announcements / Public Ticker API
+export interface PublicAnnouncementItem {
+  id: string;
+  message: string;
+  linkUrl: string;
+  linkText: string;
+  icon: string;
+}
+
+export interface AdminAnnouncementItem {
+  id: string;
+  title: string;
+  message: string;
+  linkUrl: string;
+  linkText: string;
+  icon: string;
+  active: boolean;
+  priority: number;
+  sortOrder: number;
+  startAt: string | null;
+  endAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  computedStatus: 'active' | 'scheduled' | 'disabled' | 'expired';
+}
+
+export const announcementApi = {
+  getActiveAnnouncements: () =>
+    deduplicatedGet<{ success: boolean; count: number; data: PublicAnnouncementItem[] }>('/announcements/active'),
+  getAdminAnnouncements: (status?: string) =>
+    api.get<{ success: boolean; count: number; filter: string; data: AdminAnnouncementItem[] }>('/admin/announcements', { params: { status } }),
+  createAnnouncement: (data: {
+    title?: string;
+    message: string;
+    linkUrl?: string;
+    linkText?: string;
+    icon?: string;
+    priority?: number;
+    sortOrder?: number;
+    active?: boolean;
+    startAt?: string | null;
+    endAt?: string | null;
+  }) => api.post<{ success: boolean; message: string; data: AdminAnnouncementItem }>('/admin/announcements', data),
+  updateAnnouncement: (id: string, data: Partial<AdminAnnouncementItem>) =>
+    api.patch<{ success: boolean; message: string; data: AdminAnnouncementItem }>(`/admin/announcements/${encodeURIComponent(id)}`, data),
+  toggleAnnouncementStatus: (id: string, active: boolean) =>
+    api.patch<{ success: boolean; message: string; data: AdminAnnouncementItem }>(`/admin/announcements/${encodeURIComponent(id)}/status`, { active }),
+  reorderAnnouncements: (orderedIds: string[]) =>
+    api.patch<{ success: boolean; message: string; data: AdminAnnouncementItem[] }>('/admin/announcements/reorder', { orderedIds }),
+  deleteAnnouncement: (id: string) =>
+    api.delete<{ success: boolean; message: string }>(`/admin/announcements/${encodeURIComponent(id)}`),
+};
+
+
 
 
