@@ -7,6 +7,7 @@ import { encrypt, decrypt } from '../services/encryptionService.js';
 import { sendMailViaBrevo, parseRecipients, validateEmail, sanitizeHtml } from '../services/emailService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
+import { emailR2Service } from '../services/emailR2Service.js';
 
 const getCloudflareWebhookSecret = () => (process.env.CLOUDFLARE_WEBHOOK_SECRET ? process.env.CLOUDFLARE_WEBHOOK_SECRET.trim() : null);
 
@@ -360,11 +361,13 @@ export const getIncomingEmails = async (req, res, next) => {
               filename: a.filename || a.name || 'attachment',
               contentType: a.contentType || a.type || 'application/octet-stream',
               size: typeof a.size === 'number' ? a.size : (a.content ? Math.round(a.content.length * 0.75) : 1024),
+              r2_key: a.r2_key || (e.storage_provider === 'cloudflare_r2' ? `incoming/${e.id}/attachments/${emailR2Service.sanitizeFilename(a.filename || a.name)}` : undefined),
             }));
           }
           return {
             ...e,
             attachments: atts,
+            has_attachments: Boolean(e.has_attachments || atts.length > 0),
           };
         });
 
@@ -480,6 +483,37 @@ export const getIncomingEmailById = async (req, res, next) => {
             .eq('id', email.id);
           email.is_read = true;
         }
+
+        // Dual-Read Body: Read from R2 if R2 key or cloudflare_r2 provider exists, falling back safely to Supabase
+        const r2HtmlKey = email.body_html_r2_key || (email.storage_provider === 'cloudflare_r2' ? `incoming/${email.id}/body.html` : null);
+        const r2TextKey = email.body_text_r2_key || (email.storage_provider === 'cloudflare_r2' ? `incoming/${email.id}/body.txt` : null);
+
+        if (r2HtmlKey || r2TextKey) {
+          try {
+            const { body_html, body_text } = await emailR2Service.getEmailBodyWithFallback({
+              htmlKey: r2HtmlKey,
+              textKey: r2TextKey,
+              fallbackHtml: email.body_html || '',
+              fallbackText: email.body_text || '',
+            });
+            email.body_html = body_html;
+            email.body_text = body_text;
+          } catch (r2ReadErr) {
+            console.warn('[getIncomingEmailById] Dual-read fallback to Supabase:', r2ReadErr.message);
+          }
+        }
+
+        // Sanitize attachments: ensure clean metadata with R2 key without exposing heavy base64
+        if (Array.isArray(email.attachments)) {
+          email.attachments = email.attachments.map((a, idx) => ({
+            id: a.id || `att_${idx}`,
+            filename: a.filename || a.name || 'attachment',
+            contentType: a.contentType || a.type || 'application/octet-stream',
+            size: typeof a.size === 'number' ? a.size : (a.content ? Math.round(a.content.length * 0.75) : 1024),
+            r2_key: a.r2_key || `incoming/${emailR2Service.sanitizeId(email.id)}/attachments/${emailR2Service.sanitizeFilename(a.filename || a.name)}`,
+          }));
+        }
+
         return res.json({ success: true, email });
       }
     }
@@ -544,6 +578,11 @@ export const updateIncomingEmailState = async (req, res, next) => {
 export const deleteIncomingEmail = async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    // Clean up associated R2 objects safely
+    emailR2Service.deleteEmailObjects({ emailId: id, type: 'incoming' }).catch((e) => {
+      console.warn(`[Delete Email R2 Cleanup Note]:`, e.message);
+    });
 
     if (supabase) {
       const { error } = await supabase
@@ -691,7 +730,81 @@ export const ingestCloudflareEmail = async (req, res, next) => {
     inMemoryEmails.unshift(emailRow);
     invalidateStorageStatsCache();
 
-    // 3. Dispatch Admin Notification (STRICTLY ADMIN ONLY)
+    // 3. Upload large content to private R2 (Async resilient pipeline)
+    (async () => {
+      try {
+        const r2BodyResult = await emailR2Service.uploadEmailBody({
+          emailId: createdId,
+          html: cleanBodyHtml,
+          text: cleanBodyText,
+          type: 'incoming',
+        });
+
+        const uploadedAttachments = [];
+        let attachmentsSizeBytes = 0;
+        for (const att of finalAttachments) {
+          if (att.content || att.data || att.base64) {
+            try {
+              const up = await emailR2Service.uploadAttachment({
+                emailId: createdId,
+                filename: att.filename || att.name,
+                content: att.content || att.data || att.base64,
+                contentType: att.contentType || att.type,
+                type: 'incoming',
+              });
+              uploadedAttachments.push({
+                id: att.id,
+                filename: up.filename,
+                contentType: up.contentType,
+                size: up.size,
+                r2_key: up.r2_key,
+              });
+              attachmentsSizeBytes += up.size;
+            } catch (attErr) {
+              console.warn('[Ingest R2 Attachment Upload Warning]:', attErr.message);
+              uploadedAttachments.push(att);
+            }
+          } else {
+            uploadedAttachments.push(att);
+          }
+        }
+
+        if (supabase) {
+          const updateData = {
+            storage_provider: 'cloudflare_r2',
+            body_html_r2_key: r2BodyResult.htmlKey,
+            body_text_r2_key: r2BodyResult.textKey,
+            attachments_r2_prefix: `incoming/${emailR2Service.sanitizeId(createdId)}/attachments/`,
+            has_attachments: finalAttachments.length > 0,
+            attachments_meta: uploadedAttachments,
+            storage_migration_status: 'migrated',
+            storage_migrated_at: new Date().toISOString(),
+            storage_size_bytes: r2BodyResult.totalBytes + attachmentsSizeBytes,
+          };
+
+          try {
+            await supabase
+              .from('incoming_email_messages')
+              .update(updateData)
+              .eq('id', createdId);
+          } catch (dbUpErr) {
+            console.warn('[Ingest R2 Supabase Update Note]:', dbUpErr.message);
+          }
+        }
+      } catch (r2Err) {
+        console.warn('[Ingest R2 Upload Warning - Supabase data remains active]:', r2Err.message);
+        if (supabase) {
+          try {
+            await supabase
+              .from('incoming_email_messages')
+              .update({ storage_migration_status: 'failed' })
+              .eq('id', createdId);
+          } catch (_) {}
+        }
+      }
+    })();
+
+    // 4. Dispatch Admin Notification (STRICTLY ADMIN ONLY)
     sendZenemooNotification({
       title: 'New Email Received',
       message: `${cleanSenderName} sent an email to ${targetMailbox}`,
@@ -719,8 +832,8 @@ export const ingestCloudflareEmail = async (req, res, next) => {
 
 /**
  * GET /api/emails/storage-usage
- * Calculate live real email database & attachment storage space usage from Supabase
- * Egress-Optimized: Uses in-memory server cache (5m TTL) and lightweight metadata query (zero body_html, zero body_text)
+ * Calculate live real email database & attachment storage space usage
+ * Egress-Optimized: Lightweight projection (zero attachment base64 download)
  */
 export const getEmailStorageUsage = async (req, res, next) => {
   try {
@@ -737,38 +850,17 @@ export const getEmailStorageUsage = async (req, res, next) => {
     const ESTIMATED_AVG_EMAIL_TEXT_BYTES = 12 * 1024; // ~12 KB average structured email metadata + text + HTML markup
 
     if (supabase) {
-      // Egress-safe lightweight query: NEVER download body_text or body_html for storage calculation
-      const { data: messages, count: exactCount, error } = await supabase
+      // Egress-safe lightweight query: Uses head count & lightweight fields, NEVER downloads base64 attachments
+      const { count: exactCount, error } = await supabase
         .from('incoming_email_messages')
-        .select('id, attachments', { count: 'exact' });
+        .select('id', { count: 'exact', head: true });
 
-      if (!error && Array.isArray(messages)) {
-        const msgCount = typeof exactCount === 'number' ? exactCount : messages.length;
-        totalBytes += msgCount * ESTIMATED_AVG_EMAIL_TEXT_BYTES;
-
-        // Add exact attachment bytes from lightweight metadata
-        messages.forEach((msg) => {
-          if (Array.isArray(msg.attachments)) {
-            msg.attachments.forEach((att) => {
-              if (att && typeof att.size === 'number') {
-                totalBytes += att.size;
-              }
-            });
-          }
-        });
+      if (!error && typeof exactCount === 'number') {
+        totalBytes = exactCount * ESTIMATED_AVG_EMAIL_TEXT_BYTES;
       }
     } else {
       const msgCount = inMemoryEmails.length;
-      totalBytes += msgCount * ESTIMATED_AVG_EMAIL_TEXT_BYTES;
-      inMemoryEmails.forEach((msg) => {
-        if (Array.isArray(msg.attachments)) {
-          msg.attachments.forEach((att) => {
-            if (att && typeof att.size === 'number') {
-              totalBytes += att.size;
-            }
-          });
-        }
-      });
+      totalBytes = msgCount * ESTIMATED_AVG_EMAIL_TEXT_BYTES;
     }
 
     let usedFormatted = '0 KB';
@@ -1316,7 +1408,23 @@ export const getAttachmentDownload = async (req, res, next) => {
     const contentType = att.contentType || att.type || 'application/octet-stream';
     const disposition = isInline ? 'inline' : 'attachment';
 
-    // If attachment has direct URL
+    // 1. Check R2 Storage First (Private R2 Zero Egress / Direct Secure Stream)
+    const safeFilename = emailR2Service.sanitizeFilename(filename);
+    const candidateR2Key = att.r2_key || `incoming/${emailR2Service.sanitizeId(id)}/attachments/${safeFilename}`;
+    
+    try {
+      const r2Object = await emailR2Service.getObjectBuffer(candidateR2Key);
+      if (r2Object && r2Object.buffer) {
+        res.setHeader('Content-Type', r2Object.contentType || contentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+        res.setHeader('Content-Length', r2Object.contentLength || r2Object.buffer.length);
+        return res.send(r2Object.buffer);
+      }
+    } catch (r2Err) {
+      console.warn(`[Attachment R2 Stream Fallback]:`, r2Err.message);
+    }
+
+    // 2. If attachment has direct URL
     if (att.url && typeof att.url === 'string' && (att.url.startsWith('http://') || att.url.startsWith('https://'))) {
       return res.redirect(att.url);
     }
@@ -1495,8 +1603,66 @@ export const sendInboxEmail = async (req, res, next) => {
       } catch (_) {}
     }
 
+    const sentEmailId = String(insertedRecord?.id || sendResult.messageId || `sent_${Date.now()}`);
+
+    // Upload sent email body and attachments to private R2
+    (async () => {
+      try {
+        const r2SentBody = await emailR2Service.uploadEmailBody({
+          emailId: sentEmailId,
+          html: safeHtml,
+          text: text || safeHtml.replace(/<[^>]+>/g, ' ').trim(),
+          type: 'sent',
+        });
+
+        const sentAttachmentsMeta = [];
+        if (Array.isArray(attachments) && attachments.length > 0) {
+          for (const a of attachments) {
+            if (a.content || a.data || a.base64) {
+              try {
+                const up = await emailR2Service.uploadAttachment({
+                  emailId: sentEmailId,
+                  filename: a.filename || a.name,
+                  content: a.content || a.data || a.base64,
+                  contentType: a.contentType || a.type,
+                  type: 'sent',
+                });
+                sentAttachmentsMeta.push({
+                  id: a.id || `att_${Date.now()}`,
+                  filename: up.filename,
+                  contentType: up.contentType,
+                  size: up.size,
+                  r2_key: up.r2_key,
+                });
+              } catch (attErr) {
+                console.warn('[Sent R2 Attachment Upload Warning]:', attErr.message);
+              }
+            }
+          }
+        }
+
+        if (insertedRecord?.id && supabase) {
+          await supabase
+            .from('email_history')
+            .update({
+              storage_provider: 'cloudflare_r2',
+              body_html_r2_key: r2SentBody.htmlKey,
+              body_text_r2_key: r2SentBody.textKey,
+              attachments_r2_prefix: `sent/${emailR2Service.sanitizeId(sentEmailId)}/attachments/`,
+              has_attachments: sentAttachmentsMeta.length > 0,
+              attachments_meta: sentAttachmentsMeta.length > 0 ? sentAttachmentsMeta : undefined,
+              storage_migration_status: 'migrated',
+              storage_migrated_at: new Date().toISOString(),
+            })
+            .eq('id', insertedRecord.id);
+        }
+      } catch (r2SentErr) {
+        console.warn('[Sent Email R2 Upload Warning - Email sent & DB record active]:', r2SentErr.message);
+      }
+    })();
+
     const createdRecord = {
-      id: String(insertedRecord?.id || sendResult.messageId || `sent_${Date.now()}`),
+      id: sentEmailId,
       message_id: sendResult.messageId || payload.message_id,
       mailbox_email: fromSender,
       sender_name: 'Zenemoo',

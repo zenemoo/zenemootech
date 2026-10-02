@@ -10,6 +10,7 @@ import {
 } from '../services/emailService.js';
 import { encrypt, decrypt } from '../services/encryptionService.js';
 import { sanitizePostgrestExact, sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
+import { emailR2Service } from '../services/emailR2Service.js';
 
 // Helper for non-hanging async queries with timeout
 const withTimeout = (promise, ms = 8000) => {
@@ -112,6 +113,64 @@ export const sendEmail = async (req, res, next) => {
         }
       }
       memoryHistory.unshift(payload);
+
+      const historyId = String(insertedRecord?.id || sendResult.messageId || `sent_${Date.now()}`);
+
+      // Upload sent body and attachments to private R2
+      (async () => {
+        try {
+          const r2SentBody = await emailR2Service.uploadEmailBody({
+            emailId: historyId,
+            html: safeHtml,
+            text: text || safeHtml.replace(/<[^>]+>/g, ' ').trim(),
+            type: 'sent',
+          });
+
+          const sentAttachmentsMeta = [];
+          if (Array.isArray(attachments) && attachments.length > 0) {
+            for (const a of attachments) {
+              if (a.content || a.data || a.base64) {
+                try {
+                  const up = await emailR2Service.uploadAttachment({
+                    emailId: historyId,
+                    filename: a.filename || a.name,
+                    content: a.content || a.data || a.base64,
+                    contentType: a.contentType || a.type,
+                    type: 'sent',
+                  });
+                  sentAttachmentsMeta.push({
+                    id: a.id || `att_${Date.now()}`,
+                    filename: up.filename,
+                    contentType: up.contentType,
+                    size: up.size,
+                    r2_key: up.r2_key,
+                  });
+                } catch (attErr) {
+                  console.warn('[sendEmail R2 Attachment Warning]:', attErr.message);
+                }
+              }
+            }
+          }
+
+          if (insertedRecord?.id && supabase) {
+            await supabase
+              .from('email_history')
+              .update({
+                storage_provider: 'cloudflare_r2',
+                body_html_r2_key: r2SentBody.htmlKey,
+                body_text_r2_key: r2SentBody.textKey,
+                attachments_r2_prefix: `sent/${emailR2Service.sanitizeId(historyId)}/attachments/`,
+                has_attachments: sentAttachmentsMeta.length > 0,
+                attachments_meta: sentAttachmentsMeta.length > 0 ? sentAttachmentsMeta : undefined,
+                storage_migration_status: 'migrated',
+                storage_migrated_at: new Date().toISOString(),
+              })
+              .eq('id', insertedRecord.id);
+          }
+        } catch (r2SentErr) {
+          console.warn('[sendEmail R2 Upload Warning - Email sent & DB active]:', r2SentErr.message);
+        }
+      })();
 
       // Return decrypted response to user UI
       return res.json({
@@ -558,7 +617,22 @@ export const getEmailHistoryById = async (req, res, next) => {
     const cc = decrypt(record.cc, true);
     const bcc = decrypt(record.bcc, true);
     const subject = decrypt(record.subject);
-    const html = decrypt(record.html);
+    let html = decrypt(record.html) || '';
+
+    // Dual-Read Body: If R2 key exists or storage_provider is cloudflare_r2, read from R2 with fallback
+    const r2HtmlKey = record.body_html_r2_key || (record.storage_provider === 'cloudflare_r2' ? `sent/${record.id}/body.html` : null);
+    if (r2HtmlKey) {
+      try {
+        const { body_html } = await emailR2Service.getEmailBodyWithFallback({
+          htmlKey: r2HtmlKey,
+          fallbackHtml: html,
+        });
+        if (body_html) html = body_html;
+      } catch (r2Err) {
+        console.warn('[getEmailHistoryById] Dual-read fallback to Supabase:', r2Err.message);
+      }
+    }
+
     const realAttachments = sanitizeAttachmentMeta(record.attachments_meta);
 
     const decryptedRecord = {
@@ -571,6 +645,8 @@ export const getEmailHistoryById = async (req, res, next) => {
       html: html || '',
       attachments_meta: realAttachments,
       hasAttachments: realAttachments.length > 0,
+      storage_provider: record.storage_provider || 'supabase',
+      storage_migration_status: record.storage_migration_status || 'pending',
       status: record.status || 'sent',
       messageId: record.message_id || String(record.id || ''),
       errorMessage: record.error_message || null,
