@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CursorSpotlight } from './components/CursorSpotlight';
 import { ThreeNeuralBackground } from './components/ThreeNeuralBackground';
+import { TopSocialAnnouncementBar } from './components/TopSocialAnnouncementBar';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { TelemetryStats } from './components/TelemetryStats';
@@ -1226,6 +1227,9 @@ function AppInner() {
 
           {/* 3D WebGL Neural Background Canvas */}
           <ThreeNeuralBackground />
+
+          {/* Top Social Announcement Bar (Home Page Only) */}
+          <TopSocialAnnouncementBar />
 
           {/* Top Navbar */}
           <Navbar onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />

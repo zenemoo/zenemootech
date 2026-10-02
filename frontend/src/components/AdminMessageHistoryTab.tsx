@@ -201,34 +201,42 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
         true
       );
 
-      const objectUrl = URL.createObjectURL(blob);
+      const effectiveType = (contentType && contentType !== 'application/octet-stream')
+        ? contentType
+        : (att.contentType || (targetFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'));
+
+      const typedBlob = (blob.type && blob.type !== 'application/octet-stream')
+        ? blob
+        : new Blob([blob], { type: effectiveType });
+
+      const objectUrl = URL.createObjectURL(typedBlob);
       let textContent: string | undefined = undefined;
 
       if (
-        contentType.includes('text') ||
-        contentType.includes('json') ||
-        contentType.includes('csv') ||
-        contentType.includes('xml') ||
-        filename.endsWith('.txt') ||
-        filename.endsWith('.json') ||
-        filename.endsWith('.csv') ||
-        filename.endsWith('.log')
+        effectiveType.includes('text') ||
+        effectiveType.includes('json') ||
+        effectiveType.includes('csv') ||
+        effectiveType.includes('xml') ||
+        filename.toLowerCase().endsWith('.txt') ||
+        filename.toLowerCase().endsWith('.json') ||
+        filename.toLowerCase().endsWith('.csv') ||
+        filename.toLowerCase().endsWith('.log')
       ) {
         try {
-          textContent = await blob.text();
+          textContent = await typedBlob.text();
         } catch (_) {}
       }
 
       blobCacheRef.current.set(attachmentKey, {
-        blob,
+        blob: typedBlob,
         url: objectUrl,
         filename,
-        contentType,
+        contentType: effectiveType,
         text: textContent,
       });
 
       setPreviewBlobUrl(objectUrl);
-      setPreviewContentType(contentType);
+      setPreviewContentType(effectiveType);
       setPreviewTextContent(textContent || null);
       setPreviewError(null);
     } catch (err: any) {
@@ -1356,20 +1364,16 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                         const filename = att.filename || att.name || `attachment_${idx + 1}`;
                         const contentType = att.contentType || att.type || '';
                         const sizeStr = formatFileSize(att.size);
+                        const lowerType = (contentType || '').toLowerCase();
                         const isPreviewable =
-                          contentType.includes('pdf') ||
-                          contentType.includes('image') ||
-                          contentType.includes('text') ||
-                          contentType.includes('json') ||
-                          contentType.includes('csv') ||
-                          filename.toLowerCase().endsWith('.pdf') ||
-                          filename.toLowerCase().endsWith('.png') ||
-                          filename.toLowerCase().endsWith('.jpg') ||
-                          filename.toLowerCase().endsWith('.jpeg') ||
-                          filename.toLowerCase().endsWith('.webp') ||
-                          filename.toLowerCase().endsWith('.txt') ||
-                          filename.toLowerCase().endsWith('.csv') ||
-                          filename.toLowerCase().endsWith('.json');
+                          lowerType.includes('pdf') ||
+                          lowerType.includes('image') ||
+                          lowerType.includes('text') ||
+                          lowerType.includes('json') ||
+                          lowerType.includes('csv') ||
+                          ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'txt', 'csv', 'json', 'log', 'xml', 'md'].some((ext) =>
+                            filename.toLowerCase().endsWith('.' + ext)
+                          );
 
                         const isDownloading = activeDownloadingId === (att.filename || att.name || String(idx));
                         const isPreviewing = activePreviewingId === (att.filename || att.name || String(idx));
@@ -1556,6 +1560,19 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {previewBlobUrl && (
+                  <a
+                    href={previewBlobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-mono font-medium cursor-pointer transition-all flex items-center gap-1.5 min-h-[36px]"
+                    title="Open in new window / tab"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="hidden sm:inline">Open in Tab</span>
+                  </a>
+                )}
+
                 <button
                   type="button"
                   disabled={activeDownloadingId === (previewAttachment.attachment.filename || previewAttachment.attachment.name)}
@@ -1626,40 +1643,83 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                 </div>
               ) : previewBlobUrl ? (
                 (() => {
-                  const filename = (previewAttachment.attachment.filename || previewAttachment.attachment.name || '').toLowerCase();
-                  const isPdf = (previewContentType || '').includes('pdf') || filename.endsWith('.pdf');
+                  const targetFilename = previewAttachment.attachment.filename || previewAttachment.attachment.name || 'document';
+                  const lowerName = targetFilename.toLowerCase();
+                  const effectiveType = (previewContentType || previewAttachment.attachment.contentType || previewAttachment.attachment.type || '').toLowerCase();
+
+                  const isPdf = effectiveType.includes('pdf') || lowerName.endsWith('.pdf');
                   const isImage =
-                    (previewContentType || '').includes('image') ||
-                    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].some((ext) => filename.endsWith(ext));
+                    effectiveType.includes('image') ||
+                    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].some((ext) => lowerName.endsWith('.' + ext));
                   const isText =
                     previewTextContent !== null ||
-                    (previewContentType || '').includes('text') ||
-                    (previewContentType || '').includes('json') ||
-                    ['txt', 'json', 'csv', 'log', 'xml', 'md'].some((ext) => filename.endsWith(ext));
+                    effectiveType.includes('text') ||
+                    effectiveType.includes('json') ||
+                    effectiveType.includes('csv') ||
+                    ['txt', 'json', 'csv', 'log', 'xml', 'md'].some((ext) => lowerName.endsWith('.' + ext));
 
                   if (isPdf) {
                     return (
-                      <iframe
-                        src={previewBlobUrl}
-                        title={filename}
-                        className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#0c101d]"
-                      />
+                      <div className="w-full h-[75vh] flex flex-col rounded-2xl border border-white/10 bg-[#0c101d] overflow-hidden shadow-2xl">
+                        <object
+                          data={previewBlobUrl}
+                          type="application/pdf"
+                          className="w-full flex-1 border-0 rounded-2xl bg-[#0c101d]"
+                        >
+                          <iframe
+                            src={previewBlobUrl}
+                            title={targetFilename}
+                            className="w-full h-full border-0"
+                          >
+                            <div className="p-8 text-center space-y-4 flex flex-col items-center justify-center h-full">
+                              <FileText className="w-12 h-12 text-rose-400" />
+                              <div className="space-y-1">
+                                <h4 className="text-base font-bold text-white">{targetFilename}</h4>
+                                <p className="text-xs text-slate-400">
+                                  Your browser does not support embedding PDF files inline in this view.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <a
+                                  href={previewBlobUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs hover:bg-cyan-400 transition-all flex items-center gap-1.5"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <span>Open PDF in Tab</span>
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-all flex items-center gap-1.5"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download PDF</span>
+                                </button>
+                              </div>
+                            </div>
+                          </iframe>
+                        </object>
+                      </div>
                     );
                   }
 
                   if (isImage) {
                     return (
-                      <img
-                        src={previewBlobUrl}
-                        alt={filename}
-                        className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl"
-                      />
+                      <div className="max-w-full max-h-[75vh] flex items-center justify-center p-2">
+                        <img
+                          src={previewBlobUrl}
+                          alt={targetFilename}
+                          className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-2xl border border-white/10"
+                        />
+                      </div>
                     );
                   }
 
                   if (isText && previewTextContent !== null) {
                     return (
-                      <div className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#070a11] p-4 overflow-auto font-mono text-xs text-slate-200 whitespace-pre-wrap select-text">
+                      <div className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#070a11] p-4 overflow-auto font-mono text-xs text-slate-200 whitespace-pre-wrap select-text leading-relaxed">
                         {previewTextContent}
                       </div>
                     );
@@ -1667,19 +1727,23 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
 
                   return (
                     <div className="p-8 text-center max-w-sm space-y-4">
-                      {getAttachmentIcon(previewAttachment.attachment.contentType || previewAttachment.attachment.type, filename)}
+                      {getAttachmentIcon(previewAttachment.attachment.contentType || previewAttachment.attachment.type, targetFilename)}
                       <div className="space-y-1">
-                        <p className="text-sm font-bold text-white truncate">{filename}</p>
+                        <p className="text-sm font-bold text-white truncate">{targetFilename}</p>
                         <p className="text-xs font-mono text-slate-400">
-                          {formatFileSize(previewAttachment.attachment.size)} &bull; No inline preview available for this format
+                          {formatFileSize(previewAttachment.attachment.size)} &bull; {previewAttachment.attachment.contentType || 'Binary Document'}
                         </p>
                       </div>
+                      <p className="text-xs text-slate-400">
+                        Direct browser preview is not supported for this file type. Click download to view the file locally.
+                      </p>
                       <button
                         type="button"
                         onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
-                        className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 text-xs font-mono font-bold cursor-pointer transition-all inline-flex items-center gap-2"
+                        className="w-full py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs cursor-pointer hover:bg-cyan-400 transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20"
                       >
-                        <Download className="w-4 h-4" /> Download File
+                        <Download className="w-4 h-4" />
+                        <span>Download {targetFilename}</span>
                       </button>
                     </div>
                   );

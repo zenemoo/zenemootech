@@ -229,5 +229,36 @@
   filter: drop-shadow(0 2px 12px rgba(0, 217, 255, 0.25));
 }
 
+/* ==========================================================================
+   Continuous Announcement Ticker Marquee Animation
+   Speed: ~40px/s (Smooth, easy to read, GPU-accelerated)
+   ========================================================================== */
+@keyframes announcement-ticker-scroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-announcement-ticker {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: announcement-ticker-scroll 45s linear infinite;
+}
+
+.animate-announcement-ticker:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-announcement-ticker {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 
 

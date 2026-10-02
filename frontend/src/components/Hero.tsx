@@ -27,7 +27,7 @@ export const Hero: React.FC = () => {
   };
 
   return (
-    <section id="home" className="relative pt-24 pb-20 md:pt-28 md:pb-24 overflow-hidden bg-noise">
+    <section id="home" className="relative pt-20 pb-16 min-[900px]:pt-[130px] lg:pt-[134px] xl:pt-[138px] md:pb-20 overflow-hidden bg-noise">
       {/* Background Lights & Aurora */}
       <div className="aurora-bg">
         <div className="aurora-blob aurora-1"></div>
@@ -38,7 +38,7 @@ export const Hero: React.FC = () => {
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 z-10">
         <div className="text-center max-w-5xl xl:max-w-6xl mx-auto">
           {/* Top Pill Badge with Official Logo */}
-          <div className="inline-flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 px-3.5 sm:px-5 py-1.5 sm:py-2.5 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-6 sm:mb-8 md:mb-10 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full">
+          <div className="inline-flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 px-3.5 sm:px-5 py-1.5 sm:py-2 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl mb-3 sm:mb-4 md:mb-4 group hover:border-cyan-500/40 transition-all duration-300 shadow-lg max-w-full">
             <SeoImage src="/assets/logo.png" alt="Zenemoo Official Logo — Enterprise AI Solutions" priority={true} width={24} height={24} className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white p-0.5 shadow object-cover shrink-0" />
             <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
             <span className="text-[10px] sm:text-xs font-mono text-cyan-300 uppercase tracking-wider font-semibold">
@@ -52,7 +52,7 @@ export const Hero: React.FC = () => {
 
           {/* Cinematic Large-Screen Responsive Headline */}
           <h1
-            className="font-extrabold font-display tracking-tight text-white leading-[1.05] sm:leading-[1.08] mb-6 sm:mb-8 md:mb-10 max-w-[1350px] mx-auto text-balance"
+            className="font-extrabold font-display tracking-tight text-white leading-[1.05] sm:leading-[1.08] mb-4 sm:mb-5 md:mb-6 max-w-[1350px] mx-auto text-balance"
             style={{
               fontSize: 'clamp(2.35rem, 5.8vw + 0.5rem, 6.75rem)',
             }}

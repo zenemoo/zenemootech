@@ -396,6 +396,48 @@ export class EmailR2Service {
   }
 
   /**
+   * Helper: Resolves standard MIME type from filename extension
+   */
+  getMimeType(filename) {
+    if (!filename || typeof filename !== 'string') return 'application/octet-stream';
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const map = {
+      pdf: 'application/pdf',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+      bmp: 'image/bmp',
+      ico: 'image/x-icon',
+      txt: 'text/plain; charset=utf-8',
+      log: 'text/plain; charset=utf-8',
+      csv: 'text/csv; charset=utf-8',
+      json: 'application/json',
+      xml: 'application/xml',
+      html: 'text/html; charset=utf-8',
+      htm: 'text/html; charset=utf-8',
+      zip: 'application/zip',
+      tar: 'application/x-tar',
+      gz: 'application/gzip',
+      '7z': 'application/x-7z-compressed',
+      rar: 'application/x-rar-compressed',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      mp4: 'video/mp4',
+      mov: 'video/quicktime',
+    };
+    return map[ext] || 'application/octet-stream';
+  }
+
+  /**
    * High-Level: Uploads an email attachment to R2
    * @param {Object} params
    * @param {string} params.emailId
@@ -420,10 +462,28 @@ export class EmailR2Service {
       throw new Error('[EmailR2Service] Invalid attachment content type.');
     }
 
+    let resolvedContentType = (contentType && contentType !== 'application/octet-stream')
+      ? contentType
+      : this.getMimeType(filename);
+
+    if (buffer.length >= 4) {
+      const header4 = buffer.subarray(0, 4).toString('ascii');
+      const headerHex = buffer.subarray(0, 3).toString('hex');
+      if (header4 === '%PDF') {
+        resolvedContentType = 'application/pdf';
+      } else if (buffer.subarray(0, 4).toString('hex') === '89504e47') {
+        resolvedContentType = 'image/png';
+      } else if (headerHex === 'ffd8ff') {
+        resolvedContentType = 'image/jpeg';
+      } else if (header4 === 'GIF8') {
+        resolvedContentType = 'image/gif';
+      }
+    }
+
     const res = await this.putObject({
       key: r2Key,
       body: buffer,
-      contentType,
+      contentType: resolvedContentType,
       contentDisposition: `attachment; filename="${encodeURIComponent(safeFilename)}"`,
     });
 
@@ -431,7 +491,7 @@ export class EmailR2Service {
       r2_key: r2Key,
       filename: safeFilename,
       size: res.byteSize,
-      contentType,
+      contentType: resolvedContentType,
     };
   }
 

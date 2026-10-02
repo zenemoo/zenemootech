@@ -496,8 +496,20 @@ export const emailApi = {
     const contentTypeHeader = res.headers ? (res.headers['content-type'] as string | undefined) : undefined;
     const contentType = typeof contentTypeHeader === 'string' ? contentTypeHeader : 'application/octet-stream';
 
+    const rawData = res.data;
+    let blob: Blob;
+    if (rawData instanceof Blob) {
+      if (rawData.type && rawData.type !== 'application/octet-stream') {
+        blob = rawData;
+      } else {
+        blob = new Blob([rawData], { type: contentType });
+      }
+    } else {
+      blob = new Blob([rawData], { type: contentType });
+    }
+
     return {
-      blob: res.data as Blob,
+      blob,
       filename,
       contentType,
     };
@@ -768,8 +780,20 @@ export const emailInboxApi = {
     const contentTypeHeader = res.headers ? (res.headers['content-type'] as string | undefined) : undefined;
     const contentType = typeof contentTypeHeader === 'string' ? contentTypeHeader : 'application/octet-stream';
 
+    const rawData = res.data;
+    let blob: Blob;
+    if (rawData instanceof Blob) {
+      if (rawData.type && rawData.type !== 'application/octet-stream') {
+        blob = rawData;
+      } else {
+        blob = new Blob([rawData], { type: contentType });
+      }
+    } else {
+      blob = new Blob([rawData], { type: contentType });
+    }
+
     return {
-      blob: res.data as Blob,
+      blob,
       filename,
       contentType,
     };

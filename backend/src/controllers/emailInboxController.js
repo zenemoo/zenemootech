@@ -1543,26 +1543,70 @@ export const getAttachmentDownload = async (req, res, next) => {
     const candidateR2Keys = [
       att.r2_key,
       `${emailStream}/${cleanId}/attachments/${safeFilename}`,
-      emailStream === 'incoming'
-        ? `sent/${cleanId}/attachments/${safeFilename}`
-        : `incoming/${cleanId}/attachments/${safeFilename}`,
+      `scheduled/${cleanId}/attachments/${safeFilename}`,
+      `sent/${cleanId}/attachments/${safeFilename}`,
+      `incoming/${cleanId}/attachments/${safeFilename}`,
+      `${emailStream}/${cleanId}/attachments/${filename}`,
+      `scheduled/${cleanId}/attachments/${filename}`,
+      `sent/${cleanId}/attachments/${filename}`,
+      `incoming/${cleanId}/attachments/${filename}`,
     ].filter(Boolean);
 
     for (const key of candidateR2Keys) {
       try {
         const r2Object = await emailR2Service.getObjectBuffer(key);
         if (r2Object && r2Object.buffer && r2Object.buffer.length > 0) {
-          const streamContentType = (r2Object.contentType && r2Object.contentType !== 'application/octet-stream')
-            ? r2Object.contentType
-            : contentType;
+          let streamContentType = contentType;
+          if (r2Object.contentType && r2Object.contentType !== 'application/octet-stream') {
+            streamContentType = r2Object.contentType;
+          }
 
-          const safeQuotedFilename = filename.replace(/"/g, '\\"');
+          // Inspect magic bytes and file extension for guaranteed accurate MIME types
+          const buf = r2Object.buffer;
+          const lowerName = filename.toLowerCase();
+          if (buf.length >= 4 && buf.subarray(0, 4).toString('ascii') === '%PDF') {
+            streamContentType = 'application/pdf';
+          } else if (lowerName.endsWith('.pdf')) {
+            streamContentType = 'application/pdf';
+          } else if (buf.length >= 4 && buf.subarray(0, 4).toString('hex') === '89504e47') {
+            streamContentType = 'image/png';
+          } else if (buf.length >= 3 && buf.subarray(0, 3).toString('hex') === 'ffd8ff') {
+            streamContentType = 'image/jpeg';
+          } else if (buf.length >= 4 && buf.subarray(0, 4).toString('ascii') === 'GIF8') {
+            streamContentType = 'image/gif';
+          } else if (buf.length >= 12 && buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP') {
+            streamContentType = 'image/webp';
+          } else if (lowerName.endsWith('.csv')) {
+            streamContentType = 'text/csv; charset=utf-8';
+          } else if (lowerName.endsWith('.txt') || lowerName.endsWith('.log')) {
+            streamContentType = 'text/plain; charset=utf-8';
+          } else if (lowerName.endsWith('.json')) {
+            streamContentType = 'application/json';
+          } else if (lowerName.endsWith('.xml')) {
+            streamContentType = 'application/xml';
+          } else if (lowerName.endsWith('.docx')) {
+            streamContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          } else if (lowerName.endsWith('.xlsx')) {
+            streamContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          } else if (lowerName.endsWith('.pptx')) {
+            streamContentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          } else if (lowerName.endsWith('.doc')) {
+            streamContentType = 'application/msword';
+          } else if (lowerName.endsWith('.xls')) {
+            streamContentType = 'application/vnd.ms-excel';
+          } else if (lowerName.endsWith('.ppt')) {
+            streamContentType = 'application/vnd.ms-powerpoint';
+          } else if (lowerName.endsWith('.zip')) {
+            streamContentType = 'application/zip';
+          }
+
+          const safeAsciiFilename = filename.replace(/["\r\n\\]/g, '_');
           res.setHeader('Content-Type', streamContentType);
-          res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
-          res.setHeader('Content-Length', r2Object.contentLength || r2Object.buffer.length);
+          res.setHeader('Content-Disposition', `${disposition}; filename="${safeAsciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+          res.setHeader('Content-Length', r2Object.contentLength || buf.length);
           res.setHeader('Cache-Control', 'private, max-age=3600');
           res.setHeader('X-Content-Type-Options', 'nosniff');
-          return res.send(r2Object.buffer);
+          return res.send(buf);
         }
       } catch (r2Err) {
         console.warn(`[Attachment R2 Stream Attempt Error for ${key}]:`, r2Err.message);
@@ -1586,9 +1630,17 @@ export const getAttachmentDownload = async (req, res, next) => {
       }
 
       if (fileBuffer) {
-        const safeQuotedFilename = filename.replace(/"/g, '\\"');
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        let streamContentType = contentType;
+        const lowerName = filename.toLowerCase();
+        if (fileBuffer.length >= 4 && fileBuffer.subarray(0, 4).toString('ascii') === '%PDF') {
+          streamContentType = 'application/pdf';
+        } else if (lowerName.endsWith('.pdf')) {
+          streamContentType = 'application/pdf';
+        }
+
+        const safeAsciiFilename = filename.replace(/["\r\n\\]/g, '_');
+        res.setHeader('Content-Type', streamContentType);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${safeAsciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
         res.setHeader('Content-Length', fileBuffer.length);
         res.setHeader('Cache-Control', 'private, max-age=3600');
         res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -1600,9 +1652,9 @@ export const getAttachmentDownload = async (req, res, next) => {
     const isPdf = contentType.includes('pdf') || filename.toLowerCase().endsWith('.pdf');
     if (isPdf) {
       const fallbackPdf = generateFallbackPdfBuffer(filename, email);
-      const safeQuotedFilename = filename.replace(/"/g, '\\"');
+      const safeAsciiFilename = filename.replace(/["\r\n\\]/g, '_');
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeAsciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
       res.setHeader('Content-Length', fallbackPdf.length);
       res.setHeader('Cache-Control', 'private, max-age=3600');
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -1613,9 +1665,9 @@ export const getAttachmentDownload = async (req, res, next) => {
     const isText = contentType.includes('text') || filename.toLowerCase().endsWith('.txt') || filename.toLowerCase().endsWith('.csv');
     if (isText) {
       const fallbackText = Buffer.from(`=== Document: ${filename} ===\nFrom: ${email.sender_email || email.sender || 'Zenemoo'}\nDate: ${email.received_at || email.created_at}\n\n${email.body_text || email.snippet || ''}`, 'utf8');
-      const safeQuotedFilename = filename.replace(/"/g, '\\"');
+      const safeAsciiFilename = filename.replace(/["\r\n\\]/g, '_');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeAsciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
       res.setHeader('Content-Length', fallbackText.length);
       res.setHeader('Cache-Control', 'private, max-age=3600');
       res.setHeader('X-Content-Type-Options', 'nosniff');
