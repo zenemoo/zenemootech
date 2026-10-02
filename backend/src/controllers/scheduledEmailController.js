@@ -8,6 +8,7 @@ import {
 } from '../services/emailService.js';
 import { encrypt, decrypt } from '../services/encryptionService.js';
 import { runScheduledEmailProcessorTick } from '../services/scheduledEmailWorker.js';
+import { emailR2Service } from '../services/emailR2Service.js';
 
 // In-memory fallback cache for high-resiliency background processing
 export const memoryScheduledEmails = [];
@@ -101,6 +102,7 @@ const normalizeScheduledListRecord = (rec) => {
         filename: a.filename || a.name || `attachment_${idx + 1}`,
         type: a.type || a.contentType || 'application/octet-stream',
         size: typeof a.size === 'number' ? a.size : 0,
+        r2_key: a.r2_key,
       }))
     : [];
 
@@ -115,6 +117,8 @@ const normalizeScheduledListRecord = (rec) => {
     scheduled_at: rec.scheduled_at,
     timezone: rec.timezone || 'Asia/Kolkata',
     status: rec.status || 'scheduled',
+    storage_provider: rec.storage_provider || 'cloudflare_r2',
+    body_html_r2_key: rec.body_html_r2_key,
     created_at: rec.created_at || new Date().toISOString(),
     updated_at: rec.updated_at || new Date().toISOString(),
     sent_at: rec.sent_at || null,
@@ -180,6 +184,10 @@ const normalizeScheduledRecord = (rec) => {
     scheduled_at: rec.scheduled_at,
     timezone: rec.timezone || 'Asia/Kolkata',
     status: rec.status || 'scheduled',
+    storage_provider: rec.storage_provider || 'cloudflare_r2',
+    body_html_r2_key: rec.body_html_r2_key,
+    body_text_r2_key: rec.body_text_r2_key,
+    attachments_r2_prefix: rec.attachments_r2_prefix,
     created_at: rec.created_at || new Date().toISOString(),
     updated_at: rec.updated_at || new Date().toISOString(),
     sent_at: rec.sent_at || null,
@@ -260,6 +268,60 @@ export const createScheduledEmail = async (req, res, next) => {
     const currentUserEmail = (req.user?.email || fromEmail).toLowerCase();
 
     const recordId = `sched_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const cleanId = emailR2Service.sanitizeId(recordId);
+
+    // 1. Upload email body to Cloudflare R2
+    let r2BodyResult = { htmlKey: `scheduled/${cleanId}/body.html`, textKey: `scheduled/${cleanId}/body.txt` };
+    try {
+      r2BodyResult = await emailR2Service.uploadEmailBody({
+        emailId: recordId,
+        html: safeHtml,
+        text: text || safeHtml.replace(/<[^>]+>/g, ' ').trim(),
+        type: 'scheduled',
+      });
+    } catch (r2Err) {
+      console.warn('[Create Scheduled Email R2 Body Upload Note]:', r2Err.message);
+    }
+
+    // 2. Upload attachments to Cloudflare R2
+    const uploadedAttachments = [];
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      for (let i = 0; i < attachments.length; i++) {
+        const att = attachments[i];
+        const attName = att.filename || att.name || `attachment_${i + 1}`;
+        if (att.content || att.data || att.base64) {
+          try {
+            const up = await emailR2Service.uploadAttachment({
+              emailId: recordId,
+              filename: attName,
+              content: att.content || att.data || att.base64,
+              contentType: att.contentType || att.type || 'application/octet-stream',
+              type: 'scheduled',
+            });
+            uploadedAttachments.push({
+              id: att.id || `att_${i + 1}`,
+              filename: up.filename,
+              name: up.filename,
+              contentType: up.contentType,
+              type: up.contentType,
+              size: up.size,
+              r2_key: up.r2_key,
+            });
+          } catch (attErr) {
+            console.warn('[Create Scheduled Email R2 Attachment Note]:', attErr.message);
+            uploadedAttachments.push({
+              id: att.id || `att_${i + 1}`,
+              filename: attName,
+              name: attName,
+              contentType: att.contentType || att.type || 'application/octet-stream',
+              size: typeof att.size === 'number' ? att.size : 0,
+            });
+          }
+        } else {
+          uploadedAttachments.push(att);
+        }
+      }
+    }
 
     const newRecord = {
       id: recordId,
@@ -272,23 +334,37 @@ export const createScheduledEmail = async (req, res, next) => {
       subject,
       body_html: safeHtml,
       body_text: text || '',
-      attachments: attachments || [],
+      attachments: uploadedAttachments,
       scheduled_at: scheduledDate.toISOString(),
       timezone,
       status: 'scheduled',
+      storage_provider: 'cloudflare_r2',
+      body_html_r2_key: r2BodyResult.htmlKey,
+      body_text_r2_key: r2BodyResult.textKey,
+      attachments_r2_prefix: `scheduled/${cleanId}/attachments/`,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    // Try saving into Supabase scheduled_emails table
+    // Try saving into Supabase scheduled_emails table with encrypted metadata & R2 attachment metadata
     try {
       const dbPayload = {
-        ...newRecord,
+        id: recordId,
+        user_id: currentUserId,
+        user_email: currentUserEmail,
+        from_email: fromEmail,
         to_emails: encrypt(parsedTo),
         cc_emails: encrypt(parseRecipients(cc)),
         bcc_emails: encrypt(parseRecipients(bcc)),
         subject: encrypt(subject),
         body_html: encrypt(safeHtml),
+        body_text: text || '',
+        attachments: uploadedAttachments,
+        scheduled_at: scheduledDate.toISOString(),
+        timezone,
+        status: 'scheduled',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       await supabaseService.insert('scheduled_emails', dbPayload);
     } catch (dbErr) {
@@ -299,7 +375,7 @@ export const createScheduledEmail = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Email scheduled successfully.',
+      message: 'Email scheduled successfully with Cloudflare R2 storage.',
       entry: normalizeScheduledRecord(newRecord),
     });
   } catch (error) {
@@ -442,9 +518,31 @@ export const getScheduledEmailById = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Scheduled email record not found.' });
     }
 
+    const normalized = normalizeScheduledRecord(record);
+
+    // On-demand dual-read from R2
+    if (record.body_html_r2_key || record.body_text_r2_key || record.storage_provider === 'cloudflare_r2') {
+      const cleanId = emailR2Service.sanitizeId(record.id);
+      const htmlKey = record.body_html_r2_key || `scheduled/${cleanId}/body.html`;
+      const textKey = record.body_text_r2_key || `scheduled/${cleanId}/body.txt`;
+
+      try {
+        const { body_html, body_text } = await emailR2Service.getEmailBodyWithFallback({
+          htmlKey,
+          textKey,
+          fallbackHtml: normalized.body_html || '',
+          fallbackText: normalized.body_text || '',
+        });
+        normalized.body_html = body_html;
+        normalized.body_text = body_text;
+      } catch (r2Err) {
+        console.warn('[getScheduledEmailById R2 Read Warning]:', r2Err.message);
+      }
+    }
+
     return res.json({
       success: true,
-      entry: normalizeScheduledRecord(record),
+      entry: normalized,
     });
   } catch (error) {
     next(error);
@@ -513,6 +611,17 @@ export const updateScheduledEmail = async (req, res, next) => {
     target.status = 'scheduled'; // Reset status to scheduled if it was failed/cancelled
     target.failure_reason = null;
     target.updated_at = new Date().toISOString();
+
+    // Update R2 objects if body or attachments changed
+    const cleanId = emailR2Service.sanitizeId(id);
+    if (html !== undefined || text !== undefined) {
+      emailR2Service.uploadEmailBody({
+        emailId: id,
+        html: target.body_html,
+        text: target.body_text || (target.body_html || '').replace(/<[^>]+>/g, ' ').trim(),
+        type: 'scheduled',
+      }).catch((e) => console.warn('[Update Scheduled Email R2 Body Warning]:', e.message));
+    }
 
     // Update DB
     try {

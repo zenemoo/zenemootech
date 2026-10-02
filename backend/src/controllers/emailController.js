@@ -663,20 +663,106 @@ export const getEmailHistoryById = async (req, res, next) => {
   }
 };
 
-// DELETE /api/email/history/:id - Delete email log record from Supabase
+// DELETE /api/email/history/:id - Permanent deletion from R2 storage and Supabase database
 export const deleteEmailHistory = async (req, res, next) => {
   try {
     const { id } = req.params;
-    try {
-      await supabaseService.delete('email_history', id);
-    } catch (e) {
-      const idx = memoryHistory.findIndex((m) => String(m.id) === String(id) || String(m.message_id) === String(id));
-      if (idx !== -1) memoryHistory.splice(idx, 1);
+    const userRole = (req.user?.role || '').toLowerCase();
+    const userEmail = (req.user?.email || '').toLowerCase();
+    const userId = req.user?.id || req.user?.team_member_id;
+    const isSuperAdmin =
+      userRole === 'admin' ||
+      userRole === 'super_admin' ||
+      userRole === 'administrator' ||
+      userEmail === 'mr.prem2006@gmail.com' ||
+      userEmail === 'zenemootech@gmail.com' ||
+      userEmail === 'contact@zenemoo.in';
+
+    // 1. Fetch record first to check authorization and retrieve R2 keys
+    let record = null;
+    if (supabase) {
+      try {
+        const cleanId = sanitizePostgrestExact(id);
+        if (cleanId) {
+          const { data } = await supabase.from('email_history').select('*').or(`id.eq.${cleanId},message_id.eq.${cleanId}`).maybeSingle();
+          if (data) record = data;
+        }
+      } catch (_) {}
+    }
+    if (!record) {
+      record = memoryHistory.find((m) => String(m.id) === String(id) || String(m.message_id) === String(id));
     }
 
-    res.json({
+    if (!record) {
+      return res.status(404).json({ success: false, message: 'Email history record not found.' });
+    }
+
+    // 2. Authorization check
+    if (!isSuperAdmin) {
+      const logUserEmail = (record.user_email || '').toLowerCase();
+      const logUserId = String(record.user_id || '');
+      const currentUserId = String(userId || '');
+      const currentUserEmail = userEmail.toLowerCase();
+      const isOwner =
+        (currentUserEmail && logUserEmail === currentUserEmail) ||
+        (currentUserId && currentUserId !== 'null' && logUserId === currentUserId);
+      if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Access denied: You are not authorized to delete this email history record.' });
+      }
+    }
+
+    // 3. Collect extra attachment keys
+    const extraKeys = [];
+    if (Array.isArray(record.attachments_meta)) {
+      record.attachments_meta.forEach((a) => {
+        if (a && a.r2_key) extraKeys.push(a.r2_key);
+      });
+    }
+
+    const cleanId = emailR2Service.sanitizeId(record.id || id);
+
+    // 4. Delete all R2 objects first & verify cleanup
+    try {
+      const r2Cleaned = await emailR2Service.deleteEmailObjects({
+        emailId: cleanId,
+        type: 'sent',
+        extraPrefixes: [`scheduled/${cleanId}/`],
+        extraKeys,
+      });
+
+      if (!r2Cleaned) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to clean up Cloudflare R2 storage objects. Supabase sent email record was preserved for retry.',
+        });
+      }
+    } catch (r2Err) {
+      console.error('[Delete Sent Email R2 Error]:', r2Err.message);
+      return res.status(500).json({
+        success: false,
+        message: `R2 cleanup error: ${r2Err.message}. Supabase sent record was preserved.`,
+      });
+    }
+
+    // 5. Delete from Supabase only after R2 cleanup succeeds
+    if (supabase && record.id) {
+      try {
+        await supabase.from('email_history').delete().eq('id', record.id);
+      } catch (dbErr) {
+        console.error('[Delete Sent Email Supabase Error]:', dbErr.message);
+        return res.status(500).json({
+          success: false,
+          message: `Failed to delete Supabase record: ${dbErr.message}`,
+        });
+      }
+    }
+
+    const idx = memoryHistory.findIndex((m) => String(m.id) === String(id) || String(m.message_id) === String(id));
+    if (idx !== -1) memoryHistory.splice(idx, 1);
+
+    return res.json({
       success: true,
-      message: 'Email history entry deleted successfully.',
+      message: 'Sent email and all associated R2 objects permanently deleted.',
     });
   } catch (err) {
     next(err);

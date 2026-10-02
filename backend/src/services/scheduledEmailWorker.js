@@ -3,6 +3,7 @@ import { supabaseService } from './supabaseService.js';
 import { sendMailViaBrevo, parseRecipients } from './emailService.js';
 import { encrypt, decrypt } from './encryptionService.js';
 import { memoryScheduledEmails } from '../controllers/scheduledEmailController.js';
+import { emailR2Service } from './emailR2Service.js';
 
 let isProcessingTick = false;
 let workerIntervalHandle = null;
@@ -52,9 +53,9 @@ const prepareRecordForDispatch = (raw) => {
 };
 
 /**
- * Process single scheduled email item atomically
+ * Process single scheduled email item atomically with R2 retrieval and safe conversion to sent history
  */
-const processScheduledItem = async (item) => {
+export const processScheduledItem = async (item, { customSendMail } = {}) => {
   const normalized = prepareRecordForDispatch(item);
 
   // 1. Atomic claim check: ensure item status is still 'scheduled'
@@ -73,39 +74,68 @@ const processScheduledItem = async (item) => {
     });
   } catch (_) {}
 
-  // 2. Dispatch via Brevo Service
+  // 2. Resolve HTML body & attachments from Cloudflare R2 if stored there
+  const cleanId = emailR2Service.sanitizeId(item.id);
+  let finalHtml = normalized.html;
+  let finalText = item.body_text || '';
+
+  if (item.body_html_r2_key || item.body_text_r2_key || item.storage_provider === 'cloudflare_r2') {
+    const htmlKey = item.body_html_r2_key || `scheduled/${cleanId}/body.html`;
+    const textKey = item.body_text_r2_key || `scheduled/${cleanId}/body.txt`;
+    try {
+      const r2Body = await emailR2Service.getEmailBodyWithFallback({
+        htmlKey,
+        textKey,
+        fallbackHtml: finalHtml || '',
+        fallbackText: finalText || '',
+      });
+      if (r2Body.body_html) finalHtml = r2Body.body_html;
+      if (r2Body.body_text) finalText = r2Body.body_text;
+    } catch (r2ReadErr) {
+      console.warn('[Scheduled Email Worker R2 Read Note]:', r2ReadErr.message);
+    }
+  }
+
+  // Prepare Brevo attachments: if attachment only has r2_key, fetch buffer for delivery
+  const brevoAttachments = [];
+  if (Array.isArray(item.attachments)) {
+    for (const att of item.attachments) {
+      if (att.content || att.data || att.base64) {
+        brevoAttachments.push(att);
+      } else if (att.r2_key) {
+        try {
+          const r2Obj = await emailR2Service.getObjectBuffer(att.r2_key);
+          if (r2Obj && r2Obj.buffer) {
+            brevoAttachments.push({
+              filename: att.filename || att.name,
+              content: r2Obj.buffer.toString('base64'),
+              contentType: att.contentType || att.type || 'application/octet-stream',
+            });
+          }
+        } catch (attR2Err) {
+          console.warn('[Scheduled Email Worker Attachment Buffer Read Warning]:', attR2Err.message);
+        }
+      }
+    }
+  }
+
+  // 3. Dispatch via Brevo Service (or test stub)
   try {
-    const sendResult = await sendMailViaBrevo({
+    const dispatchMail = typeof customSendMail === 'function' ? customSendMail : sendMailViaBrevo;
+    const sendResult = await dispatchMail({
       sender: normalized.from,
       recipients: normalized.to,
       cc: normalized.cc,
       bcc: normalized.bcc,
       subject: normalized.subject,
-      html: normalized.html,
-      attachments: normalized.attachments,
+      html: finalHtml,
+      attachments: brevoAttachments.length > 0 ? brevoAttachments : normalized.attachments,
     });
 
     const sentTimestamp = new Date().toISOString();
     const providerMsgId = sendResult?.messageId || `msg_sched_${Date.now()}`;
 
-    // 3. Mark scheduled email as 'sent'
-    item.status = 'sent';
-    item.sent_at = sentTimestamp;
-    item.provider_message_id = providerMsgId;
-    item.failure_reason = null;
-    item.updated_at = sentTimestamp;
-
-    try {
-      await supabaseService.update('scheduled_emails', item.id, {
-        status: 'sent',
-        sent_at: sentTimestamp,
-        provider_message_id: providerMsgId,
-        failure_reason: null,
-        updated_at: sentTimestamp,
-      });
-    } catch (_) {}
-
-    // 4. Automatically insert into Sent History (email_history)
+    // 4. Automatically insert into Sent History (email_history) referencing the SAME R2 objects (zero duplication)
     const historyPayload = {
       user_id: item.user_id || null,
       user_email: item.user_email || normalized.from,
@@ -114,24 +144,57 @@ const processScheduledItem = async (item) => {
       cc: encrypt(normalized.cc),
       bcc: encrypt(normalized.bcc),
       subject: encrypt(normalized.subject),
-      html: encrypt(normalized.html),
-      attachments_meta: normalized.attachments,
+      html: encrypt(finalHtml),
+      storage_provider: 'cloudflare_r2',
+      body_html_r2_key: item.body_html_r2_key || `scheduled/${cleanId}/body.html`,
+      body_text_r2_key: item.body_text_r2_key || `scheduled/${cleanId}/body.txt`,
+      attachments_r2_prefix: item.attachments_r2_prefix || `scheduled/${cleanId}/attachments/`,
+      attachments_meta: item.attachments || [],
+      has_attachments: Array.isArray(item.attachments) && item.attachments.length > 0,
       status: 'sent',
       message_id: providerMsgId,
       created_at: sentTimestamp,
       updated_at: sentTimestamp,
+      storage_migration_status: 'migrated',
     };
 
+    let insertedHistory = false;
     try {
       await supabaseService.insert('email_history', historyPayload);
-    } catch (_) {}
+      insertedHistory = true;
+    } catch (histErr) {
+      delete historyPayload.user_id;
+      delete historyPayload.user_email;
+      try {
+        await supabaseService.insert('email_history', historyPayload);
+        insertedHistory = true;
+      } catch (histRetryErr) {
+        console.warn('[Scheduled Email Worker Insert History Warning]:', histRetryErr.message);
+      }
+    }
 
-    console.log(`✓ [Scheduled Email Worker] Delivered email ${item.id} ("${normalized.subject}") via Brevo. Message ID: ${providerMsgId}`);
+    // 5. Delete the scheduled_emails row now that it is successfully converted to email_history
+    // NOTE: Cloudflare R2 objects are NOT deleted because email_history references the same objects!
+    if (supabase && item.id) {
+      try {
+        await supabase.from('scheduled_emails').delete().eq('id', item.id);
+      } catch (delErr) {
+        console.warn('[Scheduled Email Worker Delete scheduled_emails Note]:', delErr.message);
+      }
+    }
+
+    const memIdx = memoryScheduledEmails.findIndex((m) => String(m.id) === String(item.id));
+    if (memIdx !== -1) {
+      memoryScheduledEmails.splice(memIdx, 1);
+    }
+
+    console.log(`✓ [Scheduled Email Worker] Delivered scheduled email ${item.id} ("${normalized.subject}") via Brevo and transferred to email_history with R2 references.`);
     return true;
   } catch (err) {
     const errorMsg = err.message || 'Delivery via Brevo failed.';
     console.error(`✕ [Scheduled Email Worker] Failed to send scheduled email ${item.id}:`, errorMsg);
 
+    // If failed: DO NOT delete scheduled_emails row and DO NOT delete R2 objects!
     item.status = 'failed';
     item.failure_reason = errorMsg;
     item.updated_at = new Date().toISOString();

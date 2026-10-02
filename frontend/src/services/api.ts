@@ -462,6 +462,46 @@ export const emailApi = {
   getDrafts: () => api.get('/email/drafts', { timeout: 15000 }),
   saveDraft: (data: any) => api.post('/email/drafts', data, { timeout: 15000 }),
   deleteDraft: (id: string) => api.delete(`/email/drafts/${encodeURIComponent(id)}`),
+  getAttachmentUrl: (messageId: string, attachmentId: string) =>
+    api.get(`/email/history/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/url`),
+  getAttachmentDownloadUrl: (messageId: string, attachmentId: string, preview = false) => {
+    const baseUrl = api.defaults.baseURL || '/api';
+    return `${baseUrl}/email/history/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}${preview ? '?preview=1' : ''}`;
+  },
+  downloadAttachmentBlob: async (
+    messageId: string,
+    attachmentId: string,
+    preview = false,
+    signal?: AbortSignal
+  ): Promise<{ blob: Blob; filename: string; contentType: string }> => {
+    const res = await api.get(
+      `/email/history/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      {
+        params: preview ? { preview: '1' } : undefined,
+        responseType: 'blob',
+        signal,
+        timeout: 45000,
+      }
+    );
+
+    let filename = attachmentId;
+    const dispositionHeader = res.headers ? (res.headers['content-disposition'] as string | undefined) : undefined;
+    const disposition = typeof dispositionHeader === 'string' ? dispositionHeader : '';
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename\*?=['"]?(?:UTF-8'')?([^'";\r\n]+)['"]?/i);
+      if (match && match[1]) {
+        filename = decodeURIComponent(match[1].trim());
+      }
+    }
+    const contentTypeHeader = res.headers ? (res.headers['content-type'] as string | undefined) : undefined;
+    const contentType = typeof contentTypeHeader === 'string' ? contentTypeHeader : 'application/octet-stream';
+
+    return {
+      blob: res.data as Blob,
+      filename,
+      contentType,
+    };
+  },
 };
 
 // Zenemoo Support Portal APIs

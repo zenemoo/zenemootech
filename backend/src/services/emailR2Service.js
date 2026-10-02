@@ -469,20 +469,51 @@ export class EmailR2Service {
   }
 
   /**
-   * Deletes all R2 objects for a given email
+   * Deletes all R2 objects for a given email and verifies complete cleanup
+   * @param {Object} params
+   * @param {string} params.emailId
+   * @param {'incoming'|'sent'|'scheduled'} [params.type='incoming']
+   * @param {string[]} [params.extraPrefixes]
+   * @param {string[]} [params.extraKeys]
+   * @returns {Promise<boolean>}
    */
-  async deleteEmailObjects({ emailId, type = 'incoming' }) {
+  async deleteEmailObjects({ emailId, type = 'incoming', extraPrefixes = [], extraKeys = [] }) {
     const cleanId = this.sanitizeId(emailId);
-    const prefix = `${type}/${cleanId}/`;
-    const objects = await this.listObjectsByPrefix(prefix);
+    const prefixes = [`${type}/${cleanId}/`, ...extraPrefixes];
+    const keysToDelete = new Set([...extraKeys]);
 
-    for (const obj of objects) {
-      if (obj.Key) {
-        await this.deleteObject(obj.Key);
+    for (const prefix of prefixes) {
+      const objects = await this.listObjectsByPrefix(prefix);
+      for (const obj of objects) {
+        if (obj.Key) {
+          keysToDelete.add(obj.Key);
+        }
       }
     }
-    return true;
+
+    let allSuccess = true;
+    for (const key of keysToDelete) {
+      try {
+        await this.deleteObject(key);
+      } catch (err) {
+        console.error(`[EmailR2Service] Failed to delete R2 object "${key}":`, err.message);
+        allSuccess = false;
+      }
+    }
+
+    // Verify complete cleanup
+    for (const prefix of prefixes) {
+      const remaining = await this.listObjectsByPrefix(prefix);
+      if (remaining.length > 0) {
+        console.error(`[EmailR2Service] Orphaned objects remaining under prefix "${prefix}":`, remaining.map(r => r.Key));
+        return false;
+      }
+    }
+
+    return allSuccess;
   }
 }
 
 export const emailR2Service = new EmailR2Service();
+export default emailR2Service;
+

@@ -33,11 +33,45 @@ import {
   ArrowRight,
   ShieldCheck,
   Sliders,
-  Maximize2
+  Maximize2,
+  FileSpreadsheet,
+  FileArchive,
+  FileCode,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
 import { emailApi } from '../services/api';
+
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 KB';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i] || 'KB'}`;
+}
+
+function getAttachmentIcon(contentType: string = '', filename: string = '') {
+  const type = (contentType || '').toLowerCase();
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+
+  if (type.includes('image') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
+    return <ImageIcon className="w-4 h-4 text-purple-400 shrink-0" />;
+  }
+  if (type.includes('pdf') || ext === 'pdf') {
+    return <FileText className="w-4 h-4 text-rose-400 shrink-0" />;
+  }
+  if (type.includes('csv') || type.includes('sheet') || ['xls', 'xlsx', 'csv'].includes(ext)) {
+    return <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />;
+  }
+  if (type.includes('zip') || type.includes('tar') || ['zip', 'rar', '7z', 'gz'].includes(ext)) {
+    return <FileArchive className="w-4 h-4 text-amber-400 shrink-0" />;
+  }
+  if (type.includes('json') || type.includes('javascript') || type.includes('html') || ['js', 'ts', 'json', 'py', 'html'].includes(ext)) {
+    return <FileCode className="w-4 h-4 text-cyan-400 shrink-0" />;
+  }
+  return <FileText className="w-4 h-4 text-cyan-400 shrink-0" />;
+}
 
 export interface EmailHistoryItem {
   id: string;
@@ -50,12 +84,15 @@ export interface EmailHistoryItem {
   messageId?: string;
   errorMessage?: string | null;
   attachments_meta?: Array<{
+    id?: string;
     name?: string;
     filename?: string;
     type?: string;
+    contentType?: string;
     size?: number;
     image?: string;
     pdf?: string;
+    r2_key?: string;
   }>;
   hasAttachments?: boolean;
   attachmentsCount?: number;
@@ -111,7 +148,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
 
   // 4. Pagination State
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(20);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [totalPages, setTotalPages] = useState(1);
   const [goToPageInput, setGoToPageInput] = useState('');
 
@@ -122,6 +159,148 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
   const [showHtmlSource, setShowHtmlSource] = useState(false);
   const [isRecipientsExpanded, setIsRecipientsExpanded] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(false);
+
+  // Attachment Preview & Download State (Egress Optimized Session Blob Cache)
+  const [previewAttachment, setPreviewAttachment] = useState<{
+    attachment: { name?: string; filename?: string; type?: string; contentType?: string; size?: number; id?: string };
+    emailId: string;
+  } | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewContentType, setPreviewContentType] = useState<string>('');
+  const [previewTextContent, setPreviewTextContent] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [activeDownloadingId, setActiveDownloadingId] = useState<string | null>(null);
+  const [activePreviewingId, setActivePreviewingId] = useState<string | null>(null);
+  const blobCacheRef = useRef<Map<string, { blob: Blob; url: string; filename: string; contentType: string; text?: string }>>(new Map());
+
+  // Authenticated Attachment Preview Handler (Blob URL based)
+  const handlePreviewAttachment = useCallback(async (emailId: string, att: any) => {
+    const targetFilename = att.filename || att.name || 'attachment';
+    const attachmentKey = `${emailId}_${att.id || targetFilename}`;
+    setPreviewAttachment({ attachment: att, emailId });
+    setPreviewError(null);
+    setPreviewTextContent(null);
+    setActivePreviewingId(att.id || targetFilename);
+
+    const cached = blobCacheRef.current.get(attachmentKey);
+    if (cached) {
+      setPreviewBlobUrl(cached.url);
+      setPreviewContentType(cached.contentType);
+      setPreviewTextContent(cached.text || null);
+      setIsPreviewLoading(false);
+      setActivePreviewingId(null);
+      return;
+    }
+
+    setIsPreviewLoading(true);
+    try {
+      const { blob, filename, contentType } = await emailApi.downloadAttachmentBlob(
+        emailId,
+        att.id || targetFilename,
+        true
+      );
+
+      const objectUrl = URL.createObjectURL(blob);
+      let textContent: string | undefined = undefined;
+
+      if (
+        contentType.includes('text') ||
+        contentType.includes('json') ||
+        contentType.includes('csv') ||
+        contentType.includes('xml') ||
+        filename.endsWith('.txt') ||
+        filename.endsWith('.json') ||
+        filename.endsWith('.csv') ||
+        filename.endsWith('.log')
+      ) {
+        try {
+          textContent = await blob.text();
+        } catch (_) {}
+      }
+
+      blobCacheRef.current.set(attachmentKey, {
+        blob,
+        url: objectUrl,
+        filename,
+        contentType,
+        text: textContent,
+      });
+
+      setPreviewBlobUrl(objectUrl);
+      setPreviewContentType(contentType);
+      setPreviewTextContent(textContent || null);
+      setPreviewError(null);
+    } catch (err: any) {
+      console.error('Sent attachment preview fetch failed:', err);
+      setPreviewError(err.response?.data?.message || err.message || 'Unable to load attachment preview.');
+    } finally {
+      setIsPreviewLoading(false);
+      setActivePreviewingId(null);
+    }
+  }, []);
+
+  // Authenticated Attachment Download Handler
+  const handleDownloadAttachment = useCallback(async (emailId: string, att: any, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const targetFilename = att.filename || att.name || 'attachment';
+    const attachmentKey = `${emailId}_${att.id || targetFilename}`;
+    setActiveDownloadingId(att.id || targetFilename);
+
+    try {
+      let objectUrl: string;
+      let finalFilename = targetFilename;
+
+      const cached = blobCacheRef.current.get(attachmentKey);
+      if (cached) {
+        objectUrl = cached.url;
+        finalFilename = cached.filename || targetFilename;
+      } else {
+        const { blob, filename, contentType } = await emailApi.downloadAttachmentBlob(
+          emailId,
+          att.id || targetFilename,
+          false
+        );
+        objectUrl = URL.createObjectURL(blob);
+        finalFilename = filename || targetFilename;
+        blobCacheRef.current.set(attachmentKey, {
+          blob,
+          url: objectUrl,
+          filename: finalFilename,
+          contentType,
+        });
+      }
+
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = finalFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToastRef.current?.('Download started', `Downloading ${finalFilename}`, 'success');
+    } catch (err: any) {
+      console.error('Sent attachment download failed:', err);
+      showToastRef.current?.('Download Failed', err.response?.data?.message || err.message || 'Failed to download attachment.', 'error');
+    } finally {
+      setActiveDownloadingId(null);
+    }
+  }, []);
+
+  // Clean up object URLs on component unmount
+  useEffect(() => {
+    return () => {
+      blobCacheRef.current.forEach((item) => {
+        try {
+          URL.revokeObjectURL(item.url);
+        } catch (_) {}
+      });
+      blobCacheRef.current.clear();
+    };
+  }, []);
 
   // 6. Debounce search input (350ms)
   useEffect(() => {
@@ -257,7 +436,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
     setAppliedSearch('');
     setStatusFilter('all');
     setDateRangeFilter('30days');
-    setPageSize(20);
+    setPageSize(25);
     setCurrentPage(1);
     setFetchError(null);
   };
@@ -1167,20 +1346,78 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
 
                 {/* Attachment Chips */}
                 {selectedDetail?.attachments_meta && selectedDetail.attachments_meta.length > 0 && (
-                  <div className="pt-2 border-t border-white/5 space-y-1.5">
-                    <span className="text-slate-400 font-bold block">Attachments:</span>
-                    <div className="flex flex-wrap gap-2">
+                  <div className="pt-3 border-t border-white/10 space-y-2">
+                    <span className="text-slate-400 font-bold flex items-center gap-1.5 text-xs">
+                      <Paperclip className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Attachments ({selectedDetail.attachments_meta.length})</span>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {selectedDetail.attachments_meta.map((att, idx) => {
                         const filename = att.filename || att.name || `attachment_${idx + 1}`;
+                        const contentType = att.contentType || att.type || '';
                         const sizeStr = formatFileSize(att.size);
+                        const isPreviewable =
+                          contentType.includes('pdf') ||
+                          contentType.includes('image') ||
+                          contentType.includes('text') ||
+                          contentType.includes('json') ||
+                          contentType.includes('csv') ||
+                          filename.toLowerCase().endsWith('.pdf') ||
+                          filename.toLowerCase().endsWith('.png') ||
+                          filename.toLowerCase().endsWith('.jpg') ||
+                          filename.toLowerCase().endsWith('.jpeg') ||
+                          filename.toLowerCase().endsWith('.webp') ||
+                          filename.toLowerCase().endsWith('.txt') ||
+                          filename.toLowerCase().endsWith('.csv') ||
+                          filename.toLowerCase().endsWith('.json');
+
+                        const isDownloading = activeDownloadingId === (att.filename || att.name || String(idx));
+                        const isPreviewing = activePreviewingId === (att.filename || att.name || String(idx));
+
                         return (
                           <div
                             key={idx}
-                            className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-cyan-300 text-xs flex items-center gap-2"
+                            className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2 hover:border-cyan-500/30 transition-all min-h-[48px]"
                           >
-                            <Paperclip className="w-3 h-3 text-cyan-400" />
-                            <span className="font-semibold text-white">{filename}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">({sizeStr})</span>
+                            <div className="flex items-center gap-2 min-w-0">
+                              {getAttachmentIcon(contentType, filename)}
+                              <div className="min-w-0">
+                                <p className="text-white truncate font-medium text-[11px]">{filename}</p>
+                                <p className="text-[10px] text-slate-500">{sizeStr}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isPreviewable && (
+                                <button
+                                  type="button"
+                                  disabled={isPreviewing}
+                                  onClick={() => handlePreviewAttachment(selectedDetail.id, att)}
+                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 hover:text-cyan-300 min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer disabled:opacity-50"
+                                  title="Preview Attachment"
+                                >
+                                  {isPreviewing ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                                  ) : (
+                                    <Eye className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                disabled={isDownloading}
+                                onClick={(e) => handleDownloadAttachment(selectedDetail.id, att, e)}
+                                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer disabled:opacity-50"
+                                title="Download Attachment"
+                              >
+                                {isDownloading ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                                ) : (
+                                  <Download className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -1304,6 +1541,154 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ATTACHMENT PREVIEW MODAL */}
+      {previewAttachment && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 animate-fade-in">
+          <div className="bg-[#0b0f19] border border-white/15 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="p-3.5 sm:p-4 bg-[#070a11] border-b border-white/10 flex items-center justify-between font-mono text-xs">
+              <div className="flex items-center gap-2 text-white font-bold truncate">
+                <Eye className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="truncate">{previewAttachment.attachment.filename || previewAttachment.attachment.name || 'Attachment'}</span>
+                <span className="text-slate-500 font-normal shrink-0">
+                  ({formatFileSize(previewAttachment.attachment.size)})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={activeDownloadingId === (previewAttachment.attachment.filename || previewAttachment.attachment.name)}
+                  onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                  className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold flex items-center gap-1.5 text-xs hover:bg-cyan-500/30 min-h-[36px] cursor-pointer transition-all disabled:opacity-50"
+                >
+                  {activeDownloadingId === (previewAttachment.attachment.filename || previewAttachment.attachment.name) ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>Download</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewAttachment(null);
+                    setPreviewBlobUrl(null);
+                    setPreviewError(null);
+                    setPreviewTextContent(null);
+                  }}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer transition-all"
+                  title="Close Preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40 min-h-[350px] sm:min-h-[500px]">
+              {isPreviewLoading ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                  <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-white">Loading attachment...</p>
+                    <p className="text-xs font-mono text-slate-400">Fetching file from Cloudflare R2</p>
+                  </div>
+                </div>
+              ) : previewError ? (
+                <div className="p-8 text-center max-w-md space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-base font-bold text-white">Unable to load preview</h4>
+                    <p className="text-xs font-mono text-red-300">{previewError}</p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePreviewAttachment(previewAttachment.emailId, previewAttachment.attachment)}
+                      className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                      className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-xs font-mono cursor-pointer transition-all flex items-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </button>
+                  </div>
+                </div>
+              ) : previewBlobUrl ? (
+                (() => {
+                  const filename = (previewAttachment.attachment.filename || previewAttachment.attachment.name || '').toLowerCase();
+                  const isPdf = (previewContentType || '').includes('pdf') || filename.endsWith('.pdf');
+                  const isImage =
+                    (previewContentType || '').includes('image') ||
+                    ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].some((ext) => filename.endsWith(ext));
+                  const isText =
+                    previewTextContent !== null ||
+                    (previewContentType || '').includes('text') ||
+                    (previewContentType || '').includes('json') ||
+                    ['txt', 'json', 'csv', 'log', 'xml', 'md'].some((ext) => filename.endsWith(ext));
+
+                  if (isPdf) {
+                    return (
+                      <iframe
+                        src={previewBlobUrl}
+                        title={filename}
+                        className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#0c101d]"
+                      />
+                    );
+                  }
+
+                  if (isImage) {
+                    return (
+                      <img
+                        src={previewBlobUrl}
+                        alt={filename}
+                        className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl"
+                      />
+                    );
+                  }
+
+                  if (isText && previewTextContent !== null) {
+                    return (
+                      <div className="w-full h-[75vh] rounded-2xl border border-white/10 bg-[#070a11] p-4 overflow-auto font-mono text-xs text-slate-200 whitespace-pre-wrap select-text">
+                        {previewTextContent}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-8 text-center max-w-sm space-y-4">
+                      {getAttachmentIcon(previewAttachment.attachment.contentType || previewAttachment.attachment.type, filename)}
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-white truncate">{filename}</p>
+                        <p className="text-xs font-mono text-slate-400">
+                          {formatFileSize(previewAttachment.attachment.size)} &bull; No inline preview available for this format
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDownloadAttachment(previewAttachment.emailId, previewAttachment.attachment, e)}
+                        className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 text-xs font-mono font-bold cursor-pointer transition-all inline-flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" /> Download File
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -46,7 +46,7 @@ import {
   Users,
   Printer,
 } from 'lucide-react';
-import { emailInboxApi } from '../services/api';
+import { emailInboxApi, emailApi } from '../services/api';
 import { AdminEmailSettingsModal } from './AdminEmailSettingsModal';
 import { EmailComposeModal } from './EmailComposeModal';
 import {
@@ -192,7 +192,7 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
 
   // Server-Side Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(20);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [unreadTotalCount, setUnreadTotalCount] = useState<number>(0);
@@ -541,8 +541,55 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
       setSelectedEmailDetail(currentListItem);
     }
 
-    // If sent email, detail is already complete
-    if (mailTab === 'sent') return;
+    // If sent email, fetch full detail on demand
+    if (mailTab === 'sent') {
+      setIsDetailLoading(true);
+      emailApi
+        .getHistoryById(selectedEmailId)
+        .then((res: any) => {
+          if (res.data?.success && res.data.data) {
+            const historyItem = res.data.data;
+            const detail: EmailMessageRecord = {
+              id: historyItem.id,
+              message_id: historyItem.messageId || historyItem.id,
+              mailbox_email: historyItem.sender || 'contact@zenemoo.in',
+              sender_name: 'Zenemoo',
+              sender_email: historyItem.sender || 'contact@zenemoo.in',
+              recipient_email: Array.isArray(historyItem.recipients) ? historyItem.recipients.join(', ') : String(historyItem.recipients || ''),
+              reply_to: historyItem.sender || 'contact@zenemoo.in',
+              subject: historyItem.subject || '(No Subject)',
+              body_html: historyItem.html || '',
+              body_text: (historyItem.html || '').replace(/<[^>]+>/g, ' ').trim(),
+              snippet: (historyItem.html || '').replace(/<[^>]+>/g, ' ').trim().substring(0, 160),
+              category: 'general',
+              is_read: true,
+              is_starred: false,
+              is_archived: false,
+              is_trashed: false,
+              received_at: historyItem.createdAt || new Date().toISOString(),
+              sent_at: historyItem.createdAt || new Date().toISOString(),
+              status: historyItem.status || 'sent',
+              attachments: Array.isArray(historyItem.attachments_meta)
+                ? historyItem.attachments_meta.map((a: any, idx: number) => ({
+                    id: a.id || `att_${idx}`,
+                    filename: a.filename || a.name || 'attachment',
+                    contentType: a.contentType || a.type || 'application/octet-stream',
+                    size: typeof a.size === 'number' ? a.size : 1024,
+                  }))
+                : [],
+            };
+            emailDetailCache[selectedEmailId] = detail;
+            setSelectedEmailDetail(detail);
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to fetch sent email detail:', err);
+        })
+        .finally(() => {
+          setIsDetailLoading(false);
+        });
+      return;
+    }
 
     // Fetch complete detail on demand (includes body_html, body_text, raw_headers)
     setIsDetailLoading(true);

@@ -258,14 +258,14 @@ export const getIncomingEmails = async (req, res, next) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 20));
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
     const from = (pageNum - 1) * limitNum;
     const to = from + limitNum - 1;
     const isAscending = order === 'asc' || sortBy === 'oldest';
 
     if (supabase) {
       // Egress-safe explicit columns (DO NOT load full body_html, body_text, or raw_headers in list query)
-      const listColumns = 'id, message_id, mailbox_email, sender_name, sender_email, recipient_email, reply_to, subject, snippet, category, is_read, is_starred, is_archived, is_trashed, attachments, auth_results, received_at, created_at, updated_at';
+      const listColumns = 'id, message_id, mailbox_email, sender_name, sender_email, recipient_email, reply_to, subject, snippet, category, is_read, is_starred, is_archived, is_trashed, has_attachments, attachments, auth_results, storage_provider, storage_migration_status, received_at, created_at, updated_at';
       let query = supabase.from('incoming_email_messages').select(listColumns, { count: 'exact' });
 
       // View filters
@@ -573,36 +573,79 @@ export const updateIncomingEmailState = async (req, res, next) => {
 
 /**
  * DELETE /api/emails/inbox/:id
- * Permanent deletion from database
+ * Permanent deletion from R2 storage and Supabase database (R2-first safety architecture)
  */
 export const deleteIncomingEmail = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // Clean up associated R2 objects safely
-    emailR2Service.deleteEmailObjects({ emailId: id, type: 'incoming' }).catch((e) => {
-      console.warn(`[Delete Email R2 Cleanup Note]:`, e.message);
-    });
+    // 1. Locate email record to ensure it exists and extract attachment keys
+    let emailRecord = null;
+    if (supabase) {
+      const { data } = await supabase.from('incoming_email_messages').select('*').eq('id', id).maybeSingle();
+      if (data) emailRecord = data;
+    }
+    if (!emailRecord) {
+      emailRecord = inMemoryEmails.find((e) => e.id === id || e.message_id === id);
+    }
 
+    if (!emailRecord) {
+      return res.status(404).json({ success: false, message: 'Email record not found.' });
+    }
+
+    // 2. Extract any specific attachment R2 keys
+    const extraKeys = [];
+    if (Array.isArray(emailRecord.attachments)) {
+      emailRecord.attachments.forEach((a) => {
+        if (a && a.r2_key) extraKeys.push(a.r2_key);
+      });
+    }
+
+    // 3. Delete all R2 objects first & verify cleanup
+    try {
+      const r2Cleaned = await emailR2Service.deleteEmailObjects({
+        emailId: id,
+        type: 'incoming',
+        extraKeys,
+      });
+
+      if (!r2Cleaned) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to clean up Cloudflare R2 storage objects. Supabase email record was preserved for retry.',
+        });
+      }
+    } catch (r2Err) {
+      console.error('[Delete Incoming Email R2 Error]:', r2Err.message);
+      return res.status(500).json({
+        success: false,
+        message: `R2 cleanup error: ${r2Err.message}. Supabase email record was preserved.`,
+      });
+    }
+
+    // 4. ONLY after R2 cleanup succeeds, delete from Supabase database
     if (supabase) {
       const { error } = await supabase
         .from('incoming_email_messages')
         .delete()
         .eq('id', id);
 
-      if (!error) {
-        invalidateStorageStatsCache();
-        return res.json({ success: true, message: 'Email permanently deleted.' });
+      if (error) {
+        console.error('[Delete Incoming Email Supabase Error]:', error.message);
+        return res.status(500).json({
+          success: false,
+          message: `Failed to delete Supabase record: ${error.message}`,
+        });
       }
     }
 
-    const idx = inMemoryEmails.findIndex((e) => e.id === id);
+    const idx = inMemoryEmails.findIndex((e) => e.id === id || e.message_id === id);
     if (idx >= 0) {
       inMemoryEmails.splice(idx, 1);
     }
 
     invalidateStorageStatsCache();
-    return res.json({ success: true, message: 'Email permanently deleted.' });
+    return res.json({ success: true, message: 'Email and all associated R2 objects permanently deleted.' });
   } catch (err) {
     next(err);
   }
@@ -1212,7 +1255,7 @@ export function parseMimeEmailPayload(rawEmail, incomingHtml, incomingAttachment
 
 /**
  * GET /api/emails/sent
- * Fetch sent emails from Brevo/email_history DB table and return normalized EmailMessageRecord objects
+ * Fetch sent emails from Brevo/email_history DB table with server-side pagination & lightweight egress projection
  */
 export const getSentEmails = async (req, res, next) => {
   try {
@@ -1223,34 +1266,56 @@ export const getSentEmails = async (req, res, next) => {
       status = '',
       view = 'all',
       page = 1,
-      limit = 50,
+      pageSize,
+      limit = 25,
     } = req.query;
 
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(pageSize || limit, 10) || 25));
+    const from = (pageNum - 1) * limitNum;
+    const to = from + limitNum - 1;
+
+    // Lightweight columns for list rows - EXCLUDES heavy 'html' body to optimize Supabase egress
+    const LIST_COLUMNS = 'id, message_id, sender, recipients, subject, attachments_meta, status, created_at, storage_provider, storage_migration_status';
+
     let dbLogs = [];
-    try {
-      if (supabase) {
-        const { data: logsData } = await supabase
-          .from('email_history')
-          .select('id, message_id, sender, recipients, subject, html, attachments_meta, status, created_at')
-          .order('created_at', { ascending: false })
-          .limit(100);
-        dbLogs = logsData || [];
-      } else {
-        dbLogs = await supabaseService.selectAll('email_history', 'created_at', false);
+    let totalCount = 0;
+
+    if (supabase) {
+      try {
+        let query = supabase.from('email_history').select(LIST_COLUMNS, { count: 'exact' });
+
+        if (status && status !== 'all') {
+          query = query.eq('status', status.toLowerCase());
+        }
+
+        query = query.order('created_at', { ascending: false }).range(from, to);
+
+        const { data: logsData, count: exactCount, error } = await query;
+        if (!error && Array.isArray(logsData)) {
+          dbLogs = logsData;
+          totalCount = typeof exactCount === 'number' ? exactCount : logsData.length;
+        }
+      } catch (e) {
+        dbLogs = [];
       }
-    } catch (e) {
-      dbLogs = [];
     }
 
-    if (!Array.isArray(dbLogs)) dbLogs = [];
+    if (dbLogs.length === 0 && (!supabase || totalCount === 0)) {
+      try {
+        const memLogs = await supabaseService.selectAll('email_history', 'created_at', false);
+        if (Array.isArray(memLogs)) {
+          totalCount = memLogs.length;
+          dbLogs = memLogs.slice(from, to + 1);
+        }
+      } catch (_) {}
+    }
 
     const normalizedLogs = dbLogs.map((log) => {
       const recs = decrypt(log.recipients, true);
       const recipientStr = Array.isArray(recs) ? recs.join(', ') : String(recs || '');
       const subject = decrypt(log.subject) || '(No Subject)';
-      const html = decrypt(log.html) || '';
-      const cleanText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      const snippet = cleanText.substring(0, 160) || 'Sent message';
+      const snippet = subject.length > 60 ? `${subject.substring(0, 57)}...` : `Sent: ${subject}`;
 
       const realAttachments = Array.isArray(log.attachments_meta)
         ? log.attachments_meta.filter(
@@ -1267,8 +1332,6 @@ export const getSentEmails = async (req, res, next) => {
         recipient_email: recipientStr,
         reply_to: (log.sender || 'contact@zenemoo.in').toLowerCase(),
         subject,
-        body_text: cleanText,
-        body_html: html,
         snippet,
         category: log.category || 'general',
         is_read: true,
@@ -1276,76 +1339,35 @@ export const getSentEmails = async (req, res, next) => {
         is_archived: Boolean(log.is_archived),
         is_trashed: Boolean(log.is_trashed),
         status: log.status || 'sent',
+        storage_provider: log.storage_provider || 'cloudflare_r2',
+        storage_migration_status: log.storage_migration_status || 'migrated',
         received_at: log.created_at || new Date().toISOString(),
         sent_at: log.created_at || new Date().toISOString(),
-        attachments: realAttachments.map((att, idx) => ({
-          id: att.id || `att_${idx}`,
-          filename: att.filename || att.name || 'attachment',
-          contentType: att.contentType || att.type || 'application/octet-stream',
-          size: att.size || 1024,
-        })),
+        has_attachments: realAttachments.length > 0,
+        attachments: realAttachments.map((att, idx) => {
+          const fn = att.filename || att.name || 'attachment';
+          return {
+            id: att.id || `att_${idx}`,
+            filename: fn,
+            contentType: att.contentType || att.type || getMimeTypeFromFilename(fn),
+            size: typeof att.size === 'number' ? att.size : 1024,
+            r2_key: att.r2_key || `sent/${emailR2Service.sanitizeId(log.id || log.message_id)}/attachments/${emailR2Service.sanitizeFilename(fn)}`,
+          };
+        }),
       };
     });
 
-    let filtered = normalizedLogs;
-
-    // View Filter (all / unread / starred / archived / trash)
-    if (view === 'starred') {
-      filtered = filtered.filter((e) => e.is_starred && !e.is_trashed);
-    } else if (view === 'archived') {
-      filtered = filtered.filter((e) => e.is_archived && !e.is_trashed);
-    } else if (view === 'trash') {
-      filtered = filtered.filter((e) => e.is_trashed);
-    } else {
-      filtered = filtered.filter((e) => !e.is_trashed && !e.is_archived);
-    }
-
-    // Mailbox Filter
-    if (mailbox && mailbox !== 'all') {
-      filtered = filtered.filter((e) => e.mailbox_email.toLowerCase() === mailbox.toLowerCase());
-    }
-
-    // Category Label Filter
-    if (category && category !== 'all') {
-      filtered = filtered.filter((e) => e.category === category);
-    }
-
-    // Status Filter
-    if (status && status !== 'all') {
-      filtered = filtered.filter((e) => e.status.toLowerCase() === status.toLowerCase());
-    }
-
-    // Search Query
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      filtered = filtered.filter(
-        (e) =>
-          e.sender_name.toLowerCase().includes(q) ||
-          e.sender_email.toLowerCase().includes(q) ||
-          e.recipient_email.toLowerCase().includes(q) ||
-          e.subject.toLowerCase().includes(q) ||
-          e.snippet.toLowerCase().includes(q) ||
-          e.message_id.toLowerCase().includes(q)
-      );
-    }
-
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, Math.min(100, parseInt(req.query.pageSize || limit, 10) || 20));
-    const totalCount = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
-
-    const from = (pageNum - 1) * limitNum;
-    const paginated = filtered.slice(from, from + limitNum);
 
     return res.json({
       success: true,
-      count: totalCount,
+      count: normalizedLogs.length,
       total: totalCount,
       page: pageNum,
       pageSize: limitNum,
       limit: limitNum,
       totalPages,
-      emails: paginated,
+      emails: normalizedLogs,
       pagination: {
         page: pageNum,
         pageSize: limitNum,
@@ -1359,69 +1381,192 @@ export const getSentEmails = async (req, res, next) => {
 };
 
 /**
+ * Helper to infer safe MIME type from file extension
+ */
+export const getMimeTypeFromFilename = (filename) => {
+  if (!filename || typeof filename !== 'string') return 'application/octet-stream';
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const mimeMap = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    bmp: 'image/bmp',
+    ico: 'image/x-icon',
+    txt: 'text/plain; charset=utf-8',
+    log: 'text/plain; charset=utf-8',
+    csv: 'text/csv; charset=utf-8',
+    json: 'application/json',
+    xml: 'application/xml',
+    html: 'text/html; charset=utf-8',
+    htm: 'text/html; charset=utf-8',
+    zip: 'application/zip',
+    tar: 'application/x-tar',
+    gz: 'application/gzip',
+    '7z': 'application/x-7z-compressed',
+    rar: 'application/x-rar-compressed',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+};
+
+/**
  * GET /api/emails/inbox/:id/attachments/:attachmentId
+ * GET /api/emails/sent/:id/attachments/:attachmentId
+ * GET /api/email/history/:id/attachments/:attachmentId
  * Stream attachment download or inline preview with secure headers
  */
 export const getAttachmentDownload = async (req, res, next) => {
   try {
     const { id, attachmentId } = req.params;
-    const { preview, inline } = req.query;
-    const isInline = inline === '1' || inline === 'true' || preview === '1' || preview === 'true';
+    const { preview, inline, disposition: queryDisposition } = req.query;
+    const isInline = inline === '1' || inline === 'true' || preview === '1' || preview === 'true' || queryDisposition === 'inline';
+
+    const userRole = (req.user?.role || '').toLowerCase();
+    const userEmail = (req.user?.email || '').toLowerCase();
+    const userId = req.user?.id || req.user?.team_member_id;
+    const isSuperAdmin =
+      userRole === 'admin' ||
+      userRole === 'super_admin' ||
+      userRole === 'administrator' ||
+      userEmail === 'mr.prem2006@gmail.com' ||
+      userEmail === 'zenemootech@gmail.com' ||
+      userEmail === 'contact@zenemoo.in';
+    const hasEmailAccess = Boolean(req.user?.email_access || isSuperAdmin || userRole === 'hr');
+
+    if (!hasEmailAccess) {
+      return res.status(403).json({ success: false, message: 'Access denied: Unauthorized to view attachments.' });
+    }
 
     let email = null;
+    let emailStream = 'incoming';
+
+    // 1. Check incoming email table
     if (supabase) {
-      const { data } = await supabase.from('incoming_email_messages').select('*').eq('id', id).maybeSingle();
-      email = data;
-    }
-    if (!email) {
-      email = inMemoryEmails.find((e) => e.id === id || e.message_id === id);
-    }
-    if (!email) {
       try {
-        if (supabase) {
-          const { data: sentMsg } = await supabase.from('email_history').select('*').eq('id', id).maybeSingle();
-          if (sentMsg) {
-            email = {
-              attachments: Array.isArray(sentMsg.attachments_meta) ? sentMsg.attachments_meta : [],
-            };
-          }
+        const { data } = await supabase.from('incoming_email_messages').select('*').eq('id', id).maybeSingle();
+        if (data) {
+          email = data;
+          emailStream = 'incoming';
         }
       } catch (_) {}
     }
 
-    if (!email || !Array.isArray(email.attachments)) {
+    // 2. Check in-memory emails
+    if (!email) {
+      email = inMemoryEmails.find((e) => e.id === id || e.message_id === id);
+      if (email) emailStream = 'incoming';
+    }
+
+    // 3. Check sent email history table
+    if (!email && supabase) {
+      try {
+        const { data: sentMsg } = await supabase.from('email_history').select('*').eq('id', id).maybeSingle();
+        if (sentMsg) {
+          email = {
+            id: sentMsg.id,
+            attachments: Array.isArray(sentMsg.attachments_meta)
+              ? sentMsg.attachments_meta.filter(
+                  (a) => a && typeof a === 'object' && !a._sender_account_email && (a.name || a.filename || a.type || a.content || a.size)
+                )
+              : [],
+            user_email: sentMsg.user_email,
+            user_id: sentMsg.user_id,
+            sender: sentMsg.sender,
+            created_at: sentMsg.created_at,
+          };
+          emailStream = 'sent';
+        }
+      } catch (_) {}
+    }
+
+    // Authorization check on specific sent email record
+    if (email && emailStream === 'sent' && !isSuperAdmin) {
+      const logUserEmail = (email.user_email || '').toLowerCase();
+      const logUserId = String(email.user_id || '');
+      const currentUserId = String(userId || '');
+      const currentUserEmail = userEmail.toLowerCase();
+      const isOwner =
+        (currentUserEmail && logUserEmail === currentUserEmail) ||
+        (currentUserId && currentUserId !== 'null' && logUserId === currentUserId);
+      if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Access denied: You are not authorized to view attachments for this email.' });
+      }
+    }
+
+    if (!email || !Array.isArray(email.attachments) || email.attachments.length === 0) {
       return res.status(404).json({ success: false, message: 'Email or attachments not found.' });
     }
 
-    // Match attachment by id, filename, or index
-    const att = email.attachments.find((a, idx) =>
-      String(a.id) === String(attachmentId) ||
-      a.filename === attachmentId ||
-      String(idx) === String(attachmentId)
-    );
+    // Match attachment by ID, filename, decoded filename, or index
+    const decodedAttachmentId = decodeURIComponent(attachmentId);
+    const att = email.attachments.find((a, idx) => {
+      if (!a || typeof a !== 'object') return false;
+      const aName = a.filename || a.name || '';
+      return (
+        String(a.id) === String(attachmentId) ||
+        String(a.id) === String(decodedAttachmentId) ||
+        aName === attachmentId ||
+        aName === decodedAttachmentId ||
+        String(idx) === String(attachmentId) ||
+        emailR2Service.sanitizeFilename(aName) === emailR2Service.sanitizeFilename(decodedAttachmentId) ||
+        emailR2Service.sanitizeFilename(aName) === emailR2Service.sanitizeFilename(attachmentId)
+      );
+    });
 
     if (!att) {
       return res.status(404).json({ success: false, message: 'Attachment not found in email.' });
     }
 
     const filename = att.filename || att.name || 'attachment';
-    const contentType = att.contentType || att.type || 'application/octet-stream';
-    const disposition = isInline ? 'inline' : 'attachment';
-
-    // 1. Check R2 Storage First (Private R2 Zero Egress / Direct Secure Stream)
     const safeFilename = emailR2Service.sanitizeFilename(filename);
-    const candidateR2Key = att.r2_key || `incoming/${emailR2Service.sanitizeId(id)}/attachments/${safeFilename}`;
-    
-    try {
-      const r2Object = await emailR2Service.getObjectBuffer(candidateR2Key);
-      if (r2Object && r2Object.buffer) {
-        res.setHeader('Content-Type', r2Object.contentType || contentType);
-        res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
-        res.setHeader('Content-Length', r2Object.contentLength || r2Object.buffer.length);
-        return res.send(r2Object.buffer);
+    const rawContentType = att.contentType || att.type;
+    const contentType = (rawContentType && rawContentType !== 'application/octet-stream')
+      ? rawContentType
+      : getMimeTypeFromFilename(filename);
+    const disposition = isInline ? 'inline' : 'attachment';
+    const cleanId = emailR2Service.sanitizeId(id);
+
+    // 1. Check R2 Storage First (Private R2 Zero Egress / Direct S3 SDK Stream)
+    const candidateR2Keys = [
+      att.r2_key,
+      `${emailStream}/${cleanId}/attachments/${safeFilename}`,
+      emailStream === 'incoming'
+        ? `sent/${cleanId}/attachments/${safeFilename}`
+        : `incoming/${cleanId}/attachments/${safeFilename}`,
+    ].filter(Boolean);
+
+    for (const key of candidateR2Keys) {
+      try {
+        const r2Object = await emailR2Service.getObjectBuffer(key);
+        if (r2Object && r2Object.buffer && r2Object.buffer.length > 0) {
+          const streamContentType = (r2Object.contentType && r2Object.contentType !== 'application/octet-stream')
+            ? r2Object.contentType
+            : contentType;
+
+          const safeQuotedFilename = filename.replace(/"/g, '\\"');
+          res.setHeader('Content-Type', streamContentType);
+          res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+          res.setHeader('Content-Length', r2Object.contentLength || r2Object.buffer.length);
+          res.setHeader('Cache-Control', 'private, max-age=3600');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          return res.send(r2Object.buffer);
+        }
+      } catch (r2Err) {
+        console.warn(`[Attachment R2 Stream Attempt Error for ${key}]:`, r2Err.message);
       }
-    } catch (r2Err) {
-      console.warn(`[Attachment R2 Stream Fallback]:`, r2Err.message);
     }
 
     // 2. If attachment has direct URL
@@ -1429,7 +1574,7 @@ export const getAttachmentDownload = async (req, res, next) => {
       return res.redirect(att.url);
     }
 
-    // If attachment has base64 or buffer content
+    // 3. If attachment has base64 or buffer content in database
     const rawContent = att.content || att.data || att.base64 || att.pdf || att.image || att.fileBuffer;
     if (rawContent) {
       let fileBuffer = null;
@@ -1441,36 +1586,45 @@ export const getAttachmentDownload = async (req, res, next) => {
       }
 
       if (fileBuffer) {
+        const safeQuotedFilename = filename.replace(/"/g, '\\"');
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
         res.setHeader('Content-Length', fileBuffer.length);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         return res.send(fileBuffer);
       }
     }
 
-    // Fallback handler for legacy metadata-only PDF attachments
+    // 4. Fallback handler for legacy metadata-only PDF attachments
     const isPdf = contentType.includes('pdf') || filename.toLowerCase().endsWith('.pdf');
     if (isPdf) {
       const fallbackPdf = generateFallbackPdfBuffer(filename, email);
+      const safeQuotedFilename = filename.replace(/"/g, '\\"');
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
       res.setHeader('Content-Length', fallbackPdf.length);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       return res.send(fallbackPdf);
     }
 
-    // Fallback handler for legacy text/csv attachments
+    // 5. Fallback handler for legacy text/csv attachments
     const isText = contentType.includes('text') || filename.toLowerCase().endsWith('.txt') || filename.toLowerCase().endsWith('.csv');
     if (isText) {
-      const fallbackText = Buffer.from(`=== Document: ${filename} ===\nFrom: ${email.sender_email}\nDate: ${email.received_at}\n\n${email.body_text || email.snippet || ''}`, 'utf8');
+      const fallbackText = Buffer.from(`=== Document: ${filename} ===\nFrom: ${email.sender_email || email.sender || 'Zenemoo'}\nDate: ${email.received_at || email.created_at}\n\n${email.body_text || email.snippet || ''}`, 'utf8');
+      const safeQuotedFilename = filename.replace(/"/g, '\\"');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeQuotedFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
       res.setHeader('Content-Length', fallbackText.length);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       return res.send(fallbackText);
     }
 
     return res.status(404).json({
       success: false,
-      message: 'Attachment content is not available or has expired from cache.',
+      message: 'Attachment content is not available or has expired.',
     });
   } catch (err) {
     next(err);

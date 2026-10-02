@@ -35,7 +35,7 @@ router.delete('/inbox/:id', verifyToken, requireRole(['admin']), deleteIncomingE
 router.get('/addresses', verifyToken, requireRole(['admin']), getEmailAddresses);
 router.post('/addresses', verifyToken, requireRole(['admin']), addEmailAddress);
 
-// Attachment Route Handlers
+// Attachment Route Handlers (Inbox, Sent, History)
 router.get('/inbox/:id/attachments/:attachmentId/preview', verifyToken, requireRole(['admin']), (req, res, next) => {
   req.query.preview = '1';
   return getAttachmentDownload(req, res, next);
@@ -43,11 +43,31 @@ router.get('/inbox/:id/attachments/:attachmentId/preview', verifyToken, requireR
 router.get('/inbox/:id/attachments/:attachmentId/url', verifyToken, requireRole(['admin']), (req, res) => {
   res.json({
     success: true,
-    url: `/api/emails/inbox/${req.params.id}/attachments/${encodeURIComponent(req.params.attachmentId)}`,
-    previewUrl: `/api/emails/inbox/${req.params.id}/attachments/${encodeURIComponent(req.params.attachmentId)}?preview=1`,
+    url: `/api/emails/inbox/${encodeURIComponent(req.params.id)}/attachments/${encodeURIComponent(req.params.attachmentId)}`,
+    previewUrl: `/api/emails/inbox/${encodeURIComponent(req.params.id)}/attachments/${encodeURIComponent(req.params.attachmentId)}?preview=1`,
     filename: req.params.attachmentId,
   });
 });
 router.get('/inbox/:id/attachments/:attachmentId', verifyToken, requireRole(['admin']), getAttachmentDownload);
+
+router.get('/sent/:id/attachments/:attachmentId/preview', verifyToken, requireRole(['admin']), (req, res, next) => {
+  req.query.preview = '1';
+  return getAttachmentDownload(req, res, next);
+});
+router.get('/sent/:id/attachments/:attachmentId/url', verifyToken, requireRole(['admin']), (req, res) => {
+  res.json({
+    success: true,
+    url: `/api/emails/sent/${encodeURIComponent(req.params.id)}/attachments/${encodeURIComponent(req.params.attachmentId)}`,
+    previewUrl: `/api/emails/sent/${encodeURIComponent(req.params.id)}/attachments/${encodeURIComponent(req.params.attachmentId)}?preview=1`,
+    filename: req.params.attachmentId,
+  });
+});
+router.get('/sent/:id/attachments/:attachmentId', verifyToken, requireRole(['admin']), getAttachmentDownload);
+
+router.get('/history/:id/attachments/:attachmentId/preview', verifyToken, requireRole(['admin']), (req, res, next) => {
+  req.query.preview = '1';
+  return getAttachmentDownload(req, res, next);
+});
+router.get('/history/:id/attachments/:attachmentId', verifyToken, requireRole(['admin']), getAttachmentDownload);
 
 export default router;
