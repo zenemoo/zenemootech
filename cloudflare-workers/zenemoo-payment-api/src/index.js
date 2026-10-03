@@ -73,23 +73,26 @@ async function ensurePublicReceiptsTable(env) {
   if (publicReceiptsTableInitialized || !env.DB) return;
   try {
     await env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS public_receipts (
-        zenemoo_payment_id TEXT PRIMARY KEY,
-        status TEXT NOT NULL,
-        name TEXT,
-        masked_upi_id TEXT,
+      CREATE TABLE IF NOT EXISTS public_payment_receipts (
+        id TEXT PRIMARY KEY,
+        zenemoo_payment_id TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'Pending',
+        name TEXT NOT NULL,
+        masked_upi_id TEXT NOT NULL,
         amount REAL NOT NULL,
-        currency TEXT DEFAULT 'INR',
-        work_type TEXT,
+        currency TEXT NOT NULL DEFAULT 'INR',
         project_name TEXT,
+        work_type TEXT NOT NULL DEFAULT 'Annotator',
         utr TEXT,
         payment_date TEXT,
         batch_id TEXT,
-        created_at TEXT,
-        updated_at TEXT
+        proof_link TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `).run();
-    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_public_receipts_utr ON public_receipts (utr)`).run();
+    await env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_public_receipts_zenemoo_id ON public_payment_receipts (zenemoo_payment_id)`).run();
+    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_public_receipts_status ON public_payment_receipts (status)`).run();
     publicReceiptsTableInitialized = true;
   } catch (err) {
     console.warn('[Public Receipts Table Init Error]:', err.message);
@@ -561,21 +564,35 @@ export default {
       // PUBLIC RECEIPT ENDPOINTS (ZERO AUTH / SAFE EGRESS)
       // ==========================================
 
-      // 1b. GET /public/receipt/:paymentId — Public Payment Receipt Lookup
-      if (pathname.startsWith('/public/receipt/') && request.method === 'GET') {
-        const paymentId = pathname.replace('/public/receipt/', '').trim();
+      // 1b. GET /public/receipt/:paymentId & /api/public-payments/:paymentId — Public Payment Receipt Lookup
+      if (
+        (pathname.startsWith('/public/receipt/') ||
+         pathname.startsWith('/api/public-payments/') ||
+         pathname.startsWith('/public-payments/') ||
+         pathname.startsWith('/public/payment/')) &&
+        request.method === 'GET'
+      ) {
+        const rawPaymentId = pathname
+          .replace('/public/receipt/', '')
+          .replace('/api/public-payments/', '')
+          .replace('/public-payments/', '')
+          .replace('/public/payment/', '')
+          .trim();
+
+        const paymentId = decodeURIComponent(rawPaymentId).split('?')[0].split('/')[0].trim();
+
         if (!paymentId) {
-          return errorResponse('Payment ID is required', 400, corsHeaders);
+          return errorResponse('Valid Zenemoo Payment ID is required', 400, corsHeaders);
         }
 
         await ensurePublicReceiptsTable(env);
 
-        // 1. Direct indexed query on public_receipts
+        // 1. Direct indexed query on public_payment_receipts
         let receiptRow = null;
         try {
           receiptRow = await env.DB.prepare(`
-            SELECT zenemoo_payment_id, status, name, masked_upi_id, amount, currency, work_type, project_name, utr, payment_date, batch_id
-            FROM public_receipts
+            SELECT id, zenemoo_payment_id, status, name, masked_upi_id, amount, currency, project_name, work_type, utr, payment_date, batch_id, proof_link
+            FROM public_payment_receipts
             WHERE zenemoo_payment_id = ?
             LIMIT 1
           `).bind(paymentId).first();
@@ -583,7 +600,7 @@ export default {
           console.warn('[Public Receipt Query Error]:', err.message);
         }
 
-        // 2. Fallback to payments table if not found in public_receipts
+        // 2. Fallback to payments table if not found in public_payment_receipts
         if (!receiptRow) {
           try {
             const fallbackRow = await env.DB.prepare(`
@@ -598,7 +615,7 @@ export default {
                 zenemoo_payment_id: paymentId,
                 status: fallbackRow.status,
                 name: deriveDisplayName(fallbackRow.email, fallbackRow.talent_id, fallbackRow.talent_name, fallbackRow.source_name),
-                masked_upi_id: '',
+                masked_upi_id: '••••@upi',
                 amount: Number(fallbackRow.amount) || 0,
                 currency: fallbackRow.currency || 'INR',
                 work_type: fallbackRow.work_type || 'Contributor Work',
@@ -606,6 +623,7 @@ export default {
                 utr: fallbackRow.reference_number || null,
                 payment_date: fallbackRow.payment_date || null,
                 batch_id: null,
+                proof_link: fallbackRow.reference_link || `https://www.zenemoo.in/payment/${paymentId}`,
               };
             }
           } catch (err) {
@@ -628,21 +646,26 @@ export default {
           {
             success: true,
             data: {
-              zenemooPaymentId: receiptRow.zenemoo_payment_id,
-              status: receiptRow.status,
+              zenemooPaymentId: receiptRow.zenemoo_payment_id || paymentId,
+              status: receiptRow.status || 'Pending',
               name: receiptRow.name || 'Zenemoo Contributor',
-              maskedUpiId: receiptRow.masked_upi_id || '',
+              maskedUpiId: receiptRow.masked_upi_id || '••••@upi',
               amount: Number(receiptRow.amount) || 0,
               currency: receiptRow.currency || 'INR',
-              workType: receiptRow.work_type || 'Annotator',
               projectName: receiptRow.project_name || null,
+              workType: receiptRow.work_type || 'Annotator',
               utr: receiptRow.utr || null,
               paymentDate: receiptRow.payment_date || null,
               batchId: receiptRow.batch_id || null,
+              proofLink: receiptRow.proof_link || `https://www.zenemoo.in/payment/${receiptRow.zenemoo_payment_id || paymentId}`,
             },
           },
           200,
-          { ...corsHeaders, 'X-Robots-Tag': 'noindex, nofollow' }
+          {
+            ...corsHeaders,
+            'X-Robots-Tag': 'noindex, nofollow',
+            'Cache-Control': receiptRow.status === 'Paid' ? 'public, max-age=60, s-maxage=60' : 'no-cache, no-store',
+          }
         );
       }
 
@@ -1331,8 +1354,13 @@ export default {
         );
       }
 
-      // 8c. POST /admin/payments/publish-receipts — Batch sync / publish safe public payment receipts from Local Workspace
-      if (pathname === '/admin/payments/publish-receipts' && request.method === 'POST') {
+      // 8c. POST /admin/payments/publish-receipts & /api/admin/public-payments — Batch sync / publish safe public payment receipts from Local Workspace
+      if (
+        (pathname === '/admin/payments/publish-receipts' ||
+         pathname === '/api/admin/public-payments' ||
+         pathname === '/api/admin/publish-receipts') &&
+        request.method === 'POST'
+      ) {
         const auth = await authenticateAdmin(request, env);
         if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
 
@@ -1343,6 +1371,8 @@ export default {
           ? body.receipts
           : Array.isArray(body.records)
           ? body.records
+          : body.zenemooPaymentId || body.zenemoo_payment_id
+          ? [body]
           : [];
 
         if (receipts.length === 0) {
@@ -1357,6 +1387,7 @@ export default {
           const zenemooPaymentId = (item.zenemooPaymentId || item.zenemoo_payment_id || '').trim();
           if (!zenemooPaymentId) continue;
 
+          const id = item.id || `pub_${zenemooPaymentId}`;
           const status = (item.status || 'Pending').trim();
           const name = normalizeContributorName(item.name || item.workerName) || 'Zenemoo Contributor';
           const rawUpi = item.upiId || item.upi_id || '';
@@ -1368,38 +1399,42 @@ export default {
           const utr = (item.utr || item.reference_number || '').trim() || null;
           const paymentDate = item.paymentDate || item.payment_date || null;
           const batchId = (item.batchId || item.batch_id || '').trim() || null;
+          const proofLink = (item.proofLink || item.proof_link || `https://www.zenemoo.in/payment/${zenemooPaymentId}`).trim();
 
           const upsertSql = `
-            INSERT INTO public_receipts (
-              zenemoo_payment_id, status, name, masked_upi_id, amount, currency, work_type, project_name, utr, payment_date, batch_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO public_payment_receipts (
+              id, zenemoo_payment_id, status, name, masked_upi_id, amount, currency, project_name, work_type, utr, payment_date, batch_id, proof_link, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(zenemoo_payment_id) DO UPDATE SET
               status = excluded.status,
               name = excluded.name,
               masked_upi_id = excluded.masked_upi_id,
               amount = excluded.amount,
               currency = excluded.currency,
-              work_type = excluded.work_type,
               project_name = excluded.project_name,
+              work_type = excluded.work_type,
               utr = excluded.utr,
               payment_date = excluded.payment_date,
               batch_id = excluded.batch_id,
+              proof_link = excluded.proof_link,
               updated_at = excluded.updated_at
           `;
 
           statements.push(
             env.DB.prepare(upsertSql).bind(
+              id,
               zenemooPaymentId,
               status,
               name,
               maskedUpi,
               amount,
               currency,
-              workType,
               projectName,
+              workType,
               utr,
               paymentDate,
               batchId,
+              proofLink,
               now,
               now
             )
@@ -1420,6 +1455,106 @@ export default {
           },
           200,
           corsHeaders
+        );
+      }
+
+      // 8d. GET /public/receipt/:paymentId & /api/public-payments/:paymentId — Public unauthenticated payment receipt lookup
+      if (
+        (pathname.startsWith('/public/receipt/') ||
+         pathname.startsWith('/api/public-payments/') ||
+         pathname.startsWith('/public-payments/') ||
+         pathname.startsWith('/public/payment/')) &&
+        request.method === 'GET'
+      ) {
+        const rawPaymentId = pathname
+          .replace('/public/receipt/', '')
+          .replace('/api/public-payments/', '')
+          .replace('/public-payments/', '')
+          .replace('/public/payment/', '')
+          .trim();
+
+        const paymentId = decodeURIComponent(rawPaymentId).split('?')[0].split('/')[0].trim();
+
+        if (!paymentId) {
+          return errorResponse('Valid Zenemoo Payment ID is required', 400, corsHeaders);
+        }
+
+        await ensurePublicReceiptsTable(env);
+
+        // 1. Query public_payment_receipts table by indexed zenemoo_payment_id
+        let row = null;
+        try {
+          row = await env.DB.prepare(
+            `SELECT id, zenemoo_payment_id, status, name, masked_upi_id, amount, currency, project_name, work_type, utr, payment_date, batch_id, proof_link, created_at, updated_at
+             FROM public_payment_receipts
+             WHERE zenemoo_payment_id = ? LIMIT 1`
+          ).bind(paymentId).first();
+        } catch (dbErr) {
+          console.warn('[Public Receipt Query Error]:', dbErr.message);
+        }
+
+        // 2. Fallback: Query payments table if reference_link or id matches
+        if (!row) {
+          try {
+            const legacyRow = await env.DB.prepare(
+              `SELECT id, talent_name, source_name, project_name, work_type, amount, currency, status, payment_date, reference_number, reference_link, source
+               FROM payments
+               WHERE reference_link LIKE ? OR id = ? LIMIT 1`
+            ).bind(`%${paymentId}%`, paymentId).first();
+
+            if (legacyRow) {
+              row = {
+                zenemoo_payment_id: paymentId,
+                status: legacyRow.status || 'Paid',
+                name: legacyRow.talent_name || legacyRow.source_name || 'Zenemoo Contributor',
+                masked_upi_id: '••••@upi',
+                amount: Number(legacyRow.amount) || 0,
+                currency: legacyRow.currency || 'INR',
+                work_type: legacyRow.work_type || 'Annotator',
+                project_name: legacyRow.project_name || null,
+                utr: legacyRow.reference_number || null,
+                payment_date: legacyRow.payment_date || null,
+                batch_id: legacyRow.source || null,
+                proof_link: legacyRow.reference_link || `https://www.zenemoo.in/payment/${paymentId}`,
+              };
+            }
+          } catch (_) {}
+        }
+
+        if (!row) {
+          return errorResponse('Payment receipt not found', 404, {
+            ...corsHeaders,
+            'X-Robots-Tag': 'noindex, nofollow',
+          });
+        }
+
+        // Return strictly sanitized public receipt payload
+        const publicReceipt = {
+          zenemooPaymentId: row.zenemoo_payment_id || paymentId,
+          status: row.status || 'Pending',
+          name: row.name || 'Zenemoo Contributor',
+          maskedUpiId: row.masked_upi_id || '••••@upi',
+          amount: Number(row.amount) || 0,
+          currency: row.currency || 'INR',
+          projectName: row.project_name || null,
+          workType: row.work_type || 'Annotator',
+          utr: row.utr || null,
+          paymentDate: row.payment_date || null,
+          batchId: row.batch_id || null,
+          proofLink: row.proof_link || `https://www.zenemoo.in/payment/${row.zenemoo_payment_id || paymentId}`,
+        };
+
+        return jsonResponse(
+          {
+            success: true,
+            data: publicReceipt,
+          },
+          200,
+          {
+            ...corsHeaders,
+            'X-Robots-Tag': 'noindex, nofollow',
+            'Cache-Control': row.status === 'Paid' ? 'public, max-age=60, s-maxage=60' : 'no-cache, no-store',
+          }
         );
       }
 

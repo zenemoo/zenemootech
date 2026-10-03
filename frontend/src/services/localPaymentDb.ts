@@ -23,6 +23,8 @@ export interface LocalPaymentRecord {
   paymentDate?: string | null;
   zenemooPaymentId?: string | null;
   proofLink?: string | null;
+  publicSyncStatus?: 'synced' | 'pending' | 'failed' | null;
+  publicSyncedAt?: string | null;
   issueType?: string | null;
   issueNotes?: string | null;
   sourceFileName?: string;
@@ -726,6 +728,40 @@ class LocalPaymentDbService {
         };
       };
 
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async updatePublicSyncStatus(
+    recordIds: string[],
+    syncStatus: 'synced' | 'failed' | 'pending'
+  ): Promise<void> {
+    if (!recordIds || recordIds.length === 0) return;
+    const db = await this.openDb();
+    const idSet = new Set(recordIds);
+    const now = new Date().toISOString();
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('paymentRecords', 'readwrite');
+      const store = tx.objectStore('paymentRecords');
+      const req = store.getAll();
+
+      req.onsuccess = () => {
+        const records = (req.result || []) as LocalPaymentRecord[];
+        for (const r of records) {
+          if (idSet.has(r.id) || (r.zenemooPaymentId && idSet.has(r.zenemooPaymentId))) {
+            const updated: LocalPaymentRecord = {
+              ...r,
+              publicSyncStatus: syncStatus,
+              publicSyncedAt: syncStatus === 'synced' ? now : r.publicSyncedAt,
+              updatedAt: now,
+            };
+            store.put(updated);
+          }
+        }
+      };
+
+      tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   }

@@ -737,10 +737,35 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
       }
 
       // Exact payment date: only assign upon marking Paid if not already set, or preserve manually confirmed date
+      // Exact payment date: only assign upon marking Paid if not already set, or preserve manually confirmed date
       const recordedPaymentDate =
         paymentFormStatus === 'Paid'
           ? (paymentFormDate || activePaymentRecord.paymentDate || getIstCurrentDate())
           : activePaymentRecord.paymentDate;
+
+      let syncStatus: 'synced' | 'failed' = 'synced';
+
+      // Publish safe public receipt record to Cloudflare D1 for public shareable access
+      try {
+        await paymentWorkerApi.publishPublicReceipts([
+          {
+            zenemooPaymentId: zPaymentId,
+            status: paymentFormStatus,
+            name: activePaymentRecord.name,
+            upiId: activePaymentRecord.upiId,
+            amount: activePaymentRecord.amount,
+            currency: activePaymentRecord.currency || 'INR',
+            workType: finalWorkType,
+            utr: paymentFormStatus === 'Paid' ? paymentFormUtr.trim() : activePaymentRecord.utr,
+            paymentDate: recordedPaymentDate,
+            batchId: activePaymentRecord.batchId,
+          },
+        ]);
+        syncStatus = 'synced';
+      } catch (pubErr) {
+        console.warn('[Publish Public Receipt Warning]:', pubErr);
+        syncStatus = 'failed';
+      }
 
       const updates: Partial<LocalPaymentRecord> = {
         status: paymentFormStatus,
@@ -751,38 +776,26 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
         issueNotes: paymentFormStatus === 'Issue' ? paymentFormIssueNotes.trim() : null,
         zenemooPaymentId: zPaymentId,
         proofLink: proofLink,
+        publicSyncStatus: syncStatus,
+        publicSyncedAt: syncStatus === 'synced' ? new Date().toISOString() : activePaymentRecord.publicSyncedAt,
       };
 
       const updated = await localPaymentDb.updatePaymentRecord(activePaymentRecord.id, updates);
       setActivePaymentRecord(updated);
 
-      // Publish safe public receipt record to Cloudflare D1 for public shareable access
-      if (updated.zenemooPaymentId) {
-        try {
-          await paymentWorkerApi.publishPublicReceipts([
-            {
-              zenemooPaymentId: updated.zenemooPaymentId,
-              status: updated.status,
-              name: updated.name,
-              upiId: updated.upiId,
-              amount: updated.amount,
-              currency: updated.currency || 'INR',
-              workType: updated.workType,
-              utr: updated.utr,
-              paymentDate: updated.paymentDate,
-              batchId: updated.batchId,
-            },
-          ]);
-        } catch (pubErr) {
-          console.warn('[Publish Public Receipt Warning]:', pubErr);
-        }
+      if (syncStatus === 'synced') {
+        addToast(
+          'Payment Confirmed & Published',
+          `Payment for ${updated.name} (₹${updated.amount}) marked as "${updated.status}" and synchronized to Cloudflare D1.`,
+          'success'
+        );
+      } else {
+        addToast(
+          'Payment Saved Locally',
+          `Payment for ${updated.name} saved locally in IndexedDB, but Cloud sync is pending.`,
+          'warning'
+        );
       }
-
-      addToast(
-        'Payment Updated',
-        `Payment for ${updated.name} (₹${updated.amount}) marked as "${updated.status}" in IndexedDB.`,
-        'success'
-      );
 
       loadWorkspaceData();
       setIsPaymentModalOpen(false);
@@ -800,13 +813,101 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
     try {
       const activeBatch = selectedBatchId !== 'All' ? selectedBatchId : undefined;
       const res = await localPaymentDb.createAllPaymentLinks(activeBatch);
+      const allRecords = await localPaymentDb.getAllPaymentRecords(activeBatch);
+      const recordsWithIds = allRecords.filter((r) => r.zenemooPaymentId);
 
-      // Publish all payment records with Zenemoo IDs to Cloudflare D1
+      let syncSuccess = false;
       try {
+        const publishPayload = recordsWithIds.map((r) => ({
+          zenemooPaymentId: r.zenemooPaymentId!,
+          status: r.status,
+          name: r.name,
+          upiId: r.upiId,
+          amount: r.amount,
+          currency: r.currency || 'INR',
+          workType: r.workType,
+          utr: r.utr,
+          paymentDate: r.paymentDate,
+          batchId: r.batchId,
+        }));
+
+        if (publishPayload.length > 0) {
+          const syncRes = await paymentWorkerApi.publishPublicReceipts(publishPayload);
+          if (syncRes.success) {
+            syncSuccess = true;
+            await localPaymentDb.updatePublicSyncStatus(
+              recordsWithIds.map((r) => r.id),
+              'synced'
+            );
+          }
+        }
+      } catch (pubErr) {
+        console.warn('[Publish All Receipts Warning]:', pubErr);
+        await localPaymentDb.updatePublicSyncStatus(
+          recordsWithIds.map((r) => r.id),
+          'failed'
+        );
+      }
+
+      if (syncSuccess) {
+        if (res.createdCount === 0) {
+          addToast(
+            'Payment Links Up-to-Date',
+            `${res.alreadyExistingCount} payment links verified and synchronized to Cloudflare D1.`,
+            'info'
+          );
+        } else {
+          addToast(
+            'Payment Links Created & Published',
+            `Created ${res.createdCount} new payment links. All ${res.totalCount} synchronized to Cloudflare D1.`,
+            'success'
+          );
+        }
+      } else {
+        addToast(
+          'Links Created Locally (Sync Pending)',
+          `Generated ${res.createdCount} links in IndexedDB. Cloudflare sync is pending.`,
+          'warning'
+        );
+      }
+
+      loadWorkspaceData();
+    } catch (err: any) {
+      console.error('[Create All Links Error]:', err);
+      addToast('Error Creating Links', err.message || 'Failed to generate payment links', 'error');
+    } finally {
+      setIsCreatingLinks(false);
+    }
+  };
+
+  // --- RETRY SYNC HANDLER ---
+  const handleRetrySync = async (record?: LocalPaymentRecord) => {
+    try {
+      if (record && record.zenemooPaymentId) {
+        await paymentWorkerApi.publishPublicReceipts([
+          {
+            zenemooPaymentId: record.zenemooPaymentId,
+            status: record.status,
+            name: record.name,
+            upiId: record.upiId,
+            amount: record.amount,
+            currency: record.currency || 'INR',
+            workType: record.workType,
+            utr: record.utr,
+            paymentDate: record.paymentDate,
+            batchId: record.batchId,
+          },
+        ]);
+        await localPaymentDb.updatePublicSyncStatus([record.id], 'synced');
+        addToast('Synced', `Payment receipt for ${record.name} published to Cloudflare.`, 'success');
+      } else {
+        const activeBatch = selectedBatchId !== 'All' ? selectedBatchId : undefined;
         const allRecords = await localPaymentDb.getAllPaymentRecords(activeBatch);
-        const publishPayload = allRecords
-          .filter((r) => r.zenemooPaymentId)
-          .map((r) => ({
+        const recordsWithIds = allRecords.filter((r) => r.zenemooPaymentId);
+        if (recordsWithIds.length === 0) return;
+
+        await paymentWorkerApi.publishPublicReceipts(
+          recordsWithIds.map((r) => ({
             zenemooPaymentId: r.zenemooPaymentId!,
             status: r.status,
             name: r.name,
@@ -817,35 +918,18 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
             utr: r.utr,
             paymentDate: r.paymentDate,
             batchId: r.batchId,
-          }));
-
-        if (publishPayload.length > 0) {
-          await paymentWorkerApi.publishPublicReceipts(publishPayload);
-        }
-      } catch (pubErr) {
-        console.warn('[Publish All Receipts Warning]:', pubErr);
-      }
-
-      if (res.createdCount === 0) {
-        addToast(
-          'Payment Links Up-to-Date',
-          `${res.alreadyExistingCount} payment links already exist. 0 new links created.`,
-          'info'
+          }))
         );
-      } else {
-        addToast(
-          'Payment Links Created',
-          `Created ${res.createdCount} of ${res.totalCount} payment links. ${res.totalCount} payment links ready.`,
-          'success'
+        await localPaymentDb.updatePublicSyncStatus(
+          recordsWithIds.map((r) => r.id),
+          'synced'
         );
+        addToast('Synced All', `All ${recordsWithIds.length} payment receipts published to Cloudflare D1.`, 'success');
       }
-
       loadWorkspaceData();
     } catch (err: any) {
-      console.error('[Create All Links Error]:', err);
-      addToast('Error Creating Links', err.message || 'Failed to generate payment links', 'error');
-    } finally {
-      setIsCreatingLinks(false);
+      console.error('[Retry Sync Error]:', err);
+      addToast('Sync Failed', err.message || 'Failed to sync with Cloudflare', 'error');
     }
   };
 
@@ -1477,12 +1561,27 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
                     <td className="py-3.5 px-4 whitespace-nowrap text-xs">
                       {r.zenemooPaymentId ? (
                         <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-[11px] font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-md">
                               {r.zenemooPaymentId}
                             </span>
+                            {r.publicSyncStatus === 'failed' ? (
+                              <button
+                                onClick={() => handleRetrySync(r)}
+                                className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded hover:bg-amber-500/20 transition-all"
+                                title="Cloudflare sync failed. Click to retry sync."
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                                <span>Sync Pending</span>
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <span>Published</span>
+                              </span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1.5 text-[11px]">
+                          <div className="flex items-center gap-1.5 text-[11px] mt-0.5">
                             <a
                               href={`/payment/${r.zenemooPaymentId}`}
                               target="_blank"

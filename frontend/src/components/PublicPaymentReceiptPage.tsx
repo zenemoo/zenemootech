@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { paymentWorkerApi } from '../services/paymentWorkerApi';
-import { localPaymentDb } from '../services/localPaymentDb';
 
 interface PublicPaymentReceiptPageProps {
   zenemooPaymentId: string;
@@ -73,7 +72,6 @@ function formatDisplayDate(dateStr?: string | null): string {
     return '—';
   }
   const clean = dateStr.trim();
-  // If already in text format (e.g. "03 October 2026, 2:32 PM IST")
   if (clean.includes('IST') || clean.includes('AM') || clean.includes('PM') || isNaN(Date.parse(clean))) {
     return clean;
   }
@@ -123,68 +121,42 @@ export const PublicPaymentReceiptPage: React.FC<PublicPaymentReceiptPageProps> =
     };
   }, [cleanPaymentId]);
 
-  // Fetch receipt data: first from server API, with local IndexedDB fallback
-  useEffect(() => {
-    let isMounted = true;
-    async function loadReceipt() {
-      if (!cleanPaymentId) {
-        setIsLoading(false);
-        setErrorStatus('not_found');
-        return;
-      }
-
-      setIsLoading(true);
-      setErrorStatus(null);
-
-      // 1. Try server-side public API
-      try {
-        const res = await paymentWorkerApi.fetchPublicReceipt(cleanPaymentId);
-        if (isMounted && res.success && res.data) {
-          setReceipt(res.data);
-          setIsLoading(false);
-          return;
-        }
-      } catch (err) {
-        // Server fetch might 404 or fail; fallback to local check
-      }
-
-      // 2. Fallback to browser's local IndexedDB if same browser/admin created it
-      try {
-        const allLocal = await localPaymentDb.getAllPaymentRecordsForExport();
-        const found = allLocal.find(
-          (r) => r.zenemooPaymentId === cleanPaymentId || r.id === cleanPaymentId
-        );
-        if (isMounted && found) {
-          setReceipt({
-            zenemooPaymentId: found.zenemooPaymentId || cleanPaymentId,
-            status: found.status,
-            name: found.name,
-            maskedUpiId: formatMaskedUpi(found.upiId),
-            amount: found.amount,
-            currency: found.currency || 'INR',
-            workType: found.workType || 'Annotator',
-            projectName: (found.originalRowData as any)?.['Project'] || null,
-            utr: found.utr || null,
-            paymentDate: found.paymentDate || null,
-            batchId: found.batchId || null,
-          });
-          setIsLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.warn('[IndexedDB Fallback Error]:', err);
-      }
-
-      if (isMounted) {
-        setIsLoading(false);
-        setErrorStatus('not_found');
-      }
+  // Fetch receipt data strictly from Cloudflare D1 Public API
+  const fetchReceiptData = async () => {
+    if (!cleanPaymentId) {
+      setIsLoading(false);
+      setErrorStatus('not_found');
+      return;
     }
 
-    loadReceipt();
-    return () => {
-      isMounted = false;
-    };
+    setIsLoading(true);
+    setErrorStatus(null);
+
+    try {
+      const res = await paymentWorkerApi.fetchPublicReceipt(cleanPaymentId);
+      if (res.success && res.data) {
+        setReceipt({
+          ...res.data,
+          maskedUpiId: formatMaskedUpi(res.data.maskedUpiId),
+        });
+        setIsLoading(false);
+        return;
+      } else {
+        setErrorStatus('not_found');
+      }
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        setErrorStatus('not_found');
+      } else {
+        setErrorStatus('network_error');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReceiptData();
   }, [cleanPaymentId]);
 
   const showToast = (msg: string) => {
