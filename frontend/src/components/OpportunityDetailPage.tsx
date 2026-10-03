@@ -341,6 +341,12 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     opportunity.contact_support_url?.trim()
   );
 
+  const hasContactDetails = Boolean(
+    opportunity.contact_details?.email?.trim() ||
+    opportunity.contact_details?.phone?.trim() ||
+    opportunity.contact_details?.contact_person?.trim()
+  );
+
   return (
     <div className="min-h-screen bg-[#050505] light:bg-[#f8fafc] text-slate-100 light:text-slate-900 flex flex-col justify-between relative overflow-x-clip selection:bg-cyan-500/30 selection:text-cyan-200">
       {/* Ambient Lighting */}
@@ -417,15 +423,29 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
 
                 <div className="w-full h-px bg-gradient-to-r from-cyan-500/40 via-purple-500/40 to-transparent"></div>
 
-                {/* Scope & Overview */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400" /> Program Scope &amp; Executive Overview
-                  </h3>
-                  <p className="text-sm sm:text-base text-slate-300 light:text-slate-600 font-sans leading-relaxed whitespace-pre-wrap">
-                    {opportunity.description}
-                  </p>
-                </div>
+                {/* Main Description */}
+                {opportunity.description && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-cyan-400" /> Program Scope &amp; Executive Overview
+                    </h3>
+                    <p className="text-sm sm:text-base text-slate-300 light:text-slate-600 font-sans leading-relaxed whitespace-pre-wrap">
+                      {opportunity.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* About Project Scope (When populated) */}
+                {opportunity.about_project && (
+                  <div className="space-y-3 pt-4 border-t border-white/10">
+                    <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-cyan-400" /> About This Project &amp; Objectives
+                    </h3>
+                    <p className="text-sm sm:text-base text-slate-300 light:text-slate-600 font-sans leading-relaxed whitespace-pre-wrap">
+                      {opportunity.about_project}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Responsibilities & Daily Tasks */}
@@ -464,8 +484,9 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                 </div>
               )}
 
-              {/* Eligibility & Hardware Checklist */}
+              {/* Eligibility, Experience & Hardware Checklist */}
               {Boolean(
+                opportunity.experience_requirements ||
                 opportunity.equipment_requirements ||
                 opportunity.internet_requirements ||
                 (opportunity.requirements && opportunity.requirements.length > 0) ||
@@ -473,9 +494,20 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
               ) && (
                 <div className="glass-panel p-8 rounded-3xl border border-emerald-500/30 space-y-4">
                   <h3 className="text-sm font-mono uppercase font-bold text-emerald-400 flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-emerald-400" /> Eligibility, Hardware &amp; Equipment Checklist
+                    <Cpu className="w-4 h-4 text-emerald-400" /> Eligibility, Hardware &amp; Experience Requirements
                   </h3>
 
+                  {/* Experience Requirements */}
+                  {opportunity.experience_requirements && (
+                    <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono text-xs space-y-1">
+                      <div className="font-bold uppercase text-[10px] text-purple-400 flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5" /> Experience Prerequisites:
+                      </div>
+                      <div className="whitespace-pre-wrap font-sans text-slate-200 text-sm leading-relaxed">{opportunity.experience_requirements}</div>
+                    </div>
+                  )}
+
+                  {/* Hardware & Equipment */}
                   {opportunity.equipment_requirements && (
                     <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-xs space-y-1">
                       <div className="font-bold uppercase text-[10px] text-emerald-400 flex items-center gap-1.5">
@@ -485,6 +517,7 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                     </div>
                   )}
 
+                  {/* Internet & Connectivity */}
                   {opportunity.internet_requirements && (
                     <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs space-y-1">
                       <div className="font-bold uppercase text-[10px] text-cyan-400 flex items-center gap-1.5">
@@ -494,12 +527,10 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                     </div>
                   )}
 
-                  {((opportunity.requirements && opportunity.requirements.length > 0) || (opportunity.eligibility_criteria && opportunity.eligibility_criteria.length > 0)) && (
+                  {/* General Eligibility Checklist (Deduplicated) */}
+                  {Array.from(new Set([...(opportunity.requirements || []), ...(opportunity.eligibility_criteria || [])].filter(Boolean))).length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 font-mono text-xs text-slate-200">
-                      {(opportunity.requirements && opportunity.requirements.length > 0
-                        ? opportunity.requirements
-                        : (opportunity.eligibility_criteria || [])
-                      ).map((elig, idx) => (
+                      {Array.from(new Set([...(opportunity.requirements || []), ...(opportunity.eligibility_criteria || [])].filter(Boolean))).map((elig, idx) => (
                         <div key={idx} className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-3">
                           <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
                             <Check className="w-3 h-3" />
@@ -513,15 +544,23 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
               )}
 
               {/* Project Highlights & Benefits */}
-              {((opportunity.project_highlights && opportunity.project_highlights.length > 0) || (opportunity.benefits && opportunity.benefits.length > 0)) && (
+              {Boolean(
+                ((opportunity.project_highlights && opportunity.project_highlights.length > 0) || (opportunity.features && opportunity.features.length > 0)) ||
+                (opportunity.benefits && opportunity.benefits.length > 0) ||
+                opportunity.why_join
+              ) && (
                 <div className="glass-panel p-8 rounded-3xl border border-purple-500/30 space-y-6">
-                  {opportunity.project_highlights && opportunity.project_highlights.length > 0 && (
+                  {/* Highlights with Legacy Features fallback */}
+                  {((opportunity.project_highlights && opportunity.project_highlights.length > 0) || (opportunity.features && opportunity.features.length > 0)) && (
                     <div className="space-y-3">
                       <h3 className="text-sm font-mono uppercase font-bold text-purple-300 flex items-center gap-2">
                         <Zap className="w-4 h-4 text-purple-400" /> Project Highlights
                       </h3>
                       <div className="space-y-2 font-mono text-xs text-slate-300">
-                        {opportunity.project_highlights.map((feat, idx) => (
+                        {(opportunity.project_highlights && opportunity.project_highlights.length > 0
+                          ? opportunity.project_highlights
+                          : (opportunity.features || [])
+                        ).map((feat, idx) => (
                           <div key={idx} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.02]">
                             <div className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></div>
                             <span>{feat}</span>
@@ -531,6 +570,7 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                     </div>
                   )}
 
+                  {/* Benefits */}
                   {opportunity.benefits && opportunity.benefits.length > 0 && (
                     <div className="space-y-3 pt-4 border-t border-white/10">
                       <h3 className="text-sm font-mono uppercase font-bold text-emerald-400 flex items-center gap-2">
@@ -546,6 +586,30 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                       </div>
                     </div>
                   )}
+
+                  {/* Why Join */}
+                  {opportunity.why_join && (
+                    <div className="space-y-2 pt-4 border-t border-white/10">
+                      <h3 className="text-sm font-mono uppercase font-bold text-cyan-300 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-cyan-400" /> Why Join This Program
+                      </h3>
+                      <p className="text-sm text-slate-300 font-sans leading-relaxed whitespace-pre-wrap bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                        {opportunity.why_join}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Important Notes & Disclaimers */}
+              {opportunity.important_notes && (
+                <div className="glass-panel p-8 rounded-3xl border border-amber-500/30 space-y-3 bg-amber-950/10">
+                  <h3 className="text-sm font-mono uppercase font-bold text-amber-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400" /> Important Notes &amp; Guidelines
+                  </h3>
+                  <p className="text-sm text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                    {opportunity.important_notes}
+                  </p>
                 </div>
               )}
             </div>
@@ -813,6 +877,37 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
                       </a>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* SUPPORT & PROJECT CONTACT DETAILS CARD */}
+              {hasContactDetails && (
+                <div className="glass-panel p-6 rounded-3xl border border-emerald-500/30 space-y-3 font-mono text-xs shadow-2xl bg-[#090d16]/90">
+                  <div className="text-xs font-mono text-emerald-400 font-bold uppercase tracking-wider pb-2 border-b border-white/10 flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-emerald-400" /> Project Support &amp; Contact
+                  </div>
+                  {opportunity.contact_details?.contact_person && (
+                    <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                      <span className="text-slate-400">Contact Person:</span>
+                      <span className="text-white font-bold">{opportunity.contact_details.contact_person}</span>
+                    </div>
+                  )}
+                  {opportunity.contact_details?.email && (
+                    <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                      <span className="text-slate-400">Support Email:</span>
+                      <a href={`mailto:${opportunity.contact_details.email}`} className="text-cyan-300 hover:underline font-bold flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5" /> {opportunity.contact_details.email}
+                      </a>
+                    </div>
+                  )}
+                  {opportunity.contact_details?.phone && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Support Phone:</span>
+                      <a href={`tel:${opportunity.contact_details.phone}`} className="text-emerald-300 hover:underline font-bold flex items-center gap-1">
+                        <Phone className="w-3.5 h-3.5" /> {opportunity.contact_details.phone}
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 

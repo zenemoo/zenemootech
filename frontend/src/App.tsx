@@ -1281,8 +1281,8 @@ function AppInner() {
         </div>
       )}
 
-      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt, non-application-verify pages) */}
-      {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && currentRoute !== 'application-verify' && (
+      {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt, non-public-payment-receipt, non-application-verify pages) */}
+      {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && currentRoute !== 'public-payment-receipt' && currentRoute !== 'application-verify' && (
         <>
           {currentRoute !== 'zenemooai' && !currentRoute.startsWith('talent-hub') && (
             <>
@@ -1306,16 +1306,18 @@ function AppInner() {
       )}
 
       {/* Global Zenemoo Cookie Consent & Privacy Preference System */}
-      <ZenemooCookieConsent
-        onNavigatePrivacy={() => {
-          window.history.pushState(null, '', '/privacy');
-          setCurrentRoute('privacy');
-        }}
-        onNavigateTerms={() => {
-          window.history.pushState(null, '', '/terms');
-          setCurrentRoute('terms');
-        }}
-      />
+      {currentRoute !== 'admin' && currentRoute !== 'public-payment-receipt' && (
+        <ZenemooCookieConsent
+          onNavigatePrivacy={() => {
+            window.history.pushState(null, '', '/privacy');
+            setCurrentRoute('privacy');
+          }}
+          onNavigateTerms={() => {
+            window.history.pushState(null, '', '/terms');
+            setCurrentRoute('terms');
+          }}
+        />
+      )}
     </>
   );
 }

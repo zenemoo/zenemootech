@@ -225,7 +225,7 @@ export const PublicPaymentReceiptPage: React.FC<PublicPaymentReceiptPageProps> =
   ];
 
   return (
-    <div className="min-h-screen bg-[#050508] text-slate-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200 flex flex-col justify-between relative overflow-x-hidden">
+    <div className="min-h-screen min-h-[100dvh] bg-[#050508] text-slate-100 font-sans selection:bg-cyan-500/30 selection:text-cyan-200 flex flex-col justify-between relative overflow-x-hidden w-full">
       {/* Background Ambient Glows */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-gradient-to-b from-indigo-500/10 via-cyan-500/5 to-transparent rounded-full blur-[120px] pointer-events-none" />
 
@@ -244,9 +244,16 @@ export const PublicPaymentReceiptPage: React.FC<PublicPaymentReceiptPageProps> =
         )}
       </AnimatePresence>
 
-      {/* ── HEADER ── */}
-      <header className="relative z-10 border-b border-white/10 bg-[#090d16]/80 backdrop-blur-xl py-3 px-4 sm:px-6">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
+      {/* ── HEADER WITH MOBILE SAFE AREA SUPPORT ── */}
+      <header
+        className="relative z-10 border-b border-white/10 bg-[#090d16]/90 backdrop-blur-xl px-4 sm:px-6 transition-all"
+        style={{
+          paddingTop: 'max(14px, env(safe-area-inset-top, 0px))',
+          paddingBottom: '14px',
+        }}
+      >
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
+          {/* Back Button */}
           <button
             onClick={() => {
               if (window.history.length > 1) {
@@ -255,43 +262,49 @@ export const PublicPaymentReceiptPage: React.FC<PublicPaymentReceiptPageProps> =
                 navigateHome();
               }
             }}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-xl hover:bg-white/5 transition-all"
+            className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white px-2.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 transition-all shrink-0 touch-manipulation min-h-[38px] min-w-[38px] justify-center"
+            aria-label="Go back"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Back</span>
+            <span className="hidden sm:inline font-medium">Back</span>
           </button>
 
           {/* Zenemoo Brand Logo & Title */}
-          <div className="flex items-center gap-2.5 cursor-pointer" onClick={navigateHome}>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 p-[1.5px] shadow-lg shadow-cyan-500/20">
+          <div
+            className="flex items-center gap-2 cursor-pointer select-none touch-manipulation py-1"
+            onClick={navigateHome}
+          >
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 p-[1.5px] shadow-lg shadow-cyan-500/20 shrink-0">
               <img
                 src="/assets/logo.png"
                 alt="Zenemoo Logo"
                 className="w-full h-full object-contain rounded-[10px] bg-[#090d16] p-0.5"
               />
             </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-extrabold text-white text-base tracking-tight font-display">
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-white text-sm sm:text-base tracking-tight font-display">
                 Zenemoo
               </span>
-              <span className="text-[11px] font-bold px-1.5 py-0.2 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 uppercase tracking-wider">
-                Pay
+              <span className="text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 uppercase tracking-wider">
+                PAY
               </span>
             </div>
           </div>
 
+          {/* Back to Home Button */}
           <button
             onClick={navigateHome}
-            className="flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all shadow-sm"
+            className="flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white px-2.5 sm:px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 transition-all shadow-sm shrink-0 touch-manipulation min-h-[38px] min-w-[38px] justify-center"
+            aria-label="Back to Home"
           >
-            <Home className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Back to Home</span>
+            <Home className="w-4 h-4 text-cyan-400" />
+            <span className="hidden sm:inline">Home</span>
           </button>
         </div>
       </header>
 
       {/* ── MAIN CONTENT CONTAINER ── */}
-      <main className="relative z-10 flex-1 max-w-xl w-full mx-auto p-4 sm:p-6 my-4 sm:my-8 space-y-6">
+      <main className="relative z-10 flex-1 max-w-xl w-full mx-auto px-3.5 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {isLoading ? (
           <div className="bg-[#0c1220]/90 border border-white/10 rounded-3xl p-10 text-center shadow-2xl backdrop-blur-xl">
             <RefreshCw className="w-10 h-10 animate-spin text-cyan-400 mx-auto mb-4" />
@@ -675,8 +688,14 @@ export const PublicPaymentReceiptPage: React.FC<PublicPaymentReceiptPageProps> =
         )}
       </main>
 
-      {/* ── FOOTER ── */}
-      <footer className="relative z-10 border-t border-white/10 bg-[#070a12] py-6 px-4 text-center text-xs text-slate-500 space-y-2">
+      {/* ── FOOTER WITH SAFE AREA SUPPORT ── */}
+      <footer
+        className="relative z-10 border-t border-white/10 bg-[#070a12] px-4 text-center text-xs text-slate-500 space-y-2"
+        style={{
+          paddingTop: '20px',
+          paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
+        }}
+      >
         <div className="flex items-center justify-center gap-2 text-slate-300 font-bold">
           <span>Zenemoo</span>
           <span>•</span>

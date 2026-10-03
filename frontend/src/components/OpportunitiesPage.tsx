@@ -332,6 +332,25 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                         </p>
                       </div>
 
+                      {/* Language Skills Badges (if present) */}
+                      {Array.isArray(op.language_skills) && op.language_skills.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {op.language_skills.slice(0, 4).map((lang, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2.5 py-0.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold"
+                            >
+                              {lang}
+                            </span>
+                          ))}
+                          {op.language_skills.length > 4 && (
+                            <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 font-mono text-[10px]">
+                              +{op.language_skills.length - 4} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {/* Work Mode & Compensation Stats */}
                       <div className="grid grid-cols-2 gap-2 pt-2 font-mono text-[11px]">
                         <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-0.5">
