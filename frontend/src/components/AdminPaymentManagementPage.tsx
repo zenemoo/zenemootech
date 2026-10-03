@@ -34,6 +34,7 @@ import {
   Award,
   Sparkles,
   Receipt,
+  QrCode,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -43,6 +44,7 @@ import {
   AdminLeaderboardItem,
 } from '../services/paymentWorkerApi';
 import { ExportModal } from './ExportModal';
+import { LocalPaymentWorkspace } from './LocalPaymentWorkspace';
 
 interface AdminPaymentManagementPageProps {
   addToast?: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -100,8 +102,8 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
   addToast = (title, message) => console.log(title, message),
   showConfirm,
 }) => {
-  // Top level view tab: 'transactions' or 'leaderboard'
-  const [adminViewTab, setAdminViewTab] = useState<'transactions' | 'leaderboard'>('transactions');
+  // Top level view tab: 'transactions', 'local-workspace', or 'leaderboard'
+  const [adminViewTab, setAdminViewTab] = useState<'transactions' | 'local-workspace' | 'leaderboard'>('transactions');
 
   // --- Transactions Data State ---
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -1313,8 +1315,8 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
         </div>
       </div>
 
-      {/* ── Sub-Tab Switcher: Transactions vs Leaderboard ── */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+      {/* ── Sub-Tab Switcher: Live D1 vs Local QR Workspace vs Leaderboard ── */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-2 flex-wrap">
         <button
           onClick={() => setAdminViewTab('transactions')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
@@ -1324,7 +1326,19 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
           }`}
         >
           <Receipt className="w-4 h-4" />
-          All Payment Records ({totalCount})
+          Live D1 Records ({totalCount})
+        </button>
+
+        <button
+          onClick={() => setAdminViewTab('local-workspace')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+            adminViewTab === 'local-workspace'
+              ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <QrCode className="w-4 h-4 text-indigo-400" />
+          QR Payout Workspace (Local IndexedDB)
         </button>
 
         <button
@@ -1792,6 +1806,11 @@ export const AdminPaymentManagementPage: React.FC<AdminPaymentManagementPageProp
             )}
           </div>
         </div>
+      )}
+
+      {/* ── VIEW 3: LOCAL QR PAYOUT WORKSPACE (INDEXEDDB) ── */}
+      {adminViewTab === 'local-workspace' && (
+        <LocalPaymentWorkspace addToast={addToast} showConfirm={showConfirm} />
       )}
 
       {/* ── Add / Edit Payment Modal ── */}
