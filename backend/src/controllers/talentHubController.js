@@ -550,7 +550,12 @@ export const submitTalentOpportunityApplication = async (req, res) => {
     });
 
     // 6. Construct new application record with identity locked from talent profile
-    const generatedApplicantId = `APP-${new Date().getFullYear()}-${crypto.randomInt(1000, 10000)}`;
+    const alphanumChars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let randSuffix = '';
+    for (let i = 0; i < 6; i++) {
+      randSuffix += alphanumChars.charAt(crypto.randomInt(0, alphanumChars.length));
+    }
+    const generatedApplicantId = `APP-${new Date().getFullYear()}-${randSuffix}`;
     const newRecord = {
       applicant_id: generatedApplicantId,
       opportunity_id: oppRecord.id,

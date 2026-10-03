@@ -114,7 +114,7 @@ export const ensureOpportunitySheetExists = async (opportunityObj) => {
         });
 
         // Initialize header row for new project sheet tab
-        const defaultHeaders = ['Applicant ID', 'Applicant Name', 'Email', 'Phone', 'Status', 'Application Date'];
+        const defaultHeaders = ['Applicant ID', 'Applicant Name', 'Email', 'Phone', 'Status', 'Application Date', 'Referral Name'];
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
           range: `'${sheetTitle}'!A1`,
@@ -175,6 +175,41 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
     resolvedAnswers = normalized;
   }
 
+  // Resolve referral details (Referrer Name / Referral Code)
+  let referrerName = applicationRecord.referrer_name || '';
+  let referralCode = applicationRecord.referral_code || '';
+
+  if (!referrerName && !referralCode && applicationRecord.id && supabase) {
+    try {
+      const { data: dbApp } = await supabase
+        .from('opportunity_applications')
+        .select('referrer_name, referral_code, referred_by_id')
+        .eq('id', applicationRecord.id)
+        .maybeSingle();
+      if (dbApp) {
+        referrerName = dbApp.referrer_name || '';
+        referralCode = dbApp.referral_code || '';
+      }
+    } catch (_) {}
+  }
+
+  // If referralCode exists but referrerName is missing, attempt profile lookup
+  if (!referrerName && referralCode && supabase) {
+    try {
+      const { data: refTalent } = await supabase
+        .from('talent_registrations')
+        .select('full_name')
+        .ilike('registration_code', referralCode)
+        .maybeSingle();
+      if (refTalent && refTalent.full_name) {
+        referrerName = refTalent.full_name;
+      }
+    } catch (_) {}
+  }
+
+  const isReferred = !!(referrerName || referralCode);
+  const referralDisplayName = isReferred ? (referrerName || referralCode) : '';
+
   // METHOD 1: Google Apps Script Web App (100% FREE - Zero Cost)
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   if (appsScriptUrl) {
@@ -193,6 +228,10 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
           applicant_phone: applicationRecord.applicant_phone,
           status: (applicationRecord.status || 'pending').toUpperCase(),
           created_at: applicationRecord.created_at || new Date().toISOString(),
+          referral_name: isReferred ? referralDisplayName : '',
+          referrer_name: isReferred ? (referrerName || referralCode) : '',
+          referral_code: isReferred ? referralCode : '',
+          is_referred: isReferred,
           answers: resolvedAnswers,
         },
       };
@@ -272,7 +311,7 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
     const customQuestionKeys = Object.keys(answersObj);
 
     const defaultHeaders = ['Applicant ID', 'Applicant Name', 'Email', 'Phone'];
-    const endHeaders = ['Status', 'Application Date'];
+    const endHeaders = ['Status', 'Application Date', 'Referral Name'];
 
     let expectedHeaders = [...defaultHeaders];
     customQuestionKeys.forEach((q) => {
@@ -300,7 +339,7 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
       expectedHeaders.forEach((reqCol) => {
         if (!currentHeaders.includes(reqCol)) {
           const statusIdx = currentHeaders.indexOf('Status');
-          if (statusIdx !== -1) {
+          if (statusIdx !== -1 && reqCol !== 'Referral Name') {
             currentHeaders.splice(statusIdx, 0, reqCol);
           } else {
             currentHeaders.push(reqCol);
@@ -330,6 +369,15 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
       if (headerName === 'Phone') return applicationRecord.applicant_phone || '';
       if (headerName === 'Status') return (applicationRecord.status || 'pending').toUpperCase();
       if (headerName === 'Application Date') return dateFormatted;
+      if (
+        headerName === 'Referral Name' ||
+        headerName === 'Referrer Name' ||
+        headerName === 'Referral' ||
+        headerName === 'Referrer' ||
+        headerName === 'Referred By'
+      ) {
+        return isReferred ? referralDisplayName : '';
+      }
 
       if (answersObj[headerName] !== undefined && answersObj[headerName] !== null) {
         const val = answersObj[headerName];

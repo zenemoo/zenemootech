@@ -16,15 +16,17 @@ export const contactRateLimiter = rateLimit({
 });
 
 /**
- * Career / Opportunity Application Rate Limiter
- * Max 3 applications per IP every 30 minutes
+ * Career / Public Opportunity Application Rate Limiter
+ * Allows up to 60 applications per client IP per hour to comfortably support high-volume
+ * concurrent traffic and mobile carrier NAT users, while protecting against abusive automated floods.
  */
 export const applicationRateLimiter = rateLimit({
-  windowMs: 30 * 60 * 1000, // 30 minutes
-  max: 3,
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 60,
   message: {
     success: false,
-    message: 'Too many job applications submitted from this IP address. Please try again after 30 minutes.',
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many job applications submitted from this network. Please wait a few moments before trying again.',
   },
   standardHeaders: true,
   legacyHeaders: false,

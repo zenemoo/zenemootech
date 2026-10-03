@@ -21,6 +21,7 @@ import {
   UserCheck,
   HelpCircle,
   MessageCircle,
+  ShieldCheck,
   Copy,
   Check
 } from 'lucide-react';
@@ -29,6 +30,7 @@ import { OpportunityProgram, getPublicOpportunities, parseQuestionOptions } from
 import { submitCandidateApplication, checkExistingApplication, CandidateApplication, extractAndStoreReferralCode } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 import { OpportunityStatusModal } from './OpportunityStatusModal';
+import { TurnstileWidget } from './TurnstileWidget';
 import { useActiveLogo } from '../lib/useActiveLogo';
 import { SeoImage } from '../seo/components/SeoImage';
 import { Navbar } from './Navbar';
@@ -56,6 +58,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({});
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const [turnstileError, setTurnstileError] = useState<string>('');
   const [referralCode, setReferralCode] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
@@ -108,6 +112,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setCustomAnswers({});
     setTermsAccepted(false);
     setTermsError('');
+    setTurnstileToken('');
+    setTurnstileError('');
     setSubmissionError('');
     setIsDuplicate(false);
     setExistingApp(null);
@@ -188,15 +194,23 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     }
   };
 
-  const handleSubmitApplicationForm = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmitApplicationForm = async (e?: React.FormEvent) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+    if (isSubmitting) return;
     if (!applyingOpportunity) return;
 
     if (!termsAccepted) {
       setTermsError('Please accept the Terms & Conditions before submitting your application.');
       return;
     }
+    if (!turnstileToken) {
+      setTurnstileError('Please complete the security verification check before submitting.');
+      return;
+    }
     setTermsError('');
+    setTurnstileError('');
     setSubmissionError('');
     setIsSubmitting(true);
     setIsDuplicate(false);
@@ -216,6 +230,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
         terms_version: '1.0',
+        turnstileToken,
       });
 
       const generatedId = result.applicant_id || result.id;
@@ -224,6 +239,9 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);
+      } else if (err?.code === 'TURNSTILE_REQUIRED' || err?.code === 'TURNSTILE_FAILED' || err?.isTurnstile) {
+        setTurnstileToken('');
+        setTurnstileError(err.message || 'Security check failed. Please complete the verification again.');
       } else {
         setSubmissionError(err.message || 'Error submitting application.');
       }
@@ -953,6 +971,40 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                             <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold text-xs flex items-center gap-2 animate-shake shadow-md">
                               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
                               <span>{termsError}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 04. Cloudflare Turnstile Security Verification */}
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3 shadow-md">
+                          <div className="text-cyan-400 font-bold text-xs uppercase tracking-wider flex items-center justify-between pb-1 border-b border-white/10">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                              <span>04. Security Verification</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-slate-500" /> Cloudflare Turnstile
+                            </span>
+                          </div>
+
+                          <div className="py-2 flex flex-col items-center justify-center">
+                            <TurnstileWidget
+                              onVerify={(token) => {
+                                setTurnstileToken(token);
+                                setTurnstileError('');
+                              }}
+                              onExpire={() => setTurnstileToken('')}
+                              onError={() => {
+                                setTurnstileToken('');
+                                setTurnstileError('Security verification failed. Please try again.');
+                              }}
+                            />
+                          </div>
+
+                          {turnstileError && (
+                            <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 font-bold text-xs flex items-center gap-2 animate-shake shadow-md">
+                              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                              <span>{turnstileError}</span>
                             </div>
                           )}
                         </div>

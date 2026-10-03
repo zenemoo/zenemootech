@@ -209,9 +209,12 @@ export const checkExistingApplication = async (
   return null;
 };
 
-// Submit candidate application via Backend API with Duplicate Protection
+// Submit candidate application via Backend API with Duplicate Protection & Turnstile
 export const submitCandidateApplication = async (
-  appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'>
+  appData: Omit<CandidateApplication, 'id' | 'status' | 'created_at'> & {
+    turnstileToken?: string;
+    turnstile_token?: string;
+  }
 ): Promise<CandidateApplication> => {
   if (!appData.terms_accepted) {
     throw new Error('Please accept the Terms & Conditions before submitting your application.');
@@ -229,6 +232,7 @@ export const submitCandidateApplication = async (
     terms_accepted: true,
     terms_accepted_at: appData.terms_accepted_at || new Date().toISOString(),
     terms_version: appData.terms_version || '1.0',
+    turnstileToken: appData.turnstileToken || appData.turnstile_token || undefined,
   };
 
   // Submit via Express API Backend (Enforces server-side duplicate protection, Sheets sync & notifications)
@@ -248,8 +252,20 @@ export const submitCandidateApplication = async (
       dupError.isDuplicate = true;
       throw dupError;
     }
+    if (apiErr.response?.status === 429 || responseData?.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error(responseData?.message || 'We are experiencing high submission volume. Please wait a few moments and try submitting again.');
+    }
+    if (responseData?.code === 'TURNSTILE_REQUIRED' || responseData?.code === 'TURNSTILE_FAILED' || responseData?.code === 'TURNSTILE_ERROR') {
+      const tError = new Error(responseData?.message || 'Security verification failed. Please complete the security check and try again.') as any;
+      tError.code = responseData?.code;
+      tError.isTurnstile = true;
+      throw tError;
+    }
     if (responseData?.error) {
       throw new Error(responseData.error);
+    }
+    if (responseData?.message) {
+      throw new Error(responseData.message);
     }
     throw new Error(apiErr.message || 'Unable to submit application. Please try again.');
   }

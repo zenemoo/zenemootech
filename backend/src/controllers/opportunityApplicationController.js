@@ -264,11 +264,12 @@ export const getApplicationById = async (req, res) => {
 // 2. SUBMIT CANDIDATE APPLICATION
 export const checkDuplicateApplication = async (req, res) => {
   try {
-    const { opportunity_id, applicant_email } = req.query;
-    if (!opportunity_id || !applicant_email) {
-      return res.status(400).json({ success: false, message: 'opportunity_id and applicant_email are required.' });
+    const opportunity_id = req.query.opportunity_id;
+    const rawEmail = req.query.applicant_email || req.query.email;
+    if (!opportunity_id || !rawEmail) {
+      return res.status(400).json({ success: false, message: 'opportunity_id and applicant_email (or email) are required.' });
     }
-    const cleanEmail = String(applicant_email).trim().toLowerCase();
+    const cleanEmail = String(rawEmail).trim().toLowerCase();
     const { data, error } = await supabase
       .from('opportunity_applications')
       .select('id, applicant_id, status, created_at')
@@ -293,6 +294,51 @@ export const checkDuplicateApplication = async (req, res) => {
 
 export const submitApplication = async (req, res) => {
   try {
+    // 0. CLOUDFLARE TURNSTILE ANTI-BOT SERVER-SIDE VERIFICATION
+    const turnstileToken = req.body.turnstileToken || req.body.turnstile_token || req.body['cf-turnstile-response'];
+    const turnstileSecret = (process.env.TURNSTILE_SECRET_KEY || '').trim();
+
+    if (!turnstileToken) {
+      console.warn('[TURNSTILE VERIFICATION FAILED]: Turnstile token is missing from opportunity application request.');
+      return res.status(400).json({
+        success: false,
+        code: 'TURNSTILE_REQUIRED',
+        message: 'Security verification check is required. Please complete the security check and try again.',
+      });
+    }
+
+    if (turnstileSecret) {
+      try {
+        const userIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+        const verifyFormData = new URLSearchParams();
+        verifyFormData.append('secret', turnstileSecret);
+        verifyFormData.append('response', turnstileToken);
+        if (userIp) verifyFormData.append('remoteip', String(userIp).split(',')[0].trim());
+
+        const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+          method: 'POST',
+          body: verifyFormData,
+        });
+
+        const verifyData = await verifyRes.json();
+        if (!verifyData.success) {
+          console.warn(`[OPPORTUNITY TURNSTILE FAILED]: error-codes = ${JSON.stringify(verifyData['error-codes'] || [])}`);
+          return res.status(400).json({
+            success: false,
+            code: 'TURNSTILE_FAILED',
+            message: 'Security verification failed or expired. Please complete the security check and try again.',
+          });
+        }
+      } catch (cfErr) {
+        console.error('[OPPORTUNITY TURNSTILE API ERROR]:', cfErr.message);
+        return res.status(400).json({
+          success: false,
+          code: 'TURNSTILE_ERROR',
+          message: 'Security verification service temporarily unavailable. Please try again.',
+        });
+      }
+    }
+
     const {
       opportunity_id,
       opportunity_title,
@@ -435,8 +481,13 @@ export const submitApplication = async (req, res) => {
       }
     }
 
-    // Generate Applicant ID ONLY AFTER duplicate check passes
-    const generatedApplicantId = `APP-${new Date().getFullYear()}-${crypto.randomInt(1000, 10000)}`;
+    // Generate secure alphanumeric Applicant ID with alphabets and numbers (e.g., APP-2026-X8K9M2)
+    const alphanumChars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let randSuffix = '';
+    for (let i = 0; i < 6; i++) {
+      randSuffix += alphanumChars.charAt(crypto.randomInt(0, alphanumChars.length));
+    }
+    const generatedApplicantId = `APP-${new Date().getFullYear()}-${randSuffix}`;
 
     const newRecord = {
       applicant_id: generatedApplicantId,

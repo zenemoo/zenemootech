@@ -34,7 +34,7 @@ import {
   Linkedin,
   Copy,
 } from 'lucide-react';
-import { FaXTwitter, FaFacebook, FaInstagram, FaYoutube } from 'react-icons/fa6';
+import { FaXTwitter, FaFacebook, FaInstagram, FaYoutube, FaWhatsapp, FaTelegram } from 'react-icons/fa6';
 import confetti from 'canvas-confetti';
 import { useTalentHubAuth, OpportunityItem, ApplicationItem } from './TalentHubAuthContext';
 import { talentHubApi } from '../../services/talentHubApi';
@@ -53,6 +53,7 @@ export const TalentHubOpportunities: React.FC = () => {
   const [selectedOppForApply, setSelectedOppForApply] = useState<OpportunityItem | null>(null);
   const [selectedOppForReferral, setSelectedOppForReferral] = useState<OpportunityItem | null>(null);
   const [copiedRefLink, setCopiedRefLink] = useState(false);
+  const [copiedAppId, setCopiedAppId] = useState(false);
 
   // Form state
   const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -961,24 +962,92 @@ export const TalentHubOpportunities: React.FC = () => {
 
               {/* Form or Success State */}
               {submitSuccess ? (
-                <div className="p-8 text-center space-y-4 my-auto">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 mx-auto flex items-center justify-center text-emerald-400 shadow-xl">
-                    <CheckCircle2 className="w-8 h-8" />
+                <div className="text-center py-6 px-4 space-y-5 font-mono text-xs my-auto">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-3xl font-bold shadow-xl shadow-emerald-500/10">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-400" />
                   </div>
 
-                  <h3 className="text-xl font-bold text-white tracking-tight font-display">Application Submitted Successfully!</h3>
-                  <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
-                    Your application has been received and is now under review. You can track its live status in the <strong>My Applications</strong> tab.
-                  </p>
-
-                  <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 text-xs text-slate-300 inline-block font-mono">
-                    Applicant ID: <span className="text-cyan-300 font-bold">{submitSuccess.applicant_id}</span>
+                  <div className="space-y-1">
+                    <h4 className="text-2xl font-extrabold font-display text-white tracking-tight">Application Submitted Successfully!</h4>
+                    <p className="text-slate-300 text-xs font-sans">
+                      Thank you for applying to <span className="text-cyan-400 font-bold">{selectedOppForApply.title}</span>.
+                    </p>
                   </div>
 
-                  <div className="pt-4">
+                  {/* Application ID Box with Copy Button */}
+                  <div className="p-5 rounded-2xl bg-slate-900 border border-cyan-500/30 text-cyan-300 text-center space-y-2 shadow-inner max-w-md mx-auto">
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Your Official Application ID</div>
+                    <div className="flex items-center justify-center gap-3 flex-wrap">
+                      <div className="text-2xl font-extrabold font-mono text-white tracking-widest">{submitSuccess.applicant_id}</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (submitSuccess.applicant_id) {
+                            navigator.clipboard.writeText(submitSuccess.applicant_id);
+                            setCopiedAppId(true);
+                            setTimeout(() => setCopiedAppId(false), 2000);
+                          }
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-sm"
+                      >
+                        {copiedAppId ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" /> Copy ID
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 pt-1">Please keep your Application ID for future reference.</p>
+                  </div>
+
+                  {/* CONDITIONAL WHATSAPP GROUP LINK SECTION */}
+                  {(() => {
+                    const waGroupUrl = (
+                      selectedOppForApply.whatsapp_group_url ||
+                      (selectedOppForApply as any).whatsapp_group_link ||
+                      (selectedOppForApply as any).group_link ||
+                      (selectedOppForApply as any).group_url ||
+                      ''
+                    ).trim();
+
+                    if (!waGroupUrl) return null;
+
+                    return (
+                      <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3 shadow-xl relative overflow-hidden max-w-md mx-auto">
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
+                          <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES
+                        </div>
+                        <p className="text-slate-200 text-xs font-sans leading-relaxed">
+                          Your application has been received successfully. Join the official WhatsApp group for <strong className="text-white">{selectedOppForApply.title}</strong> to receive project updates, announcements, and further instructions.
+                        </p>
+                        <div className="pt-2">
+                          <a
+                            href={waGroupUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                          >
+                            <MessageCircle className="w-4 h-4" /> Join WhatsApp Group →
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="pt-2 max-w-md mx-auto">
                     <button
-                      onClick={() => setSelectedOppForApply(null)}
-                      className="py-2.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-mono font-bold text-white shadow-lg cursor-pointer"
+                      type="button"
+                      onClick={() => {
+                        setSelectedOppForApply(null);
+                        setSubmitSuccess(null);
+                        setAnswers({});
+                        setApplicantPhone('');
+                      }}
+                      className="w-full py-3.5 px-6 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer block text-center"
                     >
                       Done
                     </button>

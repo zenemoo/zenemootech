@@ -42,6 +42,9 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
+// Trust reverse proxy / Cloudflare fronting the API to accurately resolve client req.ip
+app.set('trust proxy', 1);
+
 // Robust CORS configuration supporting localhost dev and production domains
 const allowedOrigins = [
   'https://www.zenemoo.in',
