@@ -632,10 +632,35 @@ export const submitTalentOpportunityApplication = async (req, res) => {
       console.warn('[TalentHub Post-Submission Notifications Note]:', notifyErr.message);
     }
 
+    // Resolve Authoritative WhatsApp Group URL
+    let resolvedWhatsappGroupUrl = (oppRecord?.whatsapp_group_url || '').trim();
+
+    if (savedApp.referred_by_id && supabase) {
+      try {
+        const { data: customGroup } = await supabase
+          .from('talent_opportunity_whatsapp_groups')
+          .select('whatsapp_group_url')
+          .eq('talent_registration_id', savedApp.referred_by_id)
+          .eq('opportunity_id', oppRecord.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (customGroup && customGroup.whatsapp_group_url && customGroup.whatsapp_group_url.trim()) {
+          resolvedWhatsappGroupUrl = customGroup.whatsapp_group_url.trim();
+        }
+      } catch (waErr) {
+        console.warn('[TalentHub Custom WhatsApp Group Lookup Note]:', waErr.message);
+      }
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Application submitted successfully!',
-      data: sanitizeApplicationRecord(savedApp),
+      data: {
+        ...sanitizeApplicationRecord(savedApp),
+        whatsapp_group_url: resolvedWhatsappGroupUrl,
+      },
+      whatsapp_group_url: resolvedWhatsappGroupUrl,
     });
   } catch (err) {
     console.error('[TalentHub submitTalentOpportunityApplication Exception]:', err.message);
@@ -1168,6 +1193,286 @@ export const updateTalentProfile = async (req, res) => {
   } catch (err) {
     console.error('[TalentHub updateTalentProfile Exception]:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to update profile. Please try again.' });
+  }
+};
+
+/**
+ * Validates whether a given string is a legitimate, secure WhatsApp invite/chat URL.
+ */
+export const isValidWhatsAppUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('https://')) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+
+    const allowedHostnames = [
+      'chat.whatsapp.com',
+      'wa.me',
+      'api.whatsapp.com',
+      'whatsapp.com',
+      'web.whatsapp.com',
+    ];
+
+    if (!allowedHostnames.includes(hostname) && !allowedHostnames.some((h) => hostname.endsWith('.' + h))) {
+      return false;
+    }
+
+    if (parsed.pathname.length < 2) return false;
+
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
+/**
+ * GET /api/talent-hub/opportunities/:opportunityId/whatsapp-group
+ * Retrieves the custom WhatsApp group configured by the authenticated talent for a specific opportunity.
+ */
+export const getTalentOpportunityWhatsappGroup = async (req, res) => {
+  try {
+    const email = req.talentEmail;
+    if (!email) {
+      return res.status(401).json({ success: false, message: 'Unauthenticated' });
+    }
+    const { opportunityId } = req.params;
+    if (!opportunityId) {
+      return res.status(400).json({ success: false, message: 'Opportunity ID is required' });
+    }
+
+    if (!supabase) {
+      return res.json({ success: true, hasCustomGroup: false });
+    }
+
+    const { data: talentRecord } = await supabase
+      .from('talent_registrations')
+      .select('id')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!talentRecord || !talentRecord.id) {
+      return res.json({ success: true, hasCustomGroup: false });
+    }
+
+    // Low-egress query: specific columns, composite lookup, limit 1
+    const { data: groupRecord, error } = await supabase
+      .from('talent_opportunity_whatsapp_groups')
+      .select('whatsapp_group_url, is_active')
+      .eq('talent_registration_id', talentRecord.id)
+      .eq('opportunity_id', opportunityId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error || !groupRecord || !groupRecord.whatsapp_group_url) {
+      return res.json({ success: true, hasCustomGroup: false });
+    }
+
+    return res.json({
+      success: true,
+      hasCustomGroup: true,
+      whatsappGroupUrl: groupRecord.whatsapp_group_url,
+    });
+  } catch (err) {
+    console.warn('[TalentHub getTalentOpportunityWhatsappGroup Note]:', err.message);
+    return res.json({ success: true, hasCustomGroup: false });
+  }
+};
+
+/**
+ * GET /api/talent-hub/opportunities-whatsapp-groups
+ * Low-egress bulk lookup of all active custom WhatsApp groups for the authenticated talent.
+ */
+export const getAllTalentOpportunityWhatsappGroups = async (req, res) => {
+  try {
+    const email = req.talentEmail;
+    if (!email) {
+      return res.status(401).json({ success: false, message: 'Unauthenticated' });
+    }
+
+    if (!supabase) {
+      return res.json({ success: true, groups: {} });
+    }
+
+    const { data: talentRecord } = await supabase
+      .from('talent_registrations')
+      .select('id')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!talentRecord || !talentRecord.id) {
+      return res.json({ success: true, groups: {} });
+    }
+
+    const { data: groupRecords, error } = await supabase
+      .from('talent_opportunity_whatsapp_groups')
+      .select('opportunity_id, whatsapp_group_url')
+      .eq('talent_registration_id', talentRecord.id)
+      .eq('is_active', true);
+
+    if (error || !groupRecords) {
+      return res.json({ success: true, groups: {} });
+    }
+
+    const groupsMap = {};
+    groupRecords.forEach((r) => {
+      if (r.opportunity_id && r.whatsapp_group_url) {
+        groupsMap[r.opportunity_id] = r.whatsapp_group_url;
+      }
+    });
+
+    return res.json({ success: true, groups: groupsMap });
+  } catch (err) {
+    console.warn('[TalentHub getAllTalentOpportunityWhatsappGroups Note]:', err.message);
+    return res.json({ success: true, groups: {} });
+  }
+};
+
+/**
+ * PUT /api/talent-hub/opportunities/:opportunityId/whatsapp-group
+ * Creates or updates the authenticated talent's custom WhatsApp group for a specific opportunity.
+ */
+export const setTalentOpportunityWhatsappGroup = async (req, res) => {
+  try {
+    const email = req.talentEmail;
+    if (!email) {
+      return res.status(401).json({ success: false, message: 'Unauthenticated' });
+    }
+    const { opportunityId } = req.params;
+    const { whatsapp_group_url } = req.body;
+
+    if (!opportunityId) {
+      return res.status(400).json({ success: false, message: 'Opportunity ID is required' });
+    }
+
+    if (!whatsapp_group_url || !isValidWhatsAppUrl(whatsapp_group_url)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid WhatsApp group link (e.g. https://chat.whatsapp.com/...)',
+      });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
+    // 1. Derive authenticated talent identity
+    const { data: talentRecord } = await supabase
+      .from('talent_registrations')
+      .select('id, status, is_archived')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!talentRecord || talentRecord.is_archived || talentRecord.status === 'banned' || talentRecord.status === 'rejected') {
+      return res.status(403).json({ success: false, message: 'Account is not eligible to configure referral groups' });
+    }
+
+    // 2. Verify opportunity exists
+    const { data: oppRecord } = await supabase
+      .from('opportunities')
+      .select('id, title')
+      .eq('id', opportunityId)
+      .maybeSingle();
+
+    if (!oppRecord) {
+      return res.status(404).json({ success: false, message: 'Opportunity not found' });
+    }
+
+    const cleanUrl = whatsapp_group_url.trim();
+
+    // 3. Upsert mapping record with onConflict on (talent_registration_id, opportunity_id)
+    const { data, error } = await supabase
+      .from('talent_opportunity_whatsapp_groups')
+      .upsert(
+        [
+          {
+            talent_registration_id: talentRecord.id,
+            opportunity_id: oppRecord.id,
+            whatsapp_group_url: cleanUrl,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: 'talent_registration_id,opportunity_id' }
+      )
+      .select('id, whatsapp_group_url, is_active')
+      .maybeSingle();
+
+    if (error) {
+      console.error('[TalentHub setTalentOpportunityWhatsappGroup DB Error]:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save custom WhatsApp group. (Ensure table talent_opportunity_whatsapp_groups is created in Supabase)',
+        error: error.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Custom WhatsApp group saved successfully!',
+      hasCustomGroup: true,
+      whatsappGroupUrl: cleanUrl,
+    });
+  } catch (err) {
+    console.error('[TalentHub setTalentOpportunityWhatsappGroup Exception]:', err.message);
+    return res.status(500).json({ success: false, message: 'Internal server error while saving WhatsApp group' });
+  }
+};
+
+/**
+ * DELETE /api/talent-hub/opportunities/:opportunityId/whatsapp-group
+ * Soft-deletes (is_active = false) the authenticated talent's custom WhatsApp group for a specific opportunity.
+ */
+export const deleteTalentOpportunityWhatsappGroup = async (req, res) => {
+  try {
+    const email = req.talentEmail;
+    if (!email) {
+      return res.status(401).json({ success: false, message: 'Unauthenticated' });
+    }
+    const { opportunityId } = req.params;
+    if (!opportunityId) {
+      return res.status(400).json({ success: false, message: 'Opportunity ID is required' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, message: 'Database connection unavailable' });
+    }
+
+    const { data: talentRecord } = await supabase
+      .from('talent_registrations')
+      .select('id')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!talentRecord) {
+      return res.status(404).json({ success: false, message: 'Talent profile not found' });
+    }
+
+    const { error } = await supabase
+      .from('talent_opportunity_whatsapp_groups')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('talent_registration_id', talentRecord.id)
+      .eq('opportunity_id', opportunityId);
+
+    if (error) {
+      console.error('[TalentHub deleteTalentOpportunityWhatsappGroup DB Error]:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to remove custom WhatsApp group', error: error.message });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Custom WhatsApp group removed. Default admin group will be used for future applicants.',
+      hasCustomGroup: false,
+    });
+  } catch (err) {
+    console.error('[TalentHub deleteTalentOpportunityWhatsappGroup Exception]:', err.message);
+    return res.status(500).json({ success: false, message: 'Internal server error while removing WhatsApp group' });
   }
 };
 

@@ -10,6 +10,10 @@ import {
   getTalentApplicationById,
   submitTalentOpportunityApplication,
   getTalentReferrals,
+  getTalentOpportunityWhatsappGroup,
+  getAllTalentOpportunityWhatsappGroups,
+  setTalentOpportunityWhatsappGroup,
+  deleteTalentOpportunityWhatsappGroup,
 } from '../controllers/talentHubController.js';
 import {
   getVendorTeamStatus,
@@ -44,6 +48,12 @@ router.get('/applications/:id', getTalentApplicationById);
 
 // Talent Referrals endpoint
 router.get('/referrals', getTalentReferrals);
+
+// Per-Opportunity Custom WhatsApp Group endpoints (Low-Egress)
+router.get('/opportunities-whatsapp-groups', getAllTalentOpportunityWhatsappGroups);
+router.get('/opportunities/:opportunityId/whatsapp-group', getTalentOpportunityWhatsappGroup);
+router.put('/opportunities/:opportunityId/whatsapp-group', setTalentOpportunityWhatsappGroup);
+router.delete('/opportunities/:opportunityId/whatsapp-group', deleteTalentOpportunityWhatsappGroup);
 
 // Vendor "My Team" Management endpoints (Role-restricted to 'Vendor / Agency' in controller)
 router.get('/team/status', getVendorTeamStatus);

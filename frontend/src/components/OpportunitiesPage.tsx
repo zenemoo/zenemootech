@@ -63,6 +63,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
   const [referralCode, setReferralCode] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string | null>(null);
+  const [resolvedWhatsappGroupUrl, setResolvedWhatsappGroupUrl] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [existingApp, setExistingApp] = useState<CandidateApplication | null>(null);
@@ -234,6 +235,10 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       });
 
       const generatedId = result.applicant_id || result.id;
+      const backendWaUrl = (result as any).whatsapp_group_url || (result as any).data?.whatsapp_group_url;
+      if (backendWaUrl) {
+        setResolvedWhatsappGroupUrl(backendWaUrl);
+      }
       setSubmittedRef(generatedId);
       localStorage.setItem(`zenemoo_applicant_email_${applyingOpportunity.id}`, applicantEmail.trim().toLowerCase());
     } catch (err: any) {
@@ -671,31 +676,37 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
                     </div>
 
                     {/* CONDITIONAL WHATSAPP GROUP LINK SECTION */}
-                    {applyingOpportunity.whatsapp_group_url && applyingOpportunity.whatsapp_group_url.trim().length > 0 && (
-                      <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3 shadow-xl relative overflow-hidden">
-                        <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
-                          <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES
+                    {(() => {
+                      const finalWaUrl = (resolvedWhatsappGroupUrl || applyingOpportunity.whatsapp_group_url || '').trim();
+                      if (!finalWaUrl) return null;
+
+                      return (
+                        <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-left space-y-3 shadow-xl relative overflow-hidden">
+                          <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
+                            <MessageCircle className="w-4 h-4 text-emerald-400" /> PROJECT UPDATES
+                          </div>
+                          <p className="text-slate-200 text-xs font-sans leading-relaxed">
+                            Your application has been received successfully. Join the official WhatsApp group for <strong className="text-white">{applyingOpportunity.title}</strong> to receive project updates, announcements, and further instructions.
+                          </p>
+                          <div className="pt-2">
+                            <a
+                              href={finalWaUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                            >
+                              <MessageCircle className="w-4 h-4" /> Join WhatsApp Group →
+                            </a>
+                          </div>
                         </div>
-                        <p className="text-slate-200 text-xs font-sans leading-relaxed">
-                          Your application has been received successfully. Join the official WhatsApp group for <strong className="text-white">{applyingOpportunity.title}</strong> to receive project updates, announcements, and further instructions.
-                        </p>
-                        <div className="pt-2">
-                          <a
-                            href={applyingOpportunity.whatsapp_group_url.trim()}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-                          >
-                            <MessageCircle className="w-4 h-4" /> Join WhatsApp Group →
-                          </a>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     <button
                       onClick={() => {
                         setApplyingOpportunity(null);
                         setSubmittedRef(null);
+                        setResolvedWhatsappGroupUrl(null);
                         setIsDuplicate(false);
                       }}
                       className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"

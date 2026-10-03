@@ -1016,6 +1016,7 @@ export const TalentHubOpportunities: React.FC = () => {
                   {/* CONDITIONAL WHATSAPP GROUP LINK SECTION */}
                   {(() => {
                     const waGroupUrl = (
+                      submitSuccess.whatsapp_group_url ||
                       selectedOppForApply.whatsapp_group_url ||
                       (selectedOppForApply as any).whatsapp_group_link ||
                       (selectedOppForApply as any).group_link ||

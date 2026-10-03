@@ -32,6 +32,9 @@ import {
   Hash,
   Mail,
   Phone,
+  AlertCircle,
+  Trash2,
+  Edit3,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useTalentHubAuth, OpportunityItem } from './TalentHubAuthContext';
@@ -146,7 +149,63 @@ export const TalentHubReferrals: React.FC = () => {
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState<'all' | 'open' | 'active_referrals' | 'closed'>('all');
 
+  // ── Custom WhatsApp Group State ──
+  const [customWhatsappGroups, setCustomWhatsappGroups] = useState<Record<string, { hasCustomGroup: boolean; whatsappGroupUrl?: string }>>({});
+  const [dismissedDefaultOpps, setDismissedDefaultOpps] = useState<Set<string>>(new Set());
+
+  // First-time prompt state
+  const [firstTimePrompt, setFirstTimePrompt] = useState<{
+    oppId: string;
+    oppTitle: string;
+    defaultUrl: string;
+    pendingAction: () => void;
+  } | null>(null);
+  const [firstTimeStep, setFirstTimeStep] = useState<'prompt' | 'input' | 'confirm'>('prompt');
+  const [firstTimeInputUrl, setFirstTimeInputUrl] = useState('');
+  const [firstTimeError, setFirstTimeError] = useState<string | null>(null);
+  const [isSavingCustomGroup, setIsSavingCustomGroup] = useState(false);
+
+  // Manage modal state
+  const [manageModal, setManageModal] = useState<{
+    oppId: string;
+    oppTitle: string;
+    currentUrl: string;
+    defaultUrl: string;
+  } | null>(null);
+  const [manageStep, setManageStep] = useState<'view' | 'edit_input' | 'edit_confirm' | 'remove_confirm'>('view');
+  const [manageInputUrl, setManageInputUrl] = useState('');
+  const [manageError, setManageError] = useState<string | null>(null);
+  const [isManagingGroup, setIsManagingGroup] = useState(false);
+
   const referralCode = talentProfile?.registration_code || '';
+
+  const validateWhatsAppUrl = (url: string): { isValid: boolean; error?: string } => {
+    const trimmed = (url || '').trim();
+    if (!trimmed) {
+      return { isValid: false, error: 'Please enter a WhatsApp group invite link.' };
+    }
+    if (!trimmed.startsWith('https://')) {
+      return { isValid: false, error: 'WhatsApp link must start with https://' };
+    }
+    try {
+      const parsed = new URL(trimmed);
+      const host = parsed.hostname.toLowerCase();
+      const isWaDomain =
+        host === 'chat.whatsapp.com' ||
+        host.endsWith('.chat.whatsapp.com') ||
+        host === 'wa.me' ||
+        host.endsWith('.wa.me') ||
+        host === 'api.whatsapp.com' ||
+        host === 'whatsapp.com' ||
+        host.endsWith('.whatsapp.com');
+      if (!isWaDomain) {
+        return { isValid: false, error: 'Please enter a valid WhatsApp group link (e.g., https://chat.whatsapp.com/...)' };
+      }
+      return { isValid: true };
+    } catch {
+      return { isValid: false, error: 'Invalid URL format.' };
+    }
+  };
 
   const fetchReferralData = useCallback(async (isManual = false) => {
     if (!token) return;
@@ -161,8 +220,13 @@ export const TalentHubReferrals: React.FC = () => {
 
     try {
       setIsLoading(true);
-      const res = await talentHubApi.getReferrals(token);
-      if (res && res.success) {
+      const [referralsRes, waGroupsRes] = await Promise.allSettled([
+        talentHubApi.getReferrals(token),
+        talentHubApi.getAllOpportunityWhatsappGroups(token),
+      ]);
+
+      if (referralsRes.status === 'fulfilled' && referralsRes.value?.success) {
+        const res = referralsRes.value;
         const fetchedStats = res.stats || { total: 0, applications: 0, selected: 0, accepted: 0, shortlisted: 0, pending: 0, rejected: 0 };
         const fetchedOppStats = res.opportunity_referrals || [];
         const fetchedReferredApps = res.referred_applications || [];
@@ -178,6 +242,10 @@ export const TalentHubReferrals: React.FC = () => {
           token,
           timestamp: Date.now(),
         };
+      }
+
+      if (waGroupsRes.status === 'fulfilled' && waGroupsRes.value?.success) {
+        setCustomWhatsappGroups(waGroupsRes.value.groups || {});
       }
     } catch (err) {
       console.warn('[TalentHub Referrals Fetch Error]:', err);
@@ -246,6 +314,34 @@ export const TalentHubReferrals: React.FC = () => {
       setCopiedAppId(appId);
       setTimeout(() => setCopiedAppId(null), 2000);
     } catch (_) {}
+  };
+
+  const triggerOpportunityReferralAction = (
+    oppId: string,
+    oppTitle: string,
+    defaultUrl: string,
+    action: () => void
+  ) => {
+    // If the talent already has a custom group configured for this exact opportunity, proceed immediately
+    if (customWhatsappGroups[oppId]?.hasCustomGroup) {
+      action();
+      return;
+    }
+    // If the talent already chose "Use Default Group" in this session, proceed immediately
+    if (dismissedDefaultOpps.has(oppId)) {
+      action();
+      return;
+    }
+    // Otherwise, show the clean first-time dialog prompt
+    setFirstTimePrompt({
+      oppId,
+      oppTitle,
+      defaultUrl: defaultUrl || '',
+      pendingAction: action,
+    });
+    setFirstTimeStep('prompt');
+    setFirstTimeInputUrl('');
+    setFirstTimeError(null);
   };
 
   const handleCopyLink = async (oppId: string) => {
@@ -768,12 +864,71 @@ export const TalentHubReferrals: React.FC = () => {
 
                   {/* Actions Area */}
                   <div className="space-y-3 pt-2 border-t border-white/10">
+                    {/* WhatsApp Group Configuration Status / Quick Manage */}
+                    {isOpen && (
+                      <div className="pt-1">
+                        {customWhatsappGroups[project.opportunity_id]?.hasCustomGroup ? (
+                          <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-mono">
+                            <span className="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                              <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span>WhatsApp Group Added</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManageModal({
+                                  oppId: project.opportunity_id,
+                                  oppTitle: project.opportunity_title,
+                                  currentUrl: customWhatsappGroups[project.opportunity_id]?.whatsappGroupUrl || '',
+                                  defaultUrl: project.oppItem?.whatsapp_group_url || '',
+                                });
+                                setManageStep('view');
+                                setManageInputUrl(customWhatsappGroups[project.opportunity_id]?.whatsappGroupUrl || '');
+                                setManageError(null);
+                              }}
+                              className="text-cyan-400 hover:text-cyan-300 underline font-bold cursor-pointer text-[11px]"
+                            >
+                              Manage
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] font-mono text-slate-400">
+                            <span className="truncate max-w-[170px] sm:max-w-none">Official WhatsApp (Default)</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFirstTimePrompt({
+                                  oppId: project.opportunity_id,
+                                  oppTitle: project.opportunity_title,
+                                  defaultUrl: project.oppItem?.whatsapp_group_url || '',
+                                  pendingAction: () => {},
+                                });
+                                setFirstTimeStep('input');
+                                setFirstTimeInputUrl('');
+                                setFirstTimeError(null);
+                              }}
+                              className="text-cyan-400 hover:text-cyan-300 underline font-bold cursor-pointer shrink-0"
+                            >
+                              + Add My Group
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Sharing Actions: Enabled only when Open */}
                     {isOpen ? (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleCopyLink(project.opportunity_id)}
+                            onClick={() =>
+                              triggerOpportunityReferralAction(
+                                project.opportunity_id,
+                                project.opportunity_title,
+                                project.oppItem?.whatsapp_group_url || '',
+                                () => handleCopyLink(project.opportunity_id)
+                              )
+                            }
                             className="flex-1 py-2 px-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 text-xs font-mono font-bold border border-cyan-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                           >
                             {copiedOppId === project.opportunity_id ? (
@@ -790,7 +945,14 @@ export const TalentHubReferrals: React.FC = () => {
                           </button>
 
                           <button
-                            onClick={() => handleWhatsAppShare(project.opportunity_title, project.opportunity_id)}
+                            onClick={() =>
+                              triggerOpportunityReferralAction(
+                                project.opportunity_id,
+                                project.opportunity_title,
+                                project.oppItem?.whatsapp_group_url || '',
+                                () => handleWhatsAppShare(project.opportunity_title, project.opportunity_id)
+                              )
+                            }
                             className="py-2 px-3 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] text-xs font-mono font-bold border border-[#25D366]/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                             title="Share on WhatsApp"
                           >
@@ -799,7 +961,14 @@ export const TalentHubReferrals: React.FC = () => {
                           </button>
 
                           <button
-                            onClick={() => handleNativeShare(project.opportunity_title, project.opportunity_id)}
+                            onClick={() =>
+                              triggerOpportunityReferralAction(
+                                project.opportunity_id,
+                                project.opportunity_title,
+                                project.oppItem?.whatsapp_group_url || '',
+                                () => handleNativeShare(project.opportunity_title, project.opportunity_id)
+                              )
+                            }
                             className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors cursor-pointer"
                             title="Share link"
                           >
@@ -1269,6 +1438,606 @@ export const TalentHubReferrals: React.FC = () => {
                     Referral Attribution Record: Application ID and submission details are verified by the Zenemoo Talent Network engine.
                   </span>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal 3: First-Time WhatsApp Group Configuration Prompt ── */}
+      <AnimatePresence>
+        {firstTimePrompt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div
+              className="fixed inset-0 bg-black/85 backdrop-blur-md"
+              onClick={() => {
+                if (!isSavingCustomGroup) {
+                  const pending = firstTimePrompt.pendingAction;
+                  setDismissedDefaultOpps((prev) => new Set(prev).add(firstTimePrompt.oppId));
+                  setFirstTimePrompt(null);
+                  if (pending) pending();
+                }
+              }}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-lg bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/40 rounded-3xl shadow-2xl overflow-hidden z-10 my-6 flex flex-col font-sans"
+            >
+              {/* Header */}
+              <div className="bg-[#080d19]/95 px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                    <MessageCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white font-display">
+                      {firstTimeStep === 'confirm'
+                        ? 'Confirm WhatsApp Group'
+                        : 'WhatsApp Group for this Project'}
+                    </h3>
+                    <p className="text-[11px] font-mono text-slate-400 truncate max-w-[280px] sm:max-w-xs">
+                      {firstTimePrompt.oppTitle}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!isSavingCustomGroup) {
+                      const pending = firstTimePrompt.pendingAction;
+                      setDismissedDefaultOpps((prev) => new Set(prev).add(firstTimePrompt.oppId));
+                      setFirstTimePrompt(null);
+                      if (pending) pending();
+                    }
+                  }}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4 text-xs font-sans">
+                {firstTimeStep === 'prompt' && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-200 leading-relaxed">
+                      Do you want to add your own WhatsApp group for applicants referred through this opportunity?
+                    </p>
+
+                    {firstTimePrompt.defaultUrl && (
+                      <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1.5">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block font-bold">
+                          Official Project WhatsApp Group (Default)
+                        </span>
+                        <div className="font-mono text-[11px] text-cyan-300 break-all bg-black/40 p-2 rounded-xl border border-white/5">
+                          {firstTimePrompt.defaultUrl}
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          If you use the default group, applicants will join the project&apos;s official WhatsApp group.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pending = firstTimePrompt.pendingAction;
+                          setDismissedDefaultOpps((prev) => new Set(prev).add(firstTimePrompt.oppId));
+                          setFirstTimePrompt(null);
+                          if (pending) pending();
+                        }}
+                        className="py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-mono font-bold border border-white/10 transition-colors cursor-pointer text-center"
+                      >
+                        1. Use Default Group
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFirstTimeStep('input');
+                          setFirstTimeError(null);
+                        }}
+                        className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-mono font-bold shadow-lg shadow-cyan-500/20 transition-all cursor-pointer text-center"
+                      >
+                        2. Add My WhatsApp Group
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {firstTimeStep === 'input' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider block">
+                        WhatsApp Group Invite Link
+                      </label>
+                      <input
+                        type="url"
+                        value={firstTimeInputUrl}
+                        onChange={(e) => {
+                          setFirstTimeInputUrl(e.target.value);
+                          if (firstTimeError) setFirstTimeError(null);
+                        }}
+                        placeholder="https://chat.whatsapp.com/XXXXXXXXXXXX"
+                        className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/15 text-white placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-400 transition-colors"
+                        autoFocus
+                      />
+                      <p className="text-[10px] text-slate-400">
+                        Paste the invite link to your WhatsApp group for this project (e.g., https://chat.whatsapp.com/...).
+                      </p>
+                    </div>
+
+                    {firstTimeError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 font-mono text-[11px]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{firstTimeError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFirstTimeStep('prompt');
+                          setFirstTimeError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono font-bold border border-white/10 transition-colors cursor-pointer"
+                      >
+                        Back
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = validateWhatsAppUrl(firstTimeInputUrl);
+                          if (!val.isValid) {
+                            setFirstTimeError(val.error || 'Invalid WhatsApp URL');
+                            return;
+                          }
+                          setFirstTimeStep('confirm');
+                          setFirstTimeError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold transition-colors cursor-pointer"
+                      >
+                        Next: Confirm Group
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {firstTimeStep === 'confirm' && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                          Opportunity:
+                        </span>
+                        <span className="text-sm font-bold text-white">
+                          {firstTimePrompt.oppTitle}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                          WhatsApp Group:
+                        </span>
+                        <span className="text-xs font-mono text-cyan-300 break-all">
+                          {firstTimeInputUrl.trim()}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-[11px] text-slate-300 font-mono">
+                        This WhatsApp group will be used for applicants referred through your referral link for this opportunity.
+                      </div>
+                    </div>
+
+                    {firstTimeError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 font-mono text-[11px]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{firstTimeError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        disabled={isSavingCustomGroup}
+                        onClick={() => {
+                          setFirstTimeStep('input');
+                          setFirstTimeError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono font-bold border border-white/10 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Back
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isSavingCustomGroup}
+                        onClick={async () => {
+                          if (!token || !firstTimePrompt.oppId) return;
+                          try {
+                            setIsSavingCustomGroup(true);
+                            setFirstTimeError(null);
+                            const cleanUrl = firstTimeInputUrl.trim();
+                            const res = await talentHubApi.setOpportunityWhatsappGroup(
+                              firstTimePrompt.oppId,
+                              cleanUrl,
+                              token
+                            );
+                            if (res && res.success) {
+                              setCustomWhatsappGroups((prev) => ({
+                                ...prev,
+                                [firstTimePrompt.oppId]: {
+                                  hasCustomGroup: true,
+                                  whatsappGroupUrl: cleanUrl,
+                                },
+                              }));
+                              const pending = firstTimePrompt.pendingAction;
+                              setFirstTimePrompt(null);
+                              if (pending) {
+                                pending();
+                              }
+                            } else {
+                              setFirstTimeError(res?.error || 'Failed to save WhatsApp group. Please try again.');
+                            }
+                          } catch (err: any) {
+                            setFirstTimeError(err?.message || 'Network error saving WhatsApp group.');
+                          } finally {
+                            setIsSavingCustomGroup(false);
+                          }
+                        }}
+                        className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-mono font-bold shadow-lg shadow-cyan-500/25 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isSavingCustomGroup ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <span>Confirm & Save</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal 4: Manage Existing WhatsApp Group Modal ── */}
+      <AnimatePresence>
+        {manageModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div
+              className="fixed inset-0 bg-black/85 backdrop-blur-md"
+              onClick={() => {
+                if (!isManagingGroup) setManageModal(null);
+              }}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-lg bg-[#080d19]/98 backdrop-blur-2xl border border-cyan-500/40 rounded-3xl shadow-2xl overflow-hidden z-10 my-6 flex flex-col font-sans"
+            >
+              {/* Header */}
+              <div className="bg-[#080d19]/95 px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <MessageCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white font-display">
+                      {manageStep === 'remove_confirm'
+                        ? 'Remove WhatsApp Group'
+                        : manageStep === 'edit_confirm'
+                        ? 'Confirm New WhatsApp Group'
+                        : 'Manage WhatsApp Group'}
+                    </h3>
+                    <p className="text-[11px] font-mono text-slate-400 truncate max-w-[280px] sm:max-w-xs">
+                      {manageModal.oppTitle}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!isManagingGroup) setManageModal(null);
+                  }}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4 text-xs font-sans">
+                {manageStep === 'view' && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                        Current Custom WhatsApp Group:
+                      </span>
+                      <div className="font-mono text-xs text-emerald-300 break-all bg-black/40 p-2.5 rounded-xl border border-white/5">
+                        {manageModal.currentUrl}
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed pt-1">
+                        Applicants referred through your link for this opportunity will automatically receive this group link upon submitting their application.
+                      </p>
+                    </div>
+
+                    {manageError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 font-mono text-[11px]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{manageError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManageStep('edit_input');
+                          setManageInputUrl(manageModal.currentUrl);
+                          setManageError(null);
+                        }}
+                        className="py-2.5 px-4 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 font-mono font-bold border border-cyan-500/30 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Change Group</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManageStep('remove_confirm');
+                          setManageError(null);
+                        }}
+                        className="py-2.5 px-4 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 font-mono font-bold border border-rose-500/30 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Group</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {manageStep === 'edit_input' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider block">
+                        New WhatsApp Group Invite Link
+                      </label>
+                      <input
+                        type="url"
+                        value={manageInputUrl}
+                        onChange={(e) => {
+                          setManageInputUrl(e.target.value);
+                          if (manageError) setManageError(null);
+                        }}
+                        placeholder="https://chat.whatsapp.com/XXXXXXXXXXXX"
+                        className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/15 text-white placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-400 transition-colors"
+                        autoFocus
+                      />
+                    </div>
+
+                    {manageError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 font-mono text-[11px]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{manageError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManageStep('view');
+                          setManageError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono font-bold border border-white/10 transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = validateWhatsAppUrl(manageInputUrl);
+                          if (!val.isValid) {
+                            setManageError(val.error || 'Invalid WhatsApp URL');
+                            return;
+                          }
+                          setManageStep('edit_confirm');
+                          setManageError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold transition-colors cursor-pointer"
+                      >
+                        Next: Confirm
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {manageStep === 'edit_confirm' && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                          Opportunity:
+                        </span>
+                        <span className="text-sm font-bold text-white">
+                          {manageModal.oppTitle}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                          Updated WhatsApp Group:
+                        </span>
+                        <span className="text-xs font-mono text-cyan-300 break-all">
+                          {manageInputUrl.trim()}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-[11px] text-slate-300 font-mono">
+                        New applicants applying via your referral link will now receive this updated WhatsApp group link.
+                      </div>
+                    </div>
+
+                    {manageError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 font-mono text-[11px]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{manageError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        disabled={isManagingGroup}
+                        onClick={() => {
+                          setManageStep('edit_input');
+                          setManageError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono font-bold border border-white/10 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Back
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isManagingGroup}
+                        onClick={async () => {
+                          if (!token || !manageModal.oppId) return;
+                          try {
+                            setIsManagingGroup(true);
+                            setManageError(null);
+                            const cleanUrl = manageInputUrl.trim();
+                            const res = await talentHubApi.setOpportunityWhatsappGroup(
+                              manageModal.oppId,
+                              cleanUrl,
+                              token
+                            );
+                            if (res && res.success) {
+                              setCustomWhatsappGroups((prev) => ({
+                                ...prev,
+                                [manageModal.oppId]: {
+                                  hasCustomGroup: true,
+                                  whatsappGroupUrl: cleanUrl,
+                                },
+                              }));
+                              setManageModal(null);
+                            } else {
+                              setManageError(res?.error || 'Failed to update WhatsApp group.');
+                            }
+                          } catch (err: any) {
+                            setManageError(err?.message || 'Network error updating WhatsApp group.');
+                          } finally {
+                            setIsManagingGroup(false);
+                          }
+                        }}
+                        className="py-2 px-5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-mono font-bold shadow-lg shadow-cyan-500/25 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isManagingGroup ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <span>Save & Update</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {manageStep === 'remove_confirm' && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3">
+                      <h4 className="text-sm font-bold text-rose-300 font-display">
+                        Remove your WhatsApp group for this project?
+                      </h4>
+                      <p className="text-slate-300 text-xs leading-relaxed">
+                        Applicants referred through your link will use the project&apos;s official WhatsApp group instead.
+                      </p>
+                      {manageModal.defaultUrl && (
+                        <div className="text-[11px] font-mono text-slate-400 bg-black/40 p-2.5 rounded-xl border border-white/5">
+                          <span className="block text-[10px] text-slate-500 uppercase font-bold">Fallback Official Group:</span>
+                          <span className="break-all text-cyan-300">{manageModal.defaultUrl}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {manageError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 font-mono text-[11px]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{manageError}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        disabled={isManagingGroup}
+                        onClick={() => {
+                          setManageStep('view');
+                          setManageError(null);
+                        }}
+                        className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-mono font-bold border border-white/10 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isManagingGroup}
+                        onClick={async () => {
+                          if (!token || !manageModal.oppId) return;
+                          try {
+                            setIsManagingGroup(true);
+                            setManageError(null);
+                            const res = await talentHubApi.deleteOpportunityWhatsappGroup(
+                              manageModal.oppId,
+                              token
+                            );
+                            if (res && res.success) {
+                              setCustomWhatsappGroups((prev) => ({
+                                ...prev,
+                                [manageModal.oppId]: {
+                                  hasCustomGroup: false,
+                                },
+                              }));
+                              setManageModal(null);
+                            } else {
+                              setManageError(res?.error || 'Failed to remove WhatsApp group.');
+                            }
+                          } catch (err: any) {
+                            setManageError(err?.message || 'Network error removing WhatsApp group.');
+                          } finally {
+                            setIsManagingGroup(false);
+                          }
+                        }}
+                        className="py-2 px-5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-mono font-bold shadow-lg shadow-rose-600/25 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isManagingGroup ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Removing...</span>
+                          </>
+                        ) : (
+                          <span>Remove Group</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

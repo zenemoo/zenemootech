@@ -140,5 +140,63 @@ export const talentHubApi = {
     const response = await axios.get(`${baseUrl}/talent-hub/referrals`, createAuthHeaders(token));
     return response.data;
   },
+
+  /**
+   * Fetch all active custom WhatsApp groups for the authenticated talent.
+   */
+  async getAllOpportunityWhatsappGroups(token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, groups: {} };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.get(`${baseUrl}/talent-hub/opportunities-whatsapp-groups`, createAuthHeaders(token));
+    return response.data;
+  },
+
+  /**
+   * Fetch custom WhatsApp group for a specific opportunity.
+   */
+  async getOpportunityWhatsappGroup(opportunityId: string, token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, hasCustomGroup: false };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.get(
+      `${baseUrl}/talent-hub/opportunities/${opportunityId}/whatsapp-group`,
+      createAuthHeaders(token)
+    );
+    return response.data;
+  },
+
+  /**
+   * Create or update custom WhatsApp group for a specific opportunity.
+   */
+  async setOpportunityWhatsappGroup(opportunityId: string, whatsappGroupUrl: string, token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, message: 'Missing auth token' };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.put(
+      `${baseUrl}/talent-hub/opportunities/${opportunityId}/whatsapp-group`,
+      { whatsapp_group_url: whatsappGroupUrl },
+      createAuthHeaders(token)
+    );
+    return response.data;
+  },
+
+  /**
+   * Remove custom WhatsApp group for a specific opportunity.
+   */
+  async deleteOpportunityWhatsappGroup(opportunityId: string, token: string) {
+    if (isInvalidToken(token)) {
+      return { success: false, message: 'Missing auth token' };
+    }
+    const baseUrl = getApiBaseUrl();
+    const response = await axios.delete(
+      `${baseUrl}/talent-hub/opportunities/${opportunityId}/whatsapp-group`,
+      createAuthHeaders(token)
+    );
+    return response.data;
+  },
 };
 

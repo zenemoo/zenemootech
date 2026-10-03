@@ -571,7 +571,35 @@ export const submitApplication = async (req, res) => {
     // Invalidate cached opportunity applicant counts
     invalidateTalentOpportunitiesCache();
 
-    return res.status(201).json({ status: 'success', data: savedRecord });
+    // Resolve Authoritative WhatsApp Group URL (Custom Vendor Group vs Admin Opportunity Default)
+    let resolvedWhatsappGroupUrl = (oppRecord?.whatsapp_group_url || '').trim();
+
+    if (savedRecord.referred_by_id && supabase) {
+      try {
+        const { data: customGroup } = await supabase
+          .from('talent_opportunity_whatsapp_groups')
+          .select('whatsapp_group_url')
+          .eq('talent_registration_id', savedRecord.referred_by_id)
+          .eq('opportunity_id', opportunity_id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (customGroup && customGroup.whatsapp_group_url && customGroup.whatsapp_group_url.trim()) {
+          resolvedWhatsappGroupUrl = customGroup.whatsapp_group_url.trim();
+        }
+      } catch (waErr) {
+        console.warn('[Public Submit Custom WhatsApp Group Lookup Note]:', waErr.message);
+      }
+    }
+
+    return res.status(201).json({
+      status: 'success',
+      data: {
+        ...savedRecord,
+        whatsapp_group_url: resolvedWhatsappGroupUrl,
+      },
+      whatsapp_group_url: resolvedWhatsappGroupUrl,
+    });
   } catch (err) {
     console.error('submitApplication controller exception:', err.message);
     return res.status(500).json({ error: err.message });
