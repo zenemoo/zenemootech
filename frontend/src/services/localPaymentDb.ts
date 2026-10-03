@@ -21,6 +21,8 @@ export interface LocalPaymentRecord {
   status: 'Pending' | 'Processing' | 'Paid' | 'Issue' | 'Cancelled';
   utr?: string | null;
   paymentDate?: string | null;
+  zenemooPaymentId?: string | null;
+  proofLink?: string | null;
   issueType?: string | null;
   issueNotes?: string | null;
   sourceFileName?: string;
@@ -72,7 +74,32 @@ export interface LocalBackupPayload {
 }
 
 const DB_NAME = 'ZenemooLocalPaymentDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+/**
+ * Generates a unique, non-sequential Zenemoo Payment ID
+ * Format: ZNM-PAY-XXXXXXXXXX (10 uppercase alphanumeric characters)
+ */
+export function generateZenemooPaymentId(): string {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // base32 charset without ambiguous chars (0,1,I,O)
+  const bytes = new Uint8Array(10);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 10; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  let result = '';
+  for (let i = 0; i < 10; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return `ZNM-PAY-${result}`;
+}
+
+export function generatePaymentProofLink(paymentId: string): string {
+  return `https://www.zenemoo.in/payment/${paymentId}`;
+}
 
 class LocalPaymentDbService {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -99,16 +126,23 @@ class LocalPaymentDbService {
         }
 
         // 2. paymentRecords Store
+        let recordStore: IDBObjectStore;
         if (!db.objectStoreNames.contains('paymentRecords')) {
-          const recordStore = db.createObjectStore('paymentRecords', { keyPath: 'id' });
+          recordStore = db.createObjectStore('paymentRecords', { keyPath: 'id' });
           recordStore.createIndex('batchId', 'batchId', { unique: false });
           recordStore.createIndex('status', 'status', { unique: false });
           recordStore.createIndex('email', 'email', { unique: false });
           recordStore.createIndex('upiId', 'upiId', { unique: false });
           recordStore.createIndex('paymentDate', 'paymentDate', { unique: false });
           recordStore.createIndex('utr', 'utr', { unique: false });
+          recordStore.createIndex('zenemooPaymentId', 'zenemooPaymentId', { unique: false });
           recordStore.createIndex('createdAt', 'createdAt', { unique: false });
           recordStore.createIndex('workType', 'workType', { unique: false });
+        } else {
+          recordStore = (event.target as IDBOpenDBRequest).transaction!.objectStore('paymentRecords');
+          if (!recordStore.indexNames.contains('zenemooPaymentId')) {
+            recordStore.createIndex('zenemooPaymentId', 'zenemooPaymentId', { unique: false });
+          }
         }
 
         // 3. paymentSettings Store
@@ -541,6 +575,24 @@ class LocalPaymentDbService {
     });
   }
 
+  // --- RECORD RETRIEVAL HELPERS ---
+
+  async getAllPaymentRecords(batchId?: string): Promise<LocalPaymentRecord[]> {
+    const db = await this.openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('paymentRecords', 'readonly');
+      const store = tx.objectStore('paymentRecords');
+      const request = batchId && batchId !== 'All' ? store.index('batchId').getAll(batchId) : store.getAll();
+
+      request.onsuccess = () => {
+        const records = (request.result || []) as LocalPaymentRecord[];
+        records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        resolve(records);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   // --- BACKUP & RESTORE ---
 
   async exportLocalBackup(): Promise<LocalBackupPayload> {
@@ -604,6 +656,77 @@ class LocalPaymentDbService {
           recordStore.put(rec);
         }
       }
+    });
+  }
+
+  // --- PAYMENT LINK GENERATION ---
+
+  /**
+   * Generates unique Zenemoo Payment IDs and public proof links for all records (or within a batch)
+   * Idempotent: Never re-generates or overwrites existing payment IDs
+   */
+  async createAllPaymentLinks(batchId?: string): Promise<{
+    createdCount: number;
+    alreadyExistingCount: number;
+    totalCount: number;
+    records: LocalPaymentRecord[];
+  }> {
+    const db = await this.openDb();
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('paymentRecords', 'readwrite');
+      const store = tx.objectStore('paymentRecords');
+      const request = batchId && batchId !== 'All' ? store.index('batchId').getAll(batchId) : store.getAll();
+
+      request.onsuccess = () => {
+        const allRecords = (request.result || []) as LocalPaymentRecord[];
+        let createdCount = 0;
+        let alreadyExistingCount = 0;
+        const now = new Date().toISOString();
+        const updatedRecords: LocalPaymentRecord[] = [];
+
+        for (const record of allRecords) {
+          if (!record.zenemooPaymentId) {
+            const newId = generateZenemooPaymentId();
+            const proofLink = generatePaymentProofLink(newId);
+            const updated: LocalPaymentRecord = {
+              ...record,
+              zenemooPaymentId: newId,
+              proofLink,
+              updatedAt: now,
+            };
+            store.put(updated);
+            updatedRecords.push(updated);
+            createdCount++;
+          } else {
+            // Already has an ID, make sure proofLink matches
+            if (!record.proofLink) {
+              const proofLink = generatePaymentProofLink(record.zenemooPaymentId);
+              const updated: LocalPaymentRecord = {
+                ...record,
+                proofLink,
+                updatedAt: now,
+              };
+              store.put(updated);
+              updatedRecords.push(updated);
+            } else {
+              updatedRecords.push(record);
+            }
+            alreadyExistingCount++;
+          }
+        }
+
+        tx.oncomplete = () => {
+          resolve({
+            createdCount,
+            alreadyExistingCount,
+            totalCount: allRecords.length,
+            records: updatedRecords,
+          });
+        };
+      };
+
+      tx.onerror = () => reject(tx.error);
     });
   }
 

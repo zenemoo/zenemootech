@@ -50,6 +50,52 @@ function maskEmail(email) {
   return `${visible}${'•'.repeat(maskedLength)}@${domain}`;
 }
 
+function maskUpiId(upi) {
+  if (!upi || typeof upi !== 'string') return '';
+  const trimmed = upi.trim();
+  const parts = trimmed.split('@');
+  if (parts.length !== 2) {
+    if (trimmed.length <= 4) return '••••';
+    return `${trimmed.slice(0, 2)}•••${trimmed.slice(-2)}`;
+  }
+  const handle = parts[0];
+  const bank = parts[1];
+  if (handle.length <= 3) {
+    return `${handle[0]}***@${bank}`;
+  }
+  const visibleStart = handle.slice(0, Math.min(3, handle.length - 2));
+  const visibleEnd = handle.slice(-2);
+  return `${visibleStart}***${visibleEnd}@${bank}`;
+}
+
+let publicReceiptsTableInitialized = false;
+async function ensurePublicReceiptsTable(env) {
+  if (publicReceiptsTableInitialized || !env.DB) return;
+  try {
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS public_receipts (
+        zenemoo_payment_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        name TEXT,
+        masked_upi_id TEXT,
+        amount REAL NOT NULL,
+        currency TEXT DEFAULT 'INR',
+        work_type TEXT,
+        project_name TEXT,
+        utr TEXT,
+        payment_date TEXT,
+        batch_id TEXT,
+        created_at TEXT,
+        updated_at TEXT
+      )
+    `).run();
+    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_public_receipts_utr ON public_receipts (utr)`).run();
+    publicReceiptsTableInitialized = true;
+  } catch (err) {
+    console.warn('[Public Receipts Table Init Error]:', err.message);
+  }
+}
+
 /**
  * Reusable Name Normalizer
  * - Trims leading/trailing whitespace and collapses internal multiple spaces
@@ -509,6 +555,95 @@ export default {
       if (!env.DB) {
         console.error('[Configuration Error] env.DB D1 binding is missing');
         return errorResponse('Internal Server Error: Database binding is not configured', 500, corsHeaders);
+      }
+
+      // ==========================================
+      // PUBLIC RECEIPT ENDPOINTS (ZERO AUTH / SAFE EGRESS)
+      // ==========================================
+
+      // 1b. GET /public/receipt/:paymentId — Public Payment Receipt Lookup
+      if (pathname.startsWith('/public/receipt/') && request.method === 'GET') {
+        const paymentId = pathname.replace('/public/receipt/', '').trim();
+        if (!paymentId) {
+          return errorResponse('Payment ID is required', 400, corsHeaders);
+        }
+
+        await ensurePublicReceiptsTable(env);
+
+        // 1. Direct indexed query on public_receipts
+        let receiptRow = null;
+        try {
+          receiptRow = await env.DB.prepare(`
+            SELECT zenemoo_payment_id, status, name, masked_upi_id, amount, currency, work_type, project_name, utr, payment_date, batch_id
+            FROM public_receipts
+            WHERE zenemoo_payment_id = ?
+            LIMIT 1
+          `).bind(paymentId).first();
+        } catch (err) {
+          console.warn('[Public Receipt Query Error]:', err.message);
+        }
+
+        // 2. Fallback to payments table if not found in public_receipts
+        if (!receiptRow) {
+          try {
+            const fallbackRow = await env.DB.prepare(`
+              SELECT id, talent_id, talent_name, source_name, email, project_name, work_type, amount, currency, status, payment_date, reference_number, reference_link
+              FROM payments
+              WHERE id = ? OR reference_link LIKE ? OR reference_number = ?
+              LIMIT 1
+            `).bind(paymentId, `%/payment/${paymentId}%`, paymentId).first();
+
+            if (fallbackRow) {
+              receiptRow = {
+                zenemoo_payment_id: paymentId,
+                status: fallbackRow.status,
+                name: deriveDisplayName(fallbackRow.email, fallbackRow.talent_id, fallbackRow.talent_name, fallbackRow.source_name),
+                masked_upi_id: '',
+                amount: Number(fallbackRow.amount) || 0,
+                currency: fallbackRow.currency || 'INR',
+                work_type: fallbackRow.work_type || 'Contributor Work',
+                project_name: fallbackRow.project_name || null,
+                utr: fallbackRow.reference_number || null,
+                payment_date: fallbackRow.payment_date || null,
+                batch_id: null,
+              };
+            }
+          } catch (err) {
+            console.warn('[Payments Fallback Query Error]:', err.message);
+          }
+        }
+
+        if (!receiptRow) {
+          return jsonResponse(
+            {
+              success: false,
+              message: 'Payment receipt not found',
+            },
+            404,
+            { ...corsHeaders, 'X-Robots-Tag': 'noindex, nofollow' }
+          );
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            data: {
+              zenemooPaymentId: receiptRow.zenemoo_payment_id,
+              status: receiptRow.status,
+              name: receiptRow.name || 'Zenemoo Contributor',
+              maskedUpiId: receiptRow.masked_upi_id || '',
+              amount: Number(receiptRow.amount) || 0,
+              currency: receiptRow.currency || 'INR',
+              workType: receiptRow.work_type || 'Annotator',
+              projectName: receiptRow.project_name || null,
+              utr: receiptRow.utr || null,
+              paymentDate: receiptRow.payment_date || null,
+              batchId: receiptRow.batch_id || null,
+            },
+          },
+          200,
+          { ...corsHeaders, 'X-Robots-Tag': 'noindex, nofollow' }
+        );
       }
 
       // ==========================================
@@ -1190,6 +1325,98 @@ export default {
             message: `Successfully resolved and updated ${updateStatements.length} contributor Talent ID(s) and Name(s)`,
             total_unresolved_checked: unresolvedEmails.length,
             resolved_count: updateStatements.length,
+          },
+          200,
+          corsHeaders
+        );
+      }
+
+      // 8c. POST /admin/payments/publish-receipts — Batch sync / publish safe public payment receipts from Local Workspace
+      if (pathname === '/admin/payments/publish-receipts' && request.method === 'POST') {
+        const auth = await authenticateAdmin(request, env);
+        if (auth.error) return errorResponse(auth.error, auth.status, corsHeaders);
+
+        const body = await request.json().catch(() => ({}));
+        const receipts = Array.isArray(body)
+          ? body
+          : Array.isArray(body.receipts)
+          ? body.receipts
+          : Array.isArray(body.records)
+          ? body.records
+          : [];
+
+        if (receipts.length === 0) {
+          return jsonResponse({ success: true, count: 0, message: 'No receipts provided for publishing' }, 200, corsHeaders);
+        }
+
+        await ensurePublicReceiptsTable(env);
+        const now = new Date().toISOString();
+        const statements = [];
+
+        for (const item of receipts) {
+          const zenemooPaymentId = (item.zenemooPaymentId || item.zenemoo_payment_id || '').trim();
+          if (!zenemooPaymentId) continue;
+
+          const status = (item.status || 'Pending').trim();
+          const name = normalizeContributorName(item.name || item.workerName) || 'Zenemoo Contributor';
+          const rawUpi = item.upiId || item.upi_id || '';
+          const maskedUpi = item.maskedUpiId || item.masked_upi_id || maskUpiId(rawUpi);
+          const amount = Number(item.amount) || 0;
+          const currency = (item.currency || 'INR').trim().toUpperCase();
+          const workType = (item.workType || item.work_type || 'Annotator').trim();
+          const projectName = (item.projectName || item.project_name || '').trim() || null;
+          const utr = (item.utr || item.reference_number || '').trim() || null;
+          const paymentDate = item.paymentDate || item.payment_date || null;
+          const batchId = (item.batchId || item.batch_id || '').trim() || null;
+
+          const upsertSql = `
+            INSERT INTO public_receipts (
+              zenemoo_payment_id, status, name, masked_upi_id, amount, currency, work_type, project_name, utr, payment_date, batch_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(zenemoo_payment_id) DO UPDATE SET
+              status = excluded.status,
+              name = excluded.name,
+              masked_upi_id = excluded.masked_upi_id,
+              amount = excluded.amount,
+              currency = excluded.currency,
+              work_type = excluded.work_type,
+              project_name = excluded.project_name,
+              utr = excluded.utr,
+              payment_date = excluded.payment_date,
+              batch_id = excluded.batch_id,
+              updated_at = excluded.updated_at
+          `;
+
+          statements.push(
+            env.DB.prepare(upsertSql).bind(
+              zenemooPaymentId,
+              status,
+              name,
+              maskedUpi,
+              amount,
+              currency,
+              workType,
+              projectName,
+              utr,
+              paymentDate,
+              batchId,
+              now,
+              now
+            )
+          );
+        }
+
+        const chunkSize = 100;
+        for (let i = 0; i < statements.length; i += chunkSize) {
+          const chunk = statements.slice(i, i + chunkSize);
+          await env.DB.batch(chunk);
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            count: statements.length,
+            message: `Successfully synchronized ${statements.length} public payment receipt(s)`,
           },
           200,
           corsHeaders

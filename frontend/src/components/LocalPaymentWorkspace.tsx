@@ -40,6 +40,7 @@ import {
   Save,
   RotateCcw,
   Sparkles,
+  Link2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -47,7 +48,10 @@ import {
   LocalPaymentRecord,
   LocalPaymentBatch,
   LocalPaymentSummary,
+  generateZenemooPaymentId,
+  generatePaymentProofLink,
 } from '../services/localPaymentDb';
+import { paymentWorkerApi } from '../services/paymentWorkerApi';
 import {
   validateUpiId,
   generateUpiIntentUrl,
@@ -248,6 +252,7 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
   const [paymentFormIssueType, setPaymentFormIssueType] = useState<string>('Payment Failed');
   const [paymentFormIssueNotes, setPaymentFormIssueNotes] = useState<string>('');
   const [isSavingPayment, setIsSavingPayment] = useState<boolean>(false);
+  const [isCreatingLinks, setIsCreatingLinks] = useState<boolean>(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // --- Export Modal State ---
@@ -723,17 +728,55 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
           ? paymentFormCustomWorkType.trim()
           : paymentFormWorkType || activePaymentRecord.workType;
 
+      // Ensure permanent Zenemoo Payment ID and public proof link exist
+      let zPaymentId = activePaymentRecord.zenemooPaymentId;
+      let proofLink = activePaymentRecord.proofLink;
+      if (!zPaymentId) {
+        zPaymentId = generateZenemooPaymentId();
+        proofLink = generatePaymentProofLink(zPaymentId);
+      }
+
+      // Exact payment date: only assign upon marking Paid if not already set, or preserve manually confirmed date
+      const recordedPaymentDate =
+        paymentFormStatus === 'Paid'
+          ? (paymentFormDate || activePaymentRecord.paymentDate || getIstCurrentDate())
+          : activePaymentRecord.paymentDate;
+
       const updates: Partial<LocalPaymentRecord> = {
         status: paymentFormStatus,
         workType: finalWorkType,
         utr: paymentFormStatus === 'Paid' ? paymentFormUtr.trim() : activePaymentRecord.utr,
-        paymentDate: paymentFormStatus === 'Paid' ? paymentFormDate : activePaymentRecord.paymentDate,
+        paymentDate: recordedPaymentDate,
         issueType: paymentFormStatus === 'Issue' ? paymentFormIssueType : null,
         issueNotes: paymentFormStatus === 'Issue' ? paymentFormIssueNotes.trim() : null,
+        zenemooPaymentId: zPaymentId,
+        proofLink: proofLink,
       };
 
       const updated = await localPaymentDb.updatePaymentRecord(activePaymentRecord.id, updates);
       setActivePaymentRecord(updated);
+
+      // Publish safe public receipt record to Cloudflare D1 for public shareable access
+      if (updated.zenemooPaymentId) {
+        try {
+          await paymentWorkerApi.publishPublicReceipts([
+            {
+              zenemooPaymentId: updated.zenemooPaymentId,
+              status: updated.status,
+              name: updated.name,
+              upiId: updated.upiId,
+              amount: updated.amount,
+              currency: updated.currency || 'INR',
+              workType: updated.workType,
+              utr: updated.utr,
+              paymentDate: updated.paymentDate,
+              batchId: updated.batchId,
+            },
+          ]);
+        } catch (pubErr) {
+          console.warn('[Publish Public Receipt Warning]:', pubErr);
+        }
+      }
 
       addToast(
         'Payment Updated',
@@ -748,6 +791,94 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
       addToast('Update Failed', err.message || 'Could not update payment record', 'error');
     } finally {
       setIsSavingPayment(false);
+    }
+  };
+
+  // --- CREATE ALL LINKS HANDLER ---
+  const handleCreateAllLinks = async () => {
+    setIsCreatingLinks(true);
+    try {
+      const activeBatch = selectedBatchId !== 'All' ? selectedBatchId : undefined;
+      const res = await localPaymentDb.createAllPaymentLinks(activeBatch);
+
+      // Publish all payment records with Zenemoo IDs to Cloudflare D1
+      try {
+        const allRecords = await localPaymentDb.getAllPaymentRecords(activeBatch);
+        const publishPayload = allRecords
+          .filter((r) => r.zenemooPaymentId)
+          .map((r) => ({
+            zenemooPaymentId: r.zenemooPaymentId!,
+            status: r.status,
+            name: r.name,
+            upiId: r.upiId,
+            amount: r.amount,
+            currency: r.currency || 'INR',
+            workType: r.workType,
+            utr: r.utr,
+            paymentDate: r.paymentDate,
+            batchId: r.batchId,
+          }));
+
+        if (publishPayload.length > 0) {
+          await paymentWorkerApi.publishPublicReceipts(publishPayload);
+        }
+      } catch (pubErr) {
+        console.warn('[Publish All Receipts Warning]:', pubErr);
+      }
+
+      if (res.createdCount === 0) {
+        addToast(
+          'Payment Links Up-to-Date',
+          `${res.alreadyExistingCount} payment links already exist. 0 new links created.`,
+          'info'
+        );
+      } else {
+        addToast(
+          'Payment Links Created',
+          `Created ${res.createdCount} of ${res.totalCount} payment links. ${res.totalCount} payment links ready.`,
+          'success'
+        );
+      }
+
+      loadWorkspaceData();
+    } catch (err: any) {
+      console.error('[Create All Links Error]:', err);
+      addToast('Error Creating Links', err.message || 'Failed to generate payment links', 'error');
+    } finally {
+      setIsCreatingLinks(false);
+    }
+  };
+
+  // --- SHARE RECEIPT LINK HELPER ---
+  const handleShareLink = async (record: LocalPaymentRecord) => {
+    const url = record.proofLink || (record.zenemooPaymentId ? generatePaymentProofLink(record.zenemooPaymentId) : '');
+    if (!url) {
+      addToast('No Link Available', 'Please click "Create All Links" first.', 'warning');
+      return;
+    }
+
+    const shareData = {
+      title: 'Zenemoo Payment Receipt',
+      text: `Zenemoo payment receipt for ${record.name}`,
+      url: url,
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+        addToast('Receipt Shared', 'Payment link shared successfully.', 'success');
+        return;
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.warn('[Web Share API Error]:', err);
+        }
+      }
+    }
+
+    // Fallback: Copy link
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      addToast('Link Copied', 'Payment receipt link copied to clipboard.', 'success');
     }
   };
 
@@ -951,6 +1082,20 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
             onChange={handleRestoreBackupFile}
             className="hidden"
           />
+
+          <button
+            onClick={handleCreateAllLinks}
+            disabled={isCreatingLinks || summary.totalRecords === 0}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-500/20 disabled:opacity-50"
+            title="Generate unique public Zenemoo payment receipt links for all records"
+          >
+            {isCreatingLinks ? (
+              <RefreshCw className="w-4 h-4 animate-spin text-white" />
+            ) : (
+              <Link2 className="w-4 h-4 text-white" />
+            )}
+            <span>{isCreatingLinks ? 'Creating Links...' : 'Create All Links'}</span>
+          </button>
 
           <button
             onClick={handleOpenExportModal}
@@ -1193,6 +1338,20 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
               <option value={50} className="bg-slate-900 text-white">50</option>
             </select>
           </div>
+          {/* Create All Links prominent button */}
+          <button
+            onClick={handleCreateAllLinks}
+            disabled={isCreatingLinks || summary.totalRecords === 0}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-md shadow-cyan-500/20 disabled:opacity-50"
+            title="Generate permanent Zenemoo Payment IDs and public receipt links"
+          >
+            {isCreatingLinks ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+            ) : (
+              <Link2 className="w-3.5 h-3.5 text-white" />
+            )}
+            <span>{isCreatingLinks ? 'Creating Links...' : 'Create All Links'}</span>
+          </button>
         </div>
       </div>
 
@@ -1210,20 +1369,21 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4">Transaction / UTR</th>
                 <th className="py-3.5 px-4">Payment Date</th>
+                <th className="py-3.5 px-4">Payment Link</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-slate-400">
                     <RefreshCw className="w-8 h-8 animate-spin mx-auto text-indigo-400 mb-2" />
                     <p className="text-sm">Loading local payment records from IndexedDB...</p>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-slate-400">
                     <QrCode className="w-12 h-12 mx-auto text-slate-600 mb-3" />
                     <p className="text-base font-semibold text-white">No Local Payment Records Found</p>
                     <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
@@ -1311,6 +1471,55 @@ export const LocalPaymentWorkspace: React.FC<LocalPaymentWorkspaceProps> = ({
                         <Calendar className="w-3.5 h-3.5 text-slate-500" />
                         <span>{r.paymentDate || '-'}</span>
                       </div>
+                    </td>
+
+                    {/* Payment Link Column */}
+                    <td className="py-3.5 px-4 whitespace-nowrap text-xs">
+                      {r.zenemooPaymentId ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-[11px] font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-md">
+                              {r.zenemooPaymentId}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            <a
+                              href={`/payment/${r.zenemooPaymentId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-0.5 text-cyan-400 hover:text-cyan-300 hover:underline font-medium"
+                              title="Open public payment receipt in new tab"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              View
+                            </a>
+                            <span className="text-slate-600">|</span>
+                            <button
+                              onClick={() => {
+                                const url = r.proofLink || generatePaymentProofLink(r.zenemooPaymentId!);
+                                navigator.clipboard.writeText(url);
+                                addToast('Copied', 'Payment link copied to clipboard', 'info');
+                              }}
+                              className="inline-flex items-center gap-0.5 text-slate-300 hover:text-white font-medium"
+                              title="Copy receipt link"
+                            >
+                              <Copy className="w-3 h-3" />
+                              Copy
+                            </button>
+                            <span className="text-slate-600">|</span>
+                            <button
+                              onClick={() => handleShareLink(r)}
+                              className="inline-flex items-center gap-0.5 text-slate-300 hover:text-white font-medium"
+                              title="Share receipt via WhatsApp / SMS / Telegram / etc."
+                            >
+                              <Share2 className="w-3 h-3" />
+                              Share
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 italic text-[11px]">Not created</span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">

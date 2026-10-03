@@ -267,6 +267,54 @@ export const paymentWorkerApi = {
     return response.data;
   },
 
+  async publishPublicReceipts(
+    receipts: Array<{
+      zenemooPaymentId: string;
+      status: string;
+      name: string;
+      upiId?: string;
+      maskedUpiId?: string;
+      amount: number;
+      currency?: string;
+      workType?: string;
+      projectName?: string;
+      utr?: string | null;
+      paymentDate?: string | null;
+      batchId?: string;
+    }>
+  ): Promise<{ success: boolean; count: number; message: string }> {
+    const baseUrl = getPaymentApiBaseUrl();
+    const response = await axios.post(
+      `${baseUrl}/admin/payments/publish-receipts`,
+      { receipts },
+      getAdminAuthHeaders()
+    );
+    return response.data;
+  },
+
+  // --- Public Endpoints ---
+
+  async fetchPublicReceipt(paymentId: string): Promise<{
+    success: boolean;
+    data: {
+      zenemooPaymentId: string;
+      status: 'Paid' | 'Pending' | 'Processing' | 'Issue' | 'Cancelled' | string;
+      name: string;
+      maskedUpiId: string;
+      amount: number;
+      currency: string;
+      workType: string;
+      projectName?: string | null;
+      utr?: string | null;
+      paymentDate?: string | null;
+      batchId?: string | null;
+    };
+  }> {
+    const baseUrl = getPaymentApiBaseUrl();
+    const response = await axios.get(`${baseUrl}/public/receipt/${encodeURIComponent(paymentId)}`);
+    return response.data;
+  },
+
   // --- Talent Endpoints ---
 
   async getTalentPayments(
