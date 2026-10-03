@@ -88,6 +88,7 @@ interface ReferralCache {
   stats: ReferralSummaryStats | null;
   opportunityStats: OpportunityReferralStat[];
   referredApplications: ReferredApplicationItem[];
+  customWhatsappGroups: Record<string, { hasCustomGroup: boolean; whatsappGroupUrl?: string }>;
   token: string | null;
   timestamp: number;
 }
@@ -96,6 +97,7 @@ let referralSessionCache: ReferralCache = {
   stats: null,
   opportunityStats: [],
   referredApplications: [],
+  customWhatsappGroups: {},
   token: null,
   timestamp: 0,
 };
@@ -105,6 +107,7 @@ export const invalidateReferralSessionCache = () => {
     stats: null,
     opportunityStats: [],
     referredApplications: [],
+    customWhatsappGroups: {},
     token: null,
     timestamp: 0,
   };
@@ -150,7 +153,9 @@ export const TalentHubReferrals: React.FC = () => {
   const [projectStatusFilter, setProjectStatusFilter] = useState<'all' | 'open' | 'active_referrals' | 'closed'>('all');
 
   // ── Custom WhatsApp Group State ──
-  const [customWhatsappGroups, setCustomWhatsappGroups] = useState<Record<string, { hasCustomGroup: boolean; whatsappGroupUrl?: string }>>({});
+  const [customWhatsappGroups, setCustomWhatsappGroups] = useState<Record<string, { hasCustomGroup: boolean; whatsappGroupUrl?: string }>>(
+    referralSessionCache.customWhatsappGroups || {}
+  );
   const [dismissedDefaultOpps, setDismissedDefaultOpps] = useState<Set<string>>(new Set());
 
   // First-time prompt state
@@ -214,6 +219,7 @@ export const TalentHubReferrals: React.FC = () => {
       setStats(referralSessionCache.stats);
       setOpportunityStats(referralSessionCache.opportunityStats);
       setReferredApplications(referralSessionCache.referredApplications);
+      setCustomWhatsappGroups(referralSessionCache.customWhatsappGroups || {});
       setIsLoading(false);
       return;
     }
@@ -225,28 +231,46 @@ export const TalentHubReferrals: React.FC = () => {
         talentHubApi.getAllOpportunityWhatsappGroups(token),
       ]);
 
+      let fetchedStats = referralSessionCache.stats || { total: 0, applications: 0, selected: 0, accepted: 0, shortlisted: 0, pending: 0, rejected: 0 };
+      let fetchedOppStats = referralSessionCache.opportunityStats || [];
+      let fetchedReferredApps = referralSessionCache.referredApplications || [];
+
       if (referralsRes.status === 'fulfilled' && referralsRes.value?.success) {
         const res = referralsRes.value;
-        const fetchedStats = res.stats || { total: 0, applications: 0, selected: 0, accepted: 0, shortlisted: 0, pending: 0, rejected: 0 };
-        const fetchedOppStats = res.opportunity_referrals || [];
-        const fetchedReferredApps = res.referred_applications || [];
+        fetchedStats = res.stats || { total: 0, applications: 0, selected: 0, accepted: 0, shortlisted: 0, pending: 0, rejected: 0 };
+        fetchedOppStats = res.opportunity_referrals || [];
+        fetchedReferredApps = res.referred_applications || [];
 
         setStats(fetchedStats);
         setOpportunityStats(fetchedOppStats);
         setReferredApplications(fetchedReferredApps);
-
-        referralSessionCache = {
-          stats: fetchedStats,
-          opportunityStats: fetchedOppStats,
-          referredApplications: fetchedReferredApps,
-          token,
-          timestamp: Date.now(),
-        };
       }
 
-      if (waGroupsRes.status === 'fulfilled' && waGroupsRes.value?.success) {
-        setCustomWhatsappGroups(waGroupsRes.value.groups || {});
+      const parsedGroups: Record<string, { hasCustomGroup: boolean; whatsappGroupUrl?: string }> = {};
+      if (waGroupsRes.status === 'fulfilled' && waGroupsRes.value?.success && waGroupsRes.value.groups) {
+        const raw = waGroupsRes.value.groups;
+        Object.keys(raw).forEach((oppId) => {
+          const val = raw[oppId];
+          if (typeof val === 'string' && val.trim()) {
+            parsedGroups[oppId] = { hasCustomGroup: true, whatsappGroupUrl: val.trim() };
+          } else if (val && typeof val === 'object') {
+            const url = val.whatsappGroupUrl || val.whatsapp_group_url || '';
+            if (val.hasCustomGroup !== false && url) {
+              parsedGroups[oppId] = { hasCustomGroup: true, whatsappGroupUrl: url };
+            }
+          }
+        });
+        setCustomWhatsappGroups(parsedGroups);
       }
+
+      referralSessionCache = {
+        stats: fetchedStats,
+        opportunityStats: fetchedOppStats,
+        referredApplications: fetchedReferredApps,
+        customWhatsappGroups: parsedGroups,
+        token,
+        timestamp: Date.now(),
+      };
     } catch (err) {
       console.warn('[TalentHub Referrals Fetch Error]:', err);
     } finally {
@@ -1669,13 +1693,17 @@ export const TalentHubReferrals: React.FC = () => {
                               token
                             );
                             if (res && res.success) {
+                              const updatedGroup = {
+                                hasCustomGroup: true,
+                                whatsappGroupUrl: cleanUrl,
+                              };
                               setCustomWhatsappGroups((prev) => ({
                                 ...prev,
-                                [firstTimePrompt.oppId]: {
-                                  hasCustomGroup: true,
-                                  whatsappGroupUrl: cleanUrl,
-                                },
+                                [firstTimePrompt.oppId]: updatedGroup,
                               }));
+                              if (referralSessionCache.customWhatsappGroups) {
+                                referralSessionCache.customWhatsappGroups[firstTimePrompt.oppId] = updatedGroup;
+                              }
                               const pending = firstTimePrompt.pendingAction;
                               setFirstTimePrompt(null);
                               if (pending) {
@@ -1926,13 +1954,17 @@ export const TalentHubReferrals: React.FC = () => {
                               token
                             );
                             if (res && res.success) {
+                              const updatedGroup = {
+                                hasCustomGroup: true,
+                                whatsappGroupUrl: cleanUrl,
+                              };
                               setCustomWhatsappGroups((prev) => ({
                                 ...prev,
-                                [manageModal.oppId]: {
-                                  hasCustomGroup: true,
-                                  whatsappGroupUrl: cleanUrl,
-                                },
+                                [manageModal.oppId]: updatedGroup,
                               }));
+                              if (referralSessionCache.customWhatsappGroups) {
+                                referralSessionCache.customWhatsappGroups[manageModal.oppId] = updatedGroup;
+                              }
                               setManageModal(null);
                             } else {
                               setManageError(res?.error || 'Failed to update WhatsApp group.');
@@ -2008,12 +2040,14 @@ export const TalentHubReferrals: React.FC = () => {
                               token
                             );
                             if (res && res.success) {
+                              const removedGroup = { hasCustomGroup: false };
                               setCustomWhatsappGroups((prev) => ({
                                 ...prev,
-                                [manageModal.oppId]: {
-                                  hasCustomGroup: false,
-                                },
+                                [manageModal.oppId]: removedGroup,
                               }));
+                              if (referralSessionCache.customWhatsappGroups) {
+                                referralSessionCache.customWhatsappGroups[manageModal.oppId] = removedGroup;
+                              }
                               setManageModal(null);
                             } else {
                               setManageError(res?.error || 'Failed to remove WhatsApp group.');

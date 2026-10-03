@@ -1320,7 +1320,10 @@ export const getAllTalentOpportunityWhatsappGroups = async (req, res) => {
     const groupsMap = {};
     groupRecords.forEach((r) => {
       if (r.opportunity_id && r.whatsapp_group_url) {
-        groupsMap[r.opportunity_id] = r.whatsapp_group_url;
+        groupsMap[r.opportunity_id] = {
+          hasCustomGroup: true,
+          whatsappGroupUrl: r.whatsapp_group_url,
+        };
       }
     });
 
