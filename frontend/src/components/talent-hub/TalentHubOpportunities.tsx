@@ -950,10 +950,19 @@ export const TalentHubOpportunities: React.FC = () => {
                   <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider">Opportunity Application</span>
                   <h3 className="text-base font-bold text-white truncate max-w-sm font-display">{selectedOppForApply.title}</h3>
                 </div>
-                {!isSubmitting && !submitSuccess && (
+                {!isSubmitting && (
                   <button
-                    onClick={() => setSelectedOppForApply(null)}
-                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                    onClick={() => {
+                      setSelectedOppForApply(null);
+                      if (submitSuccess) {
+                        setSubmitSuccess(null);
+                        setAnswers({});
+                        setApplicantPhone('');
+                      }
+                    }}
+                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer transition-colors"
+                    title="Close Window"
+                    aria-label="Close Window"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -962,7 +971,7 @@ export const TalentHubOpportunities: React.FC = () => {
 
               {/* Form or Success State */}
               {submitSuccess ? (
-                <div className="text-center py-6 px-4 space-y-5 font-mono text-xs my-auto">
+                <div className="text-center py-6 px-4 sm:px-6 space-y-5 font-mono text-xs overflow-y-auto flex-1">
                   <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto text-3xl font-bold shadow-xl shadow-emerald-500/10">
                     <CheckCircle2 className="w-10 h-10 text-emerald-400" />
                   </div>
@@ -1038,7 +1047,7 @@ export const TalentHubOpportunities: React.FC = () => {
                     );
                   })()}
 
-                  <div className="pt-2 max-w-md mx-auto">
+                  <div className="pt-2 pb-2 max-w-md mx-auto">
                     <button
                       type="button"
                       onClick={() => {
@@ -1047,9 +1056,9 @@ export const TalentHubOpportunities: React.FC = () => {
                         setAnswers({});
                         setApplicantPhone('');
                       }}
-                      className="w-full py-3.5 px-6 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer block text-center"
+                      className="w-full py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 border border-white/20 font-extrabold text-xs font-mono cursor-pointer transition-all"
                     >
-                      Done
+                      Close Window
                     </button>
                   </div>
                 </div>
