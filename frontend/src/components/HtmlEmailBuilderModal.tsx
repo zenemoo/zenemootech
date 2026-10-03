@@ -40,14 +40,26 @@ import {
   MoreVertical,
   HelpCircle,
   Menu,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  FileCode,
+  Zap,
 } from 'lucide-react';
-import DOMPurify from 'dompurify';
 import {
   ZENEMOO_EMAIL_BLOCKS,
   ZENEMOO_FULL_TEMPLATES,
   EmailBlockItem,
   EmailTemplatePreset,
 } from '../data/emailBlocks';
+import {
+  compileEmailHtml,
+  sanitizeEmailBuilderHtml,
+  EmailCompatibilityWarning,
+  EmailHealthAuditResult,
+} from '../utils/emailCompiler';
+
+export { sanitizeEmailBuilderHtml };
 
 export interface SavedEmailPreview {
   id: string;
@@ -74,57 +86,6 @@ interface HtmlEmailBuilderModalProps {
   hasExistingContent: boolean;
 }
 
-export const sanitizeEmailBuilderHtml = (rawHtml: string): string => {
-  if (!rawHtml || typeof rawHtml !== 'string') return '';
-
-  return DOMPurify.sanitize(rawHtml, {
-    USE_PROFILES: { html: true },
-    ADD_ATTR: [
-      'target',
-      'style',
-      'align',
-      'valign',
-      'bgcolor',
-      'border',
-      'cellpadding',
-      'cellspacing',
-      'width',
-      'height',
-      'role',
-      'src',
-      'href',
-      'alt',
-    ],
-    ADD_TAGS: ['style'],
-    FORBID_TAGS: [
-      'script',
-      'iframe',
-      'object',
-      'embed',
-      'form',
-      'base',
-      'applet',
-      'meta',
-      'link',
-    ],
-    FORBID_ATTR: [
-      'onerror',
-      'onload',
-      'onclick',
-      'onmouseover',
-      'onfocus',
-      'onblur',
-      'onsubmit',
-      'onchange',
-      'onkeydown',
-      'onkeyup',
-      'onkeypress',
-    ],
-    ALLOWED_URI_REGEXP:
-      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data:image\/):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-  });
-};
-
 const DEFAULT_PARTNERSHIP_TEMPLATE = ZENEMOO_FULL_TEMPLATES[0];
 
 export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
@@ -133,10 +94,20 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   onInsertHtml,
   hasExistingContent,
 }) => {
-  const [rawHtml, setRawHtml] = useState<string>(DEFAULT_PARTNERSHIP_TEMPLATE.html);
-  const [compiledHtml, setCompiledHtml] = useState<string>(() =>
-    sanitizeEmailBuilderHtml(DEFAULT_PARTNERSHIP_TEMPLATE.html)
+  const initialCompiled = useMemo(
+    () =>
+      compileEmailHtml(DEFAULT_PARTNERSHIP_TEMPLATE.html, {
+        preheader: DEFAULT_PARTNERSHIP_TEMPLATE.preheader,
+        recipientName: 'Jaiganesh',
+        companyName: 'Cameo Corporate Services Limited',
+      }),
+    []
   );
+
+  // Source / Authoring State (Full Single File HTML + CSS + JS)
+  const [rawHtml, setRawHtml] = useState<string>(DEFAULT_PARTNERSHIP_TEMPLATE.html);
+  const [compiledHtml, setCompiledHtml] = useState<string>(initialCompiled.compiledHtml);
+  const [compilerAudit, setCompilerAudit] = useState<EmailHealthAuditResult>(initialCompiled.audit);
   const [emailSubject, setEmailSubject] = useState<string>(DEFAULT_PARTNERSHIP_TEMPLATE.subject);
   const [emailPreheader, setEmailPreheader] = useState<string>(DEFAULT_PARTNERSHIP_TEMPLATE.preheader);
 
@@ -149,12 +120,19 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   const [lastAppliedRecipient, setLastAppliedRecipient] = useState<string>('{{RECIPIENT_NAME}}');
   const [lastAppliedCompany, setLastAppliedCompany] = useState<string>('{{COMPANY_NAME}}');
 
+  // Dual Preview State: 'author' (Live HTML + CSS + JS) vs 'emailSafe' (Compiled Email HTML)
+  const [previewMode, setPreviewMode] = useState<'author' | 'emailSafe'>('author');
+  const [authorPreviewKey, setAuthorPreviewKey] = useState<number>(1);
+
   // Preview & Viewport State
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [clientSimulationMode, setClientSimulationMode] = useState<'standard' | 'outlook' | 'gmail' | 'apple'>('standard');
   const [hasCompiled, setHasCompiled] = useState<boolean>(true);
   const [showReplaceConfirm, setShowReplaceConfirm] = useState<boolean>(false);
-  const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showWarningsDrawer, setShowWarningsDrawer] = useState<boolean>(false);
+  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState<boolean>(false);
+  const [isCopyMenuOpen, setIsCopyMenuOpen] = useState<boolean>(false);
 
   // Mobile Workspace Navigation Tabs: 'setup' | 'code' | 'preview'
   const [mobileTab, setMobileTab] = useState<'setup' | 'code' | 'preview'>('preview');
@@ -189,6 +167,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const htmlUploadRef = useRef<HTMLInputElement>(null);
 
   // Load saved previews from localStorage on mount
   useEffect(() => {
@@ -237,7 +216,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   const updateCodeWithHistory = (newCode: string) => {
     setRawHtml(newCode);
     setHasCompiled(false);
-    
+
     // Slice and append
     const updatedHistory = history.slice(0, historyIndex + 1);
     if (updatedHistory[updatedHistory.length - 1] !== newCode) {
@@ -266,24 +245,152 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     }
   };
 
+  // Replay Author sandbox (re-triggers animations and resets JS environment)
+  const handleReplayAuthorSandbox = () => {
+    setAuthorPreviewKey((prev) => prev + 1);
+    showToast('↻ Author sandbox reloaded (animations & JS re-initialized).');
+  };
+
   // Synchronize preheader into HTML
   const updatePreheaderInHtml = (currentCode: string, newPreheader: string) => {
     const preheaderRegex = /<!-- Email Preheader \(Hidden\) -->[\s\S]*?<div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">[\s\S]*?<\/div>/i;
     const replacement = `<!-- Email Preheader (Hidden) -->\n  <div style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">\n    ${newPreheader}\n  </div>`;
-    
+
     if (preheaderRegex.test(currentCode)) {
       return currentCode.replace(preheaderRegex, replacement);
     }
     return currentCode;
   };
 
-  // Compile and sanitize HTML
-  const handleCompileAndPreview = (codeToCompile?: string) => {
+  // Compile and inline email-safe HTML
+  const handleCompileAndPreview = (
+    codeToCompile?: string,
+    preheaderOverride?: string,
+    recOverride?: string,
+    compOverride?: string,
+    switchToEmailSafe = true
+  ) => {
     const targetCode = typeof codeToCompile === 'string' ? codeToCompile : rawHtml;
-    const sanitized = sanitizeEmailBuilderHtml(targetCode);
-    setCompiledHtml(sanitized);
+    const targetPreheader = typeof preheaderOverride === 'string' ? preheaderOverride : emailPreheader;
+    const targetRec = typeof recOverride === 'string' ? recOverride : recipientName;
+    const targetComp = typeof compOverride === 'string' ? compOverride : companyName;
+
+    const result = compileEmailHtml(targetCode, {
+      preheader: targetPreheader,
+      recipientName: targetRec,
+      companyName: targetComp,
+    });
+
+    setCompiledHtml(result.compiledHtml);
+    setCompilerAudit(result.audit);
     setHasCompiled(true);
-    showToast('✓ Email compiled & rendered successfully.');
+    if (switchToEmailSafe) {
+      setPreviewMode('emailSafe');
+    }
+    showToast('✓ Email-safe HTML compiled & verified.');
+  };
+
+  // Single-File HTML Upload Handler
+  const handleUploadHtmlFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      fileReader.readAsText(file, 'UTF-8');
+      fileReader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          if (content && typeof content === 'string') {
+            updateCodeWithHistory(content);
+
+            // Extract title if present
+            const titleMatch = content.match(/<title[^>]*>([^<]+)<\/title>/i);
+            if (titleMatch && titleMatch[1]) {
+              setEmailSubject(titleMatch[1].trim());
+            }
+
+            // Auto-compile email-safe version in background
+            const result = compileEmailHtml(content, {
+              preheader: emailPreheader,
+              recipientName,
+              companyName,
+            });
+            setCompiledHtml(result.compiledHtml);
+            setCompilerAudit(result.audit);
+            setHasCompiled(true);
+            setPreviewMode('author');
+            setAuthorPreviewKey((k) => k + 1);
+
+            showToast(`✓ Loaded HTML file: "${file.name}" into Author Studio!`);
+          }
+        } catch (err) {
+          console.error('Failed to read uploaded HTML file:', err);
+          showToast('Failed to read HTML file.');
+        }
+      };
+    }
+  };
+
+  // Download Single-File HTML (Source vs Email-Safe)
+  const handleDownloadHtml = (type: 'source' | 'emailSafe') => {
+    let contentToDownload = '';
+    let filename = '';
+
+    if (type === 'source') {
+      contentToDownload = rawHtml;
+      filename = `zenemoo_author_source_${new Date().toISOString().slice(0, 10)}.html`;
+    } else {
+      const result = compileEmailHtml(rawHtml, {
+        preheader: emailPreheader,
+        recipientName,
+        companyName,
+      });
+      contentToDownload = result.compiledHtml;
+      filename = `zenemoo_email_safe_${new Date().toISOString().slice(0, 10)}.html`;
+    }
+
+    if (!contentToDownload.trim()) {
+      showToast('No content to download.');
+      return;
+    }
+
+    const blob = new Blob([contentToDownload], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = url;
+    downloadAnchor.download = filename;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    URL.revokeObjectURL(url);
+    setIsDownloadMenuOpen(false);
+
+    showToast(`✓ Downloaded ${type === 'source' ? 'Source HTML' : 'Email-Safe HTML'} file.`);
+  };
+
+  // Copy Code to Clipboard (Source vs Email-Safe)
+  const handleCopyCode = (type: 'source' | 'emailSafe') => {
+    let textToCopy = '';
+
+    if (type === 'source') {
+      textToCopy = rawHtml;
+      if (recipientName && recipientName !== '{{RECIPIENT_NAME}}') {
+        textToCopy = textToCopy.replace(/\{\{RECIPIENT_NAME\}\}/g, recipientName);
+      }
+      if (companyName && companyName !== '{{COMPANY_NAME}}') {
+        textToCopy = textToCopy.replace(/\{\{COMPANY_NAME\}\}/g, companyName);
+      }
+    } else {
+      const result = compileEmailHtml(rawHtml, {
+        preheader: emailPreheader,
+        recipientName,
+        companyName,
+      });
+      textToCopy = result.compiledHtml;
+    }
+
+    navigator.clipboard.writeText(textToCopy);
+    setIsCopyMenuOpen(false);
+    showToast(`✓ Copied ${type === 'source' ? 'Full Author Source HTML' : 'Email-Safe Compiled HTML'} to clipboard!`);
   };
 
   // Load template from Library popup
@@ -293,24 +400,32 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     setEmailPreheader(tpl.preheader);
     setActiveTemplateId(tpl.id);
 
+    let rec = '';
+    let comp = '';
+
     if (tpl.id === 'vendor_delivery_partner_intro') {
-      setRecipientName('Jaiganesh');
-      setCompanyName('Cameo Corporate Services Limited');
+      rec = 'Jaiganesh';
+      comp = 'Cameo Corporate Services Limited';
     } else if (tpl.id === 'introducing_zenemoo') {
-      setRecipientName('Rahul Sharma');
-      setCompanyName('');
-    } else {
-      setRecipientName('');
-      setCompanyName('');
+      rec = 'Rahul Sharma';
+      comp = '';
     }
 
+    setRecipientName(rec);
+    setCompanyName(comp);
     setLastAppliedRecipient('{{RECIPIENT_NAME}}');
     setLastAppliedCompany('{{COMPANY_NAME}}');
 
-    const sanitized = sanitizeEmailBuilderHtml(tpl.html);
-    setCompiledHtml(sanitized);
+    const result = compileEmailHtml(tpl.html, {
+      preheader: tpl.preheader,
+      recipientName: rec,
+      companyName: comp,
+    });
+    setCompiledHtml(result.compiledHtml);
+    setCompilerAudit(result.audit);
     setHasCompiled(true);
-    
+    setAuthorPreviewKey((k) => k + 1);
+
     // Auto-close modal
     setIsTemplateLibraryOpen(false);
     setPreviewingTemplate(null);
@@ -326,6 +441,20 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
       setEmailPreheader('');
       setActiveTemplateId('');
       setHasCompiled(false);
+      setCompilerAudit({
+        score: 0,
+        securityPass: true,
+        tableLayout: false,
+        inlineCssApplied: false,
+        imagesSafe: true,
+        linksAbsolute: true,
+        subjectSet: false,
+        preheaderSet: false,
+        unresolvedVars: false,
+        animationFallbackApplied: false,
+        gradientFallbackApplied: false,
+        warnings: [],
+      });
     }
   };
 
@@ -340,7 +469,11 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     if (recVal) {
       if (updated.includes('{{RECIPIENT_NAME}}')) {
         updated = updated.replace(/\{\{RECIPIENT_NAME\}\}/g, recVal);
-      } else if (lastAppliedRecipient && lastAppliedRecipient !== '{{RECIPIENT_NAME}}' && updated.includes(lastAppliedRecipient)) {
+      } else if (
+        lastAppliedRecipient &&
+        lastAppliedRecipient !== '{{RECIPIENT_NAME}}' &&
+        updated.includes(lastAppliedRecipient)
+      ) {
         updated = updated.split(lastAppliedRecipient).join(recVal);
       }
       setLastAppliedRecipient(recVal);
@@ -350,7 +483,11 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     if (compVal) {
       if (updated.includes('{{COMPANY_NAME}}')) {
         updated = updated.replace(/\{\{COMPANY_NAME\}\}/g, compVal);
-      } else if (lastAppliedCompany && lastAppliedCompany !== '{{COMPANY_NAME}}' && updated.includes(lastAppliedCompany)) {
+      } else if (
+        lastAppliedCompany &&
+        lastAppliedCompany !== '{{COMPANY_NAME}}' &&
+        updated.includes(lastAppliedCompany)
+      ) {
         updated = updated.split(lastAppliedCompany).join(compVal);
       }
       setLastAppliedCompany(compVal);
@@ -362,9 +499,15 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     }
 
     setRawHtml(updated);
-    const sanitized = sanitizeEmailBuilderHtml(updated);
-    setCompiledHtml(sanitized);
+    const result = compileEmailHtml(updated, {
+      preheader: emailPreheader,
+      recipientName: recVal,
+      companyName: compVal,
+    });
+    setCompiledHtml(result.compiledHtml);
+    setCompilerAudit(result.audit);
     setHasCompiled(true);
+    setAuthorPreviewKey((k) => k + 1);
 
     showToast(`✓ Applied details to preview & code.`);
   };
@@ -373,10 +516,18 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   const handleResetVariables = () => {
     let updated = rawHtml;
 
-    if (lastAppliedRecipient && lastAppliedRecipient !== '{{RECIPIENT_NAME}}' && updated.includes(lastAppliedRecipient)) {
+    if (
+      lastAppliedRecipient &&
+      lastAppliedRecipient !== '{{RECIPIENT_NAME}}' &&
+      updated.includes(lastAppliedRecipient)
+    ) {
       updated = updated.split(lastAppliedRecipient).join('{{RECIPIENT_NAME}}');
     }
-    if (lastAppliedCompany && lastAppliedCompany !== '{{COMPANY_NAME}}' && updated.includes(lastAppliedCompany)) {
+    if (
+      lastAppliedCompany &&
+      lastAppliedCompany !== '{{COMPANY_NAME}}' &&
+      updated.includes(lastAppliedCompany)
+    ) {
       updated = updated.split(lastAppliedCompany).join('{{COMPANY_NAME}}');
     }
 
@@ -386,9 +537,15 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     setLastAppliedCompany('{{COMPANY_NAME}}');
 
     setRawHtml(updated);
-    const sanitized = sanitizeEmailBuilderHtml(updated);
-    setCompiledHtml(sanitized);
+    const result = compileEmailHtml(updated, {
+      preheader: emailPreheader,
+      recipientName: '{{RECIPIENT_NAME}}',
+      companyName: '{{COMPANY_NAME}}',
+    });
+    setCompiledHtml(result.compiledHtml);
+    setCompilerAudit(result.audit);
     setHasCompiled(true);
+    setAuthorPreviewKey((k) => k + 1);
 
     showToast('✓ Reset variables to {{RECIPIENT_NAME}} and {{COMPANY_NAME}} placeholders.');
   };
@@ -407,24 +564,6 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     }
   };
 
-  // Copy fully personalized HTML
-  const handleCopyCode = () => {
-    if (!rawHtml) return;
-
-    let exportCode = rawHtml;
-    if (recipientName && recipientName !== '{{RECIPIENT_NAME}}') {
-      exportCode = exportCode.replace(/\{\{RECIPIENT_NAME\}\}/g, recipientName);
-    }
-    if (companyName && companyName !== '{{COMPANY_NAME}}') {
-      exportCode = exportCode.replace(/\{\{COMPANY_NAME\}\}/g, companyName);
-    }
-
-    navigator.clipboard.writeText(exportCode);
-    setCopiedNotification(true);
-    setTimeout(() => setCopiedNotification(false), 2000);
-    showToast('✓ Copied personalized HTML to clipboard!');
-  };
-
   // Save Preview to Local Storage
   const handleOpenSaveDialog = () => {
     if (!rawHtml.trim()) {
@@ -436,7 +575,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
       ? `${tpl.name}${companyName && companyName !== '{{COMPANY_NAME}}' ? ` - ${companyName}` : ''}`
       : emailSubject
       ? emailSubject
-      : 'Custom Email Draft';
+      : 'Custom Single-File Email';
     setSaveName(defaultName);
     setSaveDescription('');
     setIsSaveDialogOpen(true);
@@ -448,6 +587,12 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
       return;
     }
 
+    const compiled = compileEmailHtml(rawHtml, {
+      preheader: emailPreheader,
+      recipientName,
+      companyName,
+    });
+
     const newPreview: SavedEmailPreview = {
       id: `preview_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       name: saveName.trim(),
@@ -455,7 +600,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
       subject: emailSubject,
       preheader: emailPreheader,
       rawHtml: rawHtml,
-      compiledHtml: compiledHtml,
+      compiledHtml: compiled.compiledHtml,
       recipientName: recipientName,
       companyName: companyName,
       templateId: activeTemplateId,
@@ -472,13 +617,20 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   // Open a saved preview
   const handleOpenSavedPreview = (item: SavedEmailPreview) => {
     setRawHtml(item.rawHtml);
-    setCompiledHtml(item.compiledHtml || sanitizeEmailBuilderHtml(item.rawHtml));
+    const compiled = compileEmailHtml(item.rawHtml, {
+      preheader: item.preheader,
+      recipientName: item.recipientName,
+      companyName: item.companyName,
+    });
+    setCompiledHtml(compiled.compiledHtml);
+    setCompilerAudit(compiled.audit);
     setEmailSubject(item.subject || '');
     setEmailPreheader(item.preheader || '');
     if (item.recipientName) setRecipientName(item.recipientName);
     if (item.companyName) setCompanyName(item.companyName);
     if (item.templateId) setActiveTemplateId(item.templateId);
     setHasCompiled(true);
+    setAuthorPreviewKey((k) => k + 1);
     setIsSavedPreviewsOpen(false);
     showToast(`✓ Restored saved email: "${item.name}"`);
   };
@@ -515,7 +667,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(savedPreviews, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `zenemoo_saved_email_previews_${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute(
+      'download',
+      `zenemoo_saved_email_previews_${new Date().toISOString().slice(0, 10)}.json`
+    );
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -539,7 +694,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               subject: String(item.subject || ''),
               preheader: String(item.preheader || ''),
               rawHtml: String(item.rawHtml || ''),
-              compiledHtml: sanitizeEmailBuilderHtml(String(item.rawHtml || '')),
+              compiledHtml: compileEmailHtml(String(item.rawHtml || '')).compiledHtml,
               recipientName: String(item.recipientName || ''),
               companyName: String(item.companyName || ''),
               templateId: String(item.templateId || ''),
@@ -584,47 +739,56 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     }
 
     updateCodeWithHistory(newCode);
-    const sanitized = sanitizeEmailBuilderHtml(newCode);
-    setCompiledHtml(sanitized);
+    const result = compileEmailHtml(newCode, {
+      preheader: emailPreheader,
+      recipientName,
+      companyName,
+    });
+    setCompiledHtml(result.compiledHtml);
+    setCompilerAudit(result.audit);
     setHasCompiled(true);
+    setAuthorPreviewKey((k) => k + 1);
     setIsBlocksOpen(false);
 
     showToast(`✓ Inserted block: "${block.name}"`);
   };
 
   const handleInitiateInsert = () => {
-    const sanitized = sanitizeEmailBuilderHtml(rawHtml);
-    if (!sanitized.trim()) return;
+    if (!rawHtml.trim()) return;
 
     if (hasExistingContent) {
       setShowReplaceConfirm(true);
     } else {
-      executeInsert(sanitized);
+      executeInsert();
     }
   };
 
-  const executeInsert = (contentToInsert?: string) => {
-    let finalHtml = contentToInsert || sanitizeEmailBuilderHtml(rawHtml);
-    
-    if (recipientName && recipientName !== '{{RECIPIENT_NAME}}') {
-      finalHtml = finalHtml.replace(/\{\{RECIPIENT_NAME\}\}/g, recipientName);
-    }
-    if (companyName && companyName !== '{{COMPANY_NAME}}') {
-      finalHtml = finalHtml.replace(/\{\{COMPANY_NAME\}\}/g, companyName);
-    }
+  const executeInsert = () => {
+    // Compile latest version to guarantee 100% email-safe HTML is dispatched
+    const result = compileEmailHtml(rawHtml, {
+      preheader: emailPreheader,
+      recipientName,
+      companyName,
+    });
 
-    onInsertHtml(finalHtml, emailSubject);
+    onInsertHtml(result.compiledHtml, emailSubject);
     setShowReplaceConfirm(false);
     onClose();
   };
 
   // Dynamic variable presence check (CONDITIONAL PERSONALIZATION)
   const hasRecipientVariable = useMemo(() => {
-    return rawHtml.includes('{{RECIPIENT_NAME}}') || (lastAppliedRecipient !== '{{RECIPIENT_NAME}}' && rawHtml.includes(lastAppliedRecipient));
+    return (
+      rawHtml.includes('{{RECIPIENT_NAME}}') ||
+      (lastAppliedRecipient !== '{{RECIPIENT_NAME}}' && rawHtml.includes(lastAppliedRecipient))
+    );
   }, [rawHtml, lastAppliedRecipient]);
 
   const hasCompanyVariable = useMemo(() => {
-    return rawHtml.includes('{{COMPANY_NAME}}') || (lastAppliedCompany !== '{{COMPANY_NAME}}' && rawHtml.includes(lastAppliedCompany));
+    return (
+      rawHtml.includes('{{COMPANY_NAME}}') ||
+      (lastAppliedCompany !== '{{COMPANY_NAME}}' && rawHtml.includes(lastAppliedCompany))
+    );
   }, [rawHtml, lastAppliedCompany]);
 
   const hasAnyVariables = hasRecipientVariable || hasCompanyVariable;
@@ -632,7 +796,8 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
   // Filtered Templates for Template Library Modal
   const filteredTemplates = useMemo(() => {
     return ZENEMOO_FULL_TEMPLATES.filter((tpl) => {
-      const matchCategory = templateCategoryFilter === 'All' || tpl.category.toLowerCase() === templateCategoryFilter.toLowerCase();
+      const matchCategory =
+        templateCategoryFilter === 'All' || tpl.category.toLowerCase() === templateCategoryFilter.toLowerCase();
       const matchSearch =
         templateSearchQuery.trim() === '' ||
         tpl.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
@@ -655,40 +820,6 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
     });
   }, [savedPreviews, savedPreviewsSearch]);
 
-  // Comprehensive Email Check Validator
-  const emailCheckAudits = useMemo(() => {
-    const hasScript = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi.test(rawHtml);
-    const hasIframe = /<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi.test(rawHtml);
-    const hasForm = /<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi.test(rawHtml);
-    const hasJavascriptUrls = /href=["']\s*javascript:/gi.test(rawHtml);
-    const hasTableStructure = /<table\b/gi.test(rawHtml);
-    const hasAltTags = !/<img(?![^>]*\balt=)[^>]*>/gi.test(rawHtml);
-    const hasSubject = emailSubject.trim().length > 0;
-    const hasPreheader = emailPreheader.trim().length > 0;
-    const hasUnresolvedPlaceholders =
-      rawHtml.includes('{{RECIPIENT_NAME}}') || rawHtml.includes('{{COMPANY_NAME}}');
-
-    const totalAudits = 7;
-    let passedCount = 0;
-    if (!hasScript && !hasIframe && !hasForm && !hasJavascriptUrls) passedCount++;
-    if (hasTableStructure) passedCount++;
-    if (hasAltTags) passedCount++;
-    if (hasSubject) passedCount++;
-    if (hasPreheader) passedCount++;
-    if (!hasUnresolvedPlaceholders) passedCount++;
-    passedCount++; // Accessibility contrast verified
-
-    return {
-      score: Math.round((passedCount / totalAudits) * 100),
-      securityPass: !hasScript && !hasIframe && !hasForm && !hasJavascriptUrls,
-      tableLayout: hasTableStructure,
-      imagesSafe: hasAltTags,
-      subjectSet: hasSubject,
-      preheaderSet: hasPreheader,
-      unresolvedVars: hasUnresolvedPlaceholders,
-    };
-  }, [rawHtml, emailSubject, emailPreheader]);
-
   if (!isOpen) return null;
 
   return (
@@ -708,14 +839,17 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-white font-extrabold font-display text-sm sm:text-base tracking-tight truncate">
-                  Zenemoo <span className="text-cyan-400 font-normal">Studio</span>
+                  Zenemoo <span className="text-cyan-400 font-normal">Dual Studio</span>
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[9px] font-bold shrink-0">
-                  Zero Egress
+                <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[9px] font-bold shrink-0">
+                  Full HTML + CSS + JS Source
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[9px] font-bold shrink-0 hidden sm:inline-block">
+                  Dual Preview &bull; Zero Egress
                 </span>
               </div>
               <p className="text-[10px] text-slate-400 font-sans hidden md:block truncate">
-                Design, personalize &amp; safely compile responsive email templates.
+                Author complete HTML applications with animations &amp; JS &bull; Auto-compiles to email-safe HTML for delivery.
               </p>
             </div>
           </div>
@@ -723,7 +857,23 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
           {/* Desktop Toolbar Tools */}
           <div className="hidden md:flex items-center gap-1.5 lg:gap-2">
             
-            {/* 1. Template Library */}
+            {/* 1. Upload HTML File */}
+            <label
+              className="px-2.5 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/10 text-slate-300 font-bold flex items-center gap-1.5 cursor-pointer transition-all text-[11px] active:scale-95"
+              title="Upload complete single-file HTML (.html, .htm)"
+            >
+              <Upload className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Upload HTML</span>
+              <input
+                ref={htmlUploadRef}
+                type="file"
+                accept=".html,.htm"
+                onChange={handleUploadHtmlFile}
+                className="hidden"
+              />
+            </label>
+
+            {/* 2. Template Library */}
             <button
               type="button"
               onClick={() => setIsTemplateLibraryOpen(true)}
@@ -731,10 +881,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               title="Browse standard corporate templates"
             >
               <BookOpen className="w-3.5 h-3.5 text-purple-400" />
-              <span>Template Library</span>
+              <span>Templates</span>
             </button>
 
-            {/* 2. Saved Previews Library */}
+            {/* 3. Saved Previews Library */}
             <button
               type="button"
               onClick={() => setIsSavedPreviewsOpen(true)}
@@ -742,15 +892,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               title="Open personal locally saved previews"
             >
               <FolderArchive className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Saved Previews</span>
-              {savedPreviews.length > 0 && (
-                <span className="px-1.5 py-0.2 bg-cyan-500 text-black text-[9px] font-black rounded-full ml-0.5">
-                  {savedPreviews.length}
-                </span>
-              )}
+              <span>Saved ({savedPreviews.length})</span>
             </button>
 
-            {/* 3. Email Blocks */}
+            {/* 4. Email Blocks */}
             <button
               type="button"
               onClick={() => setIsBlocksOpen(true)}
@@ -758,10 +903,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               title="Insert modular email-safe HTML blocks"
             >
               <Layers className="w-3.5 h-3.5 text-slate-400" />
-              <span>Email Blocks</span>
+              <span>Blocks</span>
             </button>
 
-            {/* 4. Email Check Quality Score */}
+            {/* 5. Email Check Quality Score */}
             <button
               type="button"
               onClick={() => setIsEmailCheckOpen(true)}
@@ -769,13 +914,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               title="Run automated email health & security audit"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Email Check</span>
-              <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 rounded text-[9px]">
-                {emailCheckAudits.score}%
-              </span>
+              <span>Audit ({compilerAudit.score}%)</span>
             </button>
 
-            {/* 5. Save Preview */}
+            {/* 6. Save Preview */}
             <button
               type="button"
               onClick={handleOpenSaveDialog}
@@ -783,7 +925,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               title="Save current preview locally in browser"
             >
               <BookmarkPlus className="w-3.5 h-3.5 text-amber-400" />
-              <span>Save Preview</span>
+              <span>Save</span>
             </button>
 
             {/* Close Studio */}
@@ -820,6 +962,19 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
         {/* MOBILE MENU DROPDOWN */}
         {isMobileMenuOpen && (
           <div className="md:hidden z-30 bg-[#0b101d] border border-cyan-500/30 rounded-2xl p-3 my-2 shadow-2xl grid grid-cols-2 gap-2 animate-in fade-in duration-150">
+            <label className="p-2.5 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-200 text-left font-bold text-xs flex items-center gap-2 cursor-pointer">
+              <Upload className="w-4 h-4 text-cyan-400" />
+              <span>Upload HTML</span>
+              <input
+                type="file"
+                accept=".html,.htm"
+                onChange={(e) => {
+                  handleUploadHtmlFile(e);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="hidden"
+              />
+            </label>
             <button
               type="button"
               onClick={() => {
@@ -862,7 +1017,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-left font-bold text-xs flex items-center gap-2"
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Audit ({emailCheckAudits.score}%)</span>
+              <span>Audit ({compilerAudit.score}%)</span>
             </button>
             <button
               type="button"
@@ -870,10 +1025,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                 handleOpenSaveDialog();
                 setIsMobileMenuOpen(false);
               }}
-              className="col-span-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-center font-bold text-xs flex items-center justify-center gap-2"
+              className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-center font-bold text-xs flex items-center justify-center gap-2"
             >
               <BookmarkPlus className="w-4 h-4 text-amber-400" />
-              <span>Save Current Preview</span>
+              <span>Save Preview</span>
             </button>
           </div>
         )}
@@ -919,7 +1074,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            👁️ Preview
+            👁️ Preview ({previewMode === 'author' ? 'Author' : 'Email-Safe'})
           </button>
         </div>
 
@@ -935,7 +1090,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Type className="w-3 h-3 text-cyan-400" /> Email Subject
+                <Type className="w-3 h-3 text-cyan-400" /> Email Subject Line
               </label>
               <input
                 type="text"
@@ -969,7 +1124,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
                 <div className="flex items-center gap-1.5 text-cyan-300 font-bold uppercase tracking-wider text-[10px] shrink-0">
                   <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>PERSONALIZE EMAIL:</span>
+                  <span>PERSONALIZE VARIABLES:</span>
                 </div>
 
                 {/* Recipient Input */}
@@ -1026,16 +1181,6 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   <Undo2 className="w-3.5 h-3.5 text-amber-400" />
                   <span>Reset</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                  title="Copy personalized HTML"
-                >
-                  <Copy className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Copy HTML</span>
-                </button>
               </div>
             </div>
           )}
@@ -1058,7 +1203,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
             <div className="flex items-center justify-between shrink-0 flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-slate-300 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Code2 className="w-3.5 h-3.5 text-cyan-400" /> HTML Source Code
+                  <Code2 className="w-3.5 h-3.5 text-cyan-400" /> Single-File HTML Source
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-400 text-[10px]">
                   {rawHtml.length} chars &bull; {lineNumbers.length} lines
@@ -1166,77 +1311,113 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                 value={rawHtml}
                 onScroll={handleScrollTextarea}
                 onChange={(e) => updateCodeWithHistory(e.target.value)}
-                placeholder="Write or edit email HTML here (tables, inline CSS, responsive tags)..."
+                placeholder="Write, paste, or upload single-file HTML here (<!DOCTYPE html>, <html>, <style>, <body>, <script>)..."
                 spellCheck={false}
                 className="flex-1 h-full p-3 bg-transparent text-cyan-200 font-mono text-[11px] leading-relaxed resize-none focus:outline-none scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent overflow-x-auto whitespace-pre"
               />
             </div>
 
             {/* Compile & Action Bar */}
-            <div className="flex items-center justify-between shrink-0 pt-1">
+            <div className="flex items-center justify-between shrink-0 pt-1 flex-wrap gap-2">
               <div className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
                 <Info className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
-                <span className="truncate">DOMPurify sanitization &bull; Zero external scripts</span>
+                <span className="truncate">Author preserves CSS &amp; JS &bull; Email Compiler inlines styles &amp; fallbacks</span>
               </div>
 
               <button
                 type="button"
-                onClick={() => handleCompileAndPreview()}
-                className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shrink-0 shadow-md shadow-cyan-500/10"
+                onClick={() => handleCompileAndPreview(undefined, undefined, undefined, undefined, true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shrink-0 shadow-lg shadow-cyan-500/20"
               >
-                <Play className="w-3.5 h-3.5 fill-cyan-400 text-cyan-400" />
-                <span>Compile &amp; Preview</span>
+                <Play className="w-3.5 h-3.5 fill-black text-black" />
+                <span>Compile &amp; Preview Email</span>
               </button>
             </div>
           </div>
 
           {/* ----------------------------------------------------------------------- */}
-          {/* RIGHT COLUMN: LIVE SANDBOXED PREVIEW */}
+          {/* RIGHT COLUMN: DUAL LIVE PREVIEW (AUTHOR vs EMAIL-SAFE) */}
           {/* ----------------------------------------------------------------------- */}
           <div
             className={`flex flex-col min-h-0 bg-[#060911] border border-white/10 rounded-2xl p-3 space-y-2 overflow-hidden ${
               mobileTab === 'preview' ? 'flex' : 'hidden lg:flex'
             }`}
           >
-            {/* Preview Controls Bar */}
-            <div className="flex items-center justify-between shrink-0 flex-wrap gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-slate-300 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Eye className="w-3.5 h-3.5 text-emerald-400" /> Rendered Email Preview
-                </span>
-                {hasCompiled ? (
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold">
-                    ✓ Compiled
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10px] font-bold">
-                    Modified (Click Compile)
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                {/* Refresh Render */}
+            {/* Dual Mode Switcher Tab Bar */}
+            <div className="flex items-center justify-between shrink-0 flex-wrap gap-2 border-b border-white/10 pb-2">
+              
+              {/* Main Dual Mode Pills */}
+              <div className="flex items-center bg-black/60 p-0.5 rounded-xl border border-white/15">
                 <button
                   type="button"
-                  onClick={() => handleCompileAndPreview()}
-                  className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
-                  title="Refresh Rendered Preview"
+                  onClick={() => setPreviewMode('author')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    previewMode === 'author'
+                      ? 'bg-purple-500 text-black shadow-md shadow-purple-500/20'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Author Preview: Runs original CSS, animations, and JS interactions"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Author Preview</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-black/30 text-white font-mono">
+                    Live JS &amp; CSS
+                  </span>
                 </button>
 
-                {/* Viewport Device Switcher */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('emailSafe')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    previewMode === 'emailSafe'
+                      ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Email-Safe Preview: 100% Inlined CSS & safe static fallbacks for Gmail/Outlook"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Email-Safe Preview</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-black/30 text-white font-mono">
+                    Compiled
+                  </span>
+                </button>
+              </div>
+
+              {/* Viewport Device Switcher */}
+              <div className="flex items-center gap-1.5">
+                {previewMode === 'author' && (
+                  <button
+                    type="button"
+                    onClick={handleReplayAuthorSandbox}
+                    className="px-2.5 py-1 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                    title="Reload author sandbox to re-trigger animations & reset JavaScript state"
+                  >
+                    <RotateCcw className="w-3 h-3 text-purple-400" />
+                    <span>Replay</span>
+                  </button>
+                )}
+
+                {previewMode === 'emailSafe' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCompileAndPreview(undefined, undefined, undefined, undefined, false)}
+                    className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                    title="Re-compile email HTML"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
                 <div className="flex items-center bg-white/[0.04] p-0.5 rounded-xl border border-white/10">
                   <button
                     type="button"
                     onClick={() => setPreviewDevice('desktop')}
                     className={`px-2 py-1 rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-all ${
                       previewDevice === 'desktop'
-                        ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
+                        ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
                         : 'text-slate-400 hover:text-white'
                     }`}
-                    title="Desktop 600px Full Width"
+                    title="Desktop 600px Full View"
                   >
                     <Monitor className="w-3 h-3" />
                     <span className="hidden sm:inline">Desktop</span>
@@ -1246,7 +1427,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                     onClick={() => setPreviewDevice('tablet')}
                     className={`px-2 py-1 rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-all ${
                       previewDevice === 'tablet'
-                        ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
+                        ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
                         : 'text-slate-400 hover:text-white'
                     }`}
                     title="Tablet 480px Viewport"
@@ -1259,46 +1440,119 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                     onClick={() => setPreviewDevice('mobile')}
                     className={`px-2 py-1 rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-all ${
                       previewDevice === 'mobile'
-                        ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
+                        ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
                         : 'text-slate-400 hover:text-white'
                     }`}
                     title="Mobile 360px Viewport"
                   >
                     <Smartphone className="w-3 h-3" />
-                    <span className="hidden sm:inline">Mobile (360px)</span>
+                    <span className="hidden sm:inline">Mobile</span>
                   </button>
                 </div>
               </div>
+
             </div>
 
-            {/* Test Preview Status Bar */}
-            <div className="bg-black/40 border border-white/5 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] shrink-0">
-              <div className="flex items-center gap-2 text-slate-400 font-sans truncate">
-                {hasRecipientVariable && (
-                  <span className="truncate">
-                    <strong>Recipient:</strong> <span className="text-cyan-300">{recipientName || '—'}</span>
+            {/* Status & Simulation Banner */}
+            <div className="bg-black/40 border border-white/5 px-3 py-1.5 rounded-xl flex items-center justify-between text-[11px] shrink-0 flex-wrap gap-1.5">
+              
+              {previewMode === 'author' ? (
+                <div className="flex items-center gap-2 text-purple-300 text-[10px]">
+                  <Zap className="w-3 h-3 text-purple-400 animate-pulse" />
+                  <span>
+                    <strong>Author Mode:</strong> Interactive browser rendering (CSS @keyframes &amp; JavaScript enabled in isolated sandbox).
                   </span>
-                )}
-                {hasRecipientVariable && hasCompanyVariable && <span>&bull;</span>}
-                {hasCompanyVariable && (
-                  <span className="truncate">
-                    <strong>Company:</strong> <span className="text-cyan-300">{companyName || '—'}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-emerald-400 text-[10px] flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <strong>Email Delivery Mode:</strong> 100% Inlined CSS &bull; Zero Scripts &bull; Static Fallbacks
                   </span>
-                )}
-                {!hasAnyVariables && (
-                  <span className="text-slate-500">Standard Static Email View</span>
-                )}
-              </div>
+
+                  {/* Client Simulation selector */}
+                  <div className="flex items-center bg-white/[0.04] p-0.5 rounded-lg border border-white/10 text-[9px]">
+                    <button
+                      type="button"
+                      onClick={() => setClientSimulationMode('standard')}
+                      className={`px-1.5 py-0.5 rounded ${
+                        clientSimulationMode === 'standard' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      Universal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClientSimulationMode('outlook')}
+                      className={`px-1.5 py-0.5 rounded ${
+                        clientSimulationMode === 'outlook' ? 'bg-blue-500 text-white font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      Outlook
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClientSimulationMode('gmail')}
+                      className={`px-1.5 py-0.5 rounded ${
+                        clientSimulationMode === 'gmail' ? 'bg-red-500 text-white font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      Gmail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClientSimulationMode('apple')}
+                      className={`px-1.5 py-0.5 rounded ${
+                        clientSimulationMode === 'apple' ? 'bg-purple-500 text-white font-bold' : 'text-slate-400'
+                      }`}
+                    >
+                      Apple Mail
+                    </button>
+                  </div>
+
+                  {compilerAudit.warnings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowWarningsDrawer(!showWarningsDrawer)}
+                      className="px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[9px] font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                      <span>{compilerAudit.warnings.length} Fallbacks</span>
+                      {showWarningsDrawer ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                    </button>
+                  )}
+                </div>
+              )}
+
               <span className="text-[10px] text-slate-500 shrink-0 font-mono hidden sm:inline">
                 {previewDevice === 'mobile'
-                  ? '360px mobile viewport'
+                  ? '360px mobile view'
                   : previewDevice === 'tablet'
-                  ? '480px tablet viewport'
-                  : '600px desktop viewport'}
+                  ? '480px tablet view'
+                  : '600px desktop view'}
               </span>
             </div>
 
-            {/* Sandboxed Iframe Preview */}
+            {/* Warnings Drawer */}
+            {previewMode === 'emailSafe' && showWarningsDrawer && compilerAudit.warnings.length > 0 && (
+              <div className="bg-[#0e1628] border border-amber-500/30 rounded-xl p-2.5 space-y-1.5 text-[10px] max-h-32 overflow-y-auto animate-in fade-in duration-150">
+                <div className="font-bold text-amber-300 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Email Compatibility Transformations ({compilerAudit.warnings.length}):</span>
+                </div>
+                {compilerAudit.warnings.map((w, idx) => (
+                  <div key={idx} className="text-slate-300 pl-4 border-l-2 border-amber-500/50 space-y-0.5">
+                    <div className="font-semibold text-white">{w.title}</div>
+                    <div className="text-slate-400">{w.message}</div>
+                    {w.fallbackApplied && (
+                      <div className="text-emerald-400 font-mono">✓ {w.fallbackApplied}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Sandboxed Iframe Preview (Dual Mode Support) */}
             <div className="flex-1 min-h-0 bg-[#020408] rounded-xl border border-white/10 p-2 sm:p-3 overflow-y-auto flex justify-center items-start scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
               <div
                 className={`transition-all duration-300 h-full max-h-full flex flex-col ${
@@ -1309,21 +1563,41 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                     : 'w-full rounded-xl overflow-hidden bg-white shadow-lg'
                 }`}
               >
-                {compiledHtml ? (
-                  <iframe
-                    title="Email Preview"
-                    sandbox="allow-same-origin"
-                    srcDoc={compiledHtml}
-                    className="w-full h-full min-h-[300px] border-0 bg-white"
-                  />
+                {previewMode === 'author' ? (
+                  rawHtml ? (
+                    <iframe
+                      key={authorPreviewKey}
+                      title="Author Interactive Preview"
+                      sandbox="allow-scripts"
+                      srcDoc={rawHtml}
+                      className="w-full h-full min-h-[300px] border-0 bg-white"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-2">
+                      <Code2 className="w-8 h-8 text-slate-600" />
+                      <div className="font-bold text-slate-300 text-xs">No HTML Source Code</div>
+                      <p className="text-[11px] text-slate-500 max-w-xs">
+                        Write HTML, paste code, or upload a single-file HTML application to begin authoring.
+                      </p>
+                    </div>
+                  )
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-2">
-                    <Code2 className="w-8 h-8 text-slate-600" />
-                    <div className="font-bold text-slate-300 text-xs">No HTML Compiled</div>
-                    <p className="text-[11px] text-slate-500 max-w-xs">
-                      Enter HTML or select a template from the library and click &quot;Compile &amp; Preview&quot;.
-                    </p>
-                  </div>
+                  compiledHtml ? (
+                    <iframe
+                      title="Email-Safe Compiled Preview"
+                      sandbox="allow-same-origin"
+                      srcDoc={compiledHtml}
+                      className="w-full h-full min-h-[300px] border-0 bg-white"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-2">
+                      <Code2 className="w-8 h-8 text-slate-600" />
+                      <div className="font-bold text-slate-300 text-xs">No Email HTML Compiled</div>
+                      <p className="text-[11px] text-slate-500 max-w-xs">
+                        Click &quot;Compile &amp; Preview Email&quot; to compile your author HTML into email-safe format.
+                      </p>
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -1332,25 +1606,94 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
         </div>
 
         {/* ========================================================================= */}
-        {/* MODAL FOOTER CONTROLS */}
+        {/* MODAL FOOTER CONTROLS (DOWNLOAD, COPY & INSERT) */}
         {/* ========================================================================= */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-white/10 pt-3 shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/10 font-bold transition-all cursor-pointer min-h-[40px] text-xs"
+              className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/10 font-bold transition-all cursor-pointer min-h-[38px] text-xs"
             >
               Cancel
             </button>
+
+            {/* Copy Dropdown Menu */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsCopyMenuOpen(!isCopyMenuOpen)}
+                className="px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/10 font-bold transition-all cursor-pointer min-h-[38px] text-xs flex items-center gap-1.5"
+              >
+                <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Copy HTML</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {isCopyMenuOpen && (
+                <div className="absolute left-0 bottom-11 z-30 bg-[#0b101d] border border-cyan-500/40 rounded-xl p-1.5 shadow-2xl space-y-1 min-w-[200px] animate-in fade-in duration-150 font-sans">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyCode('source')}
+                    className="w-full text-left p-2 rounded-lg hover:bg-white/[0.08] text-xs text-purple-300 hover:text-white flex items-center gap-2 cursor-pointer font-bold"
+                  >
+                    <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Copy Author Source HTML</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyCode('emailSafe')}
+                    className="w-full text-left p-2 rounded-lg hover:bg-white/[0.08] text-xs text-emerald-300 hover:text-white flex items-center gap-2 cursor-pointer font-bold"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Copy Email-Safe HTML</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Download Dropdown Menu */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
+                className="px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/10 font-bold transition-all cursor-pointer min-h-[38px] text-xs flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Download HTML</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {isDownloadMenuOpen && (
+                <div className="absolute left-0 bottom-11 z-30 bg-[#0b101d] border border-cyan-500/40 rounded-xl p-1.5 shadow-2xl space-y-1 min-w-[210px] animate-in fade-in duration-150 font-sans">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadHtml('source')}
+                    className="w-full text-left p-2 rounded-lg hover:bg-white/[0.08] text-xs text-purple-300 hover:text-white flex items-center gap-2 cursor-pointer font-bold"
+                  >
+                    <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Download Source HTML (.html)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadHtml('emailSafe')}
+                    className="w-full text-left p-2 rounded-lg hover:bg-white/[0.08] text-xs text-emerald-300 hover:text-white flex items-center gap-2 cursor-pointer font-bold"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Download Email-Safe HTML (.html)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={handleOpenSaveDialog}
-              className="px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/10 font-bold transition-all cursor-pointer min-h-[40px] text-xs flex items-center gap-1.5"
+              className="px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/10 font-bold transition-all cursor-pointer min-h-[38px] text-xs flex items-center gap-1.5"
               title="Save working draft locally"
             >
               <BookmarkPlus className="w-3.5 h-3.5 text-amber-400" />
-              <span>Save Preview</span>
+              <span>Save Draft</span>
             </button>
           </div>
 
@@ -1359,10 +1702,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               type="button"
               onClick={handleInitiateInsert}
               disabled={!rawHtml.trim()}
-              className="w-full sm:w-auto px-6 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold font-display text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-emerald-500/20 min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold font-display text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-emerald-500/20 min-h-[38px] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
             >
               <Check className="w-4 h-4 text-black stroke-[3]" />
-              <span>Insert into Email Editor</span>
+              <span>Insert Email-Safe HTML into Editor</span>
             </button>
           </div>
         </div>
@@ -1385,7 +1728,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                       Template Library
                     </h3>
                     <p className="text-[10px] sm:text-[11px] text-slate-400 font-sans">
-                      Choose a professional corporate email template.
+                      Choose a professional corporate email template (full single-file HTML + auto email compiler).
                     </p>
                   </div>
                 </div>
@@ -1519,8 +1862,8 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   <div className="flex-1 min-h-0 mt-3 bg-white rounded-xl overflow-hidden">
                     <iframe
                       title="Template Preview"
-                      sandbox="allow-same-origin"
-                      srcDoc={sanitizeEmailBuilderHtml(previewingTemplate.html)}
+                      sandbox="allow-scripts"
+                      srcDoc={previewingTemplate.html}
                       className="w-full h-full border-0"
                     />
                   </div>
@@ -1529,7 +1872,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
 
               {/* Footer */}
               <div className="border-t border-white/10 pt-2 flex items-center justify-between text-[10px] text-slate-500">
-                <span>All templates use email-safe responsive table layouts</span>
+                <span>All templates support Dual Authoring and Email-Safe compilation</span>
                 <button
                   type="button"
                   onClick={() => setIsTemplateLibraryOpen(false)}
@@ -1558,10 +1901,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-white font-display flex items-center gap-2">
-                      Saved Email Previews
+                      Saved Email Drafts
                     </h3>
                     <p className="text-[10px] sm:text-[11px] text-slate-400 font-sans">
-                      Locally stored email drafts &amp; personal templates in your browser (Zero Egress).
+                      Locally stored single-file HTML drafts in your browser (Zero Egress).
                     </p>
                   </div>
                 </div>
@@ -1680,9 +2023,9 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                 ) : (
                   <div className="p-8 text-center text-slate-500 space-y-2">
                     <Bookmark className="w-8 h-8 text-slate-600 mx-auto" />
-                    <div>No saved email previews found.</div>
+                    <div>No saved email drafts found.</div>
                     <p className="text-[11px] text-slate-600">
-                      Click &quot;Save Preview&quot; in the builder to save your working email locally.
+                      Click &quot;Save Draft&quot; to preserve your working single-file HTML locally.
                     </p>
                   </div>
                 )}
@@ -1715,16 +2058,16 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   <BookmarkPlus className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white font-display">Save Email Preview</h3>
+                  <h3 className="text-sm font-bold text-white font-display">Save HTML Draft</h3>
                   <p className="text-[10px] text-slate-400 font-sans">
-                    Save this working draft locally in your browser storage.
+                    Save this complete single-file HTML draft locally in browser storage.
                   </p>
                 </div>
               </div>
 
               <div className="space-y-3 font-sans text-xs">
                 <div className="space-y-1">
-                  <label className="text-slate-300 font-bold block">Preview Name *</label>
+                  <label className="text-slate-300 font-bold block">Draft Name *</label>
                   <input
                     type="text"
                     value={saveName}
@@ -1740,7 +2083,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                     type="text"
                     value={saveDescription}
                     onChange={(e) => setSaveDescription(e.target.value)}
-                    placeholder="e.g. Initial vendor partnership response"
+                    placeholder="e.g. Complete single-file HTML with animated hero"
                     className="w-full px-3 py-2 bg-black/50 border border-white/15 rounded-lg text-white text-xs focus:outline-none focus:border-amber-400"
                   />
                 </div>
@@ -1759,7 +2102,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   onClick={handleConfirmSavePreview}
                   className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs cursor-pointer shadow-lg shadow-amber-500/20"
                 >
-                  Save Preview
+                  Save Draft
                 </button>
               </div>
             </div>
@@ -1780,10 +2123,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
-                      Zenemoo Reusable Email Blocks
+                      Zenemoo Email Modular Blocks
                     </h3>
                     <p className="text-[10px] text-slate-400 font-sans">
-                      Select a block to insert email-safe HTML at the current cursor position.
+                      Select a block to insert email HTML at the current cursor position.
                     </p>
                   </div>
                 </div>
@@ -1829,7 +2172,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               </div>
 
               <div className="border-t border-white/10 pt-2 flex items-center justify-between text-[10px] text-slate-500">
-                <span>All blocks use 100% email-safe HTML &bull; Fully editable</span>
+                <span>All blocks integrate into your single-file author source &bull; Fully editable</span>
                 <button
                   type="button"
                   onClick={() => setIsBlocksOpen(false)}
@@ -1856,10 +2199,10 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
-                      Email Health &amp; Security Audit
+                      Email Compatibility &amp; Security Audit
                     </h3>
                     <p className="text-[10px] text-slate-400 font-sans">
-                      Automated validation of HTML safety, responsive structure, and accessibility.
+                      Automated validation of 100% inline CSS, responsive structure, and deliverability.
                     </p>
                   </div>
                 </div>
@@ -1875,11 +2218,11 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               {/* Overall Score Badge */}
               <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-bold text-white">Overall Readiness Score</div>
-                  <div className="text-[10px] text-slate-400">Standard production email deliverability check</div>
+                  <div className="text-xs font-bold text-white">Email Deliverability Readiness Score</div>
+                  <div className="text-[10px] text-slate-400">Tested against Gmail, Outlook, Apple Mail standards</div>
                 </div>
                 <div className="text-xl font-extrabold text-emerald-400 font-mono">
-                  {emailCheckAudits.score}%
+                  {compilerAudit.score}%
                 </div>
               </div>
 
@@ -1887,73 +2230,80 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
               <div className="space-y-2.5 font-sans text-xs">
                 
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+                  <span className="text-slate-300">Inline CSS Transformation:</span>
+                  <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
+                    ✓ 100% Inlined
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
                   <span className="text-slate-300">Executable Scripts &amp; Forms:</span>
-                  {emailCheckAudits.securityPass ? (
+                  {compilerAudit.securityPass ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
-                      ✓ Passed (No Scripts)
+                      ✓ Passed (Scripts Stripped in Delivery)
                     </span>
                   ) : (
                     <span className="text-red-400 font-bold flex items-center gap-1 font-mono">
-                      ✕ Dangerous Tags
+                      ✕ Dangerous Tags Removed
                     </span>
                   )}
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
                   <span className="text-slate-300">Email-Safe Table Architecture:</span>
-                  {emailCheckAudits.tableLayout ? (
+                  {compilerAudit.tableLayout ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
                       ✓ Passed
                     </span>
                   ) : (
                     <span className="text-amber-400 font-bold flex items-center gap-1 font-mono">
-                      ⚠ Warning (Div layout)
+                      ⚠ Wrapped in Table
                     </span>
                   )}
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
-                  <span className="text-slate-300">Subject Line Defined:</span>
-                  {emailCheckAudits.subjectSet ? (
+                  <span className="text-slate-300">Absolute HTTPS Links &amp; Media:</span>
+                  {compilerAudit.linksAbsolute ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
-                      ✓ Passed
+                      ✓ Normalized
                     </span>
                   ) : (
                     <span className="text-amber-400 font-bold flex items-center gap-1 font-mono">
-                      ⚠ Missing Subject
+                      ⚠ Relative URLs Found
                     </span>
                   )}
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
-                  <span className="text-slate-300">Hidden Preheader Defined:</span>
-                  {emailCheckAudits.preheaderSet ? (
+                  <span className="text-slate-300">Subject &amp; Preheader Status:</span>
+                  {emailSubject ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
-                      ✓ Passed
+                      ✓ Configured
                     </span>
                   ) : (
                     <span className="text-amber-400 font-bold flex items-center gap-1 font-mono">
-                      ⚠ Missing Preheader
+                      ⚠ Subject Missing
                     </span>
                   )}
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
-                  <span className="text-slate-300">Image Tags &amp; Alt Attributes:</span>
-                  {emailCheckAudits.imagesSafe ? (
+                  <span className="text-slate-300">Animation Fallback Status:</span>
+                  {compilerAudit.animationFallbackApplied ? (
                     <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
-                      ✓ Passed
+                      ✓ Static Fallback Applied
                     </span>
                   ) : (
-                    <span className="text-amber-400 font-bold flex items-center gap-1 font-mono">
-                      ⚠ Alt Missing
+                    <span className="text-slate-400 font-mono">
+                      — No Animations
                     </span>
                   )}
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
                   <span className="text-slate-300">Template Variables Status:</span>
-                  {emailCheckAudits.unresolvedVars ? (
+                  {compilerAudit.unresolvedVars ? (
                     <span className="text-cyan-300 font-bold flex items-center gap-1 font-mono">
                       ℹ Dynamic Placeholders
                     </span>
@@ -1993,7 +2343,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   Replace Existing Content?
                 </h3>
                 <p className="text-[11px] text-slate-300 font-sans leading-relaxed">
-                  The email editor already contains draft content. Inserting this template will replace the current email body with the personalized HTML from the builder.
+                  The email editor already contains draft content. Inserting this template will replace the current email body with the compiled, email-safe HTML from the builder.
                 </p>
               </div>
               <div className="flex items-center justify-center gap-3 pt-2">
@@ -2009,7 +2359,7 @@ export const HtmlEmailBuilderModal: React.FC<HtmlEmailBuilderModalProps> = ({
                   onClick={() => executeInsert()}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold cursor-pointer transition-all shadow-lg shadow-amber-500/20"
                 >
-                  Replace Content
+                  Replace with Email-Safe HTML
                 </button>
               </div>
             </div>
