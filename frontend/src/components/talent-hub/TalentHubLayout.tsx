@@ -200,19 +200,34 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
   const isIndividualParticipant = talentProfile?.primary_role === 'Individual Participant';
   const hasTeamAccess = !isIndividualParticipant;
 
-  const navItems = [
+  // Top navbar destinations (lg+ desktop/laptop header)
+  const topNavItems = [
     { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'profile' as const, label: 'My Profile', icon: User },
     { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
     { id: 'applications' as const, label: 'My Applications', icon: FileCheck },
-    { id: 'pools' as const, label: 'Talent Pools', icon: Vote },
     { id: 'referrals' as const, label: 'Referrals', icon: Share2 },
     {
       id: 'payments' as const,
       label: talentTotalPaid !== null && talentTotalPaid > 0 ? `Payments ₹${talentTotalPaid.toLocaleString('en-IN')}` : 'Payments',
       icon: CreditCard,
     },
+  ];
+
+  // Mobile / Menu drawer full navigation destinations (Includes Talent Pools & My Team)
+  const drawerNavItems = [
+    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'profile' as const, label: 'My Profile', icon: User },
+    { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
+    { id: 'applications' as const, label: 'My Applications', icon: FileCheck },
+    { id: 'pools' as const, label: 'Talent Pools', icon: Vote },
+    { id: 'referrals' as const, label: 'Referrals', icon: Share2 },
     ...(hasTeamAccess ? [{ id: 'team' as const, label: 'My Team', icon: Users }] : []),
+    {
+      id: 'payments' as const,
+      label: talentTotalPaid !== null && talentTotalPaid > 0 ? `Payments ₹${talentTotalPaid.toLocaleString('en-IN')}` : 'Payments',
+      icon: CreditCard,
+    },
   ];
 
   // Exactly 4 primary mobile bottom navigation destinations
@@ -292,7 +307,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
 
           {/* Desktop & Laptop Nav Items (lg+) */}
           <nav className="hidden lg:flex items-center gap-1 bg-white/[0.03] p-1 rounded-full border border-white/10 backdrop-blur-md shadow-inner">
-            {navItems.map((item) => {
+            {topNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
               return (
@@ -508,6 +523,13 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                           <span>Browse Opportunities</span>
                         </button>
                         <button
+                          onClick={() => handleNavClick('pools')}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                        >
+                          <Vote className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Talent Pools</span>
+                        </button>
+                        <button
                           onClick={() => handleNavClick('referrals')}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                         >
@@ -646,7 +668,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
                   <p className="text-[10px] uppercase font-mono text-slate-400 tracking-wider px-2 pb-1">
                     Navigation
                   </p>
-                  {navItems.map((item) => {
+                  {drawerNavItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = currentTab === item.id;
                     return (

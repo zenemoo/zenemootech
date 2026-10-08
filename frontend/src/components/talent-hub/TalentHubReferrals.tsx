@@ -113,8 +113,20 @@ export const invalidateReferralSessionCache = () => {
   };
 };
 
-export const TalentHubReferrals: React.FC = () => {
+interface TalentHubReferralsProps {
+  onNavigateTeam?: () => void;
+}
+
+export const TalentHubReferrals: React.FC<TalentHubReferralsProps> = ({ onNavigateTeam }) => {
   const { talentProfile, token, opportunities } = useTalentHubAuth();
+
+  const handleGoToTeam = () => {
+    if (onNavigateTeam) {
+      onNavigateTeam();
+    } else if (typeof window !== 'undefined') {
+      window.location.href = '/talent-hub/team';
+    }
+  };
 
   const [isLoading, setIsLoading] = useState(!referralSessionCache.stats);
   const [stats, setStats] = useState<ReferralSummaryStats>(
@@ -755,6 +767,41 @@ export const TalentHubReferrals: React.FC = () => {
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-rose-300 font-display">{stats.rejected}</div>
           <p className="text-[10px] font-mono text-slate-500">Not selected</p>
+        </div>
+      </div>
+
+      {/* ── My Team Referral Network Section ── */}
+      <div className="rounded-2xl bg-gradient-to-r from-[#0a1226]/95 via-[#080d1a]/95 to-[#070b16]/95 border border-sky-500/30 hover:border-sky-500/50 p-5 sm:p-6 transition-all duration-300 shadow-xl shadow-sky-950/20 relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 group-hover:bg-sky-500/15 transition-all" />
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 relative z-10">
+          <div className="flex items-start gap-3.5 sm:gap-4">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center shrink-0 shadow-lg shadow-sky-500/10">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-sky-400" />
+            </div>
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-white font-display">My Team</h3>
+                <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  Network
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed font-sans">
+                Manage and view contributors connected through your referral network.
+              </p>
+            </div>
+          </div>
+
+          <div className="sm:shrink-0">
+            <button
+              type="button"
+              onClick={handleGoToTeam}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-semibold text-xs transition-all shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            >
+              <span>View My Team</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 

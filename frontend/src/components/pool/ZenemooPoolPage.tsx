@@ -768,31 +768,53 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
           {/* Options List */}
           {successState ? (
             <div className="py-6 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                <Check className="w-6 h-6" />
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                <Check className="w-7 h-7" />
               </div>
-              <div>
-                <h4 className="text-sm font-bold text-white">Interest Submitted!</h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                  Thank you, <span className="text-cyan-300 font-semibold">{profile?.name}</span>. Zenemoo may contact you via email if this work becomes active.
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-white font-display">Response Submitted</h4>
+                <p className="text-xs text-slate-300 max-w-xs mx-auto">
+                  Thanks! Your response has been recorded.
                 </p>
               </div>
 
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center max-w-sm mx-auto">
+                {onNavigateHistory && (
+                  <button
+                    type="button"
+                    onClick={onNavigateHistory}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>View My Responses</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onNavigateHome}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-white transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <span>Explore Zenemoo</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
               {/* Share actions */}
-              <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+              <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row gap-2 justify-center">
                 <a
                   href={getWhatsAppShareUrl(pool)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-[#25D366] text-black font-bold text-xs hover:bg-[#20bd5a] transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20"
+                  className="px-3.5 py-2 rounded-xl bg-[#25D366]/20 border border-[#25D366]/40 text-[#25D366] font-semibold text-xs hover:bg-[#25D366]/30 transition-all flex items-center justify-center gap-2"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>Share on WhatsApp</span>
+                  <span>Share Poll on WhatsApp</span>
                 </a>
                 <button
                   type="button"
                   onClick={() => handleCopyPoolLink(pool)}
-                  className="px-4 py-2.5 rounded-xl border border-white/15 bg-white/5 hover:border-cyan-500/30 text-xs text-slate-300 hover:text-white transition-all flex items-center justify-center gap-1.5"
+                  className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-cyan-500/30 text-xs text-slate-300 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedLink ? 'Link Copied!' : 'Copy Link'}</span>
@@ -906,27 +928,60 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
       {/* Onboarding Dialog */}
       {renderOnboardingModal()}
 
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-[#070814]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-xl shadow-black/40">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={onNavigateHome}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-cyan-500/20">
-              Z
+      {/* ── Public Zenemoo Top Navigation Bar ── */}
+      <header className="sticky top-0 z-30 bg-[#070814]/95 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-xl shadow-black/40">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          {/* Brand Logo */}
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={onNavigateHome}>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] flex items-center justify-center shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-all">
+              <div className="w-full h-full bg-[#080912] rounded-[10px] flex items-center justify-center text-white font-black text-sm">
+                Z
+              </div>
             </div>
-            <div>
-              <span className="font-bold text-base tracking-wider text-white">ZENEMOO</span>
-              <span className="text-[10px] text-cyan-400 font-mono block -mt-1 tracking-widest uppercase">
-                Talent Pools
+            <div className="flex flex-col">
+              <span className="font-extrabold text-base sm:text-lg tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
+                ZENEMOO
+              </span>
+              <span className="text-[9px] text-cyan-400 font-mono tracking-widest uppercase">
+                Talent Interest Pool
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Public Navigation Links (Desktop) */}
+          <nav className="hidden md:flex items-center gap-1 bg-white/[0.03] px-3 py-1 rounded-full border border-white/10 text-xs">
+            <a
+              href="/pool"
+              className="px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30"
+            >
+              Pools
+            </a>
+            <a
+              href="/opportunities"
+              className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/5 transition-colors font-medium"
+            >
+              Opportunities
+            </a>
+            <a
+              href="/#services"
+              className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/5 transition-colors font-medium"
+            >
+              Services
+            </a>
+            <a
+              href="/#contact"
+              className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/5 transition-colors font-medium"
+            >
+              Contact
+            </a>
+          </nav>
+
+          {/* Right Header Actions */}
+          <div className="flex items-center gap-2.5">
             {profile && (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 text-xs">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-slate-300 font-medium">{profile.name}</span>
-                <span className="text-slate-500 font-mono text-[11px]">({profile.email})</span>
                 <button
                   onClick={() => {
                     setTempEmail(profile.email);
@@ -944,11 +999,22 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
 
             {onNavigateHistory && (
               <button
+                type="button"
                 onClick={onNavigateHistory}
-                className="px-3 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="hidden sm:inline">My History</span>
+                <span>My History</span>
+              </button>
+            )}
+
+            {onNavigateTalentRegistration && (
+              <button
+                type="button"
+                onClick={onNavigateTalentRegistration}
+                className="hidden sm:inline-flex px-3.5 py-1.5 rounded-xl bg-cyan-500 text-black font-bold text-xs hover:bg-cyan-400 transition-all items-center gap-1.5 cursor-pointer shadow-md shadow-cyan-500/20"
+              >
+                <span>Register Profile</span>
               </button>
             )}
           </div>
@@ -983,15 +1049,15 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
 
         {/* Hero Welcome Banner */}
         <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wider uppercase bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 text-cyan-300 mb-3 shadow-sm">
-            <Zap className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Instant Talent Interest Matching</span>
-          </span>
-          <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-            Tell Zenemoo What Work You Want
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 text-cyan-300 mb-3 shadow-sm">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>ZENEMOO POOL</span>
+          </div>
+          <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight font-display">
+            Talent Interest Pool
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-2.5 leading-relaxed">
-            Participate in quick 30-second polls so Zenemoo can instantly dispatch suitable projects and translation gigs directly to your inbox.
+          <p className="text-xs sm:text-sm text-slate-300 mt-2.5 leading-relaxed font-sans max-w-lg mx-auto">
+            Help us understand your interests and availability so Zenemoo can match you with relevant project pipelines.
           </p>
         </div>
 

@@ -145,16 +145,20 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
 
   return (
     <div className="min-h-screen bg-[#05060f] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Top Header */}
-      <header className="bg-[#070814]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-xl shadow-black/40">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={onNavigateHome}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-cyan-500/20">
-              Z
+      {/* ── Public Zenemoo Top Navigation Bar ── */}
+      <header className="sticky top-0 z-30 bg-[#070814]/95 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-xl shadow-black/40">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={onNavigateHome}>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] flex items-center justify-center shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-all">
+              <div className="w-full h-full bg-[#080912] rounded-[10px] flex items-center justify-center text-white font-black text-sm">
+                Z
+              </div>
             </div>
-            <div>
-              <span className="font-bold text-base tracking-wider text-white">ZENEMOO</span>
-              <span className="text-[10px] text-cyan-400 font-mono block -mt-1 tracking-widest uppercase">
+            <div className="flex flex-col">
+              <span className="font-extrabold text-base sm:text-lg tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
+                ZENEMOO
+              </span>
+              <span className="text-[9px] text-cyan-400 font-mono tracking-widest uppercase">
                 Pool History
               </span>
             </div>
@@ -163,10 +167,11 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
           <div className="flex items-center gap-2">
             {onNavigatePools && (
               <button
+                type="button"
                 onClick={onNavigatePools}
-                className="px-3.5 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Back to Pools</span>
               </button>
             )}

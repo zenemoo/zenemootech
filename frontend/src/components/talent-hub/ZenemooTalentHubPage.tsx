@@ -81,7 +81,9 @@ const TalentHubContent: React.FC<{
           onNavigateOpportunities={() => onChangeSubRoute('opportunities')}
         />
       )}
-      {activeTab === 'referrals' && <TalentHubReferrals />}
+      {activeTab === 'referrals' && (
+        <TalentHubReferrals onNavigateTeam={() => onChangeSubRoute('team')} />
+      )}
       {activeTab === 'team' && <TalentHubTeam />}
       {activeTab === 'payments' && <TalentHubPayments />}
       {activeTab === 'pools' && <TalentHubPools />}
