@@ -1,18 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Clock,
-  Mail,
-  ShieldCheck,
   ArrowLeft,
   RefreshCw,
   CheckCircle2,
   Calendar,
   Sparkles,
   ChevronRight,
-  ExternalLink,
+  ShieldCheck,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { poolApi, PoolHistoryItem } from '../../services/poolApi';
+import { supabase } from '../../lib/supabaseClient';
 
 interface ZenemooPoolHistoryPageProps {
   onNavigatePools?: () => void;
@@ -26,70 +27,117 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
   onBack,
 }) => {
   const handleBack = onBack || onNavigatePools || onNavigateHome;
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<'request' | 'verify' | 'results'>('request');
-  const [isLoading, setIsLoading] = useState(false);
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [history, setHistory] = useState<PoolHistoryItem[]>([]);
 
-  // Step 1: Request OTP
-  const handleRequestOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    const cleanEmail = email.trim().toLowerCase();
+  // 1. Check existing Google / Supabase session on mount
+  useEffect(() => {
+    let isMounted = true;
 
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMsg('Please enter a valid email address.');
-      return;
-    }
+    const checkSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!isMounted) return;
 
-    setIsLoading(true);
-    try {
-      const res = await poolApi.requestHistoryOtp(cleanEmail);
-      if (res.success) {
-        setStep('verify');
-      } else {
-        setErrorMsg(res.message || 'Failed to dispatch verification code.');
-      }
-    } catch (err: any) {
-      setErrorMsg(err?.response?.data?.message || 'Failed to dispatch verification code. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Step 2: Verify OTP
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-
-    if (!otp.trim()) {
-      setErrorMsg('Please enter the 6-digit verification code.');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const cleanEmail = email.trim().toLowerCase();
-      const res = await poolApi.verifyHistoryOtp(cleanEmail, otp.trim());
-      if (res.success) {
-        if (res.token) {
-          const histRes = await poolApi.getPublicHistory(res.token, cleanEmail);
-          setHistory(histRes.history || []);
-        } else {
-          setHistory(res.history || []);
+        if (data?.session?.user) {
+          setSessionUser(data.session.user);
+          setAccessToken(data.session.access_token);
+          loadUserHistory(data.session.access_token);
         }
-        setStep('results');
+      } catch (err: any) {
+        console.warn('[Pool History Auth Check]:', err.message);
+      } finally {
+        if (isMounted) setIsAuthChecking(false);
+      }
+    };
+
+    checkSession();
+
+    // Listen for auth state changes (e.g. after OAuth redirect)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return;
+      if (session?.user) {
+        setSessionUser(session.user);
+        setAccessToken(session.access_token);
+        loadUserHistory(session.access_token);
       } else {
-        setErrorMsg('Invalid verification code.');
+        setSessionUser(null);
+        setAccessToken(null);
+        setHistory([]);
+      }
+      setIsAuthChecking(false);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // 2. Load History using verified Google JWT
+  const loadUserHistory = async (token: string) => {
+    setIsHistoryLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await poolApi.getAuthenticatedHistory(token);
+      if (res.success) {
+        setHistory(res.history || []);
+      } else {
+        setErrorMsg('Failed to load submission history.');
       }
     } catch (err: any) {
-      setErrorMsg(err?.response?.data?.message || 'Invalid or expired verification code.');
+      setErrorMsg(err?.response?.data?.message || 'Failed to load pool submissions. Please try again.');
     } finally {
-      setIsLoading(false);
+      setIsHistoryLoading(false);
     }
   };
+
+  // 3. Initiate Google OAuth Login
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    setErrorMsg('');
+    try {
+      const redirectUrl = window.location.origin + '/pool/history';
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) {
+        setErrorMsg(error.message || 'Google sign in failed. Please try again.');
+        setIsGoogleLoading(false);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to connect to Google authentication.');
+      setIsGoogleLoading(false);
+    }
+  };
+
+  // 4. Handle Sign Out
+  const handleSignOut = async () => {
+    await supabase.auth.signOut().catch(() => {});
+    setSessionUser(null);
+    setAccessToken(null);
+    setHistory([]);
+  };
+
+  const displayName =
+    sessionUser?.user_metadata?.full_name ||
+    sessionUser?.user_metadata?.name ||
+    sessionUser?.email?.split('@')[0] ||
+    'Talent Contributor';
+
+  const userEmail = sessionUser?.email || '';
 
   return (
     <div className="min-h-screen bg-[#05060f] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -108,177 +156,143 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
             </div>
           </div>
 
-          {onNavigatePools && (
-            <button
-              onClick={onNavigatePools}
-              className="px-3.5 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Pools</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {onNavigatePools && (
+              <button
+                onClick={onNavigatePools}
+                className="px-3.5 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Pools</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
       {/* Main Container */}
       <main className="max-w-2xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 flex-1">
-        {step === 'request' && (
+        {isAuthChecking ? (
+          <div className="py-20 text-center text-slate-400 text-xs flex flex-col items-center gap-3">
+            <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
+            <span>Verifying identity...</span>
+          </div>
+        ) : !sessionUser ? (
+          /* Unauthenticated State — Google Sign In Prompt */
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-[#0d1022]/90 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl"
+            className="bg-[#0d1022]/90 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-center space-y-5"
           >
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-5 shadow-lg shadow-cyan-500/10">
-              <Clock className="w-6 h-6" />
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto shadow-lg shadow-cyan-500/10">
+              <ShieldCheck className="w-7 h-7" />
             </div>
 
-            <h2 className="text-xl font-bold text-white mb-2">Look Up Your Pool Submissions</h2>
-            <p className="text-xs sm:text-sm text-slate-400 mb-6 leading-relaxed">
-              To protect your privacy, enter the email address you used when answering Zenemoo talent interest pools. We will send a single-use verification code to authenticate your request.
-            </p>
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-white">My Pool History</h2>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+                Sign in with Google to securely view your submitted Pool history, track answered questions, and check updated preferences.
+              </p>
+            </div>
 
-            <form onSubmit={handleRequestOtp} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-2">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. name@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/90 border border-white/15 focus:border-cyan-400 text-sm text-white placeholder-slate-500 transition-all outline-none"
-                  />
+            {errorMsg && (
+              <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-xl text-left">
+                {errorMsg}
+              </p>
+            )}
+
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading}
+              className="w-full py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs tracking-wider uppercase transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
+            >
+              {isGoogleLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-slate-900" />
+                  <span>Connecting to Google...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>Continue with Google</span>
+                </>
+              )}
+            </button>
+          </motion.div>
+        ) : (
+          /* Authenticated State — Live User History */
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+            {/* Identity Profile Badge */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-cyan-500/20 bg-cyan-950/15 backdrop-blur-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{displayName}</h3>
+                  <p className="text-xs text-cyan-300 font-mono">{userEmail}</p>
                 </div>
               </div>
 
-              {errorMsg && (
-                <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-lg">
-                  {errorMsg}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading || !email.trim()}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wider uppercase transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isLoading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Dispatching Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Send Verification Code</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-          </motion.div>
-        )}
-
-        {step === 'verify' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#0d1022]/90 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl"
-          >
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mb-5 shadow-lg shadow-cyan-500/10">
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-
-            <h2 className="text-xl font-bold text-white mb-1">Enter Verification Code</h2>
-            <p className="text-xs text-slate-400 mb-6">
-              We sent a 6-digit code to <strong className="text-cyan-300">{email}</strong>.
-            </p>
-
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-2">
-                  6-Digit OTP
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  maxLength={6}
-                  placeholder="123456"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                  className="w-full text-center tracking-[8px] font-mono text-xl py-3 rounded-xl bg-slate-900/90 border border-white/15 focus:border-cyan-400 text-white placeholder-slate-600 transition-all outline-none"
-                />
-              </div>
-
-              {errorMsg && (
-                <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-lg">
-                  {errorMsg}
-                </p>
-              )}
-
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-2">
                 <button
-                  type="button"
-                  onClick={() => setStep('request')}
-                  className="flex-1 py-3 rounded-xl border border-white/10 text-xs text-slate-400 hover:text-white transition-colors"
+                  onClick={() => accessToken && loadUserHistory(accessToken)}
+                  disabled={isHistoryLoading}
+                  className="px-3 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/30 text-xs text-slate-300 hover:text-white bg-white/5 flex items-center gap-1.5"
                 >
-                  Change Email
+                  <RefreshCw className={`w-3.5 h-3.5 ${isHistoryLoading ? 'animate-spin text-cyan-400' : ''}`} />
+                  <span>Refresh</span>
                 </button>
 
                 <button
-                  type="submit"
-                  disabled={isLoading || otp.length < 6}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wider uppercase transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  onClick={handleSignOut}
+                  className="px-3 py-1.5 rounded-xl border border-rose-500/20 hover:border-rose-500/40 text-xs text-rose-300 hover:bg-rose-500/10 flex items-center gap-1.5"
                 >
-                  {isLoading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Verifying...</span>
-                    </>
-                  ) : (
-                    <span>View History</span>
-                  )}
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
                 </button>
               </div>
-            </form>
-          </motion.div>
-        )}
-
-        {step === 'results' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div>
-                <h2 className="text-lg font-bold text-white">Your Participation History</h2>
-                <p className="text-xs text-slate-400">
-                  Showing submissions for <span className="text-cyan-300 font-mono">{email}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setStep('request');
-                  setOtp('');
-                }}
-                className="text-xs text-cyan-400 hover:underline"
-              >
-                Log Out
-              </button>
             </div>
 
-            {history.length === 0 ? (
+            {errorMsg && (
+              <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-xl">
+                {errorMsg}
+              </p>
+            )}
+
+            {isHistoryLoading ? (
+              <div className="py-16 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin text-cyan-400" />
+                <span>Loading your submissions...</span>
+              </div>
+            ) : history.length === 0 ? (
               <div className="text-center py-12 px-6 rounded-2xl border border-white/10 bg-[#0d1022] space-y-3">
                 <Clock className="w-8 h-8 text-slate-600 mx-auto" />
-                <h3 className="text-sm font-bold text-white">No Responses Found</h3>
+                <h3 className="text-sm font-bold text-white">No Pool Responses Found</h3>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  We did not find any pool interest responses submitted with this email address.
+                  We did not find any talent interest pool responses submitted under <strong className="text-cyan-300">{userEmail}</strong>.
                 </p>
                 {onNavigatePools && (
                   <button
                     onClick={onNavigatePools}
-                    className="mt-3 px-4 py-2 rounded-xl bg-cyan-500 text-black font-semibold text-xs inline-flex items-center gap-1.5"
+                    className="mt-3 px-4 py-2 rounded-xl bg-cyan-500 text-black font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>Browse Open Pools</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -287,10 +301,16 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-cyan-300">
+                    Your Submissions ({history.length})
+                  </h3>
+                </div>
+
                 {history.map((item, idx) => (
                   <div
                     key={idx}
-                    className="p-5 rounded-2xl border border-white/10 bg-[#0d1022] space-y-3 shadow-lg"
+                    className="p-5 rounded-2xl border border-white/10 bg-[#0d1022] space-y-3 shadow-lg hover:border-cyan-500/30 transition-colors"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
@@ -335,7 +355,7 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
 
       {/* Footer */}
       <footer className="border-t border-white/10 py-6 px-4 text-center text-xs text-slate-500">
-        © {new Date().getFullYear()} Zenemoo Data Solutions.
+        © {new Date().getFullYear()} Zenemoo Data Solutions. Fast talent & project matching.
       </footer>
     </div>
   );

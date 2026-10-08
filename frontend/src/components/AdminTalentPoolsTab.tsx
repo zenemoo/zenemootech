@@ -994,11 +994,10 @@ export const AdminTalentPoolsTab: React.FC = () => {
                               </span>
                             </td>
                             <td className="p-3 text-emerald-300 font-medium">
-                              {r.option_text}
-                              {r.custom_text && <span className="text-slate-400 text-[10px] block italic">"{r.custom_text}"</span>}
+                              {r.selected_choice || r.option_text || 'N/A'}
                             </td>
                             <td className="p-3 text-slate-400 text-[11px]">
-                              {r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN') : 'N/A'}
+                              {r.submitted_at || r.created_at ? new Date(r.submitted_at || r.created_at).toLocaleDateString('en-IN') : 'N/A'}
                             </td>
                           </tr>
                         );

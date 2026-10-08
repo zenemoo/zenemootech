@@ -48,13 +48,17 @@ export interface PoolResponseItem {
   participant_type: string;
   option_id: string;
   option_text: string;
+  selected_choice: string;
+  option_ids?: string[];
   custom_text?: string | null;
   source: string;
   created_at: string;
+  submitted_at?: string;
 }
 
 export interface PoolHistoryItem {
   pool_id: string;
+  public_id?: string;
   pool_title: string;
   category: string;
   pool_status: string;
@@ -99,23 +103,10 @@ export const poolApi = {
     return res.data;
   },
 
-  async requestHistoryOtp(email: string): Promise<{ success: boolean; message: string }> {
-    const baseUrl = getPoolApiBaseUrl();
-    const res = await axios.post(`${baseUrl}/pools/public/history/request-otp`, { email });
-    return res.data;
-  },
-
-  async verifyHistoryOtp(email: string, otp: string): Promise<{ success: boolean; token?: string; history?: PoolHistoryItem[] }> {
-    const baseUrl = getPoolApiBaseUrl();
-    const res = await axios.post(`${baseUrl}/pools/public/history/verify`, { email, code: otp });
-    return res.data;
-  },
-
-  async getPublicHistory(token: string, email: string): Promise<{ success: boolean; history: PoolHistoryItem[]; email: string }> {
+  async getAuthenticatedHistory(token: string): Promise<{ success: boolean; history: PoolHistoryItem[]; email: string; name?: string }> {
     const baseUrl = getPoolApiBaseUrl();
     const res = await axios.get(`${baseUrl}/pools/public/history`, {
       headers: { Authorization: `Bearer ${token}` },
-      params: { email },
     });
     return res.data;
   },

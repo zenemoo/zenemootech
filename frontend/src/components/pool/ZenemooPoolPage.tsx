@@ -25,11 +25,13 @@ import {
 } from 'lucide-react';
 import { poolApi, PoolItem, PoolOptionItem } from '../../services/poolApi';
 import { SeoImage } from '../../seo/components/SeoImage';
+import { supabase } from '../../lib/supabaseClient';
 
 interface LocalPoolProfile {
   email: string;
   name: string;
   participantType: string;
+  authMethod: 'google' | 'manual';
 }
 
 const STORAGE_KEY = 'zenemoo_pool_profile';
@@ -67,11 +69,32 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
   });
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState<1 | 2 | 3>(1);
+  const [onboardingMode, setOnboardingMode] = useState<'choice' | 'manual' | 'google_type'>('choice');
+  const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
   const [tempEmail, setTempEmail] = useState(profile?.email || '');
   const [tempType, setTempType] = useState(profile?.participantType || 'Individual');
   const [tempName, setTempName] = useState(profile?.name || '');
   const [onboardingError, setOnboardingError] = useState('');
+
+  // Check Google session on mount
+  useEffect(() => {
+    const checkGoogleUser = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user) {
+          const gUser = data.session.user;
+          const gEmail = gUser.email || '';
+          const gName = gUser.user_metadata?.full_name || gUser.user_metadata?.name || gEmail.split('@')[0] || '';
+          if (!profile) {
+            setTempEmail(gEmail);
+            setTempName(gName);
+            setOnboardingMode('google_type');
+          }
+        }
+      } catch (_) {}
+    };
+    checkGoogleUser();
+  }, []);
 
   // Pools state
   const [pools, setPools] = useState<PoolItem[]>([]);
@@ -135,50 +158,64 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     };
   }, [initialPublicId]);
 
-  // Handle Onboarding Completion
-  const handleCompleteOnboarding = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Handle Google OAuth Click
+  const handleStartGoogleAuth = async () => {
+    setIsGoogleAuthLoading(true);
     setOnboardingError('');
-
-    if (onboardingStep === 1) {
-      const emailNorm = tempEmail.trim().toLowerCase();
-      if (!emailNorm || !emailNorm.includes('@')) {
-        setOnboardingError('Please enter a valid email address.');
-        return;
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.href,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+      if (error) {
+        setOnboardingError(error.message || 'Google sign-in failed.');
+        setIsGoogleAuthLoading(false);
       }
-      setOnboardingStep(2);
+    } catch (err: any) {
+      setOnboardingError(err?.message || 'Failed to initiate Google authentication.');
+      setIsGoogleAuthLoading(false);
+    }
+  };
+
+  // Handle Onboarding Completion
+  const handleSaveProfile = (authMethod: 'google' | 'manual') => {
+    setOnboardingError('');
+    const emailNorm = tempEmail.trim().toLowerCase();
+    const nameClean = tempName.trim();
+
+    if (!emailNorm || !emailNorm.includes('@')) {
+      setOnboardingError('Please enter a valid email address.');
       return;
     }
 
-    if (onboardingStep === 2) {
-      if (!tempType) {
-        setOnboardingError('Please select your participant category.');
-        return;
-      }
-      setOnboardingStep(3);
+    if (!nameClean) {
+      setOnboardingError('Please enter your name.');
       return;
     }
 
-    if (onboardingStep === 3) {
-      const nameClean = tempName.trim();
-      if (!nameClean) {
-        setOnboardingError('Please enter your full name.');
-        return;
-      }
-
-      const newProfile: LocalPoolProfile = {
-        email: tempEmail.trim().toLowerCase(),
-        name: nameClean,
-        participantType: tempType,
-      };
-
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
-      } catch (_) {}
-
-      setProfile(newProfile);
-      setIsEditingProfile(false);
+    if (!tempType) {
+      setOnboardingError('Please select a participant category.');
+      return;
     }
+
+    const newProfile: LocalPoolProfile = {
+      email: emailNorm,
+      name: nameClean,
+      participantType: tempType,
+      authMethod,
+    };
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfile));
+    } catch (_) {}
+
+    setProfile(newProfile);
+    setIsEditingProfile(false);
   };
 
   // Toggle option selection
@@ -402,62 +439,118 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
             className="w-full max-w-md bg-[#0d0f1f] border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 relative"
           >
             {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/30">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-lg font-bold text-white tracking-wide">Welcome to Zenemoo Pools</h3>
-                <p className="text-xs text-slate-400">Quick 3-step profile to participate</p>
+                <p className="text-xs text-slate-400">
+                  {onboardingMode === 'choice'
+                    ? 'Help us understand your interests and availability'
+                    : onboardingMode === 'google_type'
+                    ? 'Complete your verified participant profile'
+                    : 'Enter your basic details to participate'}
+                </p>
               </div>
             </div>
 
-            {/* Step Progress Pill */}
-            <div className="flex items-center gap-2 mb-6">
-              {[1, 2, 3].map((step) => (
-                <div
-                  key={step}
-                  className={`h-1.5 flex-1 rounded-full transition-all ${
-                    onboardingStep >= step ? 'bg-gradient-to-r from-cyan-400 to-blue-500' : 'bg-slate-800'
-                  }`}
-                />
-              ))}
-            </div>
+            {onboardingError && (
+              <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-xl mb-4">
+                {onboardingError}
+              </p>
+            )}
 
-            <form onSubmit={handleCompleteOnboarding} className="space-y-5">
-              {/* Step 1: Email */}
-              {onboardingStep === 1 && (
-                <div className="space-y-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300">
-                    Step 1 of 3: Your Email Address
-                  </label>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Zenemoo will contact you at this email address if a paid project matching your selected interest becomes available.
-                  </p>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                    <input
-                      type="email"
-                      required
-                      autoFocus
-                      placeholder="e.g. name@example.com"
-                      value={tempEmail}
-                      onChange={(e) => setTempEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/90 border border-white/15 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-sm text-white placeholder-slate-500 transition-all outline-none"
-                    />
+            {/* Mode 1: Choice Screen */}
+            {onboardingMode === 'choice' && (
+              <div className="space-y-4">
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  Answer quick questions from Zenemoo so we can understand your interests, availability and capabilities.
+                </p>
+
+                {/* Google Flow Button */}
+                <button
+                  type="button"
+                  onClick={handleStartGoogleAuth}
+                  disabled={isGoogleAuthLoading}
+                  className="w-full py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs tracking-wider uppercase transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
+                >
+                  {isGoogleAuthLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-900" />
+                      <span>Connecting to Google...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                        <path
+                          fill="#4285F4"
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                        />
+                      </svg>
+                      <span>Continue with Google</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 py-1">
+                  <div className="h-px bg-white/10 flex-1" />
+                  <span className="text-[11px] uppercase font-semibold tracking-wider text-slate-500">OR</span>
+                  <div className="h-px bg-white/10 flex-1" />
+                </div>
+
+                {/* Manual Flow Button */}
+                <button
+                  type="button"
+                  onClick={() => setOnboardingMode('manual')}
+                  className="w-full py-3 rounded-xl border border-white/15 hover:border-cyan-500/40 text-slate-300 hover:text-white bg-slate-900/60 font-semibold text-xs tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Continue Manually</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                {profile && isEditingProfile && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(false)}
+                    className="w-full text-center text-xs text-slate-500 hover:text-slate-300 pt-1"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Mode 2: Google Authenticated User -> Select Participant Type Only */}
+            {onboardingMode === 'google_type' && (
+              <div className="space-y-4">
+                <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-300 font-bold">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{tempName || 'Google User'}</p>
+                    <p className="text-[11px] text-cyan-300 font-mono truncate">{tempEmail}</p>
                   </div>
                 </div>
-              )}
 
-              {/* Step 2: Participant Type */}
-              {onboardingStep === 2 && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300">
-                    Step 2 of 3: Participant Type
+                    Select Your Participant Category *
                   </label>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Tell us in what capacity you plan to work or contribute:
-                  </p>
                   <div className="space-y-2">
                     {PARTICIPANT_TYPES.map((t) => (
                       <div
@@ -484,69 +577,105 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Step 3: Name */}
-              {onboardingStep === 3 && (
-                <div className="space-y-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300">
-                    Step 3 of 3: Your Full Name
-                  </label>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    So our project managers can address you respectfully in matching opportunity communications.
-                  </p>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                    <input
-                      type="text"
-                      required
-                      autoFocus
-                      placeholder="e.g. Prem Kumar / Alpha Solutions"
-                      value={tempName}
-                      onChange={(e) => setTempName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/90 border border-white/15 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-sm text-white placeholder-slate-500 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {onboardingError && (
-                <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-lg">
-                  {onboardingError}
-                </p>
-              )}
-
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-2">
-                {onboardingStep > 1 ? (
+                <div className="flex items-center justify-between pt-2">
                   <button
                     type="button"
-                    onClick={() => setOnboardingStep((prev) => (prev - 1) as any)}
-                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white transition-colors"
+                    onClick={() => setOnboardingMode('choice')}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
                   >
                     Back
                   </button>
-                ) : profile && isEditingProfile ? (
                   <button
                     type="button"
-                    onClick={() => setIsEditingProfile(false)}
-                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white transition-colors"
+                    onClick={() => handleSaveProfile('google')}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer"
                   >
-                    Cancel
+                    <span>Continue to Pools</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </button>
-                ) : (
-                  <div />
-                )}
-
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide transition-all shadow-lg shadow-cyan-500/25 flex items-center gap-2"
-                >
-                  <span>{onboardingStep === 3 ? 'Continue to Pools' : 'Next Step'}</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                </div>
               </div>
-            </form>
+            )}
+
+            {/* Mode 3: Manual Onboarding (Email, Name, Participant Type) */}
+            {onboardingMode === 'manual' && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSaveProfile('manual');
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                    Email Address *
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. name@example.com"
+                      value={tempEmail}
+                      onChange={(e) => setTempEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white placeholder-slate-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                    Full Name *
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Prem Kumar"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white placeholder-slate-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                    Participant Type *
+                  </label>
+                  <select
+                    value={tempType}
+                    onChange={(e) => setTempType(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white outline-none"
+                  >
+                    {PARTICIPANT_TYPES.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setOnboardingMode('choice')}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>Complete & Continue</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </form>
+            )}
           </motion.div>
         </motion.div>
       )}
@@ -774,7 +903,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                     setTempEmail(profile.email);
                     setTempType(profile.participantType);
                     setTempName(profile.name);
-                    setOnboardingStep(1);
+                    setOnboardingMode(profile.authMethod === 'google' ? 'google_type' : 'manual');
                     setIsEditingProfile(true);
                   }}
                   className="text-cyan-400 hover:text-cyan-300 underline text-[11px] ml-1"
@@ -813,7 +942,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                 setTempEmail(profile.email);
                 setTempType(profile.participantType);
                 setTempName(profile.name);
-                setOnboardingStep(1);
+                setOnboardingMode(profile.authMethod === 'google' ? 'google_type' : 'manual');
                 setIsEditingProfile(true);
               }}
               className="text-cyan-400 font-semibold"

@@ -396,61 +396,7 @@ async function verifyTalentUserAuth(request) {
   };
 }
 
-// --- Brevo HTTPS REST API Direct Mail Sender for Worker ---
 
-async function sendPoolHistoryOtpEmail(env, email, otpCode) {
-  const apiKey = env.BREVO_API_KEY || (typeof process !== 'undefined' ? process.env?.BREVO_API_KEY : '');
-  const senderEmail = env.BREVO_SENDER_EMAIL || 'noreply@zenemoo.in';
-  const senderName = env.BREVO_SENDER_NAME || 'Zenemoo Talent Network';
-
-  const htmlContent = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 28px; background-color: #0b0f17; color: #e2e8f0; border-radius: 16px; border: 1px solid #1e293b;">
-      <div style="text-align: center; margin-bottom: 24px;">
-        <h2 style="margin: 0; color: #38bdf8; font-size: 24px; letter-spacing: -0.5px;">ZENEMOO</h2>
-        <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 13px;">Talent Pool Verification</p>
-      </div>
-      <div style="background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 20px;">
-        <p style="margin: 0 0 12px 0; color: #cbd5e1; font-size: 14px;">Your 6-digit verification code to view your Talent Pool submissions:</p>
-        <div style="font-family: monospace; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; padding: 12px 20px; background-color: #030712; border-radius: 8px; display: inline-block; border: 1px solid #0284c7;">
-          ${otpCode}
-        </div>
-        <p style="margin: 14px 0 0 0; color: #64748b; font-size: 12px;">This code is valid for 10 minutes. Please do not share it with anyone.</p>
-      </div>
-      <p style="color: #64748b; font-size: 11px; text-align: center; margin: 0;">If you did not request this verification code, you can safely ignore this email.<br>© ${new Date().getFullYear()} Zenemoo Data Solutions.</p>
-    </div>
-  `;
-
-  if (apiKey && apiKey.startsWith('xkeysib-') && !apiKey.includes('placeholder')) {
-    try {
-      const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: {
-          'api-key': apiKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          sender: { name: senderName, email: senderEmail },
-          to: [{ email }],
-          subject: `${otpCode} is your Zenemoo Talent Pool verification code`,
-          htmlContent,
-        }),
-      });
-
-      if (brevoRes.ok) {
-        return { success: true };
-      }
-      const errJson = await brevoRes.json();
-      console.warn('[Brevo HTTPS Mail Warning]:', errJson);
-    } catch (err) {
-      console.warn('[Brevo HTTPS Fetch Error]:', err.message);
-    }
-  }
-
-  // Development/Sandbox logger
-  console.log(`[DEV OTP LOG] Verification code for ${email} is: ${otpCode}`);
-  return { success: true, devLogged: true };
-}
 
 // ============================================================================
 // MAIN CLOUDFLARE WORKER ROUTER
@@ -685,82 +631,14 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // 2. PUBLIC HISTORY (Email OTP Verification Flow via KV)
+      // 2. USER POOL HISTORY (Google / Verified Token Authenticated Flow)
       // ----------------------------------------------------------------------
-
-      // POST /api/pools/public/history/request-otp OR POST /api/pools/history/request-otp
-      if (method === 'POST' && (path === '/api/pools/public/history/request-otp' || path === '/api/pools/history/request-otp')) {
-        const body = await request.json().catch(() => ({}));
-        const email = normalizeEmail(body.email);
-
-        if (!email || !email.includes('@')) {
-          return errorResponse('Valid email address is required.', 400, corsHeaders);
-        }
-
-        // Rate limit: 3 OTP requests per 2 minutes per email
-        const isAllowed = await checkRateLimit(env, `otp_req:${email}`, 3, 120);
-        if (!isAllowed) {
-          return errorResponse('Please wait a few minutes before requesting another verification code.', 429, corsHeaders);
-        }
-
-        // Generate 6-digit numeric OTP
-        const randomInt = Math.floor(100000 + Math.random() * 900000);
-        const otpCode = String(randomInt);
-
-        // Save in Cloudflare KV with 10-minute expiration
-        await kvSet(env, `pool_otp:${email}`, otpCode, 600);
-
-        // Send Email via Brevo HTTP v3 REST API
-        await sendPoolHistoryOtpEmail(env, email, otpCode);
-
-        return jsonResponse({
-          success: true,
-          message: 'Verification code sent to your email.',
-        }, 200, corsHeaders);
-      }
-
-      // POST /api/pools/public/history/verify OR POST /api/pools/history/verify
-      if (method === 'POST' && (path === '/api/pools/public/history/verify' || path === '/api/pools/history/verify')) {
-        const body = await request.json().catch(() => ({}));
-        const email = normalizeEmail(body.email);
-        const code = (body.code || body.otp || '').trim();
-
-        if (!email || !code) {
-          return errorResponse('Email and verification code are required.', 400, corsHeaders);
-        }
-
-        const storedOtp = await kvGet(env, `pool_otp:${email}`);
-        if (!storedOtp || storedOtp !== code) {
-          return errorResponse('Invalid or expired verification code.', 400, corsHeaders);
-        }
-
-        // Remove OTP from KV after successful verification
-        await kvDelete(env, `pool_otp:${email}`);
-
-        // Issue temporary verified history session token in KV (valid 1 hour)
-        const historyToken = `hist_${crypto.randomUUID().replace(/-/g, '')}`;
-        await kvSet(env, `hist_sess:${historyToken}`, email, 3600);
-
-        return jsonResponse({
-          success: true,
-          message: 'Email verified successfully.',
-          token: historyToken,
-        }, 200, corsHeaders);
-      }
 
       // GET /api/pools/public/history OR GET /api/pools/history
       if (method === 'GET' && (path === '/api/pools/public/history' || path === '/api/pools/history')) {
-        const authHeader = request.headers.get('Authorization') || '';
-        const token = authHeader.replace('Bearer ', '').trim();
-        const queryEmail = normalizeEmail(url.searchParams.get('email'));
-
-        if (!token) {
-          return errorResponse('Verification token required to view submission history.', 401, corsHeaders);
-        }
-
-        const sessionEmail = await kvGet(env, `hist_sess:${token}`);
-        if (!sessionEmail || (queryEmail && sessionEmail !== queryEmail)) {
-          return errorResponse('Invalid or expired session. Please verify your email again.', 401, corsHeaders);
+        const authUser = await verifyTalentUserAuth(request);
+        if (!authUser || !authUser.email) {
+          return errorResponse('Sign in with Google to securely view your submitted Pool history.', 401, corsHeaders);
         }
 
         const historyRows = await env.DB.prepare(`
@@ -783,13 +661,35 @@ export default {
           JOIN pool_options o ON r.option_id = o.id
           WHERE r.email = ?
           ORDER BY r.created_at DESC
-        `).bind(sessionEmail).all();
+        `).bind(authUser.email).all();
+
+        const poolsMap = new Map();
+        for (const row of historyRows.results || []) {
+          if (!poolsMap.has(row.pool_id)) {
+            poolsMap.set(row.pool_id, {
+              pool_id: row.pool_id,
+              public_id: row.public_id,
+              pool_title: row.pool_title,
+              category: row.pool_category || 'General',
+              pool_status: row.pool_status,
+              submitted_at: row.created_at,
+              updated_at: row.updated_at,
+              selected_options: [],
+            });
+          }
+          poolsMap.get(row.pool_id).selected_options.push({
+            option_id: row.option_id,
+            option_text: row.option_text,
+            custom_text: row.custom_text,
+          });
+        }
 
         return jsonResponse({
           success: true,
-          email: sessionEmail,
-          count: (historyRows.results || []).length,
-          history: historyRows.results || [],
+          email: authUser.email,
+          name: authUser.name,
+          count: poolsMap.size,
+          history: Array.from(poolsMap.values()),
         }, 200, corsHeaders);
       }
 
@@ -1116,47 +1016,35 @@ export default {
         const responsesMatch = path.match(/^\/api\/(?:admin\/pools|pools\/admin)\/([A-Za-z0-9_-]+)\/responses$/);
         if (method === 'GET' && responsesMatch) {
           const poolIdOrPublicId = responsesMatch[1];
-          const pool = await env.DB.prepare('SELECT id, public_id, title FROM pools WHERE id = ? OR public_id = ?').bind(poolIdOrPublicId, poolIdOrPublicId).first();
+          const pool = await env.DB.prepare('SELECT id, public_id, title, category, allow_multiple FROM pools WHERE id = ? OR public_id = ?').bind(poolIdOrPublicId, poolIdOrPublicId).first();
           if (!pool) {
             return errorResponse('Pool not found.', 404, corsHeaders);
           }
 
-          const optionFilter = url.searchParams.get('optionId');
-          const typeFilter = url.searchParams.get('participantType');
-          const search = url.searchParams.get('search');
-          const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-          const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
-          const offset = (page - 1) * limit;
+          // Fetch options for this pool
+          const optionsRes = await env.DB.prepare('SELECT id, option_text, sort_order FROM pool_options WHERE pool_id = ? ORDER BY sort_order ASC').bind(pool.id).all();
+          const rawOptions = optionsRes.results || [];
 
-          let whereSql = 'WHERE r.pool_id = ?';
-          const params = [pool.id];
-
-          if (optionFilter && optionFilter !== 'all') {
-            whereSql += ' AND r.option_id = ?';
-            params.push(optionFilter);
+          // Calculate actual submitted count per option
+          const countsRes = await env.DB.prepare('SELECT option_id, COUNT(*) as count FROM pool_responses WHERE pool_id = ? GROUP BY option_id').bind(pool.id).all();
+          const countMap = new Map();
+          for (const c of countsRes.results || []) {
+            countMap.set(c.option_id, c.count);
           }
 
-          if (typeFilter && typeFilter !== 'all') {
-            whereSql += ' AND r.participant_type = ?';
-            params.push(typeFilter);
-          }
+          const optionPills = rawOptions.map((opt) => ({
+            id: opt.id,
+            option_text: opt.option_text,
+            count: countMap.get(opt.id) || 0,
+          }));
 
-          if (search && search.trim()) {
-            whereSql += ' AND (r.name LIKE ? OR r.email LIKE ? OR r.custom_text LIKE ?)';
-            const term = `%${search.trim()}%`;
-            params.push(term, term, term);
-          }
-
-          const countQuery = `SELECT COUNT(*) as total FROM pool_responses r ${whereSql}`;
-          const totalRes = await env.DB.prepare(countQuery).bind(...params).first();
-          const total = totalRes?.total || 0;
-
-          const dataQuery = `
+          // Fetch all response rows joined with options
+          const allPoolResponsesRes = await env.DB.prepare(`
             SELECT 
               r.id,
               r.pool_id,
               r.option_id,
-              o.option_text as option_title,
+              o.option_text,
               r.email,
               r.name,
               r.participant_type,
@@ -1166,11 +1054,94 @@ export default {
               r.updated_at
             FROM pool_responses r
             JOIN pool_options o ON r.option_id = o.id
-            ${whereSql}
+            WHERE r.pool_id = ?
             ORDER BY r.created_at DESC
-            LIMIT ? OFFSET ?
-          `;
-          const rowsRes = await env.DB.prepare(dataQuery).bind(...params, limit, offset).all();
+          `).bind(pool.id).all();
+
+          const allRows = allPoolResponsesRes.results || [];
+
+          // Group responses by respondent email so multi-select responses are unified
+          const respondentMap = new Map();
+          for (const row of allRows) {
+            const key = (row.email || '').toLowerCase();
+            if (!respondentMap.has(key)) {
+              respondentMap.set(key, {
+                id: row.id,
+                pool_id: row.pool_id,
+                email: row.email,
+                name: row.name,
+                participant_type: row.participant_type || 'Individual',
+                source: row.source || 'public_web',
+                created_at: row.created_at,
+                submitted_at: row.created_at,
+                updated_at: row.updated_at,
+                option_ids: [],
+                option_texts: [],
+                custom_texts: [],
+                selected_choices: [],
+              });
+            }
+            const item = respondentMap.get(key);
+            item.option_ids.push(row.option_id);
+            item.option_texts.push(row.option_text);
+            if (row.custom_text && row.custom_text.trim()) {
+              item.custom_texts.push(row.custom_text.trim());
+            }
+
+            let choiceLabel = row.option_text;
+            if (row.custom_text && row.custom_text.trim()) {
+              if (choiceLabel.toLowerCase().includes('other')) {
+                choiceLabel = `${choiceLabel} — ${row.custom_text.trim()}`;
+              }
+            }
+            item.selected_choices.push(choiceLabel);
+          }
+
+          let aggregatedRespondents = Array.from(respondentMap.values()).map((item) => ({
+            id: item.id,
+            pool_id: item.pool_id,
+            email: item.email,
+            name: item.name,
+            participant_type: item.participant_type,
+            source: item.source,
+            created_at: item.created_at,
+            submitted_at: item.created_at,
+            updated_at: item.updated_at,
+            option_id: item.option_ids[0] || '',
+            option_ids: item.option_ids,
+            option_text: item.option_texts.join(', '),
+            selected_choice: item.selected_choices.join(', '),
+            custom_text: item.custom_texts.join(' | ') || null,
+          }));
+
+          // Filters
+          const optionFilter = url.searchParams.get('optionId');
+          const typeFilter = url.searchParams.get('participantType');
+          const search = url.searchParams.get('search');
+          const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+          const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
+
+          if (optionFilter && optionFilter !== 'all') {
+            aggregatedRespondents = aggregatedRespondents.filter((r) => r.option_ids.includes(optionFilter));
+          }
+
+          if (typeFilter && typeFilter !== 'all') {
+            aggregatedRespondents = aggregatedRespondents.filter((r) => (r.participant_type || '').toLowerCase() === typeFilter.toLowerCase());
+          }
+
+          if (search && search.trim()) {
+            const term = search.trim().toLowerCase();
+            aggregatedRespondents = aggregatedRespondents.filter((r) =>
+              (r.name && r.name.toLowerCase().includes(term)) ||
+              (r.email && r.email.toLowerCase().includes(term)) ||
+              (r.selected_choice && r.selected_choice.toLowerCase().includes(term)) ||
+              (r.custom_text && r.custom_text.toLowerCase().includes(term))
+            );
+          }
+
+          const totalFiltered = aggregatedRespondents.length;
+          const offset = (page - 1) * limit;
+          const paginatedResponses = aggregatedRespondents.slice(offset, offset + limit);
 
           return jsonResponse({
             success: true,
@@ -1178,14 +1149,19 @@ export default {
               id: pool.id,
               public_id: pool.public_id,
               title: pool.title,
+              category: pool.category || 'General',
+              total_responses_count: respondentMap.size,
+              total_submissions: allRows.length,
             },
+            options: optionPills,
+            total_count: totalFiltered,
             pagination: {
               page,
               limit,
-              total,
-              totalPages: Math.ceil(total / limit) || 1,
+              total: totalFiltered,
+              totalPages: Math.ceil(totalFiltered / limit) || 1,
             },
-            responses: rowsRes.results || [],
+            responses: paginatedResponses,
           }, 200, corsHeaders);
         }
 
@@ -1200,7 +1176,7 @@ export default {
             return errorResponse('Pool not found.', 404, corsHeaders);
           }
 
-          const rowsRes = await env.DB.prepare(`
+          const allPoolResponsesRes = await env.DB.prepare(`
             SELECT 
               r.id,
               r.name,
@@ -1216,19 +1192,46 @@ export default {
             ORDER BY r.created_at DESC
           `).bind(pool.id).all();
 
-          const rows = rowsRes.results || [];
+          const allRows = allPoolResponsesRes.results || [];
 
-          const exportData = rows.map((r, idx) => ({
+          // Group by respondent
+          const respondentMap = new Map();
+          for (const row of allRows) {
+            const key = (row.email || '').toLowerCase();
+            if (!respondentMap.has(key)) {
+              respondentMap.set(key, {
+                id: row.id,
+                email: row.email,
+                name: row.name,
+                participant_type: row.participant_type || 'Individual',
+                source: row.source || 'public_web',
+                created_at: row.created_at,
+                selected_choices: [],
+                custom_texts: [],
+              });
+            }
+            const item = respondentMap.get(key);
+            let choiceLabel = row.option_text;
+            if (row.custom_text && row.custom_text.trim()) {
+              if (choiceLabel.toLowerCase().includes('other')) {
+                choiceLabel = `${choiceLabel} — ${row.custom_text.trim()}`;
+              }
+              item.custom_texts.push(row.custom_text.trim());
+            }
+            item.selected_choices.push(choiceLabel);
+          }
+
+          const exportData = Array.from(respondentMap.values()).map((r, idx) => ({
             'S.No': idx + 1,
             'Response ID': r.id,
             'Pool Public ID': pool.public_id,
             'Pool Title': pool.title,
             'Category': pool.category || 'General',
-            'Selected Option': r.option_text || 'N/A',
+            'Selected Option': r.selected_choices.join(', ') || 'N/A',
             'Respondent Name': r.name,
             'Respondent Email': r.email,
             'Participant Type': r.participant_type || 'Individual',
-            'Custom Text / Other': r.custom_text || '',
+            'Custom Text / Other': r.custom_texts.join(' | ') || '',
             'Submission Source': r.source || 'public_web',
             'Submitted At': r.created_at || '',
           }));
