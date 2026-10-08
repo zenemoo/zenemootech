@@ -647,6 +647,7 @@ export default {
             r.pool_id,
             p.public_id,
             p.title as pool_title,
+            p.description as pool_description,
             p.category as pool_category,
             p.status as pool_status,
             o.id as option_id,
@@ -670,18 +671,27 @@ export default {
               pool_id: row.pool_id,
               public_id: row.public_id,
               pool_title: row.pool_title,
+              title: row.pool_title,
+              description: row.pool_description || null,
               category: row.pool_category || 'General',
               pool_status: row.pool_status,
+              status: row.pool_status,
               submitted_at: row.created_at,
+              created_at: row.created_at,
               updated_at: row.updated_at,
               selected_options: [],
+              selectedOptions: [],
             });
           }
-          poolsMap.get(row.pool_id).selected_options.push({
+          const optObj = {
+            id: row.option_id,
             option_id: row.option_id,
             option_text: row.option_text,
-            custom_text: row.custom_text,
-          });
+            text: row.option_text,
+            custom_text: row.custom_text || null,
+          };
+          poolsMap.get(row.pool_id).selected_options.push(optObj);
+          poolsMap.get(row.pool_id).selectedOptions.push(optObj);
         }
 
         return jsonResponse({
@@ -772,6 +782,7 @@ export default {
             r.pool_id,
             p.public_id,
             p.title as pool_title,
+            p.description as pool_description,
             p.category as pool_category,
             p.status as pool_status,
             o.id as option_id,
@@ -788,11 +799,42 @@ export default {
           ORDER BY r.created_at DESC
         `).bind(talentUser.email).all();
 
+        const poolsMap = new Map();
+        for (const row of historyRows.results || []) {
+          if (!poolsMap.has(row.pool_id)) {
+            poolsMap.set(row.pool_id, {
+              pool_id: row.pool_id,
+              public_id: row.public_id,
+              pool_title: row.pool_title,
+              title: row.pool_title,
+              description: row.pool_description || null,
+              category: row.pool_category || 'General',
+              pool_status: row.pool_status,
+              status: row.pool_status,
+              submitted_at: row.created_at,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+              selected_options: [],
+              selectedOptions: [],
+            });
+          }
+          const optObj = {
+            id: row.option_id,
+            option_id: row.option_id,
+            option_text: row.option_text,
+            text: row.option_text,
+            custom_text: row.custom_text || null,
+          };
+          poolsMap.get(row.pool_id).selected_options.push(optObj);
+          poolsMap.get(row.pool_id).selectedOptions.push(optObj);
+        }
+
         return jsonResponse({
           success: true,
           email: talentUser.email,
-          count: (historyRows.results || []).length,
-          history: historyRows.results || [],
+          name: talentUser.name,
+          count: poolsMap.size,
+          history: Array.from(poolsMap.values()),
         }, 200, corsHeaders);
       }
 

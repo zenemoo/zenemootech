@@ -419,7 +419,7 @@ export const TalentHubPools: React.FC = () => {
                       {hasResponded && !isEditing ? (
                         <div className="space-y-3 pt-2">
                           <div className="space-y-2">
-                            {pool.options.map((opt) => {
+                            {(pool.options || []).map((opt) => {
                               const isSelected =
                                 selectedIds.includes(opt.id) ||
                                 submittedLabels.includes(opt.option_text);
@@ -478,7 +478,7 @@ export const TalentHubPools: React.FC = () => {
                           <p className="text-[11px] font-mono text-slate-400 pb-1">
                             {pool.allow_multiple ? 'Select all that apply:' : 'Select one option:'}
                           </p>
-                          {pool.options.map((opt) => {
+                          {(pool.options || []).map((opt) => {
                             const isSelected = selectedIds.includes(opt.id);
                             return (
                               <div
@@ -685,13 +685,13 @@ export const TalentHubPools: React.FC = () => {
                         Your Submitted Response:
                       </span>
                       <div className="flex flex-wrap gap-2">
-                        {item.selected_options.map((opt, oIdx) => (
+                        {(item.selected_options || item.selectedOptions || []).map((opt, oIdx) => (
                           <div
                             key={oIdx}
                             className="flex items-center gap-2 text-xs text-emerald-200 bg-emerald-500/15 border border-emerald-500/30 px-3.5 py-1.5 rounded-xl font-medium shadow-sm"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            <span>{opt.option_text}</span>
+                            <span>{opt.option_text || (opt as any).text}</span>
                             {opt.custom_text && (
                               <span className="text-slate-300 text-[11px] font-normal">
                                 ({opt.custom_text})

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -22,11 +22,16 @@ import {
   HelpCircle,
   ShieldCheck,
   Zap,
+  Menu,
+  X,
+  Vote,
+  Edit3,
 } from 'lucide-react';
-import { poolApi, PoolItem, PoolOptionItem } from '../../services/poolApi';
+import { poolApi, PoolItem, PoolOptionItem, PoolHistoryItem } from '../../services/poolApi';
 import { SeoImage } from '../../seo/components/SeoImage';
 import { supabase } from '../../lib/supabaseClient';
 import { setAuthReturnDestination } from '../../lib/authReturnRouting';
+import { useActiveLogo } from '../../lib/useActiveLogo';
 
 interface LocalPoolProfile {
   email: string;
@@ -59,7 +64,14 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
   onNavigateTalentRegistration,
   onNavigateHistory,
 }) => {
-  const handleGoHome = onNavigateHome || onBack;
+  const { logoUrl, isLoading: isLogoLoading } = useActiveLogo();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Profile & Google Auth state
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [userHistory, setUserHistory] = useState<PoolHistoryItem[]>([]);
+
   const [profile, setProfile] = useState<LocalPoolProfile | null>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -77,7 +89,33 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
   const [tempName, setTempName] = useState(profile?.name || '');
   const [onboardingError, setOnboardingError] = useState('');
 
-  // Check Google session on mount and listen for auth state changes
+  // Pools state
+  const [pools, setPools] = useState<PoolItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Interaction state
+  const [selectedOptionsMap, setSelectedOptionsMap] = useState<Record<string, string[]>>({});
+  const [customTextMap, setCustomTextMap] = useState<Record<string, string>>({});
+  const [editingPoolIds, setEditingPoolIds] = useState<Record<string, boolean>>({});
+  const [submittingPoolId, setSubmittingPoolId] = useState<string | null>(null);
+  const [submitFeedbackMap, setSubmitFeedbackMap] = useState<Record<string, { message: string; isError?: boolean }>>({});
+  const [copiedLinkPoolId, setCopiedLinkPoolId] = useState<string | null>(null);
+
+  // Filter state for overview
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // 1. Check Google Auth Session & load user history for cross-referencing
+  const fetchUserHistory = async (token: string) => {
+    try {
+      const res = await poolApi.getAuthenticatedHistory(token);
+      if (res.success && Array.isArray(res.history)) {
+        setUserHistory(res.history);
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     let isMounted = true;
     const checkGoogleUser = async () => {
@@ -85,29 +123,58 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user && isMounted) {
           const gUser = data.session.user;
+          const token = data.session.access_token;
+          setSessionUser(gUser);
+          setAccessToken(token);
+
           const gEmail = gUser.email || '';
           const gName = gUser.user_metadata?.full_name || gUser.user_metadata?.name || gEmail.split('@')[0] || '';
-          if (!profile) {
-            setTempEmail(gEmail);
-            setTempName(gName);
-            setOnboardingMode('google_type');
-          }
+
+          const googleProf: LocalPoolProfile = {
+            email: gEmail,
+            name: gName,
+            participantType: profile?.participantType || 'Individual',
+            authMethod: 'google',
+          };
+          setProfile(googleProf);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(googleProf));
+          } catch (_) {}
+
+          fetchUserHistory(token);
         }
       } catch (_) {}
     };
+
     checkGoogleUser();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return;
       if (session?.user) {
         const gUser = session.user;
+        const token = session.access_token;
+        setSessionUser(gUser);
+        setAccessToken(token);
+
         const gEmail = gUser.email || '';
         const gName = gUser.user_metadata?.full_name || gUser.user_metadata?.name || gEmail.split('@')[0] || '';
-        if (!profile) {
-          setTempEmail(gEmail);
-          setTempName(gName);
-          setOnboardingMode('google_type');
-        }
+
+        const googleProf: LocalPoolProfile = {
+          email: gEmail,
+          name: gName,
+          participantType: profile?.participantType || 'Individual',
+          authMethod: 'google',
+        };
+        setProfile(googleProf);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(googleProf));
+        } catch (_) {}
+
+        fetchUserHistory(token);
+      } else {
+        setSessionUser(null);
+        setAccessToken(null);
+        setUserHistory([]);
       }
     });
 
@@ -115,71 +182,84 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
       isMounted = false;
       authListener?.subscription?.unsubscribe();
     };
-  }, [profile]);
+  }, []);
 
-  // Pools state
-  const [pools, setPools] = useState<PoolItem[]>([]);
-  const [directPool, setDirectPool] = useState<PoolItem | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  // Interaction state
-  const [currentMobileIndex, setCurrentMobileIndex] = useState(0);
-  const [selectedOptionsMap, setSelectedOptionsMap] = useState<Record<string, string[]>>({});
-  const [customTextMap, setCustomTextMap] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccessMap, setSubmitSuccessMap] = useState<Record<string, { message: string; updated?: boolean }>>({});
-  const [submitErrorMap, setSubmitErrorMap] = useState<Record<string, string>>({});
-
-  // Filter state for desktop overview
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [copiedLink, setCopiedLink] = useState(false);
-
-  // Load pools
-  useEffect(() => {
-    let isMounted = true;
+  // 2. Load Pools from Cloudflare D1
+  const loadPoolsData = async () => {
     setIsLoading(true);
     setLoadError(null);
-
-    const fetchData = async () => {
-      try {
-        if (initialPublicId) {
-          const res = await poolApi.getPoolByPublicId(initialPublicId);
-          if (isMounted) {
-            if (res.success && res.pool) {
-              setDirectPool(res.pool);
-              setPools([res.pool]);
-            } else {
-              setLoadError('Pool not found or has been closed.');
-            }
-          }
+    try {
+      if (initialPublicId) {
+        const res = await poolApi.getPoolByPublicId(initialPublicId);
+        if (res.success && res.pool) {
+          setPools([res.pool]);
         } else {
-          const res = await poolApi.getActivePools();
-          if (isMounted) {
-            if (res.success && res.pools) {
-              setPools(res.pools);
-            } else {
-              setPools([]);
-            }
-          }
+          setLoadError('Talent pool not found or is no longer accepting responses.');
         }
-      } catch (err: any) {
-        if (isMounted) {
-          setLoadError(err?.response?.data?.message || 'Failed to load talent pools. Please check your connection.');
+      } else {
+        const res = await poolApi.getActivePools();
+        if (res.success && Array.isArray(res.pools)) {
+          setPools(res.pools);
+        } else {
+          setPools([]);
         }
-      } finally {
-        if (isMounted) setIsLoading(false);
       }
-    };
+    } catch (err: any) {
+      setLoadError(err?.response?.data?.message || 'Unable to load talent pools. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    fetchData();
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    loadPoolsData();
   }, [initialPublicId]);
 
-  // Handle Google OAuth Click
+  // 3. Cross-reference pools with user history to prefill answers
+  const userHistoryMap = useMemo(() => {
+    const map = new Map<string, PoolHistoryItem>();
+    userHistory.forEach((h) => {
+      if (h.pool_id) map.set(h.pool_id, h);
+      if (h.public_id) map.set(h.public_id, h);
+      if (h.pool_title) map.set(h.pool_title.trim().toLowerCase(), h);
+    });
+    return map;
+  }, [userHistory]);
+
+  useEffect(() => {
+    if (pools.length === 0) return;
+
+    setSelectedOptionsMap((prev) => {
+      const updated = { ...prev };
+      pools.forEach((p) => {
+        const histEntry =
+          userHistoryMap.get(p.id) ||
+          userHistoryMap.get(p.public_id) ||
+          userHistoryMap.get(p.title.trim().toLowerCase());
+
+        if (histEntry && (histEntry.selected_options || histEntry.selectedOptions)) {
+          const rawOpts = histEntry.selected_options || histEntry.selectedOptions || [];
+          const optIds: string[] = [];
+          rawOpts.forEach((so) => {
+            if (so.option_id) {
+              optIds.push(so.option_id);
+            } else if (so.option_text) {
+              const matched = p.options.find(
+                (o) => o.option_text.trim().toLowerCase() === so.option_text.trim().toLowerCase()
+              );
+              if (matched) optIds.push(matched.id);
+            }
+          });
+          if (optIds.length > 0 && !updated[p.id]) {
+            updated[p.id] = optIds;
+          }
+        }
+      });
+      return updated;
+    });
+  }, [pools, userHistoryMap]);
+
+  // 4. Initiate Google Sign-In with strict return routing
   const handleStartGoogleAuth = async () => {
     setIsGoogleAuthLoading(true);
     setOnboardingError('');
@@ -207,7 +287,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     }
   };
 
-  // Handle Onboarding Completion
+  // 5. Handle manual profile saving
   const handleSaveProfile = (authMethod: 'google' | 'manual') => {
     setOnboardingError('');
     const emailNorm = tempEmail.trim().toLowerCase();
@@ -243,18 +323,16 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     setIsEditingProfile(false);
   };
 
-  // Toggle option selection
+  // 6. Toggle option selection
   const handleOptionToggle = (pool: PoolItem, optionId: string) => {
     const currentList = selectedOptionsMap[pool.id] || [];
 
     if (!pool.allow_multiple) {
-      // Single choice
       setSelectedOptionsMap((prev) => ({
         ...prev,
         [pool.id]: [optionId],
       }));
     } else {
-      // Multiple choice
       const exists = currentList.includes(optionId);
       const updated = exists ? currentList.filter((id) => id !== optionId) : [...currentList, optionId];
       setSelectedOptionsMap((prev) => ({
@@ -263,9 +341,9 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
       }));
     }
 
-    // Clear previous submit errors for this pool
-    if (submitErrorMap[pool.id]) {
-      setSubmitErrorMap((prev) => {
+    // Clear feedback
+    if (submitFeedbackMap[pool.id]) {
+      setSubmitFeedbackMap((prev) => {
         const copy = { ...prev };
         delete copy[pool.id];
         return copy;
@@ -273,7 +351,14 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     }
   };
 
-  // Submit response
+  const toggleEditing = (poolId: string) => {
+    setEditingPoolIds((prev) => ({
+      ...prev,
+      [poolId]: !prev[poolId],
+    }));
+  };
+
+  // 7. Submit Pool Response
   const handleSubmitPool = async (pool: PoolItem) => {
     if (!profile) {
       setIsEditingProfile(true);
@@ -282,15 +367,15 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
 
     const selectedIds = selectedOptionsMap[pool.id] || [];
     if (selectedIds.length === 0) {
-      setSubmitErrorMap((prev) => ({
+      setSubmitFeedbackMap((prev) => ({
         ...prev,
-        [pool.id]: 'Please select at least one option before submitting.',
+        [pool.id]: { message: 'Please select an option before submitting.', isError: true },
       }));
       return;
     }
 
-    setIsSubmitting(true);
-    setSubmitErrorMap((prev) => {
+    setSubmittingPoolId(pool.id);
+    setSubmitFeedbackMap((prev) => {
       const copy = { ...prev };
       delete copy[pool.id];
       return copy;
@@ -307,15 +392,17 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
       });
 
       if (res.success) {
-        setSubmitSuccessMap((prev) => ({
+        setSubmitFeedbackMap((prev) => ({
           ...prev,
           [pool.id]: {
-            message: res.message || 'Interest submitted successfully!',
-            updated: res.updated,
+            message: res.message || 'Response submitted successfully!',
+            isError: false,
           },
         }));
 
-        // Optimistically increment pool response count
+        setEditingPoolIds((prev) => ({ ...prev, [pool.id]: false }));
+
+        // Optimistically increment pool count
         setPools((prevList) =>
           prevList.map((p) =>
             p.id === pool.id
@@ -326,875 +413,1034 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
               : p
           )
         );
+
+        // Refresh user history if token is present
+        if (accessToken) {
+          fetchUserHistory(accessToken);
+        }
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to submit your response. Please try again.';
-      setSubmitErrorMap((prev) => ({
+      const msg = err?.response?.data?.message || 'Failed to submit response. Please try again.';
+      setSubmitFeedbackMap((prev) => ({
         ...prev,
-        [pool.id]: msg,
+        [pool.id]: { message: msg, isError: true },
       }));
     } finally {
-      setIsSubmitting(false);
+      setSubmittingPoolId(null);
     }
   };
 
-  // Generate WhatsApp Share URL
-  const getWhatsAppShareUrl = (pool: PoolItem) => {
-    const poolUrl = `https://www.zenemoo.in/pool/${pool.public_id}`;
-    const text =
-      `*Zenemoo Talent Interest Poll*\n\n` +
-      `"${pool.title}"\n\n` +
-      `Let Zenemoo know what type of work or projects you are interested in:\n\n` +
-      `👉 Take the 30-second poll here:\n${poolUrl}`;
-    return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  };
-
+  // Share & Copy link
   const handleCopyPoolLink = (pool: PoolItem) => {
     const url = `https://www.zenemoo.in/pool/${pool.public_id}`;
     navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2500);
+    setCopiedLinkPoolId(pool.id);
+    setTimeout(() => setCopiedLinkPoolId(null), 2500);
   };
 
-  // Filter pools for Desktop view
-  const categories = ['All', ...Array.from(new Set(pools.map((p) => p.category || 'General')))];
-  const filteredPools = pools.filter((p) => {
-    if (selectedCategory !== 'All' && (p.category || 'General') !== selectedCategory) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        p.title.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q)) ||
-        (p.category && p.category.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
+  // Categories & Filtering
+  const categories = useMemo(() => {
+    return ['All', ...Array.from(new Set(pools.map((p) => p.category || 'General')))];
+  }, [pools]);
 
-  const activeMobilePool = filteredPools[currentMobileIndex] || null;
+  const filteredPools = useMemo(() => {
+    return pools.filter((p) => {
+      if (selectedCategory !== 'All' && (p.category || 'General') !== selectedCategory) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          p.title.toLowerCase().includes(q) ||
+          (p.description && p.description.toLowerCase().includes(q)) ||
+          (p.category && p.category.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [pools, selectedCategory, searchQuery]);
 
-  // Render Loading State
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#06070e] text-slate-100 flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/20 to-purple-600/20 border border-cyan-500/30 flex items-center justify-center animate-pulse shadow-lg shadow-cyan-500/20">
-            <Sparkles className="w-7 h-7 text-cyan-400 animate-spin" style={{ animationDuration: '3s' }} />
-          </div>
-          <div className="text-center">
-            <h3 className="text-lg font-bold text-white tracking-wide">Loading Zenemoo Pools...</h3>
-            <p className="text-xs text-slate-400 mt-1">Connecting to live talent interest queues</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Render Error State
-  if (loadError || pools.length === 0) {
-    return (
-      <div className="min-h-screen bg-[#06070e] text-slate-100 flex flex-col justify-between p-4 sm:p-8">
-        <header className="flex items-center justify-between max-w-4xl mx-auto w-full pt-4">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={onNavigateHome}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-cyan-500/20">
-              Z
-            </div>
-            <span className="font-bold text-lg tracking-wider text-white">ZENEMOO</span>
-          </div>
-          {onNavigateHistory && (
-            <button
-              onClick={onNavigateHistory}
-              className="text-xs text-slate-400 hover:text-cyan-400 flex items-center gap-1.5 transition-colors px-3 py-1.5 rounded-lg border border-white/10 hover:border-cyan-500/30 bg-white/5"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>My History</span>
-            </button>
-          )}
-        </header>
-
-        <div className="max-w-md mx-auto w-full text-center py-16 px-6 rounded-2xl border border-white/10 bg-[#0d0f1d]/80 backdrop-blur-xl shadow-2xl">
-          <div className="w-16 h-16 rounded-full bg-slate-800/80 border border-white/10 flex items-center justify-center mx-auto mb-5 text-slate-400">
-            <HelpCircle className="w-8 h-8 text-cyan-400" />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">{loadError ? 'Pool Notice' : 'No Active Pools Right Now'}</h2>
-          <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-            {loadError || 'Zenemoo does not have any open talent polls at this moment. New project polls are posted frequently.'}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <button
-              onClick={() => window.location.reload()}
-              className="px-5 py-2.5 rounded-xl bg-cyan-500 text-black font-semibold text-xs hover:bg-cyan-400 transition-all flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Refresh Pools</span>
-            </button>
-            {onNavigateTalentRegistration && (
-              <button
-                onClick={onNavigateTalentRegistration}
-                className="px-5 py-2.5 rounded-xl border border-white/15 hover:border-cyan-500/40 text-slate-300 hover:text-white text-xs transition-all flex items-center justify-center gap-2 bg-white/5"
-              >
-                <span>Register Full Profile</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        <footer className="text-center text-xs text-slate-600 pb-4">
-          © {new Date().getFullYear()} Zenemoo Data Solutions. Fast talent & project matching.
-        </footer>
-      </div>
-    );
-  }
-
-  // Render First-Time Onboarding Modal / Wizard
-  const renderOnboardingModal = () => (
-    <AnimatePresence>
-      {(!profile || isEditingProfile) && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
-        >
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="w-full max-w-md bg-[#0d0f1f] border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 relative"
-          >
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/30">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white tracking-wide">Welcome to Zenemoo Pools</h3>
-                <p className="text-xs text-slate-400">
-                  {onboardingMode === 'choice'
-                    ? 'Help us understand your interests and availability'
-                    : onboardingMode === 'google_type'
-                    ? 'Complete your verified participant profile'
-                    : 'Enter your basic details to participate'}
-                </p>
-              </div>
-            </div>
-
-            {onboardingError && (
-              <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-xl mb-4">
-                {onboardingError}
-              </p>
-            )}
-
-            {/* Mode 1: Choice Screen */}
-            {onboardingMode === 'choice' && (
-              <div className="space-y-4">
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  Answer quick questions from Zenemoo so we can understand your interests, availability and capabilities.
-                </p>
-
-                {/* Google Flow Button */}
-                <button
-                  type="button"
-                  onClick={handleStartGoogleAuth}
-                  disabled={isGoogleAuthLoading}
-                  className="w-full py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs tracking-wider uppercase transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
-                >
-                  {isGoogleAuthLoading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-slate-900" />
-                      <span>Connecting to Google...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                        <path
-                          fill="#4285F4"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                        />
-                      </svg>
-                      <span>Continue with Google</span>
-                    </>
-                  )}
-                </button>
-
-                <p className="text-[11px] text-slate-400 text-center -mt-1">
-                  Your Google account will be used to securely save and access your Zenemoo Pool responses.
-                </p>
-
-                {/* Divider */}
-                <div className="flex items-center gap-3 py-1">
-                  <div className="h-px bg-white/10 flex-1" />
-                  <span className="text-[11px] uppercase font-semibold tracking-wider text-slate-500">OR</span>
-                  <div className="h-px bg-white/10 flex-1" />
-                </div>
-
-                {/* Manual Flow Button */}
-                <button
-                  type="button"
-                  onClick={() => setOnboardingMode('manual')}
-                  className="w-full py-3 rounded-xl border border-white/15 hover:border-cyan-500/40 text-slate-300 hover:text-white bg-slate-900/60 font-semibold text-xs tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>Continue Manually</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-
-                {profile && isEditingProfile && (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingProfile(false)}
-                    className="w-full text-center text-xs text-slate-500 hover:text-slate-300 pt-1"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Mode 2: Google Authenticated User -> Select Participant Type Only */}
-            {onboardingMode === 'google_type' && (
-              <div className="space-y-4">
-                <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-300 font-bold">
-                    <User className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-white truncate">{tempName || 'Google User'}</p>
-                    <p className="text-[11px] text-cyan-300 font-mono truncate">{tempEmail}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300">
-                    Select Your Participant Category *
-                  </label>
-                  <div className="space-y-2">
-                    {PARTICIPANT_TYPES.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => setTempType(t.id)}
-                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
-                          tempType === t.id
-                            ? 'bg-cyan-500/10 border-cyan-400 text-white shadow-md shadow-cyan-500/10'
-                            : 'bg-slate-900/60 border-white/10 text-slate-300 hover:border-white/20'
-                        }`}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
-                            tempType === t.id ? 'border-cyan-400 bg-cyan-400' : 'border-slate-500'
-                          }`}
-                        >
-                          {tempType === t.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-100">{t.label}</p>
-                          <p className="text-[11px] text-slate-400 leading-tight mt-0.5">{t.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setOnboardingMode('choice')}
-                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveProfile('google')}
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer"
-                  >
-                    <span>Continue to Pools</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Mode 3: Manual Onboarding (Email, Name, Participant Type) */}
-            {onboardingMode === 'manual' && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSaveProfile('manual');
-                }}
-                className="space-y-4"
-              >
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                    Email Address *
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="e.g. name@example.com"
-                      value={tempEmail}
-                      onChange={(e) => setTempEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white placeholder-slate-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                    Full Name *
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Prem Kumar"
-                      value={tempName}
-                      onChange={(e) => setTempName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white placeholder-slate-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                    Participant Type *
-                  </label>
-                  <select
-                    value={tempType}
-                    onChange={(e) => setTempType(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white outline-none"
-                  >
-                    {PARTICIPANT_TYPES.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setOnboardingMode('choice')}
-                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer"
-                  >
-                    <span>Complete & Continue</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </form>
-            )}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
-  // Render a Single Pool Card Item
-  const renderPoolCard = (pool: PoolItem, isMobileCard: boolean = false) => {
-    const selectedIds = selectedOptionsMap[pool.id] || [];
-    const customText = customTextMap[pool.id] || '';
-    const successState = submitSuccessMap[pool.id];
-    const errorState = submitErrorMap[pool.id];
-    const isOtherSelected = pool.options.some((o) => o.option_text.toLowerCase().includes('other') && selectedIds.includes(o.id));
-
-    return (
-      <motion.div
-        key={pool.id}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={`rounded-2xl border transition-all relative overflow-hidden flex flex-col justify-between ${
-          successState
-            ? 'bg-[#0a1820]/90 border-emerald-500/40 shadow-xl shadow-emerald-500/10'
-            : 'bg-[#0d1022]/90 border-white/10 hover:border-cyan-500/30 shadow-xl shadow-black/40'
-        } ${isMobileCard ? 'p-5 sm:p-6 w-full min-h-[460px]' : 'p-6'}`}
-      >
-        {/* Top Header */}
-        <div>
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                {pool.category || 'General'}
-              </span>
-              <span className="text-[11px] text-slate-500 font-mono">#{pool.public_id}</span>
-            </div>
-
-            {pool.total_responses_count > 0 && (
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <Users className="w-3 h-3 text-cyan-400" />
-                <span>
-                  {pool.total_responses_count >= 1000
-                    ? `${(pool.total_responses_count / 1000).toFixed(1)}K`
-                    : pool.total_responses_count}{' '}
-                  interested
-                </span>
-              </span>
-            )}
-          </div>
-
-          <h3 className="text-base sm:text-lg font-bold text-white leading-snug mb-2">{pool.title}</h3>
-          {pool.description && (
-            <p className="text-xs text-slate-400 leading-relaxed mb-4">{pool.description}</p>
-          )}
-
-          <div className="mb-2">
-            <span className="text-[11px] text-slate-500 flex items-center gap-1.5 font-medium">
-              <Info className="w-3 h-3 text-cyan-400" />
-              <span>{pool.allow_multiple ? 'Multiple selections allowed' : 'Single choice selection'}</span>
-            </span>
-          </div>
-
-          {/* Options List */}
-          {successState ? (
-            <div className="py-6 text-center space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                <Check className="w-7 h-7" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-base font-bold text-white font-display">Response Submitted</h4>
-                <p className="text-xs text-slate-300 max-w-xs mx-auto">
-                  Thanks! Your response has been recorded.
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex flex-col sm:flex-row gap-2.5 justify-center max-w-sm mx-auto">
-                {onNavigateHistory && (
-                  <button
-                    type="button"
-                    onClick={onNavigateHistory}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>View My Responses</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onNavigateHome}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-semibold text-white transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                >
-                  <span>Explore Zenemoo</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Share actions */}
-              <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row gap-2 justify-center">
-                <a
-                  href={getWhatsAppShareUrl(pool)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3.5 py-2 rounded-xl bg-[#25D366]/20 border border-[#25D366]/40 text-[#25D366] font-semibold text-xs hover:bg-[#25D366]/30 transition-all flex items-center justify-center gap-2"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Share Poll on WhatsApp</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => handleCopyPoolLink(pool)}
-                  className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 hover:border-cyan-500/30 text-xs text-slate-300 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedLink ? 'Link Copied!' : 'Copy Link'}</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2 mt-4">
-              {pool.options.map((opt) => {
-                const isSelected = selectedIds.includes(opt.id);
-                return (
-                  <div
-                    key={opt.id}
-                    onClick={() => handleOptionToggle(pool, opt.id)}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
-                      isSelected
-                        ? 'bg-gradient-to-r from-cyan-500/15 via-blue-500/10 to-transparent border-cyan-400 text-white shadow-md shadow-cyan-500/10'
-                        : 'bg-slate-900/60 border-white/10 text-slate-300 hover:border-white/25 hover:bg-slate-900/90'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-4 h-4 rounded-${pool.allow_multiple ? 'md' : 'full'} border flex items-center justify-center shrink-0 transition-all ${
-                          isSelected ? 'border-cyan-400 bg-cyan-400' : 'border-slate-500 group-hover:border-slate-400'
-                        }`}
-                      >
-                        {isSelected && (
-                          pool.allow_multiple ? <Check className="w-3 h-3 text-black stroke-[3]" /> : <div className="w-1.5 h-1.5 rounded-full bg-black" />
-                        )}
-                      </div>
-                      <span className="text-xs sm:text-sm font-medium tracking-wide">{opt.option_text}</span>
-                    </div>
-
-                    {opt.response_count !== undefined && opt.response_count > 0 && (
-                      <span className="text-[10px] text-slate-500 font-mono ml-2">
-                        {opt.response_count}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Other Custom Field */}
-              {isOtherSelected && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="pt-2"
-                >
-                  <input
-                    type="text"
-                    placeholder="Specify other details (optional)..."
-                    value={customText}
-                    onChange={(e) =>
-                      setCustomTextMap((prev) => ({
-                        ...prev,
-                        [pool.id]: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-cyan-400 transition-all"
-                  />
-                </motion.div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Bottom Submission Action */}
-        {!successState && (
-          <div className="pt-5 mt-4 border-t border-white/10">
-            {errorState && (
-              <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-lg mb-3">
-                {errorState}
-              </p>
-            )}
-
-            <button
-              type="button"
-              disabled={isSubmitting || selectedIds.length === 0}
-              onClick={() => handleSubmitPool(pool)}
-              className={`w-full py-3 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
-                selectedIds.length > 0 && !isSubmitting
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-lg shadow-cyan-500/25 cursor-pointer active:scale-[0.99]'
-                  : 'bg-slate-800/80 text-slate-500 border border-white/5 cursor-not-allowed'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Submitting Interest...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Submit Interest</span>
-                </>
-              )}
-            </button>
-
-            <p className="text-[10px] text-slate-500 text-center mt-2 leading-tight">
-              By submitting, you agree that Zenemoo may contact you regarding matching opportunities.
-            </p>
-          </div>
-        )}
-      </motion.div>
-    );
-  };
+  const displayName =
+    sessionUser?.user_metadata?.full_name ||
+    sessionUser?.user_metadata?.name ||
+    sessionUser?.email?.split('@')[0] ||
+    profile?.name ||
+    'Talent Contributor';
 
   return (
-    <div className="min-h-screen bg-[#05060f] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Onboarding Dialog */}
-      {renderOnboardingModal()}
+    <div className="min-h-screen bg-[#030409] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Atmospheric Background Glows */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-cyan-600/10 via-blue-700/5 to-transparent blur-3xl opacity-60" />
+      </div>
 
-      {/* ── Public Zenemoo Top Navigation Bar ── */}
-      <header className="sticky top-0 z-30 bg-[#070814]/95 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-xl shadow-black/40">
+      {/* ── Premium Public Navbar ── */}
+      <header className="sticky top-0 z-40 bg-[#060814]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-2xl shadow-black/60">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-          {/* Brand Logo */}
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={onNavigateHome}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[1.5px] flex items-center justify-center shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-all">
-              <div className="w-full h-full bg-[#080912] rounded-[10px] flex items-center justify-center text-white font-black text-sm">
-                Z
+          {/* Brand Logo & Lockup */}
+          <a
+            href="/"
+            onClick={(e) => {
+              if (onNavigateHome) {
+                e.preventDefault();
+                onNavigateHome();
+              }
+            }}
+            className="flex items-center gap-3 group cursor-pointer"
+            aria-label="Zenemoo Home"
+          >
+            {isLogoLoading ? (
+              <div className="w-10 h-10 rounded-full bg-slate-900 animate-pulse border border-white/10 shrink-0" />
+            ) : (
+              <div className="relative w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/30 group-hover:scale-105 transition-all shrink-0">
+                <SeoImage
+                  src={logoUrl || '/assets/logo.png'}
+                  alt="Zenemoo Official Logo"
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                  fallbackSrc="/assets/logo.png"
+                />
               </div>
-            </div>
+            )}
             <div className="flex flex-col">
-              <span className="font-extrabold text-base sm:text-lg tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
+              <span className="text-xl font-black tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
                 ZENEMOO
               </span>
-              <span className="text-[9px] text-cyan-400 font-mono tracking-widest uppercase">
-                Talent Interest Pool
+              <span className="text-[10px] font-mono text-cyan-400 tracking-wider uppercase mt-0.5">
+                Talent Interest Pools
               </span>
             </div>
-          </div>
+          </a>
 
-          {/* Public Navigation Links (Desktop) */}
-          <nav className="hidden md:flex items-center gap-1 bg-white/[0.03] px-3 py-1 rounded-full border border-white/10 text-xs">
+          {/* Center Navigation Links */}
+          <nav className="hidden md:flex items-center gap-6 text-xs font-semibold tracking-wide">
             <a
               href="/pool"
-              className="px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30"
+              onClick={(e) => {
+                if (initialPublicId && onBack) {
+                  e.preventDefault();
+                  onBack();
+                }
+              }}
+              className="text-cyan-400 font-bold transition-colors cursor-pointer"
             >
               Pools
             </a>
-            <a
-              href="/opportunities"
-              className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/5 transition-colors font-medium"
-            >
+            <a href="/#opportunities" className="text-slate-300 hover:text-cyan-400 transition-colors">
               Opportunities
             </a>
-            <a
-              href="/#services"
-              className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/5 transition-colors font-medium"
-            >
+            <a href="/#services" className="text-slate-300 hover:text-cyan-400 transition-colors">
               Services
             </a>
-            <a
-              href="/#contact"
-              className="px-3 py-1.5 rounded-full text-slate-300 hover:text-white hover:bg-white/5 transition-colors font-medium"
-            >
+            <a href="/#contact" className="text-slate-300 hover:text-cyan-400 transition-colors">
               Contact
             </a>
           </nav>
 
-          {/* Right Header Actions */}
-          <div className="flex items-center gap-2.5">
-            {profile && (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 text-xs">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-slate-300 font-medium">{profile.name}</span>
+          {/* Right Header User State */}
+          <div className="hidden md:flex items-center gap-3">
+            {sessionUser ? (
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-semibold text-slate-200">{displayName}</span>
+                </div>
+                {onNavigateHistory && (
+                  <button
+                    type="button"
+                    onClick={onNavigateHistory}
+                    className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer active:scale-95"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>My History</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                {onNavigateHistory && (
+                  <button
+                    type="button"
+                    onClick={onNavigateHistory}
+                    className="px-3.5 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>My History</span>
+                  </button>
+                )}
+
                 <button
-                  onClick={() => {
-                    setTempEmail(profile.email);
-                    setTempType(profile.participantType);
-                    setTempName(profile.name);
-                    setOnboardingMode(profile.authMethod === 'google' ? 'google_type' : 'manual');
-                    setIsEditingProfile(true);
-                  }}
-                  className="text-cyan-400 hover:text-cyan-300 underline text-[11px] ml-1"
+                  type="button"
+                  onClick={handleStartGoogleAuth}
+                  disabled={isGoogleAuthLoading}
+                  className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-black font-bold text-xs transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
                 >
-                  Edit
+                  {isGoogleAuthLoading ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                      />
+                    </svg>
+                  )}
+                  <span>Continue with Google</span>
                 </button>
+
+                {onNavigateTalentRegistration && (
+                  <button
+                    type="button"
+                    onClick={onNavigateTalentRegistration}
+                    className="px-3.5 py-1.5 rounded-xl border border-cyan-500/30 hover:border-cyan-500/60 bg-cyan-500/10 text-cyan-300 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Register Profile</span>
+                  </button>
+                )}
               </div>
             )}
-
-            {onNavigateHistory && (
-              <button
-                type="button"
-                onClick={onNavigateHistory}
-                className="px-3 py-1.5 rounded-xl border border-white/10 hover:border-cyan-500/40 text-xs text-slate-300 hover:text-white bg-white/5 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                <span>My History</span>
-              </button>
-            )}
-
-            {onNavigateTalentRegistration && (
-              <button
-                type="button"
-                onClick={onNavigateTalentRegistration}
-                className="hidden sm:inline-flex px-3.5 py-1.5 rounded-xl bg-cyan-500 text-black font-bold text-xs hover:bg-cyan-400 transition-all items-center gap-1.5 cursor-pointer shadow-md shadow-cyan-500/20"
-              >
-                <span>Register Profile</span>
-              </button>
-            )}
           </div>
+
+          {/* Mobile Hamburger Button */}
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(!mobileNavOpen)}
+            className="md:hidden p-2 rounded-xl border border-white/10 text-slate-300 hover:text-white bg-white/5"
+            aria-label="Toggle Menu"
+          >
+            {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        <AnimatePresence>
+          {mobileNavOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden border-t border-white/10 mt-3 pt-4 pb-2 space-y-3"
+            >
+              <nav className="flex flex-col space-y-2 text-sm font-semibold">
+                <a
+                  href="/pool"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="px-3 py-2 rounded-lg bg-cyan-500/10 text-cyan-300 font-bold"
+                >
+                  Pools
+                </a>
+                <a
+                  href="/#opportunities"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="px-3 py-2 rounded-lg hover:bg-white/5 text-slate-200 hover:text-cyan-400"
+                >
+                  Opportunities
+                </a>
+                <a
+                  href="/#services"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="px-3 py-2 rounded-lg hover:bg-white/5 text-slate-200 hover:text-cyan-400"
+                >
+                  Services
+                </a>
+                <a
+                  href="/#contact"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="px-3 py-2 rounded-lg hover:bg-white/5 text-slate-200 hover:text-cyan-400"
+                >
+                  Contact
+                </a>
+                {onNavigateHistory && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      onNavigateHistory();
+                    }}
+                    className="px-3 py-2 text-left rounded-lg hover:bg-white/5 text-cyan-300 flex items-center gap-2"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>My Pool History</span>
+                  </button>
+                )}
+              </nav>
+
+              <div className="pt-3 border-t border-white/10 space-y-2">
+                {!sessionUser ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        handleStartGoogleAuth();
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-white text-black font-bold text-xs flex items-center justify-center gap-2"
+                    >
+                      <span>Continue with Google</span>
+                    </button>
+                    {onNavigateTalentRegistration && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          onNavigateTalentRegistration();
+                        }}
+                        className="w-full py-2.5 rounded-xl border border-cyan-500/30 text-cyan-300 text-xs font-semibold bg-cyan-500/10 flex items-center justify-center"
+                      >
+                        <span>Register Profile</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-white/5 text-xs text-slate-300">
+                    <p className="font-bold text-white">{displayName}</p>
+                    <p className="text-[11px] text-cyan-300 font-mono">{sessionUser.email}</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-6xl mx-auto w-full px-4 sm:px-8 py-6 sm:py-10 flex-1">
-        {/* Returning Profile Mobile Ribbon */}
-        {profile && (
-          <div className="sm:hidden mb-4 p-3 rounded-xl border border-white/10 bg-[#0d1024] flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-slate-200 font-medium truncate max-w-[190px]">
-                {profile.name} • {profile.participantType}
-              </span>
+      {/* ── Main Content Area ── */}
+      <main className="max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-1 relative z-10 space-y-8">
+        {/* ── Public Hero Section ── */}
+        {!initialPublicId && (
+          <div className="text-center space-y-4 max-w-3xl mx-auto pt-2 pb-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono font-bold uppercase tracking-wider shadow-sm">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>ZENEMOO POOLS</span>
             </div>
-            <button
-              onClick={() => {
-                setTempEmail(profile.email);
-                setTempType(profile.participantType);
-                setTempName(profile.name);
-                setOnboardingMode(profile.authMethod === 'google' ? 'google_type' : 'manual');
-                setIsEditingProfile(true);
-              }}
-              className="text-cyan-400 font-semibold"
-            >
-              Change
-            </button>
+
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white font-display tracking-tight leading-tight">
+              Quick questions. <br className="hidden sm:inline" />
+              <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">
+                Better opportunities.
+              </span>
+            </h1>
+
+            <p className="text-sm sm:text-base text-slate-300 font-sans max-w-2xl mx-auto leading-relaxed">
+              Tell us what you&apos;re interested in, what you&apos;re available for, and what capabilities you have. Your responses help Zenemoo match you with relevant projects faster.
+            </p>
           </div>
         )}
 
-        {/* Hero Welcome Banner */}
-        <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 text-cyan-300 mb-3 shadow-sm">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>ZENEMOO POOL</span>
-          </div>
-          <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight font-display">
-            Talent Interest Pool
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-300 mt-2.5 leading-relaxed font-sans max-w-lg mx-auto">
-            Help us understand your interests and availability so Zenemoo can match you with relevant project pipelines.
-          </p>
-        </div>
-
-        {/* ── MOBILE VIEW: 1-Card-At-A-Time Horizontal Deck ── */}
-        <div className="block lg:hidden">
-          {activeMobilePool ? (
-            <div className="space-y-4">
-              {/* Progress Tracker */}
-              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                <span>
-                  Pool <strong className="text-white">{currentMobileIndex + 1}</strong> of {filteredPools.length}
-                </span>
-                <div className="flex items-center gap-1">
-                  {filteredPools.map((_, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => setCurrentMobileIndex(idx)}
-                      className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                        currentMobileIndex === idx ? 'w-6 bg-cyan-400' : 'w-2 bg-slate-700'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Active Card */}
-              {renderPoolCard(activeMobilePool, true)}
-
-              {/* Mobile Prev / Next Controls */}
-              {filteredPools.length > 1 && (
-                <div className="flex items-center justify-between gap-3 pt-2">
-                  <button
-                    type="button"
-                    disabled={currentMobileIndex === 0}
-                    onClick={() => setCurrentMobileIndex((prev) => Math.max(0, prev - 1))}
-                    className={`flex-1 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                      currentMobileIndex === 0
-                        ? 'border-white/5 text-slate-600 bg-slate-900/30 cursor-not-allowed'
-                        : 'border-white/10 text-slate-300 bg-white/5 hover:bg-white/10 active:scale-[0.98]'
-                    }`}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span>Previous Pool</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={currentMobileIndex === filteredPools.length - 1}
-                    onClick={() => setCurrentMobileIndex((prev) => Math.min(filteredPools.length - 1, prev + 1))}
-                    className={`flex-1 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                      currentMobileIndex === filteredPools.length - 1
-                        ? 'border-white/5 text-slate-600 bg-slate-900/30 cursor-not-allowed'
-                        : 'border-cyan-500/30 text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 active:scale-[0.98]'
-                    }`}
-                  >
-                    <span>Next Pool</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+        {/* ── Category & Search Filter Bar (for multi-pool view) ── */}
+        {!initialPublicId && pools.length > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-2 rounded-2xl bg-[#080c1a]/80 border border-white/10 backdrop-blur-xl">
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    selectedCategory === cat
+                      ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
-          ) : null}
-        </div>
 
-        {/* ── DESKTOP VIEW: Responsive Cards & Category Grid ── */}
-        <div className="hidden lg:block space-y-6">
-          {/* Filter Bar */}
-          {pools.length > 1 && (
-            <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
-              <div className="flex items-center gap-2 overflow-x-auto py-1">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                      selectedCategory === cat
-                        ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
-                        : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-
-              <div className="relative w-64">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Search polls..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-900/90 border border-white/10 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 transition-all"
-                />
-              </div>
+            <div className="relative w-full sm:w-64 shrink-0">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search questions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950/80 border border-white/10 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-500/50"
+              />
             </div>
-          )}
-
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredPools.map((pool) => renderPoolCard(pool, false))}
           </div>
-        </div>
+        )}
 
-        {/* Talent Registration Callout */}
-        {onNavigateTalentRegistration && (
-          <div className="mt-14 p-6 sm:p-8 rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/30 via-[#0c1024]/80 to-blue-950/30 backdrop-blur-xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div className="space-y-1.5 text-center sm:text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 font-mono">
-                Full Contributor Onboarding
-              </span>
-              <h3 className="text-base sm:text-lg font-bold text-white">Want to join verified paid AI projects?</h3>
-              <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
-                Complete your full Talent Registration profile with language matrices, hardware specs, and sample recordings to get prioritized for enterprise data contracts.
+        {/* ── Loading / Error / Empty States ── */}
+        {isLoading ? (
+          <div className="py-24 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+              <RefreshCw className="w-5 h-5 animate-spin" />
+            </div>
+            <span className="font-mono">Loading Zenemoo Talent Pools...</span>
+          </div>
+        ) : loadError || filteredPools.length === 0 ? (
+          <div className="max-w-md mx-auto text-center py-16 px-6 rounded-3xl border border-white/10 bg-[#090d1c]/90 space-y-4 shadow-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-slate-800/80 border border-white/10 flex items-center justify-center mx-auto text-slate-400">
+              <HelpCircle className="w-7 h-7 text-cyan-400" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white font-display">
+                {loadError ? 'Pool Unavailable' : 'No Pools Matching Criteria'}
+              </h2>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                {loadError || 'Zenemoo does not have active pools for this category right now. Check back soon for new project inquiries.'}
               </p>
             </div>
-            <button
-              onClick={onNavigateTalentRegistration}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shrink-0 transition-all shadow-lg shadow-cyan-500/20 flex items-center gap-2 cursor-pointer"
-            >
-              <span>Register Full Profile</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => loadPoolsData()}
+                className="px-4 py-2 rounded-xl bg-cyan-500 text-black font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer shadow-md shadow-cyan-500/20 active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Try Again</span>
+              </button>
+              {initialPublicId && onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="px-4 py-2 rounded-xl border border-white/10 hover:border-cyan-500/40 text-slate-300 hover:text-white text-xs inline-flex items-center gap-1.5"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                  <span>Browse All Pools</span>
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* ── Render Pools Grid ── */
+          <div
+            className={`grid gap-6 ${
+              filteredPools.length === 1
+                ? 'max-w-xl mx-auto grid-cols-1'
+                : 'grid-cols-1 md:grid-cols-2'
+            }`}
+          >
+            {filteredPools.map((pool) => {
+              const histEntry =
+                userHistoryMap.get(pool.id) ||
+                userHistoryMap.get(pool.public_id) ||
+                userHistoryMap.get(pool.title.trim().toLowerCase());
+
+              const selectedIds = selectedOptionsMap[pool.id] || [];
+              const hasResponded = Boolean(
+                histEntry ||
+                submitFeedbackMap[pool.id]?.isError === false
+              );
+              const isEditing = Boolean(editingPoolIds[pool.id]);
+              const feedback = submitFeedbackMap[pool.id];
+              const isSubmitting = submittingPoolId === pool.id;
+              const isOtherSelected = (pool.options || []).some(
+                (o) => o.option_text.toLowerCase().includes('other') && selectedIds.includes(o.id)
+              );
+
+              // Find answered option labels
+              const answeredLabels: string[] = [];
+              if (histEntry?.selected_options && histEntry.selected_options.length > 0) {
+                histEntry.selected_options.forEach((so) => {
+                  if (so.option_text) answeredLabels.push(so.option_text);
+                });
+              }
+              if (answeredLabels.length === 0 && selectedIds.length > 0) {
+                selectedIds.forEach((sid) => {
+                  const match = (pool.options || []).find((o) => o.id === sid);
+                  if (match) answeredLabels.push(match.option_text);
+                });
+              }
+
+              const submissionDate = histEntry?.submitted_at || pool.updated_at || pool.created_at;
+
+              return (
+                <motion.div
+                  key={pool.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`rounded-3xl border transition-all duration-300 p-6 sm:p-7 flex flex-col justify-between gap-6 relative overflow-hidden shadow-2xl ${
+                    hasResponded && !isEditing
+                      ? 'bg-gradient-to-b from-[#09151e]/95 via-[#060f15]/95 to-[#04080c]/95 border-emerald-500/35 shadow-emerald-950/20'
+                      : 'bg-gradient-to-b from-[#0a0f26]/95 via-[#070b1c]/95 to-[#050714]/95 border-white/10 hover:border-cyan-500/40 shadow-black/50'
+                  }`}
+                >
+                  <div className="space-y-4">
+                    {/* Card Header: Category & Response Count */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                        {pool.category || 'AI DATA SOLUTIONS'}
+                      </span>
+
+                      {hasResponded ? (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+                          <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                          <span>Response Submitted</span>
+                        </span>
+                      ) : pool.total_responses_count > 0 ? (
+                        <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                          <Users className="w-3 h-3 text-cyan-400" />
+                          <span>{pool.total_responses_count} interested</span>
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Question Title & Description */}
+                    <div className="space-y-2">
+                      <h2 className="text-lg sm:text-xl font-bold text-white font-display leading-snug">
+                        {pool.title}
+                      </h2>
+                      {pool.description && (
+                        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
+                          {pool.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* ── Case 1: Already Answered View Mode ── */}
+                    {hasResponded && !isEditing ? (
+                      <div className="space-y-3 pt-2">
+                        <span className="text-[10px] font-mono uppercase text-slate-400 block tracking-wider font-bold">
+                          YOUR RESPONSE:
+                        </span>
+
+                        <div className="space-y-2">
+                          {(pool.options || []).map((opt) => {
+                            const isSelected =
+                              selectedIds.includes(opt.id) ||
+                              answeredLabels.includes(opt.option_text);
+
+                            return (
+                              <div
+                                key={opt.id}
+                                className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
+                                  isSelected
+                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-white shadow-md'
+                                    : 'bg-white/[0.02] border-white/5 text-slate-500 opacity-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`w-4 h-4 rounded-${
+                                      pool.allow_multiple ? 'md' : 'full'
+                                    } border flex items-center justify-center shrink-0 ${
+                                      isSelected
+                                        ? 'border-emerald-400 bg-emerald-400'
+                                        : 'border-slate-700'
+                                    }`}
+                                  >
+                                    {isSelected && (
+                                      <Check className="w-3 h-3 text-black stroke-[3]" />
+                                    )}
+                                  </div>
+                                  <span
+                                    className={`text-xs sm:text-sm ${
+                                      isSelected ? 'font-bold text-emerald-100' : 'font-medium text-slate-500'
+                                    }`}
+                                  >
+                                    {opt.option_text}
+                                  </span>
+                                </div>
+                                {isSelected && (
+                                  <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
+                                    Your Choice
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {customTextMap[pool.id] && (
+                          <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 text-xs text-slate-300">
+                            <span className="text-slate-500 font-mono block text-[10px] uppercase">Additional Note:</span>
+                            {customTextMap[pool.id]}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* ── Case 2: Unanswered or Active Editing Mode ── */
+                      <div className="space-y-2.5 pt-2">
+                        <p className="text-[11px] font-mono text-slate-400 pb-0.5">
+                          {pool.allow_multiple ? 'Select all that apply:' : 'Select one option:'}
+                        </p>
+
+                        {(pool.options || []).map((opt) => {
+                          const isSelected = selectedIds.includes(opt.id);
+
+                          return (
+                            <div
+                              key={opt.id}
+                              onClick={() => handleOptionToggle(pool, opt.id)}
+                              className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                                isSelected
+                                  ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-lg shadow-cyan-500/15 scale-[1.01]'
+                                  : 'bg-white/[0.02] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`w-4 h-4 rounded-${
+                                    pool.allow_multiple ? 'md' : 'full'
+                                  } border flex items-center justify-center shrink-0 ${
+                                    isSelected
+                                      ? 'border-cyan-400 bg-cyan-400'
+                                      : 'border-slate-500'
+                                  }`}
+                                >
+                                  {isSelected && (
+                                    pool.allow_multiple ? (
+                                      <Check className="w-3 h-3 text-black stroke-[3]" />
+                                    ) : (
+                                      <div className="w-1.5 h-1.5 rounded-full bg-black" />
+                                    )
+                                  )}
+                                </div>
+                                <span className="text-xs sm:text-sm font-medium">{opt.option_text}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {isOtherSelected && (
+                          <input
+                            type="text"
+                            placeholder="Please specify additional details..."
+                            value={customTextMap[pool.id] || ''}
+                            onChange={(e) =>
+                              setCustomTextMap((prev) => ({
+                                ...prev,
+                                [pool.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-cyan-400 mt-2 font-sans"
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Card Footer Actions ── */}
+                  <div className="pt-4 border-t border-white/10 space-y-3">
+                    {feedback && (
+                      <p
+                        className={`text-xs px-3.5 py-2 rounded-xl ${
+                          feedback.isError
+                            ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20'
+                            : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+                        }`}
+                      >
+                        {feedback.message}
+                      </p>
+                    )}
+
+                    {hasResponded && !isEditing ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                          <span>Submitted</span>
+                          {submissionDate && (
+                            <span className="text-slate-500">
+                              •{' '}
+                              {new Date(submissionDate).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyPoolLink(pool)}
+                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-all cursor-pointer"
+                            title="Share pool question"
+                          >
+                            {copiedLinkPoolId === pool.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Share2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleEditing(pool.id)}
+                            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Update Response</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          disabled={isSubmitting || selectedIds.length === 0}
+                          onClick={() => handleSubmitPool(pool)}
+                          className={`w-full py-3.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
+                            selectedIds.length > 0 && !isSubmitting
+                              ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/25 cursor-pointer active:scale-[0.99]'
+                              : 'bg-slate-800/80 text-slate-500 border border-white/5 cursor-not-allowed'
+                          }`}
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Submitting Response...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{hasResponded ? 'Save Updated Response' : 'Submit Response'}</span>
+                            </>
+                          )}
+                        </button>
+
+                        {isEditing && (
+                          <button
+                            type="button"
+                            onClick={() => toggleEditing(pool.id)}
+                            className="w-full text-center text-xs text-slate-400 hover:text-slate-200 py-1"
+                          >
+                            Cancel Editing
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 py-6 px-4 sm:px-8 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <span>© {new Date().getFullYear()} Zenemoo Data Solutions. All rights reserved.</span>
-          <div className="flex items-center gap-4 text-[11px]">
-            <a href="/privacy" className="hover:text-cyan-400 transition-colors">Privacy Policy</a>
-            <span>•</span>
-            <a href="/terms" className="hover:text-cyan-400 transition-colors">Terms of Service</a>
-            <span>•</span>
-            <span className="text-slate-600 font-mono">Bangalore, India</span>
+      {/* ── First-Time User Profile / Authentication Modal ── */}
+      <AnimatePresence>
+        {(!profile || isEditingProfile) && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-gradient-to-b from-[#0c1024] to-[#070a18] border border-cyan-500/30 rounded-3xl p-7 sm:p-8 shadow-2xl relative"
+            >
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-cyan-500/30">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white font-display">Welcome to Zenemoo Pools</h3>
+                  <p className="text-xs text-slate-400">
+                    {onboardingMode === 'choice'
+                      ? 'Submit quick answers to match with future projects'
+                      : onboardingMode === 'google_type'
+                      ? 'Complete your verified participant profile'
+                      : 'Enter your basic details to participate'}
+                  </p>
+                </div>
+              </div>
+
+              {onboardingError && (
+                <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 rounded-xl mb-4">
+                  {onboardingError}
+                </p>
+              )}
+
+              {/* Mode 1: Choice Screen */}
+              {onboardingMode === 'choice' && (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                    Answer quick questions from Zenemoo so we can understand your interests, availability, and capabilities.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleStartGoogleAuth}
+                    disabled={isGoogleAuthLoading}
+                    className="w-full py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs tracking-wider uppercase transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 active:scale-[0.99]"
+                  >
+                    {isGoogleAuthLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-slate-900" />
+                        <span>Connecting to Google...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                          <path
+                            fill="#4285F4"
+                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                          />
+                          <path
+                            fill="#34A853"
+                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                          />
+                          <path
+                            fill="#FBBC05"
+                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                          />
+                          <path
+                            fill="#EA4335"
+                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                          />
+                        </svg>
+                        <span>Continue with Google</span>
+                      </>
+                    )}
+                  </button>
+
+                  <p className="text-[11px] text-slate-400 text-center font-mono">
+                    Secures your history across Zenemoo with verified identity.
+                  </p>
+
+                  <div className="flex items-center gap-3 py-1">
+                    <div className="h-px bg-white/10 flex-1" />
+                    <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 font-mono">OR</span>
+                    <div className="h-px bg-white/10 flex-1" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setOnboardingMode('manual')}
+                    className="w-full py-3 rounded-xl border border-white/15 hover:border-cyan-500/40 text-slate-300 hover:text-white bg-slate-900/60 font-semibold text-xs tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>Enter Details Manually</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  {profile && isEditingProfile && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProfile(false)}
+                      className="w-full text-center text-xs text-slate-500 hover:text-slate-300 pt-1"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Mode 2: Google Authenticated User -> Select Participant Type */}
+              {onboardingMode === 'google_type' && (
+                <div className="space-y-4">
+                  <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-300 font-bold">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-white truncate">{tempName || 'Google Contributor'}</p>
+                      <p className="text-[11px] text-cyan-300 font-mono truncate">{tempEmail}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300">
+                      Select Your Participant Category *
+                    </label>
+                    <div className="space-y-2">
+                      {PARTICIPANT_TYPES.map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => setTempType(t.id)}
+                          className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                            tempType === t.id
+                              ? 'bg-cyan-500/10 border-cyan-400 text-white shadow-md shadow-cyan-500/10'
+                              : 'bg-slate-900/60 border-white/10 text-slate-300 hover:border-white/20'
+                          }`}
+                        >
+                          <div
+                            className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                              tempType === t.id ? 'border-cyan-400 bg-cyan-400' : 'border-slate-500'
+                            }`}
+                          >
+                            {tempType === t.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-100">{t.label}</p>
+                            <p className="text-[11px] text-slate-400 leading-tight mt-0.5">{t.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setOnboardingMode('choice')}
+                      className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveProfile('google')}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>Continue to Pools</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mode 3: Manual Input */}
+              {onboardingMode === 'manual' && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSaveProfile('manual');
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                      Email Address *
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="email"
+                        required
+                        placeholder="e.g. name@example.com"
+                        value={tempEmail}
+                        onChange={(e) => setTempEmail(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white placeholder-slate-500 outline-none font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                      Full Name *
+                    </label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Prem Kumar"
+                        value={tempName}
+                        onChange={(e) => setTempName(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white placeholder-slate-500 outline-none font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                      Participant Type *
+                    </label>
+                    <select
+                      value={tempType}
+                      onChange={(e) => setTempType(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/15 focus:border-cyan-400 text-xs text-white outline-none font-sans"
+                    >
+                      {PARTICIPANT_TYPES.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setOnboardingMode('choice')}
+                      className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs tracking-wide shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>Complete &amp; Continue</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Polished Zenemoo Public Footer ── */}
+      <footer className="relative z-10 bg-[#020307] text-slate-400 border-t border-white/10 pt-12 pb-8 font-sans">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-8 border-b border-white/10">
+            {/* Logo & Platform Tagline */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/25 shrink-0">
+                <SeoImage
+                  src={logoUrl || '/assets/logo.png'}
+                  alt="Zenemoo Official Logo"
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-contain rounded-full bg-white p-0.5"
+                  fallbackSrc="/assets/logo.png"
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xl font-extrabold tracking-wider font-display text-white">
+                  ZENEMOO
+                </span>
+                <span className="text-[10px] tracking-widest uppercase text-cyan-400 font-mono font-semibold">
+                  AI Contributor Platform
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div className="flex flex-wrap items-center gap-6 text-xs text-slate-300">
+              <a
+                href="/pool"
+                onClick={(e) => {
+                  if (initialPublicId && onBack) {
+                    e.preventDefault();
+                    onBack();
+                  }
+                }}
+                className="hover:text-cyan-400 transition-colors"
+              >
+                Pools
+              </a>
+              <a href="/#opportunities" className="hover:text-cyan-400 transition-colors">
+                Opportunities
+              </a>
+              <a href="/#services" className="hover:text-cyan-400 transition-colors">
+                Services
+              </a>
+              <a href="/#contact" className="hover:text-cyan-400 transition-colors">
+                Contact
+              </a>
+              <a href="/#terms" className="hover:text-cyan-400 transition-colors">
+                Terms &amp; Conditions
+              </a>
+              <a href="/#privacy" className="hover:text-cyan-400 transition-colors">
+                Privacy Policy
+              </a>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-mono">
+            <span>© {new Date().getFullYear()} Zenemoo Technologies. All rights reserved.</span>
+            <a href="mailto:info@zenemoo.in" className="text-cyan-400 hover:underline">
+              info@zenemoo.in
+            </a>
           </div>
         </div>
       </footer>

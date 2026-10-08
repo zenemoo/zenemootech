@@ -60,16 +60,81 @@ export interface PoolHistoryItem {
   pool_id: string;
   public_id?: string;
   pool_title: string;
+  title?: string;
+  description?: string | null;
   category: string;
   pool_status: string;
   submitted_at: string;
+  created_at?: string;
   updated_at?: string;
   selected_options: Array<{
     option_id: string;
     option_text: string;
     custom_text?: string | null;
   }>;
+  selectedOptions?: Array<{
+    option_id: string;
+    option_text: string;
+    custom_text?: string | null;
+  }>;
 }
+
+const normalizeHistoryItem = (item: any): PoolHistoryItem => {
+  if (!item) {
+    return {
+      pool_id: '',
+      pool_title: 'Untitled Pool',
+      category: 'General',
+      pool_status: 'published',
+      submitted_at: new Date().toISOString(),
+      selected_options: [],
+      selectedOptions: [],
+    };
+  }
+
+  const rawOptions = Array.isArray(item.selected_options)
+    ? item.selected_options
+    : Array.isArray(item.selectedOptions)
+    ? item.selectedOptions
+    : item.option_id
+    ? [{ option_id: item.option_id, option_text: item.option_text || item.text || '', custom_text: item.custom_text }]
+    : [];
+
+  const normalizedOptions = rawOptions.map((opt: any) => ({
+    option_id: opt?.option_id || opt?.id || '',
+    option_text: opt?.option_text || opt?.text || opt?.title || '',
+    custom_text: opt?.custom_text || null,
+  }));
+
+  const title = item.pool_title || item.title || 'Untitled Pool';
+  const category = item.category || item.pool_category || 'General';
+  const pool_status = item.pool_status || item.status || 'published';
+  const submitted_at = item.submitted_at || item.created_at || new Date().toISOString();
+
+  return {
+    pool_id: item.pool_id || item.id || '',
+    public_id: item.public_id || '',
+    pool_title: title,
+    title,
+    description: item.description || item.pool_description || null,
+    category,
+    pool_status,
+    submitted_at,
+    created_at: item.created_at || submitted_at,
+    updated_at: item.updated_at,
+    selected_options: normalizedOptions,
+    selectedOptions: normalizedOptions,
+  };
+};
+
+const normalizePoolItem = (p: any): PoolItem => {
+  return {
+    ...p,
+    options: Array.isArray(p?.options) ? p.options : [],
+    total_responses_count: typeof p?.total_responses_count === 'number' ? p.total_responses_count : 0,
+    allow_multiple: Boolean(p?.allow_multiple),
+  };
+};
 
 const getAdminHeaders = () => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('zenemoo_jwt_token') : null;
@@ -81,13 +146,15 @@ export const poolApi = {
   async getActivePools(): Promise<{ success: boolean; pools: PoolItem[] }> {
     const baseUrl = getPoolApiBaseUrl();
     const res = await axios.get(`${baseUrl}/pools/public/active`);
-    return res.data;
+    const pools = Array.isArray(res.data?.pools) ? res.data.pools.map(normalizePoolItem) : [];
+    return { ...res.data, pools };
   },
 
   async getPoolByPublicId(publicId: string): Promise<{ success: boolean; pool: PoolItem }> {
     const baseUrl = getPoolApiBaseUrl();
     const res = await axios.get(`${baseUrl}/pools/public/${publicId}`);
-    return res.data;
+    const pool = res.data?.pool ? normalizePoolItem(res.data.pool) : res.data?.pool;
+    return { ...res.data, pool };
   },
 
   async submitPublicResponse(payload: {
@@ -108,7 +175,9 @@ export const poolApi = {
     const res = await axios.get(`${baseUrl}/pools/public/history`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return res.data;
+    const rawHistory = Array.isArray(res.data?.history) ? res.data.history : [];
+    const history = rawHistory.map(normalizeHistoryItem);
+    return { ...res.data, history };
   },
 
   // Talent Hub APIs
@@ -117,7 +186,8 @@ export const poolApi = {
     const res = await axios.get(`${baseUrl}/pools/talent-hub/list`, {
       headers: { Authorization: `Bearer ${supabaseToken}` },
     });
-    return res.data;
+    const pools = Array.isArray(res.data?.pools) ? res.data.pools.map(normalizePoolItem) : [];
+    return { ...res.data, pools };
   },
 
   async getTalentHubHistory(supabaseToken: string): Promise<{ success: boolean; history: PoolHistoryItem[]; email: string }> {
@@ -125,7 +195,9 @@ export const poolApi = {
     const res = await axios.get(`${baseUrl}/pools/talent-hub/history`, {
       headers: { Authorization: `Bearer ${supabaseToken}` },
     });
-    return res.data;
+    const rawHistory = Array.isArray(res.data?.history) ? res.data.history : [];
+    const history = rawHistory.map(normalizeHistoryItem);
+    return { ...res.data, history };
   },
 
   async submitTalentHubResponse(
