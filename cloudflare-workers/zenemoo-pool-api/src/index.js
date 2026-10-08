@@ -145,52 +145,96 @@ async function ensurePoolTables(env) {
 // --- CORS & HTTP Helpers ---
 
 function getCorsHeaders(request, env) {
-  const origin = request.headers.get('Origin') || '';
-  const allowedOrigins = (
-    env?.CORS_ORIGIN ||
-    'https://zenemoo.in,https://www.zenemoo.in,https://web.zenemoo.in,https://app.zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000'
-  )
-    .split(',')
-    .map((o) => o.trim());
+  const origin = request.headers.get('Origin') || request.headers.get('origin') || '';
 
-  let matchedOrigin = allowedOrigins[0] || 'https://zenemoo.in';
-  if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-    matchedOrigin = origin;
+  const defaultAllowedOrigins = [
+    'https://www.zenemoo.in',
+    'https://zenemoo.in',
+    'https://web.zenemoo.in',
+    'https://app.zenemoo.in',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5000',
+  ];
+
+  const envOrigins = env?.CORS_ORIGIN
+    ? env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+    : [];
+
+  const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
+
+  let isAllowed = false;
+  if (origin) {
+    if (allowedOrigins.includes(origin)) {
+      isAllowed = true;
+    } else {
+      try {
+        const parsedUrl = new URL(origin);
+        const host = parsedUrl.hostname;
+        if (
+          host === 'zenemoo.in' ||
+          host.endsWith('.zenemoo.in') ||
+          host.endsWith('.pages.dev') ||
+          host.endsWith('.workers.dev') ||
+          host === 'localhost' ||
+          host === '127.0.0.1'
+        ) {
+          isAllowed = true;
+        }
+      } catch (_) {
+        isAllowed = false;
+      }
+    }
   }
 
-  return {
-    'Access-Control-Allow-Origin': matchedOrigin,
-    'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Range, X-Requested-With',
+  const baseHeaders = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Range, Accept, Origin, User-Agent, Cache-Control',
     'Access-Control-Expose-Headers': 'Content-Disposition, Content-Length, Content-Type',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
+
+  if (isAllowed && origin) {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      ...baseHeaders,
+    };
+  }
+
+  return baseHeaders;
 }
 
-function jsonResponse(data, status = 200, headers = {}) {
+
+function jsonResponse(data, status = 200, corsHeaders = {}, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...headers,
+      ...corsHeaders,
+      ...extraHeaders,
     },
   });
 }
 
-function csvResponse(csvContent, filename = 'export.csv', headers = {}) {
+function csvResponse(csvContent, filename = 'export.csv', corsHeaders = {}, extraHeaders = {}) {
   return new Response(csvContent, {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
-      ...headers,
+      ...corsHeaders,
+      ...extraHeaders,
     },
   });
 }
 
-function errorResponse(message, status = 400, headers = {}, extra = {}) {
-  return jsonResponse({ success: false, message, ...extra }, status, headers);
+function errorResponse(message, status = 400, corsHeaders = {}, extra = {}) {
+  return jsonResponse({ success: false, message, ...extra }, status, corsHeaders);
 }
 
 // --- Utility Functions ---
