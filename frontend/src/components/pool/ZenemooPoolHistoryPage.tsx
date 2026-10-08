@@ -2,23 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
-  ArrowLeft,
   RefreshCw,
   CheckCircle2,
   Calendar,
   Sparkles,
-  ChevronRight,
   ShieldCheck,
   LogOut,
   User,
   Menu,
   X,
   Vote,
-  ExternalLink,
-  Briefcase,
   HelpCircle,
-  FileText,
-  Mail,
+  Check,
 } from 'lucide-react';
 import { poolApi, PoolHistoryItem } from '../../services/poolApi';
 import { supabase } from '../../lib/supabaseClient';
@@ -158,14 +153,9 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
   const userEmail = sessionUser?.email || '';
 
   return (
-    <div className="min-h-screen bg-[#030409] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* ── Background Atmospheric Glows ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-b from-cyan-600/10 via-blue-700/5 to-transparent blur-3xl opacity-60" />
-      </div>
-
+    <div className="min-h-screen bg-[#05060b] text-slate-100 flex flex-col justify-between selection:bg-cyan-500/30 selection:text-cyan-200 font-sans">
       {/* ── Premium Public Navbar ── */}
-      <header className="sticky top-0 z-40 bg-[#060814]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-2xl shadow-black/60">
+      <header className="sticky top-0 z-40 bg-[#070913]/95 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 shadow-xl shadow-black/50">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           {/* Brand Logo & Lockup */}
           <a
@@ -176,7 +166,7 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                 onNavigateHome();
               }
             }}
-            className="flex items-center gap-3 group cursor-pointer"
+            className="flex items-center gap-3 group cursor-pointer shrink-0"
             aria-label="Zenemoo Home"
           >
             {isLogoLoading ? (
@@ -194,17 +184,17 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
               </div>
             )}
             <div className="flex flex-col">
-              <span className="text-xl font-black tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
+              <span className="text-lg sm:text-xl font-black tracking-wider font-display text-white group-hover:text-cyan-400 transition-colors leading-none">
                 ZENEMOO
               </span>
-              <span className="text-[10px] font-mono text-cyan-400 tracking-wider uppercase mt-0.5">
-                Talent Interest Pools
+              <span className="text-[9px] font-mono text-cyan-400 tracking-wider uppercase mt-0.5">
+                TALENT INTEREST POOLS
               </span>
             </div>
           </a>
 
           {/* Desktop Public Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6 text-xs font-semibold tracking-wide">
+          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold tracking-wide">
             <a
               href="/pool"
               onClick={(e) => {
@@ -231,16 +221,16 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
           {/* Right Header Controls */}
           <div className="hidden md:flex items-center gap-3">
             {sessionUser ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="font-semibold text-slate-200">{displayName}</span>
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs font-semibold text-slate-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="uppercase tracking-wider">{displayName}</span>
                 </div>
                 {onNavigatePools && (
                   <button
                     type="button"
                     onClick={onNavigatePools}
-                    className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer active:scale-95"
+                    className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer active:scale-95"
                   >
                     <Vote className="w-3.5 h-3.5" />
                     <span>Browse Pools</span>
@@ -256,12 +246,12 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={isGoogleLoading}
-                  className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-black font-bold text-xs transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50 active:scale-95"
                 >
                   {isGoogleLoading ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -300,12 +290,12 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
             )}
           </div>
 
-          {/* Mobile Hamburger Toggle Button */}
+          {/* Mobile Hamburger Toggle */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-xl border border-white/10 text-slate-300 hover:text-white bg-white/5"
-            aria-label="Toggle Navigation Menu"
+            className="md:hidden p-2 rounded-xl border border-white/10 text-slate-300 hover:text-white bg-white/5 cursor-pointer"
+            aria-label="Toggle Menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -384,7 +374,7 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                         setMobileMenuOpen(false);
                         handleGoogleSignIn();
                       }}
-                      className="w-full py-2.5 rounded-xl bg-white text-black font-bold text-xs flex items-center justify-center gap-2"
+                      className="w-full py-2.5 rounded-xl bg-white text-slate-950 font-bold text-xs flex items-center justify-center gap-2"
                     >
                       <span>Continue with Google</span>
                     </button>
@@ -409,13 +399,13 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
       </header>
 
       {/* ── Main Container ── */}
-      <main className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 flex-1 relative z-10">
+      <main className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 flex-1 relative z-10 space-y-8">
         {isAuthChecking ? (
           <div className="py-24 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
               <RefreshCw className="w-5 h-5 animate-spin" />
             </div>
-            <span className="font-mono">Verifying Google identity &amp; session...</span>
+            <span className="font-mono">Verifying Google identity &amp; responses...</span>
           </div>
         ) : !sessionUser ? (
           /* ── Unauthenticated State: Sign In Prompt ── */
@@ -475,17 +465,12 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                 </>
               )}
             </button>
-
-            <div className="pt-2 text-[11px] text-slate-400 font-mono flex items-center justify-center gap-2">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Direct Cloudflare D1 encrypted record verification</span>
-            </div>
           </motion.div>
         ) : (
-          /* ── Authenticated State: Verified Google User History ── */
+          /* ── Authenticated State: Verified Google History Cards ── */
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-            {/* User Identity Banner */}
-            <div className="p-6 rounded-2xl border border-cyan-500/25 bg-gradient-to-r from-cyan-950/40 via-[#0a0f26]/90 to-blue-950/30 backdrop-blur-xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* Header & User Profile Info */}
+            <div className="p-6 rounded-3xl border border-cyan-500/25 bg-gradient-to-r from-cyan-950/30 via-[#0a0f26]/90 to-blue-950/30 backdrop-blur-xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-black text-base shadow-lg shadow-cyan-500/20">
                   <User className="w-6 h-6" />
@@ -497,7 +482,7 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                     </h2>
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold uppercase flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                      <span>Verified Google User</span>
+                      <span>Verified Google Identity</span>
                     </span>
                   </div>
                   <p className="text-xs text-cyan-300 font-mono mt-1">{userEmail}</p>
@@ -524,52 +509,34 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
               </div>
             </div>
 
-            {/* Section Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-white font-display flex items-center gap-2.5">
-                  <Clock className="w-5 h-5 text-cyan-400" />
-                  <span>My Pool History</span>
-                </h1>
-                <p className="text-xs text-slate-400 font-sans mt-0.5">
-                  Your responses to Zenemoo Talent Pools
-                </p>
-              </div>
-
-              <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono font-bold w-fit">
-                {history.length} {history.length === 1 ? 'Recorded Response' : 'Recorded Responses'}
-              </span>
+            {/* Title */}
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold text-white font-display tracking-tight flex items-center gap-2">
+                <Vote className="w-5 h-5 text-cyan-400" />
+                <span>My Pool History</span>
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-400 font-sans">
+                Your responses to Zenemoo Talent Pools.
+              </p>
             </div>
 
-            {errorMsg && (
-              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-center justify-between gap-3">
-                <span>{errorMsg}</span>
-                <button
-                  onClick={() => accessToken && loadUserHistory(accessToken)}
-                  className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-semibold cursor-pointer"
-                >
-                  Try Again
-                </button>
-              </div>
-            )}
-
-            {/* History Cards List */}
+            {/* History Card List */}
             {isHistoryLoading ? (
               <div className="py-20 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
                   <RefreshCw className="w-5 h-5 animate-spin" />
                 </div>
-                <span className="font-mono">Loading your submitted responses...</span>
+                <span className="font-mono">Loading your submissions...</span>
               </div>
             ) : history.length === 0 ? (
-              <div className="text-center py-16 px-6 rounded-3xl border border-white/10 bg-[#090d1c]/90 space-y-4 shadow-xl">
+              <div className="text-center py-16 px-6 rounded-3xl border border-white/10 bg-[#080b18]/90 space-y-4 shadow-xl">
                 <div className="w-14 h-14 rounded-2xl bg-slate-800/80 border border-white/10 flex items-center justify-center mx-auto text-slate-400">
                   <Clock className="w-7 h-7 text-cyan-400" />
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-base font-bold text-white font-display">No Pool Responses Found</h3>
                   <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                    You haven&apos;t submitted any talent interest pool responses yet under <strong className="text-cyan-300">{userEmail}</strong>.
+                    You haven&apos;t submitted any responses yet under <strong className="text-cyan-300">{userEmail}</strong>.
                   </p>
                 </div>
                 {onNavigatePools && (
@@ -578,7 +545,7 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                     className="mt-2 px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 active:scale-95 transition-all"
                   >
                     <Vote className="w-4 h-4" />
-                    <span>Browse Active Talent Pools</span>
+                    <span>Browse Open Talent Pools</span>
                   </button>
                 )}
               </div>
@@ -587,31 +554,16 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                 {history.map((item, idx) => (
                   <div
                     key={idx}
-                    className="p-6 sm:p-7 rounded-2xl border border-white/10 bg-gradient-to-r from-[#090f24]/90 via-[#070b1a]/90 to-[#050814]/90 space-y-4 shadow-xl shadow-black/40 hover:border-cyan-500/40 transition-all"
+                    className="max-w-xl mx-auto rounded-3xl border border-white/10 bg-gradient-to-b from-[#090f24]/95 via-[#070b1a]/95 to-[#050814]/95 p-6 sm:p-7 space-y-4 shadow-2xl shadow-black/50 hover:border-cyan-500/30 transition-all"
                   >
-                    {/* Header: Category & Submission Date */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                          {item.category || 'AI DATA SOLUTIONS'}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                          <span>Submitted</span>
-                        </span>
-                      </div>
-
-                      <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Submitted {new Date(item.submitted_at).toLocaleDateString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })}</span>
+                    {/* Category badge */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                        {item.category || 'AI DATA SOLUTIONS'}
                       </span>
                     </div>
 
-                    {/* Pool Question Title & Description */}
+                    {/* Question Title & Description */}
                     <div className="space-y-1.5">
                       <h3 className="text-base sm:text-lg font-bold text-white font-display leading-snug">
                         {item.pool_title || item.title}
@@ -628,14 +580,16 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                       <span className="text-[10px] font-mono uppercase text-slate-400 block tracking-wider font-bold">
                         YOUR RESPONSE
                       </span>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="space-y-2">
                         {(item.selected_options || item.selectedOptions || []).map((opt, oIdx) => (
                           <div
                             key={oIdx}
-                            className="flex items-center gap-2 text-xs sm:text-sm text-emerald-200 bg-emerald-500/15 border border-emerald-500/30 px-4 py-2 rounded-xl font-semibold shadow-sm"
+                            className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-100 flex items-center justify-between text-xs sm:text-sm font-semibold"
                           >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <span>{opt.option_text || (opt as any).text}</span>
+                            <div className="flex items-center gap-2.5">
+                              <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                              <span>{opt.option_text || (opt as any).text}</span>
+                            </div>
                             {opt.custom_text && (
                               <span className="text-slate-300 text-xs font-normal">
                                 ({opt.custom_text})
@@ -644,6 +598,17 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                      <span>
+                        Submitted · {new Date(item.submitted_at).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -654,9 +619,9 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
       </main>
 
       {/* ── Polished Zenemoo Public Footer ── */}
-      <footer className="relative z-10 bg-[#020307] text-slate-400 border-t border-white/10 pt-12 pb-8 font-sans">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-8 border-b border-white/10">
+      <footer className="relative z-10 bg-[#020307] text-slate-400 border-t border-white/10 pt-10 pb-8 font-sans">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-white/10">
             {/* Logo & Platform Tagline */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 p-[2px] shadow-lg shadow-cyan-500/25 shrink-0">
@@ -670,11 +635,11 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-xl font-extrabold tracking-wider font-display text-white">
+                <span className="text-lg font-extrabold tracking-wider font-display text-white">
                   ZENEMOO
                 </span>
-                <span className="text-[10px] tracking-widest uppercase text-cyan-400 font-mono font-semibold">
-                  AI Contributor Platform
+                <span className="text-[9px] tracking-widest uppercase text-cyan-400 font-mono font-semibold">
+                  AI CONTRIBUTOR PLATFORM
                 </span>
               </div>
             </div>

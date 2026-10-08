@@ -4,10 +4,12 @@
  * - Talent Hub (/talent-hub, /talent-hub/dashboard)
  * - Talent Pools (/pool, /pool/history, /pool/:publicId)
  * Prevents open redirects and ensures strict allowlisted navigation.
+ * Uses dual-storage persistence (localStorage + sessionStorage) to survive mobile browser tab suspensions.
  */
 
 const STORAGE_KEY_RETURN = 'zenemoo_auth_return_to';
 const STORAGE_KEY_INTENT = 'zenemoo_auth_intent';
+const STORAGE_KEY_TIMESTAMP = 'zenemoo_auth_return_ts';
 
 // Strict allowlist validation for internal redirect paths
 export function sanitizeAuthReturnPath(rawPath?: string | null): string | null {
@@ -60,13 +62,22 @@ export function sanitizeAuthReturnPath(rawPath?: string | null): string | null {
   return null;
 }
 
-export function setAuthReturnDestination(path: string, intent: 'pool' | 'pool-history' | 'talent-hub' | 'generic' = 'generic') {
+export function setAuthReturnDestination(
+  path: string,
+  intent: 'pool' | 'pool-history' | 'talent-hub' | 'generic' = 'generic'
+) {
   if (typeof window === 'undefined') return;
   const safePath = sanitizeAuthReturnPath(path);
   if (safePath) {
     try {
+      const now = Date.now().toString();
       sessionStorage.setItem(STORAGE_KEY_RETURN, safePath);
       sessionStorage.setItem(STORAGE_KEY_INTENT, intent);
+      sessionStorage.setItem(STORAGE_KEY_TIMESTAMP, now);
+
+      localStorage.setItem(STORAGE_KEY_RETURN, safePath);
+      localStorage.setItem(STORAGE_KEY_INTENT, intent);
+      localStorage.setItem(STORAGE_KEY_TIMESTAMP, now);
     } catch (_) {}
   }
 }
@@ -74,8 +85,19 @@ export function setAuthReturnDestination(path: string, intent: 'pool' | 'pool-hi
 export function getAuthReturnDestination(): { path: string; intent: string } | null {
   if (typeof window === 'undefined') return null;
   try {
-    const rawPath = sessionStorage.getItem(STORAGE_KEY_RETURN);
-    const rawIntent = sessionStorage.getItem(STORAGE_KEY_INTENT) || 'generic';
+    let rawPath = sessionStorage.getItem(STORAGE_KEY_RETURN);
+    let rawIntent = sessionStorage.getItem(STORAGE_KEY_INTENT) || 'generic';
+
+    if (!rawPath) {
+      rawPath = localStorage.getItem(STORAGE_KEY_RETURN);
+      rawIntent = localStorage.getItem(STORAGE_KEY_INTENT) || 'generic';
+      const ts = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
+      // Discard stored intents older than 1 hour
+      if (ts && Date.now() - parseInt(ts, 10) > 3600000) {
+        rawPath = null;
+      }
+    }
+
     const safePath = sanitizeAuthReturnPath(rawPath);
     if (safePath) {
       return { path: safePath, intent: rawIntent };
@@ -89,5 +111,10 @@ export function clearAuthReturnDestination() {
   try {
     sessionStorage.removeItem(STORAGE_KEY_RETURN);
     sessionStorage.removeItem(STORAGE_KEY_INTENT);
+    sessionStorage.removeItem(STORAGE_KEY_TIMESTAMP);
+
+    localStorage.removeItem(STORAGE_KEY_RETURN);
+    localStorage.removeItem(STORAGE_KEY_INTENT);
+    localStorage.removeItem(STORAGE_KEY_TIMESTAMP);
   } catch (_) {}
 }

@@ -392,14 +392,20 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setAuthError("We couldn't sign you in with Google. Please try again.");
       }
 
-      // Android Web Custom Tab Bridge: If opened on Android browser with OAuth tokens/code, forward immediately to native scheme
+      // Android Web Custom Tab Bridge: Only forward if the OAuth intent was genuinely for Talent Hub and not a Pool route
       if (!Capacitor.isNativePlatform()) {
+        const currentPathname = typeof window !== 'undefined' ? window.location.pathname : '';
+        const isPoolRoute = currentPathname.startsWith('/pool');
         const isMobileAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
         const code = searchParams.get('code') || hashParams.get('code');
         const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
-        if (isMobileAndroid && (code || accessToken)) {
-          const deepLink = 'zenemoo://auth/callback' + window.location.search + window.location.hash;
-          window.location.href = deepLink;
+
+        if (isMobileAndroid && (code || accessToken) && !isPoolRoute) {
+          const storedIntent = typeof window !== 'undefined' ? (localStorage.getItem('zenemoo_auth_intent') || sessionStorage.getItem('zenemoo_auth_intent')) : null;
+          if (storedIntent !== 'pool' && storedIntent !== 'pool-history') {
+            const deepLink = 'zenemoo://auth/callback' + window.location.search + window.location.hash;
+            window.location.href = deepLink;
+          }
         }
       }
     }

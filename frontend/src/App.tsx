@@ -163,6 +163,21 @@ function AppInner() {
       if (!url) return;
       if (url.startsWith('zenemoo://auth/callback') || url.includes('auth/callback')) {
         setIsAppInitializing(false);
+
+        const storedDest = getAuthReturnDestination();
+        if (storedDest?.intent === 'pool' || storedDest?.intent === 'pool-history' || storedDest?.path?.startsWith('/pool')) {
+          if (storedDest.path.startsWith('/pool/')) {
+            const pId = storedDest.path.replace('/pool/', '').replace(/^\//, '').split('?')[0].split('#')[0];
+            setSelectedPoolPublicId(decodeURIComponent(pId || ''));
+            setCurrentRoute('pool-detail');
+          } else if (storedDest.path === '/pool/history' || storedDest.intent === 'pool-history') {
+            setCurrentRoute('pool-history');
+          } else {
+            setCurrentRoute('pool');
+          }
+          return;
+        }
+
         if (isRegistered === true) {
           window.history.replaceState(null, '', '/talent-hub/dashboard');
           setCurrentRoute('talent-hub-dashboard');
@@ -537,7 +552,7 @@ function AppInner() {
           window.location.search.includes('code=') ||
           window.location.hash.includes('access_token=') ||
           window.location.hash.includes('error=')
-        ))
+        ) && (!storedAuthDest || storedAuthDest.intent === 'talent-hub'))
       ) {
         matchedRoute = 'talent-hub';
       } else if (
