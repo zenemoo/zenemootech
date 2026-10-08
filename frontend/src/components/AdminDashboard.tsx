@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2 } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2, Vote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -22,6 +22,7 @@ import { AdminReviewsTab } from './AdminReviewsTab';
 import { AdminBrandLogoSettings } from './AdminBrandLogoSettings';
 import { AdminPortfolioSettings } from './AdminPortfolioSettings';
 import { AdminTalentNetworkTab } from './AdminTalentNetworkTab';
+import { AdminTalentPoolsTab } from './AdminTalentPoolsTab';
 import { Folder } from 'lucide-react';
 import { AdminDataPortfolioTab } from './AdminDataPortfolioTab';
 import { AdminHrAiPage } from './AdminHrAiPage';
@@ -69,6 +70,7 @@ export type AdminTabType =
   | 'data-folders'
   | 'call-bookings'
   | 'email-inbox'
+  | 'talent-pools'
   | 'portfolio';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
@@ -93,6 +95,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'partners',
   'opportunities',
   'referrals',
+  'talent-pools',
   'talent-network',
   'talent-teams',
   'datasets',
@@ -150,6 +153,7 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'partners': 'Enterprise Partners',
   'opportunities': 'Program Opportunities',
   'referrals': 'Talent Referrals',
+  'talent-pools': 'Talent Interest Pools',
   'talent-network': 'AI Data Network',
   'talent-teams': 'Talent Teams',
   'datasets': 'Datasets',
@@ -2967,6 +2971,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
     {
       group: 'AI & DATA',
       items: [
+        { id: 'talent-pools', name: 'Talent Interest Pools', icon: Vote },
         { id: 'talent-network', name: 'AI Data Network', icon: Users },
         { id: 'talent-teams', name: 'Talent Teams', icon: Building },
         { id: 'datasets', name: 'Datasets', icon: Folder },
@@ -5144,6 +5149,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
               </motion.div>
             )}
           </div>
+        )}
+
+        {/* TAB: TALENT INTEREST POOLS */}
+        {activeTab === 'talent-pools' && (
+          <AdminTalentPoolsTab />
         )}
 
         {/* TAB: ZENEMOO AI DATA TALENT NETWORK */}

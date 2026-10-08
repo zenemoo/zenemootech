@@ -1,0 +1,21 @@
+name = "zenemoo-pool-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+account_id = "c3e84d8a84eaa06c632f189765eaa9c6"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zenemoo-pools"
+database_id = "d1-zenemoo-pools-prod"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "POOL_KV"
+id = "zenemoo_pool_kv"
+
+[vars]
+CORS_ORIGIN = "https://zenemoo.in,https://www.zenemoo.in,https://web.zenemoo.in,https://app.zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000"
+JWT_SECRET = "zenemoo_super_secret_jwt_key_2026"
+BREVO_API_KEY = "xkeysib-placeholder"
+BREVO_SENDER_EMAIL = "noreply@zenemoo.in"
+BREVO_SENDER_NAME = "Zenemoo Talent Network"

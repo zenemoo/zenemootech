@@ -58,6 +58,8 @@ import { ZenemooApplicationVerifyPage } from './components/ZenemooApplicationVer
 import { ZenemooCompanyPortfolioPage } from './components/ZenemooCompanyPortfolioPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 import { ZenemooTeamJoinPage } from './components/ZenemooTeamJoinPage';
+import { ZenemooPoolPage } from './components/pool/ZenemooPoolPage';
+import { ZenemooPoolHistoryPage } from './components/pool/ZenemooPoolHistoryPage';
 import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -66,8 +68,9 @@ import { extractAndStoreReferralCode } from './lib/opportunityApplicationStore';
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'pool' | 'pool-detail' | 'pool-history' | '404'
   >('home');
+  const [selectedPoolPublicId, setSelectedPoolPublicId] = useState<string>('');
   const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedZenemooPaymentId, setSelectedZenemooPaymentId] = useState<string>('');
   const [selectedDatasetSlug, setSelectedDatasetSlug] = useState<string>('');
@@ -290,6 +293,7 @@ function AppInner() {
         | 'talent-hub-referrals'
         | 'talent-hub-team'
         | 'talent-hub-payments'
+        | 'talent-hub-pools'
         | 'talent-hub-support'
         | 'talent-hub-support-history'
         | 'ai-data'
@@ -306,6 +310,9 @@ function AppInner() {
         | 'public-payment-receipt'
         | 'application-verify'
         | 'portfolio'
+        | 'pool'
+        | 'pool-detail'
+        | 'pool-history'
         | '404' = 'home';
 
       // ── Capture Referral Code from URL parameters & persist across sessions ──
@@ -475,6 +482,13 @@ function AppInner() {
         hash === '#/talent-hub/payments'
       ) {
         matchedRoute = 'talent-hub-payments';
+      } else if (
+        path === '/talent-hub/pools' ||
+        path === '/talent-hub/pools/' ||
+        hash === '#talent-hub/pools' ||
+        hash === '#/talent-hub/pools'
+      ) {
+        matchedRoute = 'talent-hub-pools';
       } else if (
         path === '/talent-hub' ||
         path === '/talent-hub/' ||
@@ -684,6 +698,40 @@ function AppInner() {
         hash === '#/company-portfolio'
       ) {
         matchedRoute = 'portfolio';
+      } else if (
+        path === '/pool/history' ||
+        path === '/pool/history/' ||
+        hash === '#pool/history' ||
+        hash === '#/pool/history'
+      ) {
+        matchedRoute = 'pool-history';
+      } else if (
+        path.startsWith('/pool/') ||
+        hash.startsWith('#pool/') ||
+        hash.startsWith('#/pool/')
+      ) {
+        let pId = '';
+        if (path.startsWith('/pool/')) {
+          pId = path.replace('/pool/', '').replace(/^\//, '');
+        } else if (hash.startsWith('#pool/')) {
+          pId = hash.replace('#pool/', '').replace(/^\//, '');
+        } else if (hash.startsWith('#/pool/')) {
+          pId = hash.replace('#/pool/', '').replace(/^\//, '');
+        }
+        pId = (pId || '').split('?')[0].split('#')[0].replace(/\/+$/, '');
+        setSelectedPoolPublicId(decodeURIComponent(pId || ''));
+        matchedRoute = 'pool-detail';
+      } else if (
+        path === '/pool' ||
+        path === '/pool/' ||
+        path === '/pools' ||
+        path === '/pools/' ||
+        hash === '#pool' ||
+        hash === '#/pool' ||
+        hash === '#pools' ||
+        hash === '#/pools'
+      ) {
+        matchedRoute = 'pool';
       } else if (path === '/' || path === '' || path === '/subscribe' || path === '/subscribe/') {
         matchedRoute = 'home';
       } else {
@@ -710,7 +758,15 @@ function AppInner() {
       let canonicalUrl = 'https://www.zenemoo.in/';
       let metaDescription = 'Zenemoo provides enterprise AI data solutions, multilingual speech annotation, data collection, AI training datasets, and language technology services.';
 
-      if (matchedRoute === '404') {
+      if (matchedRoute === 'pool' || matchedRoute === 'pool-detail') {
+        pageTitle = 'Talent Pools & Quick Interest Survey — Zenemoo';
+        canonicalUrl = selectedPoolPublicId ? `https://www.zenemoo.in/pool/${encodeURIComponent(selectedPoolPublicId)}` : 'https://www.zenemoo.in/pool';
+        metaDescription = 'Share your availability and project interest with Zenemoo in seconds to be notified for matching language and AI data opportunities.';
+      } else if (matchedRoute === 'pool-history') {
+        pageTitle = 'My Talent Pool Submissions — Zenemoo';
+        canonicalUrl = 'https://www.zenemoo.in/pool/history';
+        metaDescription = 'View and verify your historical Zenemoo Talent Pool responses and work interest submissions.';
+      } else if (matchedRoute === '404') {
         pageTitle = '404 – Page Not Found | Zenemoo';
         canonicalUrl = `https://www.zenemoo.in${path}`;
         metaDescription = "The page you requested could not be found. Explore Zenemoo's AI language services, data annotation, transcription, and enterprise solutions.";
@@ -1118,6 +1174,7 @@ function AppInner() {
         currentRoute === 'talent-hub-referrals' ||
         currentRoute === 'talent-hub-team' ||
         currentRoute === 'talent-hub-payments' ||
+        currentRoute === 'talent-hub-pools' ||
         currentRoute === 'talent-hub-support' ||
         currentRoute === 'talent-hub-support-history'
       ) ? (
@@ -1137,6 +1194,8 @@ function AppInner() {
               ? 'team'
               : currentRoute === 'talent-hub-payments'
               ? 'payments'
+              : currentRoute === 'talent-hub-pools'
+              ? 'pools'
               : currentRoute === 'talent-hub-support'
               ? 'support-zenemooindia'
               : currentRoute === 'talent-hub-support-history'
@@ -1246,6 +1305,31 @@ function AppInner() {
         />
       ) : currentRoute === 'portfolio' ? (
         <ZenemooCompanyPortfolioPage />
+      ) : currentRoute === 'pool' || currentRoute === 'pool-detail' ? (
+        <ZenemooPoolPage
+          initialPublicId={currentRoute === 'pool-detail' ? selectedPoolPublicId : undefined}
+          onBack={handleBackToHome}
+          onNavigateHistory={() => {
+            window.history.pushState(null, '', '/pool/history');
+            setCurrentRoute('pool-history');
+          }}
+          onNavigateTalentRegistration={() => {
+            window.history.pushState(null, '', '/talent-registration');
+            window.location.hash = 'talent-registration';
+            setCurrentRoute('talent-registration');
+          }}
+        />
+      ) : currentRoute === 'pool-history' ? (
+        <ZenemooPoolHistoryPage
+          onBack={() => {
+            window.history.pushState(null, '', '/pool');
+            setCurrentRoute('pool');
+          }}
+          onNavigatePools={() => {
+            window.history.pushState(null, '', '/pool');
+            setCurrentRoute('pool');
+          }}
+        />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (
@@ -1284,7 +1368,7 @@ function AppInner() {
       {/* Global Right-Side AI Drawer Panel (Active on all non-admin, non-pay, non-receipt, non-public-payment-receipt, non-application-verify pages) */}
       {currentRoute !== 'admin' && currentRoute !== 'pay' && currentRoute !== 'receipt-verify' && currentRoute !== 'public-payment-receipt' && currentRoute !== 'application-verify' && (
         <>
-          {currentRoute !== 'zenemooai' && !currentRoute.startsWith('talent-hub') && (
+          {currentRoute !== 'zenemooai' && !currentRoute.startsWith('talent-hub') && !currentRoute.startsWith('pool') && (
             <>
               <ZenemooAiDrawer
                 isOpen={isAiDrawerOpen}
@@ -1293,7 +1377,7 @@ function AppInner() {
               <MobileBottomNav onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
             </>
           )}
-          {!currentRoute.startsWith('talent-hub') && (
+          {!currentRoute.startsWith('talent-hub') && !currentRoute.startsWith('pool') && (
             <>
               <SubscribeModal />
               <ScrollProgressButton />

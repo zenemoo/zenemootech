@@ -182,3 +182,34 @@ export const reviewRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+/**
+ * Public Talent Pool Submission Rate Limiter
+ * Max 30 pool response submissions per IP every 15 minutes
+ */
+export const poolSubmissionRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  message: {
+    success: false,
+    message: 'Too many pool submissions from this network. Please wait a few moments before trying again.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
+ * Public Talent Pool History / Verification Rate Limiter
+ * Max 10 verification requests per IP every 15 minutes
+ */
+export const poolHistoryRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: {
+    success: false,
+    message: 'Too many pool history lookup requests. Please wait a few minutes before trying again.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+

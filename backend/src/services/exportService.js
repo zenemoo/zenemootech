@@ -207,6 +207,24 @@ export const EXPORT_CONFIGS = {
       { key: 'created_at', label: 'Created At' },
     ],
   },
+  'talent-pools': {
+    id: 'talent-pools',
+    sectionName: 'Talent Interest Pools',
+    allowedRoles: ['super_admin', 'admin', 'administrator', 'hr'],
+    tableName: 'pool_responses',
+    defaultColumns: [
+      { key: 'pool_id', label: 'Pool ID' },
+      { key: 'pool_title', label: 'Pool Title' },
+      { key: 'category', label: 'Category' },
+      { key: 'option_text', label: 'Selected Option' },
+      { key: 'name', label: 'Respondent Name' },
+      { key: 'email', label: 'Email Address' },
+      { key: 'participant_type', label: 'Participant Type' },
+      { key: 'custom_text', label: 'Custom Note' },
+      { key: 'source', label: 'Source' },
+      { key: 'created_at', label: 'Submitted At' },
+    ],
+  },
 };
 
 // Section ID Aliases mapping
@@ -227,6 +245,8 @@ EXPORT_CONFIGS['payment-management'] = EXPORT_CONFIGS['support-contributions'];
 EXPORT_CONFIGS['payments'] = EXPORT_CONFIGS['support-contributions'];
 EXPORT_CONFIGS['company-reviews'] = EXPORT_CONFIGS['reviews'];
 EXPORT_CONFIGS['jobs'] = EXPORT_CONFIGS['opportunities'];
+EXPORT_CONFIGS['pools'] = EXPORT_CONFIGS['talent-pools'];
+EXPORT_CONFIGS['pool-responses'] = EXPORT_CONFIGS['talent-pools'];
 
 /**
  * Helper: Extract value for a record using primary key and aliases

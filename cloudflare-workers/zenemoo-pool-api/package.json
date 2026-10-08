@@ -1,0 +1,14 @@
+{
+  "name": "zenemoo-pool-api",
+  "version": "1.0.0",
+  "description": "Zenemoo Talent Interest Pool API powered by Cloudflare Workers & Cloudflare D1",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.137.0"
+  }
+}

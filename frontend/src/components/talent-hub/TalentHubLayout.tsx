@@ -23,6 +23,7 @@ import {
   Receipt,
   CreditCard,
   Share2,
+  Vote,
   Copy,
   Check,
   Phone,
@@ -39,7 +40,7 @@ import { SeoImage } from '../../seo/components/SeoImage';
 import { ZENEMOO_SOCIAL_LINKS } from '../SocialData';
 import { paymentWorkerApi } from '../../services/paymentWorkerApi';
 
-export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'referrals' | 'team' | 'payments' | 'support-zenemooindia' | 'support-history';
+export type TalentHubTab = 'dashboard' | 'profile' | 'opportunities' | 'applications' | 'referrals' | 'team' | 'payments' | 'pools' | 'support-zenemooindia' | 'support-history';
 
 interface TalentHubLayoutProps {
   currentTab: TalentHubTab;
@@ -204,6 +205,7 @@ export const TalentHubLayout: React.FC<TalentHubLayoutProps> = ({
     { id: 'profile' as const, label: 'My Profile', icon: User },
     { id: 'opportunities' as const, label: 'Opportunities', icon: Briefcase },
     { id: 'applications' as const, label: 'My Applications', icon: FileCheck },
+    { id: 'pools' as const, label: 'Talent Pools', icon: Vote },
     { id: 'referrals' as const, label: 'Referrals', icon: Share2 },
     {
       id: 'payments' as const,

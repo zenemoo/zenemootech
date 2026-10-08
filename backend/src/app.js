@@ -37,6 +37,7 @@ import adminTalentTeamsRoutes from './routes/adminTalentTeamsRoutes.js';
 import googleGroupSyncRoutes from './routes/googleGroupSyncRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
+import poolRoutes from './routes/poolRoutes.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -187,6 +188,8 @@ app.use('/api/admin/google-group', googleGroupSyncRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/admin/announcements', announcementRoutes);
+app.use('/api/pools', poolRoutes);
+app.use('/api/talent-pools', poolRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);
@@ -224,6 +227,7 @@ app.use('/email', emailRoutes);
 app.use('/emails/scheduled', scheduledEmailRoutes);
 app.use('/emails', emailInboxRoutes);
 app.use('/support', supportRoutes);
+app.use('/pools', poolRoutes);
 
 // Global 404 Route Handler
 app.use('*', (req, res) => {

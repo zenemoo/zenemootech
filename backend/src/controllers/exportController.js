@@ -43,6 +43,29 @@ export const fetchSectionDataset = async (section, clientData = []) => {
       try {
         dbData = await supabaseService.selectAll('opportunities', 'created_at', false);
       } catch (e) {}
+    } else if (section === 'talent-pools' || section === 'pools' || section === 'pool-responses') {
+      try {
+        const { getDiskPoolStore } = await import('./poolController.js');
+        const disk = getDiskPoolStore();
+        const poolsMap = new Map(disk.pools.map((p) => [p.id, p]));
+        const optionsMap = new Map(disk.options.map((o) => [o.id, o.option_text]));
+        dbData = disk.responses.map((r) => {
+          const p = poolsMap.get(r.pool_id) || {};
+          return {
+            id: r.id,
+            pool_id: p.public_id || r.pool_id,
+            pool_title: p.title || 'Zenemoo Pool',
+            category: p.category || 'General',
+            option_text: optionsMap.get(r.option_id) || 'Option',
+            name: r.name,
+            email: r.email,
+            participant_type: r.participant_type || 'Individual',
+            custom_text: r.custom_text || '',
+            source: r.source || 'public_web',
+            created_at: r.created_at,
+          };
+        });
+      } catch (e) {}
     } else if (section === 'users-rbac' || section === 'rbac') {
       try {
         const userAccounts = await supabaseService.selectAll('user_accounts');
