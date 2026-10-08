@@ -64,6 +64,7 @@ import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { extractAndStoreReferralCode } from './lib/opportunityApplicationStore';
+import { getAuthReturnDestination, clearAuthReturnDestination } from './lib/authReturnRouting';
 
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
@@ -320,7 +321,41 @@ function AppInner() {
         extractAndStoreReferralCode();
       } catch (_) {}
 
-      if (isSecretAdminRoute) {
+      // ── Handle OAuth Callback Intent Routing Boundary ──
+      const hasAuthCallback =
+        typeof window !== 'undefined' && (
+          window.location.search.includes('error=') ||
+          window.location.search.includes('code=') ||
+          window.location.hash.includes('access_token=') ||
+          window.location.hash.includes('error=')
+        );
+
+      const storedAuthDest = hasAuthCallback ? getAuthReturnDestination() : null;
+      let handledByAuthCallback = false;
+
+      if (storedAuthDest) {
+        if (storedAuthDest.intent === 'pool-history' || storedAuthDest.path === '/pool/history') {
+          matchedRoute = 'pool-history';
+          handledByAuthCallback = true;
+        } else if (storedAuthDest.intent === 'pool' || storedAuthDest.path.startsWith('/pool')) {
+          if (storedAuthDest.path.startsWith('/pool/')) {
+            const pId = storedAuthDest.path.replace('/pool/', '').replace(/^\//, '').split('?')[0].split('#')[0];
+            setSelectedPoolPublicId(decodeURIComponent(pId || ''));
+            matchedRoute = 'pool-detail';
+          } else {
+            matchedRoute = 'pool';
+          }
+          handledByAuthCallback = true;
+        } else if (storedAuthDest.intent === 'talent-hub' || storedAuthDest.path.startsWith('/talent-hub')) {
+          matchedRoute = 'talent-hub';
+          handledByAuthCallback = true;
+        }
+        clearAuthReturnDestination();
+      }
+
+      if (handledByAuthCallback) {
+        // Post-OAuth return path successfully resolved
+      } else if (isSecretAdminRoute) {
         matchedRoute = 'admin';
       } else if (
         path === '/team-portal' ||

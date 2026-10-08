@@ -26,6 +26,7 @@ import {
 import { poolApi, PoolItem, PoolOptionItem } from '../../services/poolApi';
 import { SeoImage } from '../../seo/components/SeoImage';
 import { supabase } from '../../lib/supabaseClient';
+import { setAuthReturnDestination } from '../../lib/authReturnRouting';
 
 interface LocalPoolProfile {
   email: string;
@@ -76,12 +77,13 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
   const [tempName, setTempName] = useState(profile?.name || '');
   const [onboardingError, setOnboardingError] = useState('');
 
-  // Check Google session on mount
+  // Check Google session on mount and listen for auth state changes
   useEffect(() => {
+    let isMounted = true;
     const checkGoogleUser = async () => {
       try {
         const { data } = await supabase.auth.getSession();
-        if (data?.session?.user) {
+        if (data?.session?.user && isMounted) {
           const gUser = data.session.user;
           const gEmail = gUser.email || '';
           const gName = gUser.user_metadata?.full_name || gUser.user_metadata?.name || gEmail.split('@')[0] || '';
@@ -94,7 +96,26 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
       } catch (_) {}
     };
     checkGoogleUser();
-  }, []);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      if (session?.user) {
+        const gUser = session.user;
+        const gEmail = gUser.email || '';
+        const gName = gUser.user_metadata?.full_name || gUser.user_metadata?.name || gEmail.split('@')[0] || '';
+        if (!profile) {
+          setTempEmail(gEmail);
+          setTempName(gName);
+          setOnboardingMode('google_type');
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [profile]);
 
   // Pools state
   const [pools, setPools] = useState<PoolItem[]>([]);
@@ -163,10 +184,14 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     setIsGoogleAuthLoading(true);
     setOnboardingError('');
     try {
+      const returnPath = initialPublicId ? `/pool/${encodeURIComponent(initialPublicId)}` : '/pool';
+      setAuthReturnDestination(returnPath, 'pool');
+
+      const redirectUrl = `${window.location.origin}${returnPath}`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.href,
+          redirectTo: redirectUrl,
           queryParams: {
             prompt: 'select_account',
           },
@@ -504,6 +529,10 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                     </>
                   )}
                 </button>
+
+                <p className="text-[11px] text-slate-400 text-center -mt-1">
+                  Your Google account will be used to securely save and access your Zenemoo Pool responses.
+                </p>
 
                 {/* Divider */}
                 <div className="flex items-center gap-3 py-1">

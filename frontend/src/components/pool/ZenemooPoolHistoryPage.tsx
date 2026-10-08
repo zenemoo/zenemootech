@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { poolApi, PoolHistoryItem } from '../../services/poolApi';
 import { supabase } from '../../lib/supabaseClient';
+import { setAuthReturnDestination } from '../../lib/authReturnRouting';
 
 interface ZenemooPoolHistoryPageProps {
   onNavigatePools?: () => void;
@@ -102,7 +103,10 @@ export const ZenemooPoolHistoryPage: React.FC<ZenemooPoolHistoryPageProps> = ({
     setIsGoogleLoading(true);
     setErrorMsg('');
     try {
-      const redirectUrl = window.location.origin + '/pool/history';
+      const returnPath = '/pool/history';
+      setAuthReturnDestination(returnPath, 'pool-history');
+
+      const redirectUrl = `${window.location.origin}${returnPath}`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

@@ -5,6 +5,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
+import { setAuthReturnDestination } from '../../lib/authReturnRouting';
 
 export interface TalentProfile {
   id: string;
@@ -709,6 +710,7 @@ export const TalentHubAuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         // Website browser flow remains 100% untouched
         const redirectUrl = getOAuthRedirectUrl();
+        setAuthReturnDestination('/talent-hub', 'talent-hub');
         console.log('[Google OAuth Web] Initiating web signInWithOAuth with redirectTo:', redirectUrl);
 
         const { error } = await supabase.auth.signInWithOAuth({
