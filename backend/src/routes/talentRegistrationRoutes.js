@@ -11,6 +11,7 @@ import {
   addAdminSupportedLanguage,
   updateAdminSupportedLanguage,
   updateAdminCandidateProfile,
+  getNetworkAnalyticsAdmin,
 } from '../controllers/talentRegistrationController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 import { talentRegisterRateLimiter } from '../middleware/rateLimiter.js';
@@ -24,11 +25,13 @@ router.get('/supported-languages', getSupportedLanguages);
 
 // Protected Admin / HR Talent Review Operations
 router.get('/admin/list', verifyToken, requireRole(['admin', 'hr']), getRegistrationsAdmin);
+router.get('/admin/analytics', verifyToken, requireRole(['admin', 'hr']), getNetworkAnalyticsAdmin);
 router.get('/admin/detail/:id', verifyToken, requireRole(['admin', 'hr']), getRegistrationByIdAdmin);
 router.patch('/admin/status/:id', verifyToken, requireRole(['admin', 'hr']), updateRegistrationAdmin);
 router.post('/admin/note/:id', verifyToken, requireRole(['admin', 'hr']), addAdminNote);
 router.get('/admin/export', verifyToken, requireRole(['admin', 'hr']), exportRegistrationsAdmin);
 router.put('/admin/update-profile/:id', verifyToken, requireRole(['admin', 'hr']), updateAdminCandidateProfile);
+
 
 // Strictly Admin-Only Destructive & Language Management
 router.delete('/admin/delete/:id', verifyToken, requireRole(['admin']), deleteRegistrationAdmin);

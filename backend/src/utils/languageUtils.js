@@ -5,7 +5,12 @@
 
 export const normalizeLanguageKey = (name) => {
   if (!name || typeof name !== 'string') return '';
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\(\)\/\-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 export const formatLanguageDisplayName = (name) => {
@@ -15,16 +20,22 @@ export const formatLanguageDisplayName = (name) => {
     return 'Other / Unspecified';
   }
 
-  // Preserve standard title casing for standard languages
+  // Split into tokens preserving words, parentheses, slashes, dashes
   return trimmed
-    .split(' ')
-    .map((word) => {
-      if (word.length <= 3 && word.toUpperCase() === word) return word.toUpperCase();
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    .split(/(\s+|\/|\(|\)|-)/)
+    .map((token) => {
+      if (!token || /^\s+$/.test(token) || token === '/' || token === '(' || token === ')' || token === '-') {
+        return token;
+      }
+      if (token.length <= 3 && token.toUpperCase() === token && /^[A-Z]+$/.test(token)) {
+        return token.toUpperCase();
+      }
+      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
     })
-    .join(' ');
+    .join('');
 };
 
 export const isSameLanguage = (langA, langB) => {
   return normalizeLanguageKey(langA) === normalizeLanguageKey(langB);
 };
+

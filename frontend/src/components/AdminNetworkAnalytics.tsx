@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Users,
   CheckCircle,
@@ -27,14 +27,71 @@ import {
   AlertTriangle,
   Award,
   Check,
+  HelpCircle,
 } from 'lucide-react';
+import { talentRegistrationApi } from '../services/api';
 import { normalizeLanguageKey, formatLanguageDisplayName } from '../utils/languageUtils';
 
 interface AdminNetworkAnalyticsProps {
-  registrations: any[];
+  registrations?: any[];
   onFilterSelect: (filterType: string, value: string) => void;
   onClose: () => void;
-  onExportCsv: () => void;
+  onExportCsv?: () => void;
+}
+
+export type PrimaryRoleGroup =
+  | 'Individual Participants'
+  | 'Coordinators'
+  | 'Vendors / Agencies'
+  | 'Singers'
+  | 'Recording Teams'
+  | 'Other / Unclassified';
+
+export function classifyPrimaryRole(roleStr?: string): PrimaryRoleGroup {
+  if (!roleStr || typeof roleStr !== 'string' || !roleStr.trim()) {
+    return 'Other / Unclassified';
+  }
+  const lower = roleStr.toLowerCase().trim();
+
+  // 1. Coordinators & Recruiters
+  if (lower.includes('coordinator') || lower.includes('recruiter')) {
+    return 'Coordinators';
+  }
+  // 2. Vendors & Agencies & Organizations
+  if (
+    lower.includes('vendor') ||
+    lower.includes('agency') ||
+    lower.includes('organization') ||
+    lower.includes('company') ||
+    lower.includes('community')
+  ) {
+    return 'Vendors / Agencies';
+  }
+  // 3. Singers & Vocalists
+  if (lower.includes('singer') || lower.includes('vocal')) {
+    return 'Singers';
+  }
+  // 4. Recording Teams & Studios & Field Agents
+  if (
+    lower.includes('recording') ||
+    lower.includes('studio') ||
+    lower.includes('team') ||
+    lower.includes('field agent')
+  ) {
+    return 'Recording Teams';
+  }
+  // 5. Individual Participants
+  if (
+    lower.includes('individual') ||
+    lower.includes('participant') ||
+    lower.includes('voice') ||
+    lower.includes('speaker') ||
+    lower.includes('candidate')
+  ) {
+    return 'Individual Participants';
+  }
+
+  return 'Other / Unclassified';
 }
 
 export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
@@ -43,9 +100,14 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
   onClose,
   onExportCsv,
 }) => {
+  // Complete Network Dataset (Fetched for true full analytics)
+  const [networkDataset, setNetworkDataset] = useState<any[]>(registrations);
+  const [loadingDataset, setLoadingDataset] = useState<boolean>(false);
+
   // Global Analytics Filters State
   const [filterDateRange, setFilterDateRange] = useState<string>('all');
   const [filterLanguage, setFilterLanguage] = useState<string>('All Languages');
+  const [filterCountry, setFilterCountry] = useState<string>('All Countries');
   const [filterState, setFilterState] = useState<string>('All States');
   const [filterRole, setFilterRole] = useState<string>('All Roles');
   const [filterWorkType, setFilterWorkType] = useState<string>('All Work Types');
@@ -57,11 +119,43 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
   const [matrixSortField, setMatrixSortField] = useState<string>('resources');
   const [matrixSortOrder, setMatrixSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  // Fetch Full Authentic Dataset for Analytics
+  const fetchAnalyticsData = useCallback(async () => {
+    setLoadingDataset(true);
+    try {
+      const res = await talentRegistrationApi.adminGetNetworkAnalytics();
+      if (res?.data?.success && Array.isArray(res.data.data)) {
+        setNetworkDataset(res.data.data);
+      } else if (registrations.length > 0) {
+        setNetworkDataset(registrations);
+      }
+    } catch (err) {
+      console.warn('Analytics network fetch warning:', err);
+      if (registrations.length > 0) {
+        setNetworkDataset(registrations);
+      }
+    } finally {
+      setLoadingDataset(false);
+    }
+  }, [registrations]);
+
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, [fetchAnalyticsData]);
+
+  // Keep local dataset updated if registrations prop updates with more items
+  useEffect(() => {
+    if (registrations.length > networkDataset.length) {
+      setNetworkDataset(registrations);
+    }
+  }, [registrations, networkDataset.length]);
+
   // Active filter count
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filterDateRange !== 'all') count++;
     if (filterLanguage !== 'All Languages') count++;
+    if (filterCountry !== 'All Countries') count++;
     if (filterState !== 'All States') count++;
     if (filterRole !== 'All Roles') count++;
     if (filterWorkType !== 'All Work Types') count++;
@@ -71,6 +165,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
   }, [
     filterDateRange,
     filterLanguage,
+    filterCountry,
     filterState,
     filterRole,
     filterWorkType,
@@ -81,6 +176,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
   const handleResetAnalyticsFilters = () => {
     setFilterDateRange('all');
     setFilterLanguage('All Languages');
+    setFilterCountry('All Countries');
     setFilterState('All States');
     setFilterRole('All Roles');
     setFilterWorkType('All Work Types');
@@ -88,9 +184,49 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     setFilterStatus('all');
   };
 
+  // Distinct Filter Option Lists extracted from Authentic Dataset
+  const filterOptions = useMemo(() => {
+    const langSet = new Set<string>();
+    const countrySet = new Set<string>();
+    const stateSet = new Set<string>();
+    const workTypeSet = new Set<string>();
+
+    networkDataset.forEach((r) => {
+      // Languages
+      (r.languages || []).forEach((l: any) => {
+        const rawName = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (rawName) {
+          const canonical = formatLanguageDisplayName(rawName);
+          if (canonical && canonical !== 'Other / Unspecified') langSet.add(canonical);
+        }
+      });
+
+      // Country
+      const country = (r.country || 'India').trim();
+      if (country) countrySet.add(country);
+
+      // State
+      const state = (r.state || '').trim();
+      if (state) stateSet.add(state);
+
+      // Work Types
+      (r.work_capabilities || []).forEach((cap: any) => {
+        const capStr = (typeof cap === 'string' ? cap : String(cap)).trim();
+        if (capStr) workTypeSet.add(capStr);
+      });
+    });
+
+    return {
+      languages: Array.from(langSet).sort((a, b) => a.localeCompare(b)),
+      countries: Array.from(countrySet).sort((a, b) => a.localeCompare(b)),
+      states: Array.from(stateSet).sort((a, b) => a.localeCompare(b)),
+      workTypes: Array.from(workTypeSet).sort((a, b) => a.localeCompare(b)),
+    };
+  }, [networkDataset]);
+
   // Filtered dataset for Analytics calculations
   const filteredDataset = useMemo(() => {
-    let data = [...registrations];
+    let data = [...networkDataset];
 
     // Date Range
     if (filterDateRange !== 'all') {
@@ -104,13 +240,22 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
 
     // Language
     if (filterLanguage !== 'All Languages' && filterLanguage.toLowerCase() !== 'all') {
-      const targetLang = filterLanguage.toLowerCase().trim();
+      const targetKey = normalizeLanguageKey(filterLanguage);
       data = data.filter((r) => {
         const langList = Array.isArray(r.languages) ? r.languages : [];
         return langList.some((l: any) => {
-          const lName = (typeof l === 'string' ? l : (l?.language || '')).toLowerCase();
-          return lName.includes(targetLang) || targetLang.includes(lName);
+          const raw = typeof l === 'string' ? l : (l?.language || '');
+          return normalizeLanguageKey(raw) === targetKey;
         });
+      });
+    }
+
+    // Country
+    if (filterCountry !== 'All Countries' && filterCountry.toLowerCase() !== 'all') {
+      const targetCountry = filterCountry.toLowerCase().trim();
+      data = data.filter((r) => {
+        const c = (r.country || 'India').toLowerCase().trim();
+        return c === targetCountry || c.includes(targetCountry);
       });
     }
 
@@ -119,33 +264,26 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       const targetState = filterState.toLowerCase().replace(/\([^)]*\)/g, '').trim();
       data = data.filter((r) => {
         const s = (r.state || '').toLowerCase().trim();
-        return s.includes(targetState) || targetState.includes(s);
+        return s === targetState || s.includes(targetState) || targetState.includes(s);
       });
     }
 
-    // Role
+    // Role (Mutually Exclusive Classification Check)
     if (filterRole !== 'All Roles' && filterRole.toLowerCase() !== 'all') {
-      const targetRole = filterRole.toLowerCase().trim();
-      const roleTokens = targetRole.split(/[\/\s,]+/).filter((t) => t.length > 2);
       data = data.filter((r) => {
-        const itemRole = (r.primary_role || '').toLowerCase();
-        return (
-          itemRole.includes(targetRole) ||
-          targetRole.includes(itemRole) ||
-          roleTokens.some((tok) => itemRole.includes(tok))
-        );
+        const group = classifyPrimaryRole(r.primary_role);
+        return group.toLowerCase() === filterRole.toLowerCase() || (r.primary_role || '').toLowerCase().includes(filterRole.toLowerCase());
       });
     }
 
     // Work Type
     if (filterWorkType !== 'All Work Types' && filterWorkType.toLowerCase() !== 'all') {
-      const wt = filterWorkType.toLowerCase().trim();
-      const wtTokens = wt.split(/[\/\s,]+/).filter((t) => t.length > 2);
+      const targetWt = filterWorkType.toLowerCase().trim();
       data = data.filter((r) => {
         const capsList = Array.isArray(r.work_capabilities) ? r.work_capabilities : [];
         return capsList.some((c: any) => {
-          const cStr = (typeof c === 'string' ? c : String(c)).toLowerCase();
-          return cStr.includes(wt) || wt.includes(cStr) || wtTokens.some((tok) => cStr.includes(tok));
+          const cStr = (typeof c === 'string' ? c : String(c)).toLowerCase().trim();
+          return cStr === targetWt || cStr.includes(targetWt);
         });
       });
     }
@@ -167,9 +305,10 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
 
     return data;
   }, [
-    registrations,
+    networkDataset,
     filterDateRange,
     filterLanguage,
+    filterCountry,
     filterState,
     filterRole,
     filterWorkType,
@@ -177,46 +316,62 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     filterStatus,
   ]);
 
-  // ── 1. COMPUTED TOP METRIC CARDS ──
+  // ── 1. COMPUTED TOP METRICS (MUTUALLY EXCLUSIVE & RECONCILED) ──
   const metrics = useMemo(() => {
     const total = filteredDataset.length;
-    const verified = filteredDataset.filter((r) => r.status === 'verified').length;
-    const pending = filteredDataset.filter((r) => r.status === 'pending' || !r.status).length;
-    
-    const coordinators = filteredDataset.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('coordinator') || roleStr.includes('recruiter');
-    }).length;
 
-    const individuals = filteredDataset.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('individual') || roleStr.includes('participant');
-    }).length;
+    // Mutually Exclusive Status Counts (Sum === total)
+    const verified = filteredDataset.filter((r) => (r.status || '').toLowerCase() === 'verified').length;
+    const pending = filteredDataset.filter((r) => (r.status || 'pending').toLowerCase() === 'pending').length;
+    const rejected = filteredDataset.filter((r) => (r.status || '').toLowerCase() === 'rejected').length;
+    const archived = filteredDataset.filter((r) => (r.status || '').toLowerCase() === 'archived' || r.is_archived).length;
 
-    const vendors = filteredDataset.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('vendor') || roleStr.includes('agency') || roleStr.includes('organization');
-    }).length;
+    // Mutually Exclusive Role Counts (Sum === total)
+    let coordinators = 0;
+    let individuals = 0;
+    let vendors = 0;
+    let singers = 0;
+    let recordingTeams = 0;
+    let otherRoles = 0;
 
-    const singers = filteredDataset.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('singer') || roleStr.includes('vocal');
-    }).length;
+    filteredDataset.forEach((r) => {
+      const group = classifyPrimaryRole(r.primary_role);
+      switch (group) {
+        case 'Coordinators':
+          coordinators++;
+          break;
+        case 'Individual Participants':
+          individuals++;
+          break;
+        case 'Vendors / Agencies':
+          vendors++;
+          break;
+        case 'Singers':
+          singers++;
+          break;
+        case 'Recording Teams':
+          recordingTeams++;
+          break;
+        default:
+          otherRoles++;
+          break;
+      }
+    });
 
-    const recordingTeams = filteredDataset.filter((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      return roleStr.includes('recording') || roleStr.includes('team');
-    }).length;
-
-    // Unique languages
+    // Unique languages represented in the filtered candidate set
     const langSet = new Set<string>();
     filteredDataset.forEach((r) => {
       (r.languages || []).forEach((l: any) => {
-        const lName = (typeof l === 'string' ? l : l?.language || '').trim();
-        if (lName) langSet.add(lName);
+        const raw = typeof l === 'string' ? l : (l?.language || '').trim();
+        if (raw) {
+          const canonical = formatLanguageDisplayName(raw);
+          const key = normalizeLanguageKey(canonical);
+          if (key && key !== 'other unspecified') langSet.add(key);
+        }
       });
     });
 
+    // Immediate Availability
     const immediate = filteredDataset.filter((r) => {
       const avail = (r.availability || '').toLowerCase();
       return avail.includes('immediately') || avail.includes('immediate');
@@ -226,11 +381,14 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       total,
       verified,
       pending,
+      rejected,
+      archived,
       coordinators,
       individuals,
       vendors,
       singers,
       recordingTeams,
+      otherRoles,
       uniqueLanguages: langSet.size,
       immediate,
     };
@@ -251,8 +409,11 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     >();
 
     filteredDataset.forEach((r) => {
-      const isCoord = (r.primary_role || '').toLowerCase().includes('coordinator');
-      const isImmed = (r.availability || '').toLowerCase().includes('immediately');
+      const roleGroup = classifyPrimaryRole(r.primary_role);
+      const isCoord = roleGroup === 'Coordinators';
+      const isImmed = (r.availability || '').toLowerCase().includes('immediately') || (r.availability || '').toLowerCase().includes('immediate');
+
+      const seenLangs = new Set<string>();
 
       (r.languages || []).forEach((l: any) => {
         const rawLangName = typeof l === 'string' ? l : (l?.language || '').trim();
@@ -260,10 +421,18 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
 
         const displayName = formatLanguageDisplayName(rawLangName);
         const key = normalizeLanguageKey(displayName);
-        if (!key) return;
+        if (!key || key === 'other unspecified') return;
 
-        const isNative = typeof l === 'object' && (l?.proficiency || '').toLowerCase().includes('native');
-        const capVal = typeof l === 'object' ? Number(l?.capacity) || 1 : 1;
+        // Deduplicate per candidate so 1 person = 1 resource count for that language
+        if (seenLangs.has(key)) return;
+        seenLangs.add(key);
+
+        const isNative =
+          typeof l === 'object' &&
+          ((l?.proficiency || '').toLowerCase().includes('native') ||
+            (l?.speaker_availability || '').toLowerCase().includes('native'));
+
+        const capVal = typeof l === 'object' ? Math.max(1, Number(l?.capacity) || 1) : 1;
 
         const existing = map.get(key) || {
           language: displayName,
@@ -302,11 +471,11 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     return list;
   }, [filteredDataset, matrixSortField, matrixSortOrder]);
 
-  // Top 6 Languages for Donut Chart
+  // Top Languages for Chart
   const topLanguages = useMemo(() => {
     const list = [...languageMatrix].sort((a, b) => b.resources - a.resources);
     const totalResourceAssociations = list.reduce((acc, curr) => acc + curr.resources, 0) || 1;
-    
+
     const top = list.slice(0, 6);
     const otherCount = list.slice(6).reduce((acc, curr) => acc + curr.resources, 0);
 
@@ -331,54 +500,39 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     return { items, total: totalResourceAssociations };
   }, [languageMatrix]);
 
-  // ── 3. ROLES DISTRIBUTION ──
+  // ── 3. MUTUALLY EXCLUSIVE ROLES DISTRIBUTION ──
   const roleDistribution = useMemo(() => {
-    const roleCounts: Record<string, number> = {
-      'Individual Participant': 0,
-      Coordinator: 0,
-      Vendor: 0,
-      'Recording Team': 0,
-      Singer: 0,
-      'Field Agent': 0,
-      'Speaker Recruiter': 0,
-      Organization: 0,
-      Other: 0,
+    const roleCounts: Record<PrimaryRoleGroup, number> = {
+      'Individual Participants': metrics.individuals,
+      Coordinators: metrics.coordinators,
+      'Vendors / Agencies': metrics.vendors,
+      Singers: metrics.singers,
+      'Recording Teams': metrics.recordingTeams,
+      'Other / Unclassified': metrics.otherRoles,
     };
-
-    filteredDataset.forEach((r) => {
-      const roleStr = (r.primary_role || '').toLowerCase();
-      if (roleStr.includes('individual') || roleStr.includes('participant')) roleCounts['Individual Participant'] += 1;
-      else if (roleStr.includes('coordinator')) roleCounts['Coordinator'] += 1;
-      else if (roleStr.includes('vendor') || roleStr.includes('agency')) roleCounts['Vendor'] += 1;
-      else if (roleStr.includes('recording') || roleStr.includes('team')) roleCounts['Recording Team'] += 1;
-      else if (roleStr.includes('singer') || roleStr.includes('vocal')) roleCounts['Singer'] += 1;
-      else if (roleStr.includes('field')) roleCounts['Field Agent'] += 1;
-      else if (roleStr.includes('recruiter')) roleCounts['Speaker Recruiter'] += 1;
-      else if (roleStr.includes('community') || roleStr.includes('organization')) roleCounts['Organization'] += 1;
-      else roleCounts['Other'] += 1;
-    });
 
     const maxCount = Math.max(1, ...Object.values(roleCounts));
+    const total = metrics.total || 1;
 
-    const colors: Record<string, string> = {
-      'Individual Participant': '#8b5cf6',
-      Coordinator: '#10b981',
-      Vendor: '#f59e0b',
-      'Recording Team': '#3b82f6',
-      Singer: '#ec4899',
-      'Field Agent': '#06b6d4',
-      'Speaker Recruiter': '#6366f1',
-      Organization: '#a855f7',
-      Other: '#64748b',
+    const colors: Record<PrimaryRoleGroup, string> = {
+      'Individual Participants': '#8b5cf6',
+      Coordinators: '#10b981',
+      'Vendors / Agencies': '#f59e0b',
+      'Recording Teams': '#3b82f6',
+      Singers: '#ec4899',
+      'Other / Unclassified': '#64748b',
     };
 
-    return Object.entries(roleCounts).map(([role, count]) => ({
-      role,
-      count,
-      pct: maxCount > 0 ? (count / maxCount) * 100 : 0,
-      color: colors[role] || '#06b6d4',
-    }));
-  }, [filteredDataset]);
+    return (Object.keys(roleCounts) as PrimaryRoleGroup[])
+      .map((role) => ({
+        role,
+        count: roleCounts[role],
+        pct: ((roleCounts[role] / total) * 100).toFixed(1),
+        barPct: (roleCounts[role] / maxCount) * 100,
+        color: colors[role],
+      }))
+      .filter((r) => r.count > 0 || r.role !== 'Other / Unclassified');
+  }, [metrics]);
 
   // ── 4. AVAILABILITY OVERVIEW ──
   const availabilityDistribution = useMemo(() => {
@@ -387,16 +541,16 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       'Within 1 Week': 0,
       'Within 2 Weeks': 0,
       Flexible: 0,
-      Other: 0,
+      'Not Specified / Other': 0,
     };
 
     filteredDataset.forEach((r) => {
-      const avail = (r.availability || '').toLowerCase();
+      const avail = (r.availability || '').toLowerCase().trim();
       if (avail.includes('immediately') || avail.includes('immediate')) counts['Immediately'] += 1;
       else if (avail.includes('1 week') || avail.includes('1-3 days')) counts['Within 1 Week'] += 1;
       else if (avail.includes('2 weeks') || avail.includes('week')) counts['Within 2 Weeks'] += 1;
       else if (avail.includes('flexible') || avail.includes('project')) counts['Flexible'] += 1;
-      else counts['Other'] += 1;
+      else counts['Not Specified / Other'] += 1;
     });
 
     const total = filteredDataset.length || 1;
@@ -405,7 +559,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       'Within 1 Week': '#06b6d4',
       'Within 2 Weeks': '#f59e0b',
       Flexible: '#8b5cf6',
-      Other: '#64748b',
+      'Not Specified / Other': '#64748b',
     };
 
     return Object.entries(counts).map(([key, count]) => ({
@@ -416,12 +570,12 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     }));
   }, [filteredDataset]);
 
-  // ── 5. STATE DISTRIBUTION (LOCATION) ──
+  // ── 5. STATE DISTRIBUTION (GEOGRAPHIC RECONCILIATION) ──
   const stateDistribution = useMemo(() => {
     const map = new Map<string, number>();
 
     filteredDataset.forEach((r) => {
-      const stateName = (r.state || 'Unspecified').trim();
+      const stateName = (r.state || '').trim() || 'Not specified';
       map.set(stateName, (map.get(stateName) || 0) + 1);
     });
 
@@ -456,7 +610,26 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     };
   }, [filteredDataset]);
 
-  // ── 6. TOP CITIES / DISTRICTS ──
+  // ── 6. COUNTRY DISTRIBUTION ──
+  const countryDistribution = useMemo(() => {
+    const map = new Map<string, number>();
+
+    filteredDataset.forEach((r) => {
+      const countryName = (r.country || '').trim() || 'India';
+      map.set(countryName, (map.get(countryName) || 0) + 1);
+    });
+
+    const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+    const total = filteredDataset.length || 1;
+
+    return sorted.map(([country, count]) => ({
+      country,
+      count,
+      pct: ((count / total) * 100).toFixed(1),
+    }));
+  }, [filteredDataset]);
+
+  // ── 7. TOP CITIES / DISTRICTS ──
   const topCities = useMemo(() => {
     const map = new Map<string, { city: string; state: string; count: number }>();
 
@@ -465,8 +638,8 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       const state = (r.state || '').trim();
       if (!city) return;
 
-      const key = `${city}_${state}`;
-      const existing = map.get(key) || { city, state, count: 0 };
+      const key = `${city.toLowerCase()}_${state.toLowerCase()}`;
+      const existing = map.get(key) || { city, state: state || 'Unspecified', count: 0 };
       existing.count += 1;
       map.set(key, existing);
     });
@@ -476,7 +649,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
       .slice(0, 6);
   }, [filteredDataset]);
 
-  // ── 7. WORK TYPE DISTRIBUTION ──
+  // ── 8. WORK TYPE CAPABILITIES DISTRIBUTION ──
   const workTypeDistribution = useMemo(() => {
     const map = new Map<string, number>();
 
@@ -514,39 +687,48 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
 
     return {
       items,
-      mostCommon: sorted[0] ? sorted[0][0] : 'Audio Recording',
+      mostCommon: sorted[0] ? sorted[0][0] : 'Voice / Audio Recording',
       mostCommonCount: sorted[0] ? sorted[0][1] : 0,
     };
   }, [filteredDataset]);
 
-  // ── 8. VERIFICATION STATUS ──
+  // ── 9. VERIFICATION STATUS DISTRIBUTION ──
   const statusDistribution = useMemo(() => {
-    const map = {
-      verified: 0,
-      pending: 0,
-      rejected: 0,
-      archived: 0,
-    };
-
-    filteredDataset.forEach((r) => {
-      const st = (r.status || 'pending').toLowerCase();
-      if (st === 'verified') map.verified += 1;
-      else if (st === 'rejected') map.rejected += 1;
-      else if (st === 'archived' || r.is_archived) map.archived += 1;
-      else map.pending += 1;
-    });
-
     const total = filteredDataset.length || 1;
 
     return [
-      { status: 'verified', label: 'Verified', count: map.verified, color: '#10b981', pct: ((map.verified / total) * 100).toFixed(1) },
-      { status: 'pending', label: 'Pending', count: map.pending, color: '#f59e0b', pct: ((map.pending / total) * 100).toFixed(1) },
-      { status: 'rejected', label: 'Rejected', count: map.rejected, color: '#ef4444', pct: ((map.rejected / total) * 100).toFixed(1) },
-      { status: 'archived', label: 'Archived', count: map.archived, color: '#64748b', pct: ((map.archived / total) * 100).toFixed(1) },
-    ];
-  }, [filteredDataset]);
+      {
+        status: 'verified',
+        label: 'Verified',
+        count: metrics.verified,
+        color: '#10b981',
+        pct: ((metrics.verified / total) * 100).toFixed(1),
+      },
+      {
+        status: 'pending',
+        label: 'Pending Review',
+        count: metrics.pending,
+        color: '#f59e0b',
+        pct: ((metrics.pending / total) * 100).toFixed(1),
+      },
+      {
+        status: 'rejected',
+        label: 'Rejected',
+        count: metrics.rejected,
+        color: '#ef4444',
+        pct: ((metrics.rejected / total) * 100).toFixed(1),
+      },
+      {
+        status: 'archived',
+        label: 'Archived',
+        count: metrics.archived,
+        color: '#64748b',
+        pct: ((metrics.archived / total) * 100).toFixed(1),
+      },
+    ].filter((s) => s.count > 0 || s.status === 'verified' || s.status === 'pending');
+  }, [filteredDataset, metrics]);
 
-  // ── 9. NETWORK GROWTH TREND ──
+  // ── 10. NETWORK GROWTH TIMELINE ──
   const growthTrend = useMemo(() => {
     const daysLimit = parseInt(growthTimeframe, 10) || 30;
     const now = new Date().getTime();
@@ -557,7 +739,10 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     filteredDataset.forEach((r) => {
       const t = new Date(r.created_at || 0).getTime();
       if (t >= threshold) {
-        const dateStr = new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const dateStr = new Date(r.created_at).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        });
         map.set(dateStr, (map.get(dateStr) || 0) + 1);
       }
     });
@@ -568,24 +753,75 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
     return { list, maxVal, totalInRange: list.reduce((a, b) => a + b.count, 0) };
   }, [filteredDataset, growthTimeframe]);
 
-  // ── 10. RECENT REGISTRATIONS LIST ──
+  // ── 11. RECENT REGISTRATIONS LIST ──
   const recentRegistrations = useMemo(() => {
     return [...filteredDataset]
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
       .slice(0, 5);
   }, [filteredDataset]);
 
+  // Export Filtered CSV directly
+  const handleExportFilteredCsv = () => {
+    if (onExportCsv) {
+      onExportCsv();
+      return;
+    }
+
+    const headers = [
+      'ID',
+      'Registration Code',
+      'Full Name',
+      'Role',
+      'State',
+      'Country',
+      'City / District',
+      'Availability',
+      'Status',
+      'Languages',
+      'Created At',
+    ];
+
+    const rows = filteredDataset.map((r) => [
+      `"${r.id || ''}"`,
+      `"${r.registration_code || ''}"`,
+      `"${(r.full_name || '').replace(/"/g, '""')}"`,
+      `"${(r.primary_role || '').replace(/"/g, '""')}"`,
+      `"${(r.state || '').replace(/"/g, '""')}"`,
+      `"${(r.country || 'India').replace(/"/g, '""')}"`,
+      `"${(r.city_district || '').replace(/"/g, '""')}"`,
+      `"${(r.availability || '').replace(/"/g, '""')}"`,
+      `"${(r.status || 'pending').replace(/"/g, '""')}"`,
+      `"${(r.languages || [])
+        .map((l: any) => (typeof l === 'string' ? l : l?.language || ''))
+        .filter(Boolean)
+        .join('; ')
+        .replace(/"/g, '""')}"`,
+      `"${r.created_at || ''}"`,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `zenemoo_network_analytics_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Helper function to render Donut Chart SVG
   const renderSvgDonut = (
     items: { name: string; count: number; color: string; pct: string }[],
-    totalLabel: string | number
+    totalLabel: string | number,
+    subLabel = 'Total'
   ) => {
     let cumulative = 0;
     const radius = 40;
     const circumference = 2 * Math.PI * radius;
 
     return (
-      <div className="relative w-36 h-36 mx-auto flex items-center justify-center shrink-0">
+      <div className="relative w-32 h-32 sm:w-36 sm:h-36 mx-auto flex items-center justify-center shrink-0">
         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
           {items.map((item, idx) => {
             const pctValue = parseFloat(item.pct) / 100;
@@ -610,8 +846,8 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
           })}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center font-mono">
-          <span className="text-xl font-black text-white">{totalLabel}</span>
-          <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</span>
+          <span className="text-lg sm:text-xl font-black text-white">{totalLabel}</span>
+          <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">{subLabel}</span>
         </div>
       </div>
     );
@@ -627,32 +863,39 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
               onClick={onClose}
               className="px-3 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs flex items-center gap-1.5 cursor-pointer transition-all border border-white/15"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Talent Network
+              <ArrowLeft className="w-3.5 h-3.5" /> Talent Roster
             </button>
             <span className="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1">
-              <PieChart className="w-3.5 h-3.5 text-cyan-400" /> Network Analytics <span className="text-[9px] bg-cyan-500 text-black px-1.5 py-0.2 rounded font-extrabold ml-1">Beta</span>
+              <PieChart className="w-3.5 h-3.5 text-cyan-400" /> Network Analytics Dashboard
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-white tracking-tight">
             Zenemoo AI Workforce Intelligence Dashboard
           </h1>
           <p className="text-xs text-slate-400 font-mono max-w-2xl leading-relaxed">
-            Detailed real-time metrics and capacity analytics across languages, roles, geography, and availability for internal AI data project planning.
+            Real-time analytics and capacity metrics across languages, roles, geography, and availability. Filtered calculations dynamically reconcile across all charts and summary totals.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full md:w-auto">
           <button
-            onClick={onExportCsv}
-            className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all"
+            onClick={fetchAnalyticsData}
+            className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-cyan-300 border border-white/15 cursor-pointer transition-all"
+            title="Refresh analytics data"
           >
-            <Download className="w-4 h-4 text-black" /> Export Analytics
+            <RotateCcw className={`w-4 h-4 ${loadingDataset ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={handleExportFilteredCsv}
+            className="flex-1 md:flex-none px-4 py-2.5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 transition-all"
+          >
+            <Download className="w-4 h-4 text-black" /> Export Analytics CSV
           </button>
           <button
             onClick={onClose}
-            className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer border border-white/15 transition-all"
+            className="flex-1 md:flex-none px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs font-mono flex items-center justify-center gap-2 cursor-pointer border border-white/15 transition-all"
           >
-            <X className="w-4 h-4" /> Hide Analytics
+            <X className="w-4 h-4" /> Close
           </button>
         </div>
       </div>
@@ -675,12 +918,12 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
               onClick={handleResetAnalyticsFilters}
               className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer flex items-center gap-1"
             >
-              <RotateCcw className="w-3 h-3" /> Clear Filters
+              <RotateCcw className="w-3 h-3" /> Reset Filters
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
           {/* Timeframe */}
           <select
             value={filterDateRange}
@@ -692,6 +935,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             <option value="30">Last 30 Days</option>
             <option value="90">Last 90 Days</option>
             <option value="180">Last 6 Months</option>
+            <option value="365">Last 1 Year</option>
           </select>
 
           {/* Language */}
@@ -701,9 +945,23 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             className="px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All Languages">All Languages</option>
-            {languageMatrix.map((l) => (
-              <option key={l.language} value={l.language}>
-                {l.language} ({l.resources})
+            {filterOptions.languages.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+
+          {/* Country */}
+          <select
+            value={filterCountry}
+            onChange={(e) => setFilterCountry(e.target.value)}
+            className="px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+          >
+            <option value="All Countries">All Countries</option>
+            {filterOptions.countries.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
           </select>
@@ -715,9 +973,9 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             className="px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All States">All States</option>
-            {stateDistribution.items.map((s) => (
-              <option key={s.state} value={s.state}>
-                {s.state} ({s.count})
+            {filterOptions.states.map((s) => (
+              <option key={s} value={s}>
+                {s}
               </option>
             ))}
           </select>
@@ -729,11 +987,11 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             className="px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All Roles">All Roles</option>
-            <option value="Individual Participant">Individual Participant</option>
-            <option value="Coordinator">Coordinator</option>
-            <option value="Vendor / Agency">Vendor / Agency</option>
-            <option value="Singer / Vocal Artist">Singer / Vocal Artist</option>
-            <option value="Recording Team">Recording Team</option>
+            <option value="Individual Participants">Individual Participants</option>
+            <option value="Coordinators">Coordinators</option>
+            <option value="Vendors / Agencies">Vendors / Agencies</option>
+            <option value="Singers">Singers</option>
+            <option value="Recording Teams">Recording Teams</option>
           </select>
 
           {/* Work Type */}
@@ -743,9 +1001,9 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             className="px-3 py-2 rounded-xl bg-black/80 border border-white/15 text-white text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="All Work Types">All Work Types</option>
-            {workTypeDistribution.items.map((w) => (
-              <option key={w.workType} value={w.workType}>
-                {w.workType}
+            {filterOptions.workTypes.map((w) => (
+              <option key={w} value={w}>
+                {w}
               </option>
             ))}
           </select>
@@ -777,10 +1035,10 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
           </select>
         </div>
 
-        {/* Removable Active Chips */}
+        {/* Removable Active Filter Chips */}
         {activeFiltersCount > 0 && (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
-            <span className="text-[10px] text-slate-500 uppercase font-bold">Active Analytics Filters:</span>
+            <span className="text-[10px] text-slate-500 uppercase font-bold">Active Filters:</span>
             {filterDateRange !== 'all' && (
               <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 text-[11px]">
                 Time: {filterDateRange} days
@@ -791,6 +1049,12 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
               <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 text-[11px]">
                 Lang: {filterLanguage}
                 <X className="w-3 h-3 cursor-pointer" onClick={() => setFilterLanguage('All Languages')} />
+              </span>
+            )}
+            {filterCountry !== 'All Countries' && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 text-[11px]">
+                Country: {filterCountry}
+                <X className="w-3 h-3 cursor-pointer" onClick={() => setFilterCountry('All Countries')} />
               </span>
             )}
             {filterState !== 'All States' && (
@@ -836,7 +1100,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             <Users className="w-3.5 h-3.5 text-cyan-400" />
           </div>
           <div className="text-2xl font-extrabold text-white">{metrics.total}</div>
-          <div className="text-[10px] text-slate-500">All Registered</div>
+          <div className="text-[10px] text-slate-500">Filtered Candidates</div>
         </div>
 
         {/* Verified */}
@@ -888,13 +1152,13 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
         </div>
 
         {/* Vendors */}
-        <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 space-y-1">
-          <div className="flex items-center justify-between text-purple-400 text-[10px] uppercase font-bold">
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1">
+          <div className="flex items-center justify-between text-amber-400 text-[10px] uppercase font-bold">
             <span>Vendors</span>
-            <Handshake className="w-3.5 h-3.5 text-purple-400" />
+            <Handshake className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <div className="text-2xl font-extrabold text-purple-300">{metrics.vendors}</div>
-          <div className="text-[10px] text-purple-400 font-bold">
+          <div className="text-2xl font-extrabold text-amber-300">{metrics.vendors}</div>
+          <div className="text-[10px] text-amber-400 font-bold">
             {metrics.total > 0 ? ((metrics.vendors / metrics.total) * 100).toFixed(1) : 0}% of total
           </div>
         </div>
@@ -914,7 +1178,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
         {/* Recording Teams */}
         <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 space-y-1">
           <div className="flex items-center justify-between text-indigo-400 text-[10px] uppercase font-bold">
-            <span>Recording Teams</span>
+            <span>Rec Teams</span>
             <Building className="w-3.5 h-3.5 text-indigo-400" />
           </div>
           <div className="text-2xl font-extrabold text-indigo-300">{metrics.recordingTeams}</div>
@@ -930,7 +1194,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             <Globe className="w-3.5 h-3.5 text-cyan-400" />
           </div>
           <div className="text-2xl font-extrabold text-cyan-400">{metrics.uniqueLanguages}</div>
-          <div className="text-[10px] text-slate-500">Unique Languages</div>
+          <div className="text-[10px] text-slate-500">Represented</div>
         </div>
 
         {/* Available Immediately */}
@@ -946,6 +1210,23 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
         </div>
       </div>
 
+      {/* Empty State Alert if filtered dataset is empty */}
+      {filteredDataset.length === 0 && (
+        <div className="p-8 rounded-3xl bg-amber-500/10 border border-amber-500/30 text-center space-y-3 font-mono">
+          <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+          <h3 className="text-base font-bold text-white">No candidates match current analytics filters</h3>
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            Try broadening your selected filters (time range, language, state, role, or status) to view network distribution.
+          </p>
+          <button
+            onClick={handleResetAnalyticsFilters}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs cursor-pointer shadow"
+          >
+            Reset All Filters
+          </button>
+        </div>
+      )}
+
       {/* ── 4. MAIN CHARTS ROW (LANGUAGE, ROLES, AVAILABILITY) ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
         {/* Language Distribution Card */}
@@ -953,20 +1234,20 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
-                <Globe className="w-4 h-4 text-cyan-400" /> Languages Distribution
+                <Globe className="w-4 h-4 text-cyan-400" /> Language Distribution
               </h3>
-              <p className="text-slate-400 text-[10px]">Unique languages in your network</p>
+              <p className="text-slate-400 text-[10px]">Resource connections across unique languages</p>
             </div>
             <a
               href="#language-capacity-matrix"
               className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
             >
-              View All
+              View Matrix
             </a>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-6 my-auto">
-            {renderSvgDonut(topLanguages.items, topLanguages.items.length)}
+            {renderSvgDonut(topLanguages.items, topLanguages.total, 'Links')}
             <div className="space-y-1.5 w-full flex-1">
               {topLanguages.items.map((item) => (
                 <div
@@ -975,11 +1256,11 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                   className="flex items-center justify-between text-xs p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
                   title={`Click to filter candidates speaking ${item.name}`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 truncate">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-slate-200 font-bold">{item.name}</span>
+                    <span className="text-slate-200 font-bold truncate">{item.name}</span>
                   </div>
-                  <span className="text-slate-400 font-mono">
+                  <span className="text-slate-400 font-mono shrink-0 ml-2">
                     {item.count} <span className="text-[10px] text-slate-500">({item.pct}%)</span>
                   </span>
                 </div>
@@ -988,43 +1269,39 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
           </div>
         </div>
 
-        {/* Resources by Role Vertical Bar Chart */}
+        {/* Mutually Exclusive Resources by Role Chart */}
         <div className="glass-panel p-5 rounded-3xl border border-white/10 space-y-4 shadow-xl flex flex-col">
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-purple-400" /> Resources by Role
+                <BarChart2 className="w-4 h-4 text-purple-400" /> Primary Role Distribution
               </h3>
-              <p className="text-slate-400 text-[10px]">Distribution of resources by primary role</p>
+              <p className="text-slate-400 text-[10px]">Mutually exclusive primary roles (Reconciles 100%)</p>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col justify-end space-y-2 pt-4">
-            <div className="grid grid-cols-5 items-end gap-2 h-40 pt-6 px-2 border-b border-white/10">
-              {roleDistribution.slice(0, 5).map((r) => (
-                <div
-                  key={r.role}
-                  onClick={() => onFilterSelect('role', r.role)}
-                  className="flex flex-col items-center gap-1 group cursor-pointer"
-                  title={`Click to filter by Role: ${r.role}`}
-                >
-                  <span className="text-[10px] font-bold text-white group-hover:text-cyan-300">{r.count}</span>
-                  <div
-                    className="w-full rounded-t-lg transition-all duration-300 group-hover:brightness-125"
-                    style={{
-                      height: `${Math.max(8, r.pct)}%`,
-                      backgroundColor: r.color,
-                    }}
-                  />
-                  <span className="text-[9px] text-slate-400 font-bold truncate w-full text-center mt-1">
-                    {r.role.split(' ')[0]}
+          <div className="space-y-2.5 my-auto">
+            {roleDistribution.map((r) => (
+              <div
+                key={r.role}
+                onClick={() => onFilterSelect('role', r.role)}
+                className="space-y-1 cursor-pointer group p-1 rounded-lg hover:bg-white/5 transition-colors"
+                title={`Click to filter by Role: ${r.role}`}
+              >
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-200 font-bold group-hover:text-purple-300 truncate">{r.role}</span>
+                  <span className="text-slate-400 font-mono shrink-0 ml-2">
+                    {r.count} <span className="text-[10px] text-slate-500">({r.pct}%)</span>
                   </span>
                 </div>
-              ))}
-            </div>
-            <div className="text-[10px] text-slate-500 text-center pt-1">
-              Click any bar to filter Talent Network by role
-            </div>
+                <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.max(4, r.barPct)}%`, backgroundColor: r.color }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1035,12 +1312,12 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-400" /> Availability Overview
               </h3>
-              <p className="text-slate-400 text-[10px]">When registered resources can start</p>
+              <p className="text-slate-400 text-[10px]">When registered candidates can start</p>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-6 my-auto">
-            {renderSvgDonut(availabilityDistribution, metrics.total)}
+            {renderSvgDonut(availabilityDistribution, metrics.total, 'Total')}
             <div className="space-y-1.5 w-full flex-1">
               {availabilityDistribution.map((item) => (
                 <div
@@ -1049,11 +1326,11 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                   className="flex items-center justify-between text-xs p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
                   title={`Click to filter resources available ${item.name}`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 truncate">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-slate-200 font-bold">{item.name}</span>
+                    <span className="text-slate-200 font-bold truncate">{item.name}</span>
                   </div>
-                  <span className="text-slate-400 font-mono">
+                  <span className="text-slate-400 font-mono shrink-0 ml-2">
                     {item.count} <span className="text-[10px] text-slate-500">({item.pct}%)</span>
                   </span>
                 </div>
@@ -1065,14 +1342,16 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
 
       {/* ── 5. SECONDARY CHARTS ROW (STATES, WORK TYPES, RECENT REGISTRATIONS) ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
-        {/* Resources by State Horizontal Bar Chart */}
+        {/* Resources by State Horizontal Bar Chart (Long name friendly) */}
         <div className="glass-panel p-5 rounded-3xl border border-white/10 space-y-4 shadow-xl">
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-400" /> Resources by State
               </h3>
-              <p className="text-slate-400 text-[10px]">Top states with candidate concentration ({stateDistribution.totalStates} States Covered)</p>
+              <p className="text-slate-400 text-[10px]">
+                Regional concentration ({stateDistribution.totalStates} States Represented)
+              </p>
             </div>
           </div>
 
@@ -1085,15 +1364,15 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                 title={`Click to filter candidates in ${s.state}`}
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-200 font-bold group-hover:text-cyan-300">{s.state}</span>
-                  <span className="text-slate-400 font-mono">
+                  <span className="text-slate-200 font-bold group-hover:text-emerald-300 truncate">{s.state}</span>
+                  <span className="text-slate-400 font-mono shrink-0 ml-2">
                     {s.count} <span className="text-[10px] text-slate-500">({s.pct}%)</span>
                   </span>
                 </div>
                 <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${s.pct}%`, backgroundColor: s.color }}
+                    style={{ width: `${Math.max(4, parseFloat(s.pct))}%`, backgroundColor: s.color }}
                   />
                 </div>
               </div>
@@ -1108,7 +1387,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-indigo-400" /> Work Capability Distribution
               </h3>
-              <p className="text-slate-400 text-[10px]">Types of work resources can perform</p>
+              <p className="text-slate-400 text-[10px]">Types of AI data tasks candidates can perform</p>
             </div>
           </div>
 
@@ -1121,15 +1400,15 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                 title={`Click to filter candidates capable of ${w.workType}`}
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-200 font-bold group-hover:text-indigo-300">{w.workType}</span>
-                  <span className="text-slate-400 font-mono">
+                  <span className="text-slate-200 font-bold group-hover:text-indigo-300 truncate">{w.workType}</span>
+                  <span className="text-slate-400 font-mono shrink-0 ml-2">
                     {w.count} <span className="text-[10px] text-slate-500">({w.pct}%)</span>
                   </span>
                 </div>
                 <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${w.pct}%`, backgroundColor: w.color }}
+                    style={{ width: `${Math.max(4, parseFloat(w.pct))}%`, backgroundColor: w.color }}
                   />
                 </div>
               </div>
@@ -1142,21 +1421,21 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
-                <Clock className="w-4 h-4 text-cyan-400" /> Recent Registrations
+                <Clock className="w-4 h-4 text-cyan-400" /> Recent Signups
               </h3>
-              <p className="text-slate-400 text-[10px]">Latest candidate signups in system</p>
+              <p className="text-slate-400 text-[10px]">Latest candidate registrations in network</p>
             </div>
             <button
               onClick={onClose}
               className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
             >
-              View All
+              View Roster
             </button>
           </div>
 
           <div className="space-y-2.5">
             {recentRegistrations.length === 0 ? (
-              <div className="text-slate-500 text-center py-6">No recent registrations.</div>
+              <div className="text-slate-500 text-center py-6">No registrations found.</div>
             ) : (
               recentRegistrations.map((r) => (
                 <div
@@ -1164,15 +1443,19 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                   onClick={onClose}
                   className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3 hover:bg-white/[0.06] cursor-pointer transition-colors"
                 >
-                  <div className="space-y-0.5 truncate">
+                  <div className="space-y-0.5 truncate flex-1">
                     <div className="text-white font-bold truncate flex items-center gap-1.5">
-                      <span>{r.full_name}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      <span className="truncate">{r.full_name}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
                         {r.primary_role}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400">
-                      {r.state} • {(r.languages || []).map((l: any) => (typeof l === 'string' ? l : l.language)).slice(0, 2).join(', ')}
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {r.state || 'India'} •{' '}
+                      {(r.languages || [])
+                        .map((l: any) => (typeof l === 'string' ? l : l.language))
+                        .slice(0, 2)
+                        .join(', ')}
                     </div>
                   </div>
                   <span
@@ -1196,18 +1479,18 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div>
             <h3 className="text-white font-bold text-base flex items-center gap-2">
-              <Globe className="w-5 h-5 text-cyan-400" /> Language &amp; Resource Capacity Matrix
+              <Globe className="w-5 h-5 text-cyan-400" /> Language Coverage &amp; Recruitable Capacity Matrix
             </h3>
             <p className="text-slate-400 text-xs mt-0.5">
-              Comprehensive breakdown of language coverage, native speaker ratios, coordinator count, total recruitable capacity, and immediate availability.
+              Comprehensive breakdown of registered resources, native speaker counts, coordinator links, total recruitable capacity, and immediate availability.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span>Sort Matrix:</span>
+            <span>Sort:</span>
             <select
               value={matrixSortField}
               onChange={(e) => setMatrixSortField(e.target.value)}
-              className="bg-black/60 border border-white/15 rounded-lg px-2.5 py-1 text-white focus:outline-none cursor-pointer"
+              className="bg-black/60 border border-white/15 rounded-lg px-2.5 py-1 text-white focus:outline-none cursor-pointer text-xs"
             >
               <option value="resources">Total Resources</option>
               <option value="nativeCount">Native Speakers</option>
@@ -1217,7 +1500,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
             </select>
             <button
               onClick={() => setMatrixSortOrder(matrixSortOrder === 'asc' ? 'desc' : 'asc')}
-              className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-cyan-300 font-bold"
+              className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-cyan-300 font-bold cursor-pointer"
             >
               {matrixSortOrder.toUpperCase()}
             </button>
@@ -1261,7 +1544,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                     <td className="p-3.5 text-center font-bold text-emerald-400">{item.nativeCount}</td>
                     <td className="p-3.5 text-center font-bold text-purple-400">{item.coordinators}</td>
                     <td className="p-3.5 text-center font-bold text-amber-300">
-                      {item.capacity > 0 ? item.capacity : 'Data N/A'}
+                      {item.capacity > 0 ? item.capacity : '1'}
                     </td>
                     <td className="p-3.5 text-center font-bold text-emerald-300">{item.immediate}</td>
                     <td className="p-3.5 text-right">
@@ -1284,9 +1567,9 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div>
               <h3 className="text-white font-bold text-sm flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-cyan-400" /> Network Growth Trend
+                <TrendingUp className="w-4 h-4 text-cyan-400" /> Network Growth Timeline
               </h3>
-              <p className="text-slate-400 text-[10px]">Candidate registrations timeline</p>
+              <p className="text-slate-400 text-[10px]">Daily registrations timeline</p>
             </div>
             <div className="flex items-center gap-1">
               {['7', '30', '90', '180'].map((tf) => (
@@ -1310,13 +1593,13 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
               <div className="p-8 text-center text-slate-500">Not enough historical growth data in range.</div>
             ) : (
               <div className="space-y-2">
-                <div className="flex items-end gap-1.5 h-36 border-b border-white/10 pb-2 px-2">
+                <div className="flex items-end gap-1.5 h-36 border-b border-white/10 pb-2 px-2 overflow-x-auto">
                   {growthTrend.list.map((item, idx) => {
                     const heightPct = (item.count / growthTrend.maxVal) * 100;
                     return (
                       <div
                         key={idx}
-                        className="flex-1 flex flex-col items-center gap-1 group"
+                        className="flex-1 min-w-[20px] flex flex-col items-center gap-1 group"
                         title={`${item.date}: ${item.count} registrations`}
                       >
                         <span className="text-[9px] text-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1332,7 +1615,7 @@ export const AdminNetworkAnalytics: React.FC<AdminNetworkAnalyticsProps> = ({
                 </div>
                 <div className="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>{growthTrend.list[0]?.date}</span>
-                  <span>Total New: {growthTrend.totalInRange} candidates</span>
+                  <span>Total in Period: {growthTrend.totalInRange} candidates</span>
                   <span>{growthTrend.list[growthTrend.list.length - 1]?.date}</span>
                 </div>
               </div>

@@ -1391,6 +1391,87 @@ const saveDiskSupportedLanguages = (list) => {
 };
 
 /**
+ * ADMIN API: GET /api/talent-registration/admin/analytics
+ * Returns complete aggregated & raw data for Network Analytics & Language Directory
+ * 100% read-only, non-destructive, parameterized queries without exposing sensitive personal info.
+ */
+export const getNetworkAnalyticsAdmin = async (req, res) => {
+  try {
+    const EXPLICIT_ANALYTICS_COLUMNS = 'id, registration_code, full_name, gender, country, country_code, state, city_district, primary_role, availability, working_preference, status, is_archived, created_at, work_capabilities';
+
+    let registrations = [];
+
+    if (supabase) {
+      try {
+        const { data: records, error: regError } = await supabase
+          .from('talent_registrations')
+          .select(EXPLICIT_ANALYTICS_COLUMNS)
+          .eq('is_archived', false)
+          .order('created_at', { ascending: false });
+
+        if (!regError && Array.isArray(records)) {
+          const { data: allLanguages, error: langError } = await supabase
+            .from('talent_languages')
+            .select('id, registration_id, language, proficiency, speaker_availability, capacity');
+
+          const langMap = new Map();
+          if (!langError && Array.isArray(allLanguages)) {
+            for (const l of allLanguages) {
+              const regId = String(l.registration_id);
+              if (!langMap.has(regId)) langMap.set(regId, []);
+              langMap.get(regId).push(l);
+            }
+          }
+
+          registrations = records.map((r) => ({
+            ...r,
+            country: r.country || 'India',
+            country_code: r.country_code || '+91',
+            languages: langMap.get(String(r.id)) || (Array.isArray(r.languages) ? r.languages : []),
+            work_capabilities: Array.isArray(r.work_capabilities) ? r.work_capabilities : [],
+          }));
+        }
+      } catch (dbErr) {
+        console.warn('Analytics Supabase query error, fallback to disk:', dbErr.message);
+      }
+    }
+
+    if (registrations.length === 0) {
+      const diskItems = loadDiskRegistrations();
+      registrations = diskItems
+        .filter((r) => !r.is_archived)
+        .map((r) => ({
+          id: r.id,
+          registration_code: r.registration_code,
+          full_name: r.full_name,
+          gender: r.gender,
+          country: r.country || 'India',
+          country_code: r.country_code || '+91',
+          state: r.state || '',
+          city_district: r.city_district || '',
+          primary_role: r.primary_role || '',
+          availability: r.availability || '',
+          working_preference: r.working_preference || '',
+          status: r.status || 'pending',
+          is_archived: Boolean(r.is_archived),
+          created_at: r.created_at,
+          work_capabilities: Array.isArray(r.work_capabilities) ? r.work_capabilities : [],
+          languages: Array.isArray(r.languages) ? r.languages : [],
+        }));
+    }
+
+    return res.status(200).json({
+      success: true,
+      total: registrations.length,
+      data: registrations,
+    });
+  } catch (err) {
+    console.error('getNetworkAnalyticsAdmin Error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch network analytics data.' });
+  }
+};
+
+/**
  * PUBLIC & ADMIN API: GET /api/talent-registration/supported-languages
  */
 export const getSupportedLanguages = async (req, res) => {
@@ -1409,6 +1490,7 @@ export const getSupportedLanguages = async (req, res) => {
     return res.status(200).json({ success: true, data: loadDiskSupportedLanguages() });
   }
 };
+
 
 /**
  * ADMIN API: POST /api/talent-registration/admin/languages

@@ -850,6 +850,7 @@ export const talentRegistrationApi = {
 
   // Supported Languages & Candidate Profile Editing
   adminGetSupportedLanguages: () => api.get('/talent-registration/admin/languages'),
+  adminGetNetworkAnalytics: () => api.get('/talent-registration/admin/analytics'),
   adminAddSupportedLanguage: (data: { language: string; code?: string; status?: string }) =>
     api.post('/talent-registration/admin/languages', data),
   adminUpdateSupportedLanguage: (id: string, data: { language?: string; code?: string; status?: string }) =>
@@ -857,6 +858,7 @@ export const talentRegistrationApi = {
   adminUpdateCandidateProfile: (id: string, data: any) =>
     api.put(`/talent-registration/admin/update-profile/${id}`, data),
 };
+
 
 
 
