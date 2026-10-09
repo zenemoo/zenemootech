@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useTalentHubAuth } from './TalentHubAuthContext';
 import { poolApi, PoolItem, PoolHistoryItem } from '../../services/poolApi';
+import { PoolShareModal } from '../pool/PoolShareModal';
 
 export const TalentHubPools: React.FC = () => {
   const { session, user, talentProfile } = useTalentHubAuth();
@@ -37,6 +38,10 @@ export const TalentHubPools: React.FC = () => {
   const [editingPoolIds, setEditingPoolIds] = useState<Record<string, boolean>>({});
   const [submittingPoolId, setSubmittingPoolId] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<{ poolId: string; msg: string; isError?: boolean } | null>(null);
+
+  // Share Modal State
+  const [sharingPool, setSharingPool] = useState<PoolItem | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const loadData = async () => {
     if (!token) return;
@@ -563,14 +568,29 @@ export const TalentHubPools: React.FC = () => {
                             )}
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => toggleEditing(pool.id)}
-                            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>Update Response</span>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSharingPool(pool);
+                                setIsShareModalOpen(true);
+                              }}
+                              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                              title="Share pool with 1-click option links"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Share</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => toggleEditing(pool.id)}
+                              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Update Response</span>
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -708,6 +728,16 @@ export const TalentHubPools: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* ── 1-Click Option Links Share Modal ── */}
+      <PoolShareModal
+        isOpen={isShareModalOpen}
+        pool={sharingPool}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setSharingPool(null);
+        }}
+      />
     </div>
   );
 };

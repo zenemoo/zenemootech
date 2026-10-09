@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -27,6 +27,7 @@ import { SeoImage } from '../../seo/components/SeoImage';
 import { supabase } from '../../lib/supabaseClient';
 import { setAuthReturnDestination } from '../../lib/authReturnRouting';
 import { useActiveLogo } from '../../lib/useActiveLogo';
+import { PoolShareModal } from './PoolShareModal';
 
 interface LocalPoolProfile {
   email: string;
@@ -36,6 +37,7 @@ interface LocalPoolProfile {
 }
 
 const STORAGE_KEY = 'zenemoo_pool_profile';
+const PENDING_OPTION_STORAGE_KEY = 'zenemoo_pool_pending_option';
 
 const PARTICIPANT_TYPES = [
   { id: 'Individual', label: 'Individual Contributor', desc: 'Working independently on freelance / project tasks' },
@@ -43,6 +45,41 @@ const PARTICIPANT_TYPES = [
   { id: 'Team Leader', label: 'Team Leader', desc: 'Leading a group of linguistic or annotation specialists' },
   { id: 'Other', label: 'Other', desc: 'Institution, student, or other participant' },
 ];
+
+// Helper to extract option ID from current URL query or persistent session storage
+function getOptionIdFromUrlOrStorage(publicId?: string | null): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    // 1. Check window.location.search (?option=...)
+    const searchParams = new URLSearchParams(window.location.search);
+    const searchOpt = searchParams.get('option');
+    if (searchOpt && /^[A-Za-z0-9_-]{1,128}$/.test(searchOpt)) {
+      return searchOpt;
+    }
+
+    // 2. Check window.location.hash (#...?...&option=...)
+    if (window.location.hash && window.location.hash.includes('option=')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      if (hashQuery) {
+        const hashParams = new URLSearchParams(hashQuery);
+        const hashOpt = hashParams.get('option');
+        if (hashOpt && /^[A-Za-z0-9_-]{1,128}$/.test(hashOpt)) {
+          return hashOpt;
+        }
+      }
+    }
+
+    // 3. Check persistent storage (survives OAuth redirects & tab backgrounding)
+    const stored = localStorage.getItem(PENDING_OPTION_STORAGE_KEY) || sessionStorage.getItem(PENDING_OPTION_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && (!publicId || parsed.publicId === publicId) && parsed.optionId) {
+        return parsed.optionId;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
 
 interface ZenemooPoolPageProps {
   initialPublicId?: string | null;
@@ -95,7 +132,14 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
   const [editingPoolIds, setEditingPoolIds] = useState<Record<string, boolean>>({});
   const [submittingPoolId, setSubmittingPoolId] = useState<string | null>(null);
   const [submitFeedbackMap, setSubmitFeedbackMap] = useState<Record<string, { message: string; isError?: boolean }>>({});
-  const [copiedLinkPoolId, setCopiedLinkPoolId] = useState<string | null>(null);
+  
+  // Share Modal state
+  const [sharingPool, setSharingPool] = useState<PoolItem | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Track auto-submitted submissions to prevent duplicate submission loops
+  const autoSubmittedRef = useRef<Set<string>>(new Set());
+  const pendingAutoSubmitPoolRef = useRef<PoolItem | null>(null);
 
   // 1. Fetch user history using verified Google JWT token
   const fetchUserHistory = async (token: string) => {
@@ -105,6 +149,86 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
         setUserHistory(res.history);
       }
     } catch (_) {}
+  };
+
+  // Helper: Core submission execution logic
+  const executePoolSubmission = async (
+    pool: PoolItem,
+    optionIdsToSubmit: string[],
+    targetProfile: LocalPoolProfile
+  ) => {
+    if (!targetProfile || !targetProfile.email) {
+      setIsEditingProfile(true);
+      return;
+    }
+
+    if (optionIdsToSubmit.length === 0) {
+      setSubmitFeedbackMap((prev) => ({
+        ...prev,
+        [pool.id]: { message: 'Please select an answer before submitting.', isError: true },
+      }));
+      return;
+    }
+
+    setSubmittingPoolId(pool.id);
+    setSubmitFeedbackMap((prev) => {
+      const copy = { ...prev };
+      delete copy[pool.id];
+      return copy;
+    });
+
+    try {
+      const res = await poolApi.submitPublicResponse({
+        publicId: pool.public_id,
+        email: targetProfile.email,
+        name: targetProfile.name,
+        participantType: targetProfile.participantType,
+        selectedOptionIds: optionIdsToSubmit,
+        customText: customTextMap[pool.id] || '',
+      });
+
+      if (res.success) {
+        setSubmitFeedbackMap((prev) => ({
+          ...prev,
+          [pool.id]: {
+            message: res.message || 'Response recorded successfully!',
+            isError: false,
+          },
+        }));
+
+        setEditingPoolIds((prev) => ({ ...prev, [pool.id]: false }));
+
+        // Optimistically increment pool response count
+        setPools((prevList) =>
+          prevList.map((p) =>
+            p.id === pool.id
+              ? {
+                  ...p,
+                  total_responses_count: (p.total_responses_count || 0) + (res.updated ? 0 : 1),
+                }
+              : p
+          )
+        );
+
+        if (accessToken) {
+          fetchUserHistory(accessToken);
+        }
+
+        // Clean up pending storage after successful submission
+        try {
+          localStorage.removeItem(PENDING_OPTION_STORAGE_KEY);
+          sessionStorage.removeItem(PENDING_OPTION_STORAGE_KEY);
+        } catch (_) {}
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to record response. Please try again.';
+      setSubmitFeedbackMap((prev) => ({
+        ...prev,
+        [pool.id]: { message: msg, isError: true },
+      }));
+    } finally {
+      setSubmittingPoolId(null);
+    }
   };
 
   // 2. Check and listen to Google Auth Session
@@ -129,6 +253,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
             authMethod: 'google',
           };
           setProfile(googleProf);
+          setIsEditingProfile(false);
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(googleProf));
           } catch (_) {}
@@ -158,6 +283,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
           authMethod: 'google',
         };
         setProfile(googleProf);
+        setIsEditingProfile(false);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(googleProf));
         } catch (_) {}
@@ -252,12 +378,79 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     });
   }, [pools, userHistoryMap]);
 
-  // 5. Initiate Google OAuth Login with strict return routing
+  // 5. One-Click Option Link Resolution & Automatic Single-Choice Submission
+  useEffect(() => {
+    if (pools.length === 0 || isLoading) return;
+
+    pools.forEach((pool) => {
+      const optionIdParam = getOptionIdFromUrlOrStorage(pool.public_id);
+      if (!optionIdParam) return;
+
+      // Validate that option belongs to this pool
+      const matchedOption = (pool.options || []).find((o) => o.id === optionIdParam);
+      if (!matchedOption) return;
+
+      // Preselect option in UI
+      setSelectedOptionsMap((prev) => {
+        const currentList = prev[pool.id] || [];
+        if (!pool.allow_multiple) {
+          return { ...prev, [pool.id]: [matchedOption.id] };
+        } else {
+          if (!currentList.includes(matchedOption.id)) {
+            return { ...prev, [pool.id]: [...currentList, matchedOption.id] };
+          }
+        }
+        return prev;
+      });
+
+      // For SINGLE CHOICE: Execute automatic submission flow
+      if (!pool.allow_multiple) {
+        const autoKey = `${pool.id}_${matchedOption.id}_${profile?.email || 'pending'}`;
+
+        if (profile && profile.email) {
+          if (!autoSubmittedRef.current.has(autoKey)) {
+            autoSubmittedRef.current.add(autoKey);
+            executePoolSubmission(pool, [matchedOption.id], profile);
+          }
+        } else {
+          // Unauthenticated user: persist pending option intent and prompt Google login
+          try {
+            const pendingPayload = JSON.stringify({ publicId: pool.public_id, optionId: matchedOption.id });
+            localStorage.setItem(PENDING_OPTION_STORAGE_KEY, pendingPayload);
+            sessionStorage.setItem(PENDING_OPTION_STORAGE_KEY, pendingPayload);
+          } catch (_) {}
+          setIsEditingProfile(true);
+          setOnboardingMode('choice');
+        }
+      }
+    });
+  }, [pools, profile, isLoading]);
+
+  // 6. Initiate Google OAuth Login with strict return routing preserving ?option=<optionId>
   const handleStartGoogleAuth = async () => {
     setIsGoogleAuthLoading(true);
     setOnboardingError('');
     try {
-      const returnPath = initialPublicId ? `/pool/${encodeURIComponent(initialPublicId)}` : '/pool';
+      // Find current selected option or pending option parameter
+      let optionParam = '';
+      if (initialPublicId) {
+        const currentPool = pools.find((p) => p.public_id === initialPublicId || p.id === initialPublicId);
+        const selIds = currentPool ? selectedOptionsMap[currentPool.id] : [];
+        const optId = selIds?.[0] || getOptionIdFromUrlOrStorage(initialPublicId);
+        if (optId) {
+          optionParam = `?option=${encodeURIComponent(optId)}`;
+          try {
+            const pendingPayload = JSON.stringify({ publicId: initialPublicId, optionId: optId });
+            localStorage.setItem(PENDING_OPTION_STORAGE_KEY, pendingPayload);
+            sessionStorage.setItem(PENDING_OPTION_STORAGE_KEY, pendingPayload);
+          } catch (_) {}
+        }
+      }
+
+      const returnPath = initialPublicId
+        ? `/pool/${encodeURIComponent(initialPublicId)}${optionParam}`
+        : '/pool';
+
       setAuthReturnDestination(returnPath, 'pool');
 
       const redirectUrl = `${window.location.origin}${returnPath}`;
@@ -280,7 +473,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     }
   };
 
-  // 6. Handle manual profile saving
+  // 7. Handle manual profile saving
   const handleSaveProfile = (authMethod: 'google' | 'manual') => {
     setOnboardingError('');
     const emailNorm = tempEmail.trim().toLowerCase();
@@ -421,12 +614,10 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
     }
   };
 
-  // Copy share link
-  const handleCopyPoolLink = (pool: PoolItem) => {
-    const url = `https://www.zenemoo.in/pool/${pool.public_id}`;
-    navigator.clipboard.writeText(url);
-    setCopiedLinkPoolId(pool.id);
-    setTimeout(() => setCopiedLinkPoolId(null), 2500);
+  // Open share modal
+  const handleOpenShareModal = (pool: PoolItem) => {
+    setSharingPool(pool);
+    setIsShareModalOpen(true);
   };
 
   const displayName =
@@ -837,9 +1028,26 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
 
                     {/* ── Case 1: Already Answered View Mode ── */}
                     {hasResponded && !isEditing ? (
-                      <div className="space-y-3 pt-2">
+                      <div className="space-y-4 pt-1">
+                        {/* Distinct Success Confirmation Banner */}
+                        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-3 shadow-lg shadow-emerald-950/20">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <p className="font-bold text-white text-sm">✓ Response submitted</p>
+                            <p className="text-xs text-slate-300 font-sans">
+                              Thanks for responding to Zenemoo. Your answer helps us match you with relevant opportunities.
+                            </p>
+                            {answeredLabels.length > 0 && (
+                              <div className="pt-1 text-xs">
+                                <span className="text-slate-400 font-mono text-[10px] uppercase block">Your response:</span>
+                                <span className="font-bold text-emerald-300 font-sans">{answeredLabels.join(', ')}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
                         <span className="text-[10px] font-mono uppercase text-slate-400 block tracking-wider font-bold">
-                          YOUR RESPONSE:
+                          RECORDED SELECTION:
                         </span>
 
                         <div className="space-y-2">
@@ -985,27 +1193,38 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {onNavigateHistory && (
+                            <button
+                              type="button"
+                              onClick={onNavigateHistory}
+                              className="px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                            >
+                              <Vote className="w-3.5 h-3.5" />
+                              <span>View My Responses</span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
-                            onClick={() => handleCopyPoolLink(pool)}
-                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-all cursor-pointer"
-                            title="Share question link"
+                            onClick={() => {
+                              setSharingPool(pool);
+                              setIsShareModalOpen(true);
+                            }}
+                            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                            title="Share pool with 1-click option links"
                           >
-                            {copiedLinkPoolId === pool.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Share2 className="w-3.5 h-3.5" />
-                            )}
+                            <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Share Pool</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => toggleEditing(pool.id)}
-                            className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                           >
-                            <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>Update Response</span>
+                            <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Update</span>
                           </button>
                         </div>
                       </div>
@@ -1014,7 +1233,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                         <button
                           type="button"
                           disabled={isSubmitting || selectedIds.length === 0}
-                          onClick={() => handleSubmitPool(pool)}
+                          onClick={() => executePoolSubmission(pool, selectedIds, profile!)}
                           className={`w-full py-3.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
                             selectedIds.length > 0 && !isSubmitting
                               ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/25 cursor-pointer active:scale-[0.99]'
@@ -1033,9 +1252,20 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                           )}
                         </button>
 
-                        <p className="text-[11px] text-slate-500 text-center font-sans">
-                          By submitting, you agree that Zenemoo may contact you regarding matching opportunities.
-                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                          <span>By submitting, you agree to Zenemoo terms.</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSharingPool(pool);
+                              setIsShareModalOpen(true);
+                            }}
+                            className="text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Share2 className="w-3 h-3" />
+                            <span>Share Pool</span>
+                          </button>
+                        </div>
 
                         {isEditing && (
                           <button
@@ -1420,6 +1650,16 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
           </div>
         </div>
       </footer>
+
+      {/* ── 1-Click Option Links Share Modal ── */}
+      <PoolShareModal
+        isOpen={isShareModalOpen}
+        pool={sharingPool}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setSharingPool(null);
+        }}
+      />
     </div>
   );
 };

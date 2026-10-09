@@ -167,9 +167,16 @@ function AppInner() {
         const storedDest = getAuthReturnDestination();
         if (storedDest?.intent === 'pool' || storedDest?.intent === 'pool-history' || storedDest?.path?.startsWith('/pool')) {
           if (storedDest.path.startsWith('/pool/')) {
-            const pId = storedDest.path.replace('/pool/', '').replace(/^\//, '').split('?')[0].split('#')[0];
+            const rawPath = storedDest.path.replace('/pool/', '').replace(/^\//, '');
+            const pId = rawPath.split('?')[0].split('#')[0];
             setSelectedPoolPublicId(decodeURIComponent(pId || ''));
             setCurrentRoute('pool-detail');
+            if (storedDest.path.includes('?')) {
+              const queryPart = storedDest.path.substring(storedDest.path.indexOf('?'));
+              if (typeof window !== 'undefined' && window.history?.replaceState) {
+                window.history.replaceState(null, '', `/pool/${pId}${queryPart}`);
+              }
+            }
           } else if (storedDest.path === '/pool/history' || storedDest.intent === 'pool-history') {
             setCurrentRoute('pool-history');
           } else {
@@ -354,9 +361,16 @@ function AppInner() {
           handledByAuthCallback = true;
         } else if (storedAuthDest.intent === 'pool' || storedAuthDest.path.startsWith('/pool')) {
           if (storedAuthDest.path.startsWith('/pool/')) {
-            const pId = storedAuthDest.path.replace('/pool/', '').replace(/^\//, '').split('?')[0].split('#')[0];
+            const rawPath = storedAuthDest.path.replace('/pool/', '').replace(/^\//, '');
+            const pId = rawPath.split('?')[0].split('#')[0];
             setSelectedPoolPublicId(decodeURIComponent(pId || ''));
             matchedRoute = 'pool-detail';
+            if (storedAuthDest.path.includes('?')) {
+              const queryPart = storedAuthDest.path.substring(storedAuthDest.path.indexOf('?'));
+              if (typeof window !== 'undefined' && window.history?.replaceState) {
+                window.history.replaceState(null, '', `/pool/${pId}${queryPart}`);
+              }
+            }
           } else {
             matchedRoute = 'pool';
           }

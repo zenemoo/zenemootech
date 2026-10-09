@@ -29,8 +29,21 @@ export function sanitizeAuthReturnPath(rawPath?: string | null): string | null {
     return null;
   }
 
-  // Normalize path
-  const cleanPath = path.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  // Split path from query parameters
+  const [pathOnly, queryPart] = path.split('?');
+  const cleanPath = pathOnly.split('#')[0].replace(/\/+$/, '') || '/';
+
+  // Sanitize query parameter to only allow safe option ID
+  let sanitizedQuery = '';
+  if (queryPart) {
+    try {
+      const searchParams = new URLSearchParams(queryPart.split('#')[0]);
+      const optionParam = searchParams.get('option');
+      if (optionParam && /^[A-Za-z0-9_-]{1,128}$/.test(optionParam)) {
+        sanitizedQuery = `?option=${encodeURIComponent(optionParam)}`;
+      }
+    } catch (_) {}
+  }
 
   // Check approved allowlisted paths
   if (
@@ -48,14 +61,14 @@ export function sanitizeAuthReturnPath(rawPath?: string | null): string | null {
     cleanPath === '/talent-hub/support' ||
     cleanPath === '/talent-hub/support-history'
   ) {
-    return cleanPath;
+    return `${cleanPath}${sanitizedQuery}`;
   }
 
   // Allow specific pool public ID route: /pool/:publicId
   if (cleanPath.startsWith('/pool/')) {
     const publicId = cleanPath.replace('/pool/', '').trim();
     if (/^[A-Za-z0-9_-]{3,64}$/.test(publicId)) {
-      return `/pool/${publicId}`;
+      return `/pool/${publicId}${sanitizedQuery}`;
     }
   }
 
