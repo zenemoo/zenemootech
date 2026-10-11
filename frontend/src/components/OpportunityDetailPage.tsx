@@ -37,7 +37,7 @@ import {
 import { FaXTwitter } from 'react-icons/fa6';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getStoredOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
-import { submitCandidateApplication, checkExistingApplication, CandidateApplication, extractAndStoreReferralCode } from '../lib/opportunityApplicationStore';
+import { submitCandidateApplication, checkExistingApplication, CandidateApplication, extractAndStoreReferralCode, clearActiveReferralCode } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 import { OpportunityStatusModal } from './OpportunityStatusModal';
 import { TurnstileWidget } from './TurnstileWidget';
@@ -121,10 +121,8 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
   };
 
   useEffect(() => {
-    const activeRef = extractAndStoreReferralCode();
-    if (activeRef) {
-      setReferralCode(activeRef);
-    }
+    const activeRef = extractAndStoreReferralCode(opportunityId);
+    setReferralCode(activeRef || '');
     getStoredOpportunities().then((list) => {
       const found = list.find((item) => item.id === opportunityId || item.id === `op_${opportunityId}`);
       if (found) {
@@ -184,10 +182,8 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     setSubmittedAppId(null);
     setCopiedId(false);
 
-    const activeRef = extractAndStoreReferralCode();
-    if (activeRef) {
-      setReferralCode(activeRef);
-    }
+    const activeRef = extractAndStoreReferralCode(opportunity.id);
+    setReferralCode(activeRef || '');
 
     // Open fresh form allowing applications for any candidate
     setApplicantEmail('');
@@ -279,7 +275,7 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
     setIsDuplicate(false);
 
     // Read active referral code from form state, URL, or persistent storage
-    const activeRefCode = (referralCode || extractAndStoreReferralCode()).trim().toUpperCase();
+    const activeRefCode = (referralCode || extractAndStoreReferralCode(opportunity.id)).trim().toUpperCase();
 
     try {
       const result = await submitCandidateApplication({
@@ -303,6 +299,10 @@ ${opportunity.payment_info ? `💰 Compensation: ${opportunity.payment_info}\n` 
       }
       setSubmittedAppId(generatedId);
       localStorage.setItem(`zenemoo_applicant_email_${opportunity.id}`, applicantEmail.trim().toLowerCase());
+
+      // Clear referral context on confirmed successful submission
+      clearActiveReferralCode(opportunity.id);
+      setReferralCode('');
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);

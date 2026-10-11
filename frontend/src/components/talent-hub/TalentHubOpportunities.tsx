@@ -38,7 +38,7 @@ import { FaXTwitter, FaFacebook, FaInstagram, FaYoutube, FaWhatsapp, FaTelegram 
 import confetti from 'canvas-confetti';
 import { useTalentHubAuth, OpportunityItem, ApplicationItem } from './TalentHubAuthContext';
 import { talentHubApi } from '../../services/talentHubApi';
-import { extractAndStoreReferralCode } from '../../lib/opportunityApplicationStore';
+import { extractAndStoreReferralCode, clearActiveReferralCode } from '../../lib/opportunityApplicationStore';
 import { downloadApplicationPdf } from '../../services/applicationPdfService';
 import { parseQuestionOptions } from '../../lib/opportunityStore';
 import { invalidateReferralSessionCache } from './TalentHubReferrals';
@@ -196,7 +196,7 @@ export const TalentHubOpportunities: React.FC = () => {
     setSubmitError(null);
 
     // Read active referral code from URL or persistent storage
-    const activeRefCode = extractAndStoreReferralCode();
+    const activeRefCode = extractAndStoreReferralCode(selectedOppForApply.id);
 
     try {
       const res = await talentHubApi.submitApplication(
@@ -216,10 +216,7 @@ export const TalentHubOpportunities: React.FC = () => {
           mutateApplications(res.data);
         }
         invalidateReferralSessionCache();
-        try {
-          localStorage.removeItem('zenemoo_active_ref');
-          sessionStorage.removeItem('zenemoo_active_ref');
-        } catch (_) {}
+        clearActiveReferralCode(selectedOppForApply.id);
 
         try {
           confetti({

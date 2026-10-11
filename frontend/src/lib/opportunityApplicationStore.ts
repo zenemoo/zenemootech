@@ -34,14 +34,54 @@ export interface CandidateApplication {
 const LOCAL_STORAGE_KEY = 'zenemoo_opp_applications_db';
 
 /**
- * Robust Referral Code Extraction & Normalization Helper
- * Scans URL query parameters (search), hash query parameters, full URL regex,
- * and falls back to persistent sessionStorage / localStorage.
- * Normalizes by trimming and uppercase.
+ * Extract opportunity ID from window pathname or hash if available.
+ * Handles patterns such as:
+ * /opportunity/:id, /program/:id, #/opportunity/:id, #opportunity/:id, etc.
  */
-export const extractAndStoreReferralCode = (): string => {
+export const extractOpportunityIdFromLocation = (): string => {
   if (typeof window === 'undefined') return '';
   try {
+    const pathname = window.location.pathname || '';
+    const hash = window.location.hash || '';
+
+    const pathMatch = pathname.match(/\/(?:opportunity|program)\/([^/?#]+)/i);
+    if (pathMatch && pathMatch[1]) {
+      return decodeURIComponent(pathMatch[1]).trim();
+    }
+
+    const hashMatch = hash.match(/#(?:(?:\/)?(?:opportunity|program))\/([^/?#]+)/i);
+    if (hashMatch && hashMatch[1]) {
+      return decodeURIComponent(hashMatch[1]).trim();
+    }
+  } catch (_) {}
+
+  return '';
+};
+
+/**
+ * Opportunity-Aware Referral Code Extraction & Normalization Helper
+ * Scans URL query parameters (search), hash query parameters, full URL regex.
+ *
+ * Rules:
+ * - When a referral code is present in the current URL, it is scoped to the target opportunity
+ *   and persisted in tab-isolated sessionStorage (`zenemoo_ref_opp_${oppId}`).
+ * - When no referral code is in the URL, only an existing referral explicitly associated
+ *   with this opportunity in the current session (or current journey) is restored.
+ * - Stale codes from unrelated opportunities or legacy global localStorage are never applied.
+ */
+export const extractAndStoreReferralCode = (opportunityId?: string): string => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const targetOppId = (opportunityId || extractOpportunityIdFromLocation() || '').trim();
+    const normalizedOppId = targetOppId.replace(/^op_/, '');
+
+    // Purge any stale un-scoped global localStorage referral that could leak across browser sessions
+    try {
+      if (localStorage.getItem('zenemoo_active_ref')) {
+        localStorage.removeItem('zenemoo_active_ref');
+      }
+    } catch (_) {}
+
     let rawCode = '';
 
     // 1. Search params (?ref=... or ?referral=...)
@@ -67,27 +107,65 @@ export const extractAndStoreReferralCode = (): string => {
       }
     }
 
-    // If found in URL, normalize and persist across sessions
+    // If explicit referral code found in current URL:
     if (rawCode && rawCode.trim()) {
       const clean = rawCode.trim().toUpperCase();
       try {
+        if (targetOppId) {
+          // Scope referral to this opportunity in tab-isolated sessionStorage
+          sessionStorage.setItem(`zenemoo_ref_opp_${targetOppId}`, clean);
+          if (normalizedOppId && normalizedOppId !== targetOppId) {
+            sessionStorage.setItem(`zenemoo_ref_opp_${normalizedOppId}`, clean);
+          }
+        }
+        // Save current active session referral for backwards compatibility
         sessionStorage.setItem('zenemoo_active_ref', clean);
-        localStorage.setItem('zenemoo_active_ref', clean);
       } catch (_) {}
       return clean;
     }
 
-    // 4. Fallback to active stored referral
+    // If NO referral code in URL:
+    // Look up stored referral explicitly scoped to this target opportunity
+    if (targetOppId) {
+      try {
+        const oppStored =
+          sessionStorage.getItem(`zenemoo_ref_opp_${targetOppId}`) ||
+          (normalizedOppId ? sessionStorage.getItem(`zenemoo_ref_opp_${normalizedOppId}`) : null);
+        if (oppStored && oppStored.trim()) {
+          return oppStored.trim().toUpperCase();
+        }
+      } catch (_) {}
+      // If this opportunity has no referral scoped to it, do NOT fall back to any other code!
+      return '';
+    }
+
+    // Fallback if no target opportunity was specified or detected (e.g. non-opportunity routes)
     try {
-      const stored = sessionStorage.getItem('zenemoo_active_ref') || localStorage.getItem('zenemoo_active_ref') || '';
+      const stored = sessionStorage.getItem('zenemoo_active_ref') || '';
       if (stored && stored.trim()) {
-        const clean = stored.trim().toUpperCase();
-        return clean;
+        return stored.trim().toUpperCase();
       }
     } catch (_) {}
   } catch (_) {}
 
   return '';
+};
+
+/**
+ * Clear active referral state for a specific opportunity after confirmed successful submission.
+ */
+export const clearActiveReferralCode = (opportunityId?: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    const targetOppId = (opportunityId || extractOpportunityIdFromLocation() || '').trim();
+    if (targetOppId) {
+      sessionStorage.removeItem(`zenemoo_ref_opp_${targetOppId}`);
+      sessionStorage.removeItem(`zenemoo_ref_opp_${targetOppId.replace(/^op_/, '')}`);
+    }
+    sessionStorage.removeItem('zenemoo_active_ref');
+    sessionStorage.removeItem('zenemoo_active_opp_id');
+    localStorage.removeItem('zenemoo_active_ref');
+  } catch (_) {}
 };
 
 const getLocalApplications = (): CandidateApplication[] => {

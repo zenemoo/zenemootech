@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OpportunityProgram, getPublicOpportunities, parseQuestionOptions } from '../lib/opportunityStore';
-import { submitCandidateApplication, checkExistingApplication, CandidateApplication, extractAndStoreReferralCode } from '../lib/opportunityApplicationStore';
+import { submitCandidateApplication, checkExistingApplication, CandidateApplication, extractAndStoreReferralCode, clearActiveReferralCode } from '../lib/opportunityApplicationStore';
 import { formatApplicationAnswer } from '../lib/formatApplicationAnswer';
 import { OpportunityStatusModal } from './OpportunityStatusModal';
 import { TurnstileWidget } from './TurnstileWidget';
@@ -72,9 +72,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
 
   useEffect(() => {
     const activeRef = extractAndStoreReferralCode();
-    if (activeRef) {
-      setReferralCode(activeRef);
-    }
+    setReferralCode(activeRef || '');
     getPublicOpportunities().then((data) => {
       setOpportunities(data);
       setLoading(false);
@@ -121,10 +119,8 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setSubmittedRef(null);
     setCopiedId(false);
 
-    const activeRef = extractAndStoreReferralCode();
-    if (activeRef) {
-      setReferralCode(activeRef);
-    }
+    const activeRef = extractAndStoreReferralCode(op.id);
+    setReferralCode(activeRef || '');
 
     // Open fresh form allowing applications for any candidate
     setApplicantEmail('');
@@ -217,7 +213,7 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
     setIsDuplicate(false);
 
     // Read active referral code from form state, URL, or persistent storage
-    const activeRefCode = (referralCode || extractAndStoreReferralCode()).trim().toUpperCase();
+    const activeRefCode = (referralCode || extractAndStoreReferralCode(applyingOpportunity.id)).trim().toUpperCase();
 
     try {
       const result = await submitCandidateApplication({
@@ -241,6 +237,10 @@ export const OpportunitiesPage: React.FC<OpportunitiesPageProps> = ({ onBack, on
       }
       setSubmittedRef(generatedId);
       localStorage.setItem(`zenemoo_applicant_email_${applyingOpportunity.id}`, applicantEmail.trim().toLowerCase());
+
+      // Clear referral context on confirmed successful submission
+      clearActiveReferralCode(applyingOpportunity.id);
+      setReferralCode('');
     } catch (err: any) {
       if (err?.code === 'DUPLICATE_APPLICATION' || err?.isDuplicate) {
         setIsDuplicate(true);
