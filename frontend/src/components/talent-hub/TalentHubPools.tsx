@@ -371,7 +371,7 @@ export const TalentHubPools: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 items-stretch">
               {filteredPools.map(({ pool, hasResponded, submittedLabels, submissionDate, isEditing }) => {
                 const selectedIds = selectedOptionsMap[pool.id] || [];
                 const feedback = statusFeedback?.poolId === pool.id ? statusFeedback : null;
@@ -382,26 +382,26 @@ export const TalentHubPools: React.FC = () => {
                 return (
                   <div
                     key={pool.id}
-                    className={`rounded-2xl border transition-all duration-300 p-6 flex flex-col justify-between gap-5 relative overflow-hidden shadow-xl ${
+                    className={`rounded-2xl border transition-all duration-300 p-4 sm:p-5 flex flex-col justify-between gap-4 relative overflow-hidden shadow-xl ${
                       hasResponded && !isEditing
                         ? 'bg-gradient-to-b from-[#09151c]/95 to-[#060e14]/95 border-emerald-500/30 hover:border-emerald-500/50 shadow-emerald-950/20'
                         : 'bg-gradient-to-b from-[#090e1f]/95 to-[#060914]/95 border-white/10 hover:border-cyan-500/40 shadow-black/40'
                     }`}
                   >
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {/* Card Header: Category & Submission Badge */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
                           {pool.category || 'AI DATA SOLUTIONS'}
                         </span>
 
                         {hasResponded ? (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-1 shadow-sm shadow-emerald-500/10">
-                            <Check className="w-3 h-3 text-emerald-400" />
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-1 shadow-sm shadow-emerald-500/10">
+                            <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
                             <span>Response Submitted</span>
                           </span>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 flex items-center gap-1">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                             <span>Unanswered</span>
                           </span>
@@ -409,12 +409,12 @@ export const TalentHubPools: React.FC = () => {
                       </div>
 
                       {/* Question Title & Description */}
-                      <div className="space-y-1.5">
-                        <h3 className="text-base sm:text-lg font-bold text-white font-display leading-snug">
+                      <div className="space-y-1">
+                        <h3 className="text-sm sm:text-base font-bold text-white font-display leading-snug break-words">
                           {pool.title}
                         </h3>
                         {pool.description && (
-                          <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                          <p className="text-xs text-slate-400 leading-relaxed font-sans break-words">
                             {pool.description}
                           </p>
                         )}
@@ -422,8 +422,8 @@ export const TalentHubPools: React.FC = () => {
 
                       {/* ── Case 1: Already Answered (View Mode) ── */}
                       {hasResponded && !isEditing ? (
-                        <div className="space-y-3 pt-2">
-                          <div className="space-y-2">
+                        <div className="space-y-2 pt-1">
+                          <div className="space-y-1.5">
                             {(pool.options || []).map((opt) => {
                               const isSelected =
                                 selectedIds.includes(opt.id) ||
@@ -432,13 +432,13 @@ export const TalentHubPools: React.FC = () => {
                               return (
                                 <div
                                   key={opt.id}
-                                  className={`p-3.5 rounded-xl border transition-all flex items-center justify-between ${
+                                  className={`p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between gap-2.5 ${
                                     isSelected
                                       ? 'bg-emerald-500/15 border-emerald-500/40 text-white shadow-md shadow-emerald-950/20'
                                       : 'bg-white/[0.02] border-white/5 text-slate-500 opacity-60'
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2.5">
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                     <div
                                       className={`w-4 h-4 rounded-${
                                         pool.allow_multiple ? 'md' : 'full'
@@ -453,7 +453,7 @@ export const TalentHubPools: React.FC = () => {
                                       )}
                                     </div>
                                     <span
-                                      className={`text-xs ${
+                                      className={`text-xs leading-snug break-words min-w-0 flex-1 ${
                                         isSelected ? 'font-bold text-emerald-200' : 'font-medium text-slate-500'
                                       }`}
                                     >
@@ -461,7 +461,7 @@ export const TalentHubPools: React.FC = () => {
                                     </span>
                                   </div>
                                   {isSelected && (
-                                    <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
+                                    <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider shrink-0">
                                       Your Choice
                                     </span>
                                   )}
@@ -479,8 +479,8 @@ export const TalentHubPools: React.FC = () => {
                         </div>
                       ) : (
                         /* ── Case 2: Unanswered or Active Editing Mode ── */
-                        <div className="space-y-2 pt-2">
-                          <p className="text-[11px] font-mono text-slate-400 pb-1">
+                        <div className="space-y-1.5 pt-1">
+                          <p className="text-[11px] font-mono text-slate-400 pb-0.5">
                             {pool.allow_multiple ? 'Select all that apply:' : 'Select one option:'}
                           </p>
                           {(pool.options || []).map((opt) => {
@@ -489,13 +489,13 @@ export const TalentHubPools: React.FC = () => {
                               <div
                                 key={opt.id}
                                 onClick={() => handleOptionToggle(pool, opt.id)}
-                                className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                                className={`p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2.5 ${
                                   isSelected
                                     ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-md shadow-cyan-500/15'
                                     : 'bg-white/[0.02] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
                                 }`}
                               >
-                                <div className="flex items-center gap-2.5">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <div
                                     className={`w-4 h-4 rounded-${
                                       pool.allow_multiple ? 'md' : 'full'
@@ -513,7 +513,7 @@ export const TalentHubPools: React.FC = () => {
                                       )
                                     )}
                                   </div>
-                                  <span className="text-xs font-medium">{opt.option_text}</span>
+                                  <span className="text-xs font-medium leading-snug break-words min-w-0 flex-1">{opt.option_text}</span>
                                 </div>
                               </div>
                             );
@@ -530,7 +530,7 @@ export const TalentHubPools: React.FC = () => {
                                   [pool.id]: e.target.value,
                                 }))
                               }
-                              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-cyan-400 mt-2 font-sans"
+                              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-cyan-400 mt-1.5 font-sans"
                             />
                           )}
                         </div>
@@ -538,7 +538,7 @@ export const TalentHubPools: React.FC = () => {
                     </div>
 
                     {/* Card Actions & Status Footer */}
-                    <div className="pt-4 border-t border-white/10 space-y-3">
+                    <div className="pt-3 border-t border-white/10 space-y-2.5">
                       {feedback && (
                         <p
                           className={`text-xs px-3.5 py-2 rounded-xl ${
@@ -552,10 +552,10 @@ export const TalentHubPools: React.FC = () => {
                       )}
 
                       {hasResponded && !isEditing ? (
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
                           <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                            <span>Response recorded</span>
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                            <span>Recorded</span>
                             {submissionDate && (
                               <span className="text-slate-500">
                                 •{' '}
@@ -568,14 +568,14 @@ export const TalentHubPools: React.FC = () => {
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
                               onClick={() => {
                                 setSharingPool(pool);
                                 setIsShareModalOpen(true);
                               }}
-                              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                               title="Share pool with 1-click option links"
                             >
                               <Share2 className="w-3.5 h-3.5 text-cyan-400" />
@@ -585,10 +585,10 @@ export const TalentHubPools: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => toggleEditing(pool.id)}
-                              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                              className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                             >
                               <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
-                              <span>Update Response</span>
+                              <span>Update</span>
                             </button>
                           </div>
                         </div>
@@ -598,7 +598,7 @@ export const TalentHubPools: React.FC = () => {
                             type="button"
                             disabled={submittingPoolId === pool.id || selectedIds.length === 0}
                             onClick={() => handleSubmit(pool)}
-                            className={`w-full py-3 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
+                            className={`w-full py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
                               selectedIds.length > 0 && submittingPoolId !== pool.id
                                 ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-lg shadow-cyan-500/25 cursor-pointer active:scale-[0.99]'
                                 : 'bg-slate-800/80 text-slate-500 border border-white/5 cursor-not-allowed'

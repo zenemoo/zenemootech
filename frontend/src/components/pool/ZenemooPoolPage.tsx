@@ -893,7 +893,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
       </header>
 
       {/* ── Main Public Page Content ── */}
-      <main className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12 flex-1 space-y-10">
+      <main className="max-w-3xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-10 flex-1 space-y-8">
         {/* ── Public Hero Section ── */}
         {!initialPublicId && (
           <div className="text-center space-y-3 max-w-2xl mx-auto pt-2">
@@ -988,15 +988,15 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                   key={pool.id}
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`max-w-xl mx-auto rounded-3xl border transition-all duration-300 p-6 sm:p-8 flex flex-col justify-between gap-6 shadow-2xl ${
+                  className={`max-w-xl mx-auto rounded-2xl sm:rounded-3xl border transition-all duration-300 p-5 sm:p-6 md:p-7 flex flex-col justify-between gap-5 shadow-2xl ${
                     hasResponded && !isEditing
                       ? 'bg-gradient-to-b from-[#09151e]/95 via-[#060f15]/95 to-[#04080c]/95 border-emerald-500/35 shadow-emerald-950/20'
                       : 'bg-gradient-to-b from-[#0a0f26]/95 via-[#070b1c]/95 to-[#050714]/95 border-white/10 hover:border-cyan-500/30 shadow-black/60'
                   }`}
                 >
-                  <div className="space-y-4">
+                  <div className="space-y-3.5">
                     {/* Header Badges */}
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
                         {pool.category || 'AI DATA SOLUTIONS'}
                       </span>
@@ -1015,12 +1015,12 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                     </div>
 
                     {/* Question Title & Description */}
-                    <div className="space-y-1.5">
-                      <h2 className="text-lg sm:text-xl font-bold text-white font-display leading-snug">
+                    <div className="space-y-1">
+                      <h2 className="text-base sm:text-lg md:text-xl font-bold text-white font-display leading-snug break-words">
                         {pool.title}
                       </h2>
                       {pool.description && (
-                        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
+                        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans break-words">
                           {pool.description}
                         </p>
                       )}
@@ -1028,18 +1028,18 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
 
                     {/* ── Case 1: Already Answered View Mode ── */}
                     {hasResponded && !isEditing ? (
-                      <div className="space-y-4 pt-1">
-                        {/* Distinct Success Confirmation Banner */}
-                        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-3 shadow-lg shadow-emerald-950/20">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                          <div className="space-y-1 flex-1 min-w-0">
-                            <p className="font-bold text-white text-sm">✓ Response submitted</p>
-                            <p className="text-xs text-slate-300 font-sans">
+                      <div className="space-y-3 pt-1">
+                        {/* Streamlined Confirmation Banner */}
+                        <div className="p-3 sm:p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-2.5 shadow-md shadow-emerald-950/20">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5 flex-1 min-w-0">
+                            <p className="font-bold text-white text-xs sm:text-sm">Response submitted</p>
+                            <p className="text-[11px] sm:text-xs text-slate-300 font-sans leading-relaxed">
                               Thanks for responding to Zenemoo. Your answer helps us match you with relevant opportunities.
                             </p>
                             {answeredLabels.length > 0 && (
-                              <div className="pt-1 text-xs">
-                                <span className="text-slate-400 font-mono text-[10px] uppercase block">Your response:</span>
+                              <div className="pt-1 text-xs flex items-center gap-1.5 flex-wrap">
+                                <span className="text-slate-400 font-mono text-[10px] uppercase">Your response:</span>
                                 <span className="font-bold text-emerald-300 font-sans">{answeredLabels.join(', ')}</span>
                               </div>
                             )}
@@ -1050,7 +1050,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                           RECORDED SELECTION:
                         </span>
 
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {(pool.options || []).map((opt) => {
                             const isSelected =
                               selectedIds.includes(opt.id) ||
@@ -1059,13 +1059,13 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                             return (
                               <div
                                 key={opt.id}
-                                className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
+                                className={`p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between gap-2.5 ${
                                   isSelected
                                     ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-md'
                                     : 'bg-white/[0.02] border-white/5 text-slate-500 opacity-50'
                                 }`}
                               >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <div
                                     className={`w-4 h-4 rounded-${
                                       pool.allow_multiple ? 'md' : 'full'
@@ -1080,7 +1080,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                                     )}
                                   </div>
                                   <span
-                                    className={`text-xs sm:text-sm ${
+                                    className={`text-xs sm:text-sm leading-snug break-words min-w-0 flex-1 ${
                                       isSelected ? 'font-bold text-emerald-100' : 'font-medium text-slate-500'
                                     }`}
                                   >
@@ -1088,7 +1088,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                                   </span>
                                 </div>
                                 {isSelected && (
-                                  <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
+                                  <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider shrink-0">
                                     YOUR CHOICE
                                   </span>
                                 )}
@@ -1098,7 +1098,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                         </div>
 
                         {customTextMap[pool.id] && (
-                          <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 text-xs text-slate-300">
+                          <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/10 text-xs text-slate-300">
                             <span className="text-slate-500 font-mono block text-[10px] uppercase">Additional Note:</span>
                             {customTextMap[pool.id]}
                           </div>
@@ -1106,7 +1106,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                       </div>
                     ) : (
                       /* ── Case 2: Unanswered / Editing Mode ── */
-                      <div className="space-y-2.5 pt-2">
+                      <div className="space-y-2 pt-1">
                         {(pool.options || []).map((opt) => {
                           const isSelected = selectedIds.includes(opt.id);
 
@@ -1114,13 +1114,13 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                             <div
                               key={opt.id}
                               onClick={() => handleOptionToggle(pool, opt.id)}
-                              className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                              className={`p-2.5 sm:p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2.5 ${
                                 isSelected
                                   ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-md shadow-cyan-500/15'
                                   : 'bg-white/[0.02] border-white/10 text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
                               }`}
                             >
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                 <div
                                   className={`w-4 h-4 rounded-${
                                     pool.allow_multiple ? 'md' : 'full'
@@ -1138,7 +1138,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                                     )
                                   )}
                                 </div>
-                                <span className="text-xs sm:text-sm font-medium">{opt.option_text}</span>
+                                <span className="text-xs sm:text-sm font-medium leading-snug break-words min-w-0 flex-1">{opt.option_text}</span>
                               </div>
                             </div>
                           );
@@ -1155,7 +1155,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                                 [pool.id]: e.target.value,
                               }))
                             }
-                            className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-cyan-400 mt-2 font-sans"
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-cyan-400 mt-1.5 font-sans"
                           />
                         )}
                       </div>
@@ -1163,7 +1163,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                   </div>
 
                   {/* ── Card Footer Actions ── */}
-                  <div className="pt-4 border-t border-white/10 space-y-3">
+                  <div className="pt-3.5 border-t border-white/10 space-y-2.5">
                     {feedback && (
                       <p
                         className={`text-xs px-3.5 py-2 rounded-xl ${
@@ -1177,8 +1177,8 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                     )}
 
                     {hasResponded && !isEditing ? (
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                        <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 shrink-0">
                           <span className="w-2 h-2 rounded-full bg-emerald-400" />
                           <span>Submitted</span>
                           {submissionDate && (
@@ -1198,7 +1198,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                             <button
                               type="button"
                               onClick={onNavigateHistory}
-                              className="px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                              className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                             >
                               <Vote className="w-3.5 h-3.5" />
                               <span>View My Responses</span>
@@ -1211,7 +1211,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                               setSharingPool(pool);
                               setIsShareModalOpen(true);
                             }}
-                            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                             title="Share pool with 1-click option links"
                           >
                             <Share2 className="w-3.5 h-3.5 text-cyan-400" />
@@ -1221,7 +1221,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleEditing(pool.id)}
-                            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
                           >
                             <Edit3 className="w-3.5 h-3.5 text-slate-400" />
                             <span>Update</span>
@@ -1234,7 +1234,7 @@ export const ZenemooPoolPage: React.FC<ZenemooPoolPageProps> = ({
                           type="button"
                           disabled={isSubmitting || selectedIds.length === 0}
                           onClick={() => executePoolSubmission(pool, selectedIds, profile!)}
-                          className={`w-full py-3.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
+                          className={`w-full py-2.5 sm:py-3 rounded-xl font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
                             selectedIds.length > 0 && !isSubmitting
                               ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/25 cursor-pointer active:scale-[0.99]'
                               : 'bg-slate-800/80 text-slate-500 border border-white/5 cursor-not-allowed'

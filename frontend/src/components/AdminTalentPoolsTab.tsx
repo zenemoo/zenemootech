@@ -102,6 +102,17 @@ export const AdminTalentPoolsTab: React.FC = () => {
     loadPools();
   }, [statusFilter, searchQuery]);
 
+  // Lock background scrolling while response modal is open
+  useEffect(() => {
+    if (selectedPoolForResponses) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [selectedPoolForResponses]);
+
   // Handle Create / Edit Open
   const handleOpenEditor = (pool?: PoolItem) => {
     if (pool) {
@@ -815,148 +826,154 @@ export const AdminTalentPoolsTab: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-5xl bg-[#0b0e20] border border-cyan-500/30 rounded-2xl p-5 sm:p-7 shadow-2xl space-y-4 max-h-[92vh] flex flex-col"
+              className="w-full max-w-5xl h-[92vh] max-h-[92vh] bg-[#0b0e20] border border-cyan-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
             >
-              {/* Top Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
-                    <Users className="w-5 h-5" />
+              {/* Fixed Top Controls Zone (Header + Tabs + Toolbar) */}
+              <div className="shrink-0 p-4 sm:p-5 pb-3 bg-[#0b0e20] border-b border-white/10 space-y-3 z-20">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between gap-3 pb-2 border-b border-white/5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-bold text-white truncate">
+                        {selectedPoolForResponses.title}
+                      </h3>
+                      <p className="text-[11px] sm:text-xs text-slate-400 font-mono truncate">
+                        Pool Public ID: #{selectedPoolForResponses.public_id} • Total Responses: {poolResponses.length}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white">{selectedPoolForResponses.title}</h3>
-                    <p className="text-xs text-slate-400 font-mono">
-                      Pool Public ID: #{selectedPoolForResponses.public_id} • Total Responses: {poolResponses.length}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedPoolForResponses(null)}
-                  className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Option Filter Pills Bar */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                <button
-                  onClick={() => setSelectedOptionFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold tracking-wide whitespace-nowrap transition-all ${
-                    selectedOptionFilter === 'all'
-                      ? 'bg-cyan-500 text-black shadow-md'
-                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
-                  }`}
-                >
-                  All Options ({optionPills.reduce((acc, o) => acc + o.count, 0)})
-                </button>
-                {optionPills.map((opt) => (
                   <button
-                    key={opt.id}
-                    onClick={() => setSelectedOptionFilter(opt.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold tracking-wide whitespace-nowrap transition-all ${
-                      selectedOptionFilter === opt.id
-                        ? 'bg-cyan-500 text-black shadow-md'
+                    onClick={() => setSelectedPoolForResponses(null)}
+                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 shrink-0 transition-colors cursor-pointer"
+                    title="Close modal"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Option Filter Pills Bar */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                  <button
+                    onClick={() => setSelectedOptionFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold tracking-wide whitespace-nowrap transition-all cursor-pointer ${
+                      selectedOptionFilter === 'all'
+                        ? 'bg-cyan-500 text-black shadow-md font-bold'
                         : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
                     }`}
                   >
-                    {opt.option_text} ({opt.count})
+                    All Options ({optionPills.reduce((acc, o) => acc + o.count, 0)})
                   </button>
-                ))}
-              </div>
-
-              {/* Toolbar: Participant Filter, Search, Bulk Actions */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl border border-white/10">
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <select
-                    value={selectedTypeFilter}
-                    onChange={(e) => setSelectedTypeFilter(e.target.value)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white outline-none"
-                  >
-                    <option value="all">All Participant Types</option>
-                    <option value="Individual">Individual</option>
-                    <option value="Vendor / Agency">Vendor / Agency</option>
-                    <option value="Team Leader">Team Leader</option>
-                    <option value="Other">Other</option>
-                  </select>
-
-                  <div className="relative flex-1 sm:w-48">
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
-                    <input
-                      type="text"
-                      placeholder="Search respondents..."
-                      value={responseSearch}
-                      onChange={(e) => setResponseSearch(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white placeholder-slate-500 outline-none"
-                    />
-                  </div>
+                  {optionPills.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setSelectedOptionFilter(opt.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold tracking-wide whitespace-nowrap transition-all cursor-pointer ${
+                        selectedOptionFilter === opt.id
+                          ? 'bg-cyan-500 text-black shadow-md font-bold'
+                          : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
+                      }`}
+                    >
+                      {opt.option_text} ({opt.count})
+                    </button>
+                  ))}
                 </div>
 
-                {/* Bulk Email Copy Controls */}
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  <button
-                    onClick={selectAllVisibleEmails}
-                    className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[11px] text-slate-300 hover:bg-white/5"
-                  >
-                    Select All
-                  </button>
-                  <button
-                    onClick={deselectAllEmails}
-                    className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[11px] text-slate-400 hover:bg-white/5"
-                  >
-                    Clear
-                  </button>
+                {/* Toolbar: Participant Filter, Search, Bulk Actions */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-900/80 p-2.5 sm:p-3 rounded-xl border border-white/10">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <select
+                      value={selectedTypeFilter}
+                      onChange={(e) => setSelectedTypeFilter(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white outline-none shrink-0"
+                    >
+                      <option value="all">All Participant Types</option>
+                      <option value="Individual">Individual</option>
+                      <option value="Vendor / Agency">Vendor / Agency</option>
+                      <option value="Team Leader">Team Leader</option>
+                      <option value="Other">Other</option>
+                    </select>
 
-                  <div className="flex items-center rounded-lg border border-white/10 bg-slate-950 p-0.5 text-[11px]">
-                    <button
-                      onClick={() => setEmailSeparator(';')}
-                      className={`px-2 py-1 rounded ${emailSeparator === ';' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
-                      title="Semicolon separator (Outlook format)"
-                    >
-                      ;
-                    </button>
-                    <button
-                      onClick={() => setEmailSeparator(',')}
-                      className={`px-2 py-1 rounded ${emailSeparator === ',' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
-                      title="Comma separator (Gmail format)"
-                    >
-                      ,
-                    </button>
+                    <div className="relative flex-1 min-w-0 max-w-xs">
+                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                      <input
+                        type="text"
+                        placeholder="Search respondents..."
+                        value={responseSearch}
+                        onChange={(e) => setResponseSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-950 border border-white/15 text-xs text-white placeholder-slate-500 outline-none"
+                      />
+                    </div>
                   </div>
 
-                  <button
-                    onClick={handleCopyEmails}
-                    disabled={selectedEmails.size === 0}
-                    className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-500/20 disabled:opacity-40 cursor-pointer"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    <span>Copy {selectedEmails.size > 0 ? selectedEmails.size : ''} Emails</span>
-                  </button>
+                  {/* Bulk Email Copy Controls */}
+                  <div className="flex items-center gap-2 shrink-0 justify-end flex-wrap">
+                    <button
+                      onClick={selectAllVisibleEmails}
+                      className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[11px] text-slate-300 hover:bg-white/5 cursor-pointer"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      onClick={deselectAllEmails}
+                      className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[11px] text-slate-400 hover:bg-white/5 cursor-pointer"
+                    >
+                      Clear
+                    </button>
+
+                    <div className="flex items-center rounded-lg border border-white/10 bg-slate-950 p-0.5 text-[11px]">
+                      <button
+                        onClick={() => setEmailSeparator(';')}
+                        className={`px-2 py-1 rounded cursor-pointer ${emailSeparator === ';' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+                        title="Semicolon separator (Outlook format)"
+                      >
+                        ;
+                      </button>
+                      <button
+                        onClick={() => setEmailSeparator(',')}
+                        className={`px-2 py-1 cursor-pointer rounded ${emailSeparator === ',' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+                        title="Comma separator (Gmail format)"
+                      >
+                        ,
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleCopyEmails}
+                      disabled={selectedEmails.size === 0}
+                      className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-500/20 disabled:opacity-40 cursor-pointer"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Copy {selectedEmails.size > 0 ? selectedEmails.size : ''} Emails</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Table of Respondents */}
-              <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/10 bg-slate-950/60">
+              {/* Independently Scrollable Table of Respondents */}
+              <div className="flex-1 min-h-0 overflow-auto bg-slate-950/50">
                 {isResponsesLoading ? (
-                  <div className="py-12 text-center text-xs text-slate-400">
+                  <div className="py-16 text-center text-xs text-slate-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-cyan-400" />
                     <span>Filtering respondents...</span>
                   </div>
                 ) : poolResponses.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-slate-400">
+                  <div className="py-16 text-center text-xs text-slate-400">
                     <span>No responses matching this filter.</span>
                   </div>
                 ) : (
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="sticky top-0 bg-[#0d1024] text-slate-400 font-semibold border-b border-white/10 text-[11px] uppercase tracking-wider">
+                  <table className="w-full min-w-[700px] text-left text-xs text-slate-300">
+                    <thead className="sticky top-0 bg-[#0d1024] text-slate-400 font-semibold border-b border-white/10 text-[11px] uppercase tracking-wider z-10 shadow-sm">
                       <tr>
-                        <th className="p-3 w-10 text-center">
+                        <th className="p-3 w-10 text-center bg-[#0d1024]">
                           <input
                             type="checkbox"
                             checked={poolResponses.length > 0 && selectedEmails.size === poolResponses.length}
@@ -964,11 +981,11 @@ export const AdminTalentPoolsTab: React.FC = () => {
                             className="rounded accent-cyan-400 cursor-pointer"
                           />
                         </th>
-                        <th className="p-3">Respondent Name</th>
-                        <th className="p-3">Email Address</th>
-                        <th className="p-3">Participant Type</th>
-                        <th className="p-3">Selected Choice</th>
-                        <th className="p-3">Submitted Date</th>
+                        <th className="p-3 bg-[#0d1024]">Respondent Name</th>
+                        <th className="p-3 bg-[#0d1024]">Email Address</th>
+                        <th className="p-3 bg-[#0d1024]">Participant Type</th>
+                        <th className="p-3 bg-[#0d1024]">Selected Choice</th>
+                        <th className="p-3 bg-[#0d1024]">Submitted Date</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -1011,14 +1028,14 @@ export const AdminTalentPoolsTab: React.FC = () => {
                 )}
               </div>
 
-              {/* Bottom Footer Actions */}
-              <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs">
-                <span className="text-slate-400">
-                  Total Visible: <strong>{poolResponses.length}</strong> | Selected:{' '}
+              {/* Fixed Bottom Footer Actions */}
+              <div className="shrink-0 p-3.5 sm:p-4 border-t border-white/10 bg-[#0b0e20] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs z-20">
+                <span className="text-slate-400 text-center sm:text-left">
+                  Total Visible: <strong className="text-white">{poolResponses.length}</strong> | Selected:{' '}
                   <strong className="text-cyan-400">{selectedEmails.size}</strong>
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-end">
                   <button
                     onClick={() => {
                       if (selectedPoolForResponses) {
@@ -1026,7 +1043,7 @@ export const AdminTalentPoolsTab: React.FC = () => {
                         setIsShareModalOpen(true);
                       }
                     }}
-                    className="px-3.5 py-2 rounded-xl border border-cyan-500/30 hover:border-cyan-500/60 bg-cyan-500/10 text-cyan-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl border border-cyan-500/30 hover:border-cyan-500/60 bg-cyan-500/10 text-cyan-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Share2 className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Share 1-Click Message</span>
@@ -1034,7 +1051,7 @@ export const AdminTalentPoolsTab: React.FC = () => {
 
                   <button
                     onClick={() => handleExportExcel(selectedPoolForResponses)}
-                    className="px-3.5 py-2 rounded-xl border border-white/15 hover:border-cyan-500/30 text-slate-300 hover:text-white bg-white/5 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl border border-white/15 hover:border-cyan-500/30 text-slate-300 hover:text-white bg-white/5 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Download Master Excel</span>
@@ -1042,7 +1059,7 @@ export const AdminTalentPoolsTab: React.FC = () => {
 
                   <button
                     onClick={() => setSelectedPoolForResponses(null)}
-                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs cursor-pointer transition-colors"
                   >
                     Done
                   </button>

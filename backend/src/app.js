@@ -102,6 +102,26 @@ app.use(
 );
 app.use(LARGE_PAYLOAD_ROUTES, express.urlencoded({ limit: '25mb', extended: true }));
 
+// Dedicated Body Size Protection for Dataset Binary Upload Endpoints (15MB limit)
+// Dataset uploads send 5MB Base64 chunks (approx. 5.25MB JSON payload), requiring a dedicated 15MB limit
+const DATASET_UPLOAD_ROUTES = [
+  '/api/datasets/:id/upload',
+  '/api/datasets/:id/upload-chunk',
+  '/datasets/:id/upload',
+  '/datasets/:id/upload-chunk',
+];
+
+app.use(
+  DATASET_UPLOAD_ROUTES,
+  express.json({
+    limit: '15mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
+app.use(DATASET_UPLOAD_ROUTES, express.urlencoded({ limit: '15mb', extended: true }));
+
 // Standard Secure Body Limit for all general API endpoints (max 2MB)
 app.use(
   express.json({
