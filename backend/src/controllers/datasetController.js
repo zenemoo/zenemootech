@@ -208,6 +208,181 @@ export const getDatasetBySlugOrId = async (req, res) => {
   }
 };
 
+export const getDatasetFileContent = async (req, res) => {
+  try {
+    const { fileId } = req.params;
+
+    let file = null;
+    let dataset = null;
+
+    if (supabase) {
+      try {
+        const { data: dbFile } = await supabase
+          .from('dataset_files')
+          .select('id, dataset_id, file_name, file_type, mime_type, file_size, drive_file_id, drive_url, raw_content, status')
+          .eq('id', fileId)
+          .maybeSingle();
+
+        if (dbFile) {
+          file = dbFile;
+          // Verify public dataset access
+          const { data: dbDataset } = await supabase
+            .from('datasets')
+            .select('id, name, slug, status')
+            .eq('id', dbFile.dataset_id)
+            .maybeSingle();
+
+          if (dbDataset) {
+            dataset = dbDataset;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Supabase getDatasetFileContent query error:', dbErr.message);
+      }
+    }
+
+    if (!file) {
+      file = fallbackFiles.find((f) => f.id === fileId);
+      if (file) {
+        dataset = fallbackDatasets.find((d) => d.id === file.dataset_id);
+      }
+    }
+
+    if (!file || !dataset) {
+      return res.status(404).json({ success: false, message: 'Dataset file not found' });
+    }
+
+    // Verify public dataset access (dataset must be active)
+    if (dataset.status && dataset.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Dataset is not public' });
+    }
+
+    let content = file.raw_content;
+
+    // If raw_content is missing in DB but drive_file_id exists, fetch from Drive
+    if (!content && file.drive_file_id && !file.drive_file_id.startsWith('drive_') && !file.drive_file_id.startsWith('mock_')) {
+      try {
+        const driveRes = await fetch(`https://drive.google.com/uc?export=download&id=${file.drive_file_id}`);
+        if (driveRes.ok) {
+          content = await driveRes.text();
+          // Cache small text back to Supabase (< 1MB)
+          if (supabase && content && content.length < 1024 * 1024) {
+            await supabase.from('dataset_files').update({ raw_content: content }).eq('id', file.id);
+          }
+        }
+      } catch (driveErr) {
+        console.warn('Google Drive content fetch error:', driveErr.message);
+      }
+    }
+
+    if (content === null || content === undefined) {
+      return res.status(404).json({ success: false, message: 'File content not available' });
+    }
+
+    res.json({
+      success: true,
+      fileId: file.id,
+      fileName: file.file_name,
+      fileType: file.file_type,
+      mimeType: file.mime_type || 'application/json',
+      fileSize: file.file_size,
+      content,
+    });
+  } catch (err) {
+    console.error('getDatasetFileContent error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const downloadDatasetFile = async (req, res) => {
+  try {
+    const { fileId } = req.params;
+
+    let file = null;
+    let dataset = null;
+
+    if (supabase) {
+      try {
+        const { data: dbFile } = await supabase
+          .from('dataset_files')
+          .select('id, dataset_id, file_name, file_type, mime_type, file_size, drive_file_id, drive_url, raw_content, status')
+          .eq('id', fileId)
+          .maybeSingle();
+
+        if (dbFile) {
+          file = dbFile;
+          const { data: dbDataset } = await supabase
+            .from('datasets')
+            .select('id, name, slug, status')
+            .eq('id', dbFile.dataset_id)
+            .maybeSingle();
+
+          if (dbDataset) {
+            dataset = dbDataset;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Supabase downloadDatasetFile query error:', dbErr.message);
+      }
+    }
+
+    if (!file) {
+      file = fallbackFiles.find((f) => f.id === fileId);
+      if (file) {
+        dataset = fallbackDatasets.find((d) => d.id === file.dataset_id);
+      }
+    }
+
+    if (!file || !dataset) {
+      return res.status(404).json({ success: false, message: 'Dataset file not found' });
+    }
+
+    // Verify public dataset access
+    if (dataset.status && dataset.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Dataset is not public' });
+    }
+
+    let content = file.raw_content;
+
+    if (!content && file.drive_file_id && !file.drive_file_id.startsWith('drive_') && !file.drive_file_id.startsWith('mock_')) {
+      try {
+        const driveRes = await fetch(`https://drive.google.com/uc?export=download&id=${file.drive_file_id}`);
+        if (driveRes.ok) {
+          content = await driveRes.text();
+          if (supabase && content && content.length < 1024 * 1024) {
+            await supabase.from('dataset_files').update({ raw_content: content }).eq('id', file.id);
+          }
+        }
+      } catch (driveErr) {
+        console.warn('Google Drive download fetch error:', driveErr.message);
+      }
+    }
+
+    if (content !== null && content !== undefined) {
+      const isJson = file.file_type === 'JSON' || (file.mime_type && file.mime_type.includes('json'));
+      const mimeType = isJson ? 'application/json; charset=utf-8' : (file.mime_type || 'application/octet-stream');
+      const fileName = file.file_name;
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      );
+      return res.send(content);
+    }
+
+    // Fallback: If no direct content, redirect to Google Drive download URL if available
+    if (file.drive_url) {
+      return res.redirect(file.drive_url);
+    }
+
+    res.status(404).json({ success: false, message: 'File download unavailable' });
+  } catch (err) {
+    console.error('downloadDatasetFile error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 export const createDataset = async (req, res) => {
   try {
     const { name, description, language } = req.body;

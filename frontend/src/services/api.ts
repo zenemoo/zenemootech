@@ -892,6 +892,10 @@ export const datasetApi = {
     api.delete(`/datasets/files/${fileId}`),
   deleteDataset: (datasetId: string) =>
     api.delete(`/datasets/${datasetId}`),
+  getFileContent: (fileId: string) =>
+    api.get(`/datasets/files/${fileId}/content`),
+  downloadFileUrl: (fileId: string) =>
+    `${api.defaults.baseURL || '/api'}/datasets/files/${fileId}/download`,
 };
 
 // ZENEMOO Book a Call System API

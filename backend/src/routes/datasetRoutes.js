@@ -2,6 +2,8 @@ import express from 'express';
 import {
   getDatasets,
   getDatasetBySlugOrId,
+  getDatasetFileContent,
+  downloadDatasetFile,
   createDataset,
   createFolder,
   uploadFile,
@@ -16,6 +18,8 @@ const router = express.Router();
 
 // Public Read Routes
 router.get('/', getDatasets);
+router.get('/files/:fileId/content', getDatasetFileContent);
+router.get('/files/:fileId/download', downloadDatasetFile);
 router.get('/:identifier', getDatasetBySlugOrId);
 
 // Admin Authorized Management Routes

@@ -17,6 +17,8 @@ import {
   X,
   ExternalLink,
   Eye,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -71,6 +73,67 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
   // Interactive Preview Modals
   const [previewFile, setPreviewFile] = useState<DatasetFileItem | null>(null);
   const [copiedJson, setCopiedJson] = useState(false);
+  const [jsonContent, setJsonContent] = useState<string | null>(null);
+  const [isJsonLoading, setIsJsonLoading] = useState(false);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Fetch real JSON file content on-demand when JSON preview modal opens
+  useEffect(() => {
+    if (!previewFile || previewFile.file_type !== 'JSON') {
+      setJsonContent(null);
+      setJsonError(null);
+      setIsJsonLoading(false);
+      return;
+    }
+
+    // If file already has raw_content attached
+    if (previewFile.raw_content) {
+      try {
+        const parsed = JSON.parse(previewFile.raw_content);
+        setJsonContent(JSON.stringify(parsed, null, 2));
+      } catch (e) {
+        setJsonContent(previewFile.raw_content);
+      }
+      setJsonError(null);
+      setIsJsonLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsJsonLoading(true);
+    setJsonError(null);
+    setJsonContent(null);
+
+    datasetApi
+      .getFileContent(previewFile.id)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.data && res.data.success && typeof res.data.content === 'string') {
+          const raw = res.data.content;
+          try {
+            const parsed = JSON.parse(raw);
+            setJsonContent(JSON.stringify(parsed, null, 2));
+          } catch (e) {
+            setJsonContent(raw);
+          }
+          setJsonError(null);
+        } else {
+          setJsonError(res.data?.message || 'Could not load JSON file content.');
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        const msg = err?.response?.data?.message || 'Failed to fetch JSON file content.';
+        setJsonError(msg);
+      })
+      .finally(() => {
+        if (isMounted) setIsJsonLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [previewFile]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -156,33 +219,33 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
     return null;
   };
 
-  // Extract & format real JSON content for preview
-  const getRealJsonContent = (file: DatasetFileItem): string => {
-    if (file.raw_content) {
-      try {
-        const parsed = JSON.parse(file.raw_content);
-        return JSON.stringify(parsed, null, 2);
-      } catch (e) {
-        return file.raw_content;
-      }
-    }
-
-    if (file.drive_url && file.drive_url.startsWith('data:')) {
-      try {
-        const b64Parts = file.drive_url.split(',');
-        if (b64Parts.length > 1) {
-          const decoded = atob(b64Parts[1]);
-          const parsed = JSON.parse(decoded);
-          return JSON.stringify(parsed, null, 2);
-        }
-      } catch (e) {}
-    }
-
-    return `{\n  "file_name": "${file.file_name}",\n  "file_size": "${formatFileSize(file.file_size)}",\n  "type": "${file.file_type}"\n}`;
-  };
-
   // Safe universal download handler
   const handleDownloadFile = (file: DatasetFileItem) => {
+    // Dedicated JSON download
+    if (file.file_type === 'JSON') {
+      if (previewFile?.id === file.id && jsonContent) {
+        const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = file.file_name.endsWith('.json') ? file.file_name : `${file.file_name}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      // Download directly via dedicated backend endpoint
+      const link = document.createElement('a');
+      link.href = datasetApi.downloadFileUrl(file.id);
+      link.download = file.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     const url = file.drive_url || file.thumbnail_url;
     if (!url) return;
 
@@ -500,25 +563,40 @@ export const PublicDatasetDetailPage: React.FC<PublicDatasetDetailPageProps> = (
 
               {/* JSON Code Viewer */}
               {previewFile.file_type === 'JSON' && (
-                <div className="relative bg-slate-950 p-4 rounded-2xl border border-white/10 font-mono text-xs text-emerald-400 max-h-80 overflow-y-auto space-y-2">
+                <div className="relative bg-slate-950 p-4 rounded-2xl border border-white/10 font-mono text-xs max-h-96 overflow-y-auto space-y-2">
                   <PreviewWatermark position="top-right" />
-                  <div className="flex justify-start pt-1">
-                    <button
-                      onClick={() => {
-                        const jsonStr = getRealJsonContent(previewFile);
-                        navigator.clipboard.writeText(jsonStr);
-                        setCopiedJson(true);
-                        setTimeout(() => setCopiedJson(false), 2000);
-                      }}
-                      className="px-2.5 py-1 rounded bg-slate-900 text-slate-300 hover:text-white text-[10px] inline-flex items-center gap-1 border border-slate-800 cursor-pointer"
-                    >
-                      {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
-                    </button>
-                  </div>
-                  <pre className="whitespace-pre-wrap leading-relaxed pt-2">
-                    {getRealJsonContent(previewFile)}
-                  </pre>
+                  {isJsonLoading ? (
+                    <div className="flex items-center justify-center py-12 gap-2 text-slate-400">
+                      <RefreshCw className="w-5 h-5 animate-spin text-cyan-400" />
+                      <span className="text-xs font-mono">Loading JSON content...</span>
+                    </div>
+                  ) : jsonError ? (
+                    <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-mono flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{jsonError}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center pt-1 border-b border-white/5 pb-2">
+                        <span className="text-[11px] text-slate-400 font-mono">{previewFile.file_name}</span>
+                        <button
+                          onClick={() => {
+                            if (!jsonContent) return;
+                            navigator.clipboard.writeText(jsonContent);
+                            setCopiedJson(true);
+                            setTimeout(() => setCopiedJson(false), 2000);
+                          }}
+                          className="px-2.5 py-1 rounded bg-slate-900 text-slate-300 hover:text-white text-[10px] inline-flex items-center gap-1 border border-slate-800 cursor-pointer"
+                        >
+                          {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedJson ? 'Copied!' : 'Copy JSON'}</span>
+                        </button>
+                      </div>
+                      <pre className="whitespace-pre-wrap text-emerald-400 leading-relaxed pt-2">
+                        {jsonContent || 'Empty JSON content.'}
+                      </pre>
+                    </>
+                  )}
                 </div>
               )}
 
