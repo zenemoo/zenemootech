@@ -5,7 +5,12 @@ account_id = "c3e84d8a84eaa06c632f189765eaa9c6"
 
 # Workers KV Namespace for High-Speed Short Link Lookups
 # Create namespace using: npx wrangler kv:namespace create SHORTENER_KV
-# Then paste the generated namespace ID below:
+workers_dev = true
+routes = [
+  { pattern = "zenemoo.in/l/*", zone_name = "zenemoo.in" },
+  { pattern = "www.zenemoo.in/l/*", zone_name = "zenemoo.in" }
+]
+
 [[kv_namespaces]]
 binding = "SHORTENER_KV"
 id = "5b10e3a032264e80a2956869dcdf2695"
@@ -14,9 +19,4 @@ id = "5b10e3a032264e80a2956869dcdf2695"
 PRODUCTION_DOMAIN = "https://zenemoo.in"
 CORS_ORIGIN = "https://zenemoo.in,https://www.zenemoo.in,https://web.zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000"
 ENABLE_CLICK_TRACKING = "true"
-
-# PRODUCTION ROUTE CONFIGURATION (Apply only after KV namespace is bound and verified):
-# routes = [
-#   { pattern = "zenemoo.in/l/*", zone_name = "zenemoo.in" },
-#   { pattern = "www.zenemoo.in/l/*", zone_name = "zenemoo.in" }
-# ]
+JWT_SECRET = "zenemoo_super_secret_jwt_key_2026"

@@ -50,6 +50,20 @@ export class KvShortenerService {
     };
   }
 
+  async syncToWorkerKv(linkRecord) {
+    try {
+      const workerUrl = process.env.SHORTENER_WORKER_URL || 'https://zenemoo-url-shortener.zenemootech.workers.dev/api/sync';
+      await axios.post(workerUrl, linkRecord, { timeout: 8000 });
+    } catch (_) {}
+  }
+
+  async deleteFromWorkerKv(code) {
+    try {
+      const workerUrl = process.env.SHORTENER_WORKER_URL || 'https://zenemoo-url-shortener.zenemootech.workers.dev/api/sync';
+      await axios.delete(`${workerUrl}?code=${encodeURIComponent(code)}`, { timeout: 8000 });
+    } catch (_) {}
+  }
+
   loadFallbackFromDisk() {
     try {
       if (fs.existsSync(FALLBACK_DATA_FILE)) {
@@ -211,7 +225,10 @@ export class KvShortenerService {
       }
     }
 
-    // 2. Persist in resilient local store
+    // 2. Direct Worker KV Sync
+    await this.syncToWorkerKv(linkRecord);
+
+    // 3. Persist in resilient local store
     this.memoryLinks.set(code, linkRecord);
     this.saveFallbackToDisk();
 
@@ -374,6 +391,9 @@ export class KvShortenerService {
     this.memoryLinks.set(code, existing);
     this.saveFallbackToDisk();
 
+    // Direct Worker KV Sync
+    await this.syncToWorkerKv(existing);
+
     return existing;
   }
 
@@ -412,6 +432,9 @@ export class KvShortenerService {
 
     this.memoryLinks.delete(code);
     this.saveFallbackToDisk();
+
+    // Direct Worker KV Sync
+    await this.deleteFromWorkerKv(code);
 
     return { success: true, code };
   }

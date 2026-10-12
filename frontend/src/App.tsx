@@ -60,6 +60,7 @@ import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPa
 import { ZenemooTeamJoinPage } from './components/ZenemooTeamJoinPage';
 import { ZenemooPoolPage } from './components/pool/ZenemooPoolPage';
 import { ZenemooPoolHistoryPage } from './components/pool/ZenemooPoolHistoryPage';
+import { ZenemooRedirectGateway } from './components/ZenemooRedirectGateway';
 import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -69,8 +70,9 @@ import { getAuthReturnDestination, clearAuthReturnDestination } from './lib/auth
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'pool' | 'pool-detail' | 'pool-history' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'pool' | 'pool-detail' | 'pool-history' | 'redirect-gateway' | '404'
   >('home');
+  const [selectedShortCode, setSelectedShortCode] = useState<string>('');
   const [selectedPoolPublicId, setSelectedPoolPublicId] = useState<string>('');
   const [selectedReceiptNo, setSelectedReceiptNo] = useState<string>('');
   const [selectedZenemooPaymentId, setSelectedZenemooPaymentId] = useState<string>('');
@@ -336,6 +338,7 @@ function AppInner() {
         | 'pool'
         | 'pool-detail'
         | 'pool-history'
+        | 'redirect-gateway'
         | '404' = 'home';
 
       // ── Capture Referral Code from URL parameters & persist across sessions ──
@@ -796,6 +799,19 @@ function AppInner() {
         hash === '#/pools'
       ) {
         matchedRoute = 'pool';
+      } else if (
+        path.startsWith('/l/') ||
+        path === '/l' ||
+        path === '/l/' ||
+        hash.startsWith('#/l/') ||
+        hash.startsWith('#l/')
+      ) {
+        let rCode = path.startsWith('/l/')
+          ? path.replace(/^\/l\//, '')
+          : hash.replace(/^#\/?l\//, '');
+        rCode = (rCode || '').split('?')[0].split('#')[0].replace(/\/+$/, '');
+        setSelectedShortCode(rCode);
+        matchedRoute = 'redirect-gateway';
       } else if (path === '/' || path === '' || path === '/subscribe' || path === '/subscribe/') {
         matchedRoute = 'home';
       } else {
@@ -1394,6 +1410,8 @@ function AppInner() {
             setCurrentRoute('pool');
           }}
         />
+      ) : currentRoute === 'redirect-gateway' ? (
+        <ZenemooRedirectGateway code={selectedShortCode} />
       ) : currentRoute === '404' ? (
         <NotFoundPage onOpenAiDrawer={() => setIsAiDrawerOpen(true)} />
       ) : (

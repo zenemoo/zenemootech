@@ -215,6 +215,44 @@ export default {
       );
     }
 
+    // Direct KV Sync API (Server-to-Worker)
+    if (url.pathname === '/api/sync' || url.pathname === '/api/links') {
+      if (request.method === 'POST') {
+        try {
+          const body = await request.json();
+          if (!body || !body.code || !body.destination_url) {
+            return new Response(JSON.stringify({ success: false, message: 'Missing code or destination_url' }), {
+              status: 400,
+              headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+            });
+          }
+          if (env.SHORTENER_KV) {
+            await env.SHORTENER_KV.put(`link:${body.code}`, JSON.stringify(body));
+          }
+          return new Response(JSON.stringify({ success: true, message: 'Synced to Cloudflare KV', code: body.code }), {
+            status: 200,
+            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, message: e.message }), {
+            status: 500,
+            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
+      if (request.method === 'DELETE') {
+        const codeParam = url.searchParams.get('code');
+        if (codeParam && env.SHORTENER_KV) {
+          await env.SHORTENER_KV.delete(`link:${codeParam}`);
+        }
+        return new Response(JSON.stringify({ success: true, message: 'Removed from Cloudflare KV' }), {
+          status: 200,
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Extract code from /l/{code} or /{code}
     let code = '';
     const path = url.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
