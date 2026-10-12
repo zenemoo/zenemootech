@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2, Vote } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2, Vote, QrCode } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -40,6 +40,7 @@ import { AdminAnnouncementsTab } from './AdminAnnouncementsTab';
 import { Megaphone } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { AdminUrlShortenerTab } from './AdminUrlShortenerTab';
+import { AdminQrCodeStudioTab } from './AdminQrCodeStudioTab';
 
 export type AdminTabType =
   | 'team'
@@ -73,7 +74,8 @@ export type AdminTabType =
   | 'email-inbox'
   | 'talent-pools'
   | 'portfolio'
-  | 'shortener';
+  | 'shortener'
+  | 'qr-studio';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
   'notifications',
@@ -108,6 +110,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'portfolio',
   'announcements',
   'shortener',
+  'qr-studio',
 ];
 
 const OAUTH_KEYWORDS = [
@@ -167,6 +170,7 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'portfolio': 'Company Portfolio',
   'announcements': 'Announcements Ticker',
   'shortener': 'URL Shortener Gateway',
+  'qr-studio': 'QR Code Studio',
 };
 
 export const getAdminTabTitle = (tab: string | null | undefined): string => {
@@ -2971,6 +2975,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.filter((o) => o.status === 'active' || (o.status as string) === 'open').length },
         { id: 'referrals', name: 'Talent Referrals', icon: UserCheck },
         { id: 'shortener', name: 'URL Shortener', icon: Link2 },
+        { id: 'qr-studio', name: 'QR Code Studio', icon: QrCode },
       ],
     },
     {
@@ -5180,6 +5185,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {activeTab === 'shortener' && (
           <AdminUrlShortenerTab
             onShowConfirm={showConfirm}
+            onAddToast={addToast}
+          />
+        )}
+
+        {/* TAB: QR CODE STUDIO */}
+        {activeTab === 'qr-studio' && (
+          <AdminQrCodeStudioTab
             onAddToast={addToast}
           />
         )}
