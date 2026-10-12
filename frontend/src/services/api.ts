@@ -999,6 +999,78 @@ export const announcementApi = {
     api.delete<{ success: boolean; message: string }>(`/admin/announcements/${encodeURIComponent(id)}`),
 };
 
+export interface ShortenerLinkItem {
+  code: string;
+  destination_url: string;
+  title: string;
+  notes?: string;
+  status: 'active' | 'disabled';
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  expires_at: string | null;
+  clicks: number;
+  history?: Array<{
+    action: string;
+    timestamp: string;
+    user: string;
+    previous_destination?: string;
+    new_destination?: string;
+  }>;
+}
+
+export interface ShortenerStats {
+  total_links: number;
+  active_links: number;
+  disabled_links: number;
+  expired_links: number;
+  created_this_month: number;
+  total_clicks: number;
+  is_kv_live: boolean;
+  production_domain: string;
+}
+
+export const shortenerApi = {
+  getStats: () =>
+    api.get<{ success: boolean; stats: ShortenerStats }>('/shortener/stats'),
+  getLinks: (params?: { search?: string; status?: string; page?: number; limit?: number }) =>
+    api.get<{
+      success: boolean;
+      links: ShortenerLinkItem[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      is_kv_live: boolean;
+    }>('/shortener/links', { params }),
+  getLink: (code: string) =>
+    api.get<{ success: boolean; link: ShortenerLinkItem }>(`/shortener/links/${encodeURIComponent(code)}`),
+  createLink: (data: {
+    destination_url: string;
+    custom_code?: string;
+    title?: string;
+    notes?: string;
+    expires_at?: string | null;
+  }) => api.post<{ success: boolean; message: string; link: ShortenerLinkItem }>('/shortener/links', data),
+  updateLink: (
+    code: string,
+    data: {
+      destination_url?: string;
+      title?: string;
+      notes?: string;
+      expires_at?: string | null;
+      status?: 'active' | 'disabled';
+    }
+  ) => api.patch<{ success: boolean; message: string; link: ShortenerLinkItem }>(`/shortener/links/${encodeURIComponent(code)}`, data),
+  toggleStatus: (code: string) =>
+    api.patch<{ success: boolean; message: string; link: ShortenerLinkItem }>(`/shortener/links/${encodeURIComponent(code)}/status`),
+  deleteLink: (code: string) =>
+    api.delete<{ success: boolean; message: string }>(`/shortener/links/${encodeURIComponent(code)}`),
+  exportCsvUrl: () => `${rawApiUrl}/shortener/export/csv`,
+};
+
+
 
 
 

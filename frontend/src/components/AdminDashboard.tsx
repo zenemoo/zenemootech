@@ -39,6 +39,7 @@ import { AdminMessageHistoryTab } from './AdminMessageHistoryTab';
 import { AdminAnnouncementsTab } from './AdminAnnouncementsTab';
 import { Megaphone } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { AdminUrlShortenerTab } from './AdminUrlShortenerTab';
 
 export type AdminTabType =
   | 'team'
@@ -71,7 +72,8 @@ export type AdminTabType =
   | 'call-bookings'
   | 'email-inbox'
   | 'talent-pools'
-  | 'portfolio';
+  | 'portfolio'
+  | 'shortener';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
   'notifications',
@@ -105,6 +107,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'telemetry',
   'portfolio',
   'announcements',
+  'shortener',
 ];
 
 const OAUTH_KEYWORDS = [
@@ -163,6 +166,7 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'telemetry': 'Site Settings & Branding',
   'portfolio': 'Company Portfolio',
   'announcements': 'Announcements Ticker',
+  'shortener': 'URL Shortener Gateway',
 };
 
 export const getAdminTabTitle = (tab: string | null | undefined): string => {
@@ -2966,6 +2970,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'partners', name: 'Enterprise Partners', icon: Handshake, count: partnersList.length },
         { id: 'opportunities', name: 'Program Opportunities', icon: Briefcase, count: opportunitiesList.filter((o) => o.status === 'active' || (o.status as string) === 'open').length },
         { id: 'referrals', name: 'Talent Referrals', icon: UserCheck },
+        { id: 'shortener', name: 'URL Shortener', icon: Link2 },
       ],
     },
     {
@@ -5169,6 +5174,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {/* TAB: TALENT TEAMS MANAGEMENT */}
         {activeTab === 'talent-teams' && (
           <AdminTalentTeamsTab showToast={addToast} />
+        )}
+
+        {/* TAB: URL SHORTENER & GATEWAY */}
+        {activeTab === 'shortener' && (
+          <AdminUrlShortenerTab
+            onShowConfirm={showConfirm}
+            onAddToast={addToast}
+          />
         )}
 
         {/* TAB: ZENEMOO ADMIN & HR AI */}
