@@ -44,7 +44,12 @@ interface AdminQrCodeStudioTabProps {
   onAddToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-// 8 Curated Professional Style Presets (matching the mockup design)
+// Fixed intrinsic buffer sizes for live preview (compact & crisp on Retina displays)
+const PREVIEW_QR_BUFFER_SIZE = 512;
+const PREVIEW_CARD_BUFFER_WIDTH = 640;
+const PREVIEW_CARD_BUFFER_HEIGHT = 800;
+
+// 8 Curated Professional Style Presets
 interface StylePreset {
   id: string;
   name: string;
@@ -257,10 +262,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   // Section Accordion Toggle State
   const [isContentOpen, setIsContentOpen] = useState(true);
   const [isDesignOpen, setIsDesignOpen] = useState(true);
-  const [isQrColorsOpen, setIsQrColorsOpen] = useState(true);
-  const [isLogoSectionOpen, setIsLogoSectionOpen] = useState(true);
-  const [isBgSectionOpen, setIsBgSectionOpen] = useState(true);
-  const [isTextCtaOpen, setIsTextCtaOpen] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   // STEP 1: Content State
@@ -280,7 +281,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   const [fgColor, setFgColor] = useState('#22d3ee');
   const [bgColor, setBgColor] = useState('#06070b');
   const [margin, setMargin] = useState(2); // Quiet zone modules (1 to 5)
-  const [resolution, setResolution] = useState<512 | 1024 | 2048>(1024);
+  const [resolution, setResolution] = useState<512 | 1024 | 2048>(1024); // Controls EXPORT resolution
   const [errorCorrection, setErrorCorrection] = useState<'L' | 'M' | 'Q' | 'H'>('H');
 
   // Center Logo
@@ -323,7 +324,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   const [cardTextColor, setCardTextColor] = useState('#ffffff');
   const [cardTextAlign, setCardTextAlign] = useState<'left' | 'center' | 'right'>('center');
 
-  // STEP 3 & 4: Preview & Download Canvas References
+  // STEP 3: Preview Canvas References
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const cardCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isRendering, setIsRendering] = useState(false);
@@ -338,7 +339,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
 
   // Scannability status
   const isLogoTooLarge = isLogoEnabled && logoOption !== 'none' && logoScale > 25;
-  const isSafeToScan = !isContrastWarning && !isLogoTooLarge && qrText.trim().length > 0;
 
   // Load URL shortener links in memory for quick insertion
   const loadShortLinks = useCallback(async () => {
@@ -517,7 +517,8 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   };
 
   /**
-   * Helper: Render the square QR Code onto any target canvas at specified size
+   * Core Helper: Render square QR Code onto any canvas at specified pixel resolution.
+   * Strips inline width/height injected by qrcode library so preview canvas NEVER stretches!
    */
   const drawQrToCanvas = useCallback(
     async (targetCanvas: HTMLCanvasElement, targetResolution: number): Promise<boolean> => {
@@ -536,6 +537,15 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
           light: safeBg,
         },
       });
+
+      // CRITICAL FIX: QRCode.toCanvas forces canvas.style.width and canvas.style.height = `${targetResolution}px`.
+      // We explicitly strip these inline pixel styles to preserve true 1:1 responsive aspect ratio!
+      targetCanvas.style.removeProperty('width');
+      targetCanvas.style.removeProperty('height');
+      targetCanvas.style.width = '100%';
+      targetCanvas.style.height = '100%';
+      targetCanvas.style.aspectRatio = '1 / 1';
+      targetCanvas.style.objectFit = 'contain';
 
       const ctx = targetCanvas.getContext('2d');
       if (!ctx) return true;
@@ -656,19 +666,30 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   );
 
   /**
-   * Helper: Render the Branded Campaign Card onto target canvas
+   * Helper: Render the Branded Campaign Card onto target canvas with proportional layout
    */
   const drawCardToCanvas = useCallback(
     async (
       targetCanvas: HTMLCanvasElement,
       qrCanvasSource: HTMLCanvasElement,
-      width: number = 1200,
-      height: number = 1500
+      width: number = PREVIEW_CARD_BUFFER_WIDTH,
+      height: number = PREVIEW_CARD_BUFFER_HEIGHT
     ): Promise<boolean> => {
       targetCanvas.width = width;
       targetCanvas.height = height;
+
+      // Ensure canvas CSS respects aspect-ratio
+      targetCanvas.style.removeProperty('width');
+      targetCanvas.style.removeProperty('height');
+      targetCanvas.style.width = '100%';
+      targetCanvas.style.height = '100%';
+      targetCanvas.style.aspectRatio = '4 / 5';
+      targetCanvas.style.objectFit = 'contain';
+
       const ctx = targetCanvas.getContext('2d');
       if (!ctx) return false;
+
+      const scale = width / 1200;
 
       // 1. Draw Card Background
       ctx.fillStyle = normalizeHexColor(cardBgColor, '#06070b');
@@ -711,7 +732,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               dy = bgPosition === 'top' ? 0 : bgPosition === 'bottom' ? height - dh : (height - dh) / 2;
             }
           } else {
-            // contain
             if (imgAspect > canvasAspect) {
               dw = width;
               dh = width / imgAspect;
@@ -738,8 +758,8 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       }
 
       // 4. Card Inner Frame / Content Layout
-      const pad = (cardPadding / 100) * 120;
-      const contentTop = pad + 40;
+      const pad = (cardPadding / 100) * 120 * scale;
+      const contentTop = pad + 35 * scale;
 
       if (isCardTextEnabled) {
         ctx.save();
@@ -747,45 +767,45 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
         ctx.textAlign = cardTextAlign;
 
         let textX = width / 2;
-        if (cardTextAlign === 'left') textX = pad + 40;
-        if (cardTextAlign === 'right') textX = width - pad - 40;
+        if (cardTextAlign === 'left') textX = pad + 35 * scale;
+        if (cardTextAlign === 'right') textX = width - pad - 35 * scale;
 
         // Draw Card Title
         if (cardTitle.trim()) {
-          ctx.font = 'bold 54px system-ui, -apple-system, sans-serif';
-          ctx.fillText(cardTitle.trim(), textX, contentTop + 40);
+          ctx.font = `bold ${Math.round(52 * scale)}px system-ui, -apple-system, sans-serif`;
+          ctx.fillText(cardTitle.trim(), textX, contentTop + 35 * scale);
         }
 
         // Draw Card Subtitle
         if (cardSubtitle.trim()) {
-          ctx.font = 'normal 26px system-ui, -apple-system, sans-serif';
+          ctx.font = `normal ${Math.round(25 * scale)}px system-ui, -apple-system, sans-serif`;
           ctx.fillStyle = normalizeHexColor(cardTextColor, '#ffffff') + 'cc';
-          ctx.fillText(cardSubtitle.trim(), textX, contentTop + 86);
+          ctx.fillText(cardSubtitle.trim(), textX, contentTop + 78 * scale);
         }
         ctx.restore();
       }
 
       // 5. Draw Safe QR Backing Plate & QR Code
-      const qrDisplaySize = 620;
-      const platePad = (backingPlatePadding / 24) * 36;
+      const qrDisplaySize = Math.round(620 * scale);
+      const platePad = Math.round((backingPlatePadding / 24) * 36 * scale);
       const plateWidth = qrDisplaySize + platePad * 2;
       const plateHeight = qrDisplaySize + platePad * 2;
       const plateX = (width - plateWidth) / 2;
-      const plateY = isCardTextEnabled ? contentTop + 140 : (height - plateHeight) / 2;
+      const plateY = isCardTextEnabled ? contentTop + 130 * scale : (height - plateHeight) / 2;
 
       ctx.save();
       ctx.fillStyle = normalizeHexColor(backingPlateColor, '#ffffff');
       ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = 36;
+      ctx.shadowBlur = Math.round(36 * scale);
       ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 16;
+      ctx.shadowOffsetY = Math.round(16 * scale);
       drawRoundedRect(
         ctx,
         plateX,
         plateY,
         plateWidth,
         plateHeight,
-        (backingPlateRadius / 24) * 32
+        Math.round((backingPlateRadius / 24) * 32 * scale)
       );
       ctx.fill();
       ctx.restore();
@@ -801,26 +821,26 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
 
       // 6. Draw Call-To-Action (CTA) Footer Banner
       if (isCardTextEnabled && cardCta.trim()) {
-        const ctaY = plateY + plateHeight + 60;
+        const ctaY = plateY + plateHeight + 50 * scale;
         ctx.save();
         ctx.textAlign = 'center';
 
         const ctaText = cardCta.trim();
-        ctx.font = 'bold 24px system-ui, -apple-system, sans-serif';
+        ctx.font = `bold ${Math.round(24 * scale)}px system-ui, -apple-system, sans-serif`;
         const textMetrics = ctx.measureText(ctaText);
-        const pillWidth = Math.max(340, textMetrics.width + 80);
-        const pillHeight = 58;
+        const pillWidth = Math.max(Math.round(320 * scale), textMetrics.width + 70 * scale);
+        const pillHeight = Math.round(56 * scale);
         const pillX = (width - pillWidth) / 2;
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = Math.max(1, 1.5 * scale);
         drawRoundedRect(ctx, pillX, ctaY, pillWidth, pillHeight, pillHeight / 2);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = normalizeHexColor(cardTextColor, '#ffffff');
-        ctx.fillText(ctaText, width / 2, ctaY + 38);
+        ctx.fillText(ctaText, width / 2, ctaY + 36 * scale);
         ctx.restore();
       }
 
@@ -848,31 +868,32 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     ]
   );
 
-  // Master Render Effect: Renders QR Canvas and Branded Card Canvas
-  const renderAllCanvases = useCallback(async () => {
+  // Master Render Effect: Renders live preview canvas at fixed high-DPI display buffer (512x512 / 640x800)
+  // This keeps the live preview strictly compact, responsive, and separated from the export resolution!
+  const renderLivePreview = useCallback(async () => {
     const qrCanvas = qrCanvasRef.current;
     if (!qrCanvas || !qrText.trim()) return;
 
     setIsRendering(true);
     try {
-      // 1. Render QR Canvas at active resolution
-      await drawQrToCanvas(qrCanvas, resolution);
+      // 1. Render QR preview canvas at fixed compact buffer (512px)
+      await drawQrToCanvas(qrCanvas, PREVIEW_QR_BUFFER_SIZE);
 
-      // 2. Render Card Canvas using the generated QR as input
+      // 2. Render Card preview canvas at fixed compact buffer (640x800)
       const cardCanvas = cardCanvasRef.current;
       if (cardCanvas) {
-        await drawCardToCanvas(cardCanvas, qrCanvas, 1200, 1500);
+        await drawCardToCanvas(cardCanvas, qrCanvas, PREVIEW_CARD_BUFFER_WIDTH, PREVIEW_CARD_BUFFER_HEIGHT);
       }
     } catch (err: any) {
       console.warn('[QR Code Studio Render Error]', err);
     } finally {
       setIsRendering(false);
     }
-  }, [qrText, resolution, drawQrToCanvas, drawCardToCanvas]);
+  }, [qrText, drawQrToCanvas, drawCardToCanvas]);
 
   useEffect(() => {
-    renderAllCanvases();
-  }, [renderAllCanvases]);
+    renderLivePreview();
+  }, [renderLivePreview]);
 
   // Clean filename generator
   const getExportFilename = (type: 'qr' | 'card', ext: 'png' | 'jpg') => {
@@ -883,29 +904,66 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     return `${slug}-${type === 'qr' ? `${resolution}x${resolution}` : 'card'}-${Date.now()}.${ext}`;
   };
 
-  // EXPORT 1: QR-Only PNG (Lossless)
-  const handleDownloadQrPng = async () => {
-    const canvas = qrCanvasRef.current;
-    if (!canvas) return;
+  /**
+   * Helper: Generates a full-resolution offscreen canvas matching the selected export resolution
+   * (512px, 1024px, or 2048px). Leaves the on-screen preview canvas completely untouched!
+   */
+  const createExportCanvas = async (type: 'qr' | 'card'): Promise<HTMLCanvasElement | null> => {
+    if (type === 'qr') {
+      const offscreen = document.createElement('canvas');
+      offscreen.width = resolution;
+      offscreen.height = resolution;
+      const success = await drawQrToCanvas(offscreen, resolution);
+      return success ? offscreen : null;
+    } else {
+      const cardW = resolution === 2048 ? 2400 : resolution === 512 ? 800 : 1200;
+      const cardH = resolution === 2048 ? 3000 : resolution === 512 ? 1000 : 1500;
+      const qrSubRes = resolution === 2048 ? 1240 : resolution === 512 ? 414 : 620;
 
-    try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = getExportFilename('qr', 'png');
-      link.href = dataUrl;
-      link.click();
-      onAddToast('QR PNG Exported', `Downloaded at ${resolution}×${resolution} resolution`, 'success');
-    } catch (err: any) {
-      onAddToast('Export Failed', err.message || 'Failed to download PNG', 'error');
+      const offscreenQr = document.createElement('canvas');
+      await drawQrToCanvas(offscreenQr, qrSubRes);
+
+      const offscreenCard = document.createElement('canvas');
+      const success = await drawCardToCanvas(offscreenCard, offscreenQr, cardW, cardH);
+      return success ? offscreenCard : null;
     }
   };
 
-  // EXPORT 2: QR-Only JPG (Solid Background Guaranteed)
-  const handleDownloadQrJpg = async () => {
-    const canvas = qrCanvasRef.current;
-    if (!canvas) return;
-
+  // EXPORT 1: Full-Resolution PNG (Lossless)
+  const handleDownloadPng = async () => {
     try {
+      const canvas = await createExportCanvas(previewMode);
+      if (!canvas) return;
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = getExportFilename(previewMode, 'png');
+      link.href = dataUrl;
+      link.click();
+      onAddToast(
+        `${previewMode === 'qr' ? 'QR Code' : 'Branded Card'} PNG Exported`,
+        `Downloaded at ${canvas.width}×${canvas.height} px resolution`,
+        'success'
+      );
+    } catch (err: any) {
+      if (err.name === 'SecurityError' || err.message?.includes('tainted')) {
+        onAddToast(
+          'Export Blocked by CORS',
+          'The remote background image host blocks cross-origin export. Upload the image directly from your device.',
+          'error'
+        );
+      } else {
+        onAddToast('Export Failed', err.message || 'Failed to download PNG', 'error');
+      }
+    }
+  };
+
+  // EXPORT 2: Full-Resolution JPG (Solid Background Guaranteed)
+  const handleDownloadJpg = async () => {
+    try {
+      const canvas = await createExportCanvas(previewMode);
+      if (!canvas) return;
+
       const offscreen = document.createElement('canvas');
       offscreen.width = canvas.width;
       offscreen.height = canvas.height;
@@ -913,98 +971,39 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       if (!ctx) return;
 
       // Solid background fill ensures zero dark/transparent JPG artifacts
-      ctx.fillStyle = normalizeHexColor(bgColor, '#ffffff');
+      ctx.fillStyle = normalizeHexColor(previewMode === 'qr' ? bgColor : cardBgColor, '#ffffff');
       ctx.fillRect(0, 0, offscreen.width, offscreen.height);
       ctx.drawImage(canvas, 0, 0);
 
       const dataUrl = offscreen.toDataURL('image/jpeg', 0.95);
       const link = document.createElement('a');
-      link.download = getExportFilename('qr', 'jpg');
+      link.download = getExportFilename(previewMode, 'jpg');
       link.href = dataUrl;
       link.click();
-      onAddToast('QR JPG Exported', `Downloaded at ${resolution}×${resolution} resolution`, 'success');
-    } catch (err: any) {
-      onAddToast('Export Failed', err.message || 'Failed to download JPG', 'error');
-    }
-  };
-
-  // EXPORT 3: Branded Card PNG
-  const handleDownloadCardPng = async () => {
-    const canvas = cardCanvasRef.current;
-    if (!canvas) return;
-
-    try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = getExportFilename('card', 'png');
-      link.href = dataUrl;
-      link.click();
-      onAddToast('Branded Card Exported', 'Downloaded high-resolution marketing card PNG', 'success');
+      onAddToast(
+        `${previewMode === 'qr' ? 'QR Code' : 'Branded Card'} JPG Exported`,
+        `Downloaded at ${canvas.width}×${canvas.height} px resolution`,
+        'success'
+      );
     } catch (err: any) {
       if (err.name === 'SecurityError' || err.message?.includes('tainted')) {
         onAddToast(
           'Export Blocked by CORS',
-          'The remote background image host blocks cross-origin export. Please download the image to your computer and upload it directly in Background settings.',
+          'The remote background image host blocks cross-origin export. Upload the image directly from your device.',
           'error'
         );
       } else {
-        onAddToast('Export Failed', err.message || 'Failed to export card image.', 'error');
+        onAddToast('Export Failed', err.message || 'Failed to download JPG', 'error');
       }
     }
   };
 
-  // EXPORT 4: Branded Card JPG
-  const handleDownloadCardJpg = async () => {
-    const canvas = cardCanvasRef.current;
-    if (!canvas) return;
-
-    try {
-      const offscreen = document.createElement('canvas');
-      offscreen.width = canvas.width;
-      offscreen.height = canvas.height;
-      const ctx = offscreen.getContext('2d');
-      if (!ctx) return;
-
-      ctx.fillStyle = normalizeHexColor(cardBgColor, '#06070b');
-      ctx.fillRect(0, 0, offscreen.width, offscreen.height);
-      ctx.drawImage(canvas, 0, 0);
-
-      const dataUrl = offscreen.toDataURL('image/jpeg', 0.95);
-      const link = document.createElement('a');
-      link.download = getExportFilename('card', 'jpg');
-      link.href = dataUrl;
-      link.click();
-      onAddToast('Branded Card Exported', 'Downloaded high-resolution marketing card JPG', 'success');
-    } catch (err: any) {
-      if (err.name === 'SecurityError' || err.message?.includes('tainted')) {
-        onAddToast(
-          'Export Blocked by CORS',
-          'The remote background image host blocks cross-origin export. Upload the image directly from your computer.',
-          'error'
-        );
-      } else {
-        onAddToast('Export Failed', err.message || 'Failed to export card image.', 'error');
-      }
-    }
-  };
-
-  // Unified Download Handlers depending on previewMode
-  const handlePrimaryDownloadPng = () => {
-    if (previewMode === 'qr') handleDownloadQrPng();
-    else handleDownloadCardPng();
-  };
-
-  const handlePrimaryDownloadJpg = () => {
-    if (previewMode === 'qr') handleDownloadQrJpg();
-    else handleDownloadCardJpg();
-  };
-
-  // EXPORT 5: Copy to Clipboard
+  // EXPORT 3: Copy to Clipboard
   const handleCopyClipboard = async () => {
-    const canvas = previewMode === 'qr' ? qrCanvasRef.current : cardCanvasRef.current;
-    if (!canvas) return;
-
     try {
+      const canvas = await createExportCanvas(previewMode);
+      if (!canvas) return;
+
       canvas.toBlob(async (blob) => {
         if (!blob) return;
         try {
@@ -1034,17 +1033,17 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     }
   };
 
-  // EXPORT 6: Open High-Res in New Tab
-  const handleOpenInNewTab = () => {
-    const canvas = previewMode === 'qr' ? qrCanvasRef.current : cardCanvasRef.current;
-    if (!canvas) return;
-
+  // EXPORT 4: Open High-Res in New Tab
+  const handleOpenInNewTab = async () => {
     try {
+      const canvas = await createExportCanvas(previewMode);
+      if (!canvas) return;
+
       const dataUrl = canvas.toDataURL('image/png');
       const win = window.open();
       if (win) {
         win.document.write(
-          `<!DOCTYPE html><html><head><title>Zenemoo QR Studio Preview</title><style>body{margin:0;background:#06070b;display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:90vw;max-height:90vh;box-shadow:0 20px 50px rgba(0,0,0,0.8);border-radius:16px;}</style></head><body><img src="${dataUrl}" alt="Zenemoo QR Code" /></body></html>`
+          `<!DOCTYPE html><html><head><title>Zenemoo QR Studio Preview (${canvas.width}x${canvas.height})</title><style>body{margin:0;background:#06070b;display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:90vw;max-height:90vh;box-shadow:0 20px 50px rgba(0,0,0,0.8);border-radius:16px;}</style></head><body><img src="${dataUrl}" alt="Zenemoo QR Code" /></body></html>`
         );
         win.document.close();
       } else {
@@ -1112,7 +1111,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   );
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 w-full">
       {/* 1. COMPACT PAGE HEADER */}
       <header className="p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
@@ -1475,7 +1474,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
 
             {isDesignOpen && (
               <div className="p-4 sm:p-5 pt-0 border-t border-white/5 space-y-6">
-                {/* 2A. QUICK PRESETS CAROUSEL (8 items from mockup) */}
+                {/* 2A. QUICK PRESETS CAROUSEL (8 items) */}
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">
@@ -2171,8 +2170,8 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
           </section>
         </div>
 
-        {/* RIGHT COLUMN: PREVIEW & DOWNLOAD SUITE (5 COLS) */}
-        <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-6">
+        {/* RIGHT COLUMN: PREVIEW & EXPORT (5 COLS) - Flexible height, never stretches */}
+        <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-4 self-start">
           {/* ================= STEP 3: LIVE PREVIEW CARD ================= */}
           <section className="p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md shadow-2xl space-y-4">
             {/* Header with QR Only / Branded Card Toggle */}
@@ -2182,7 +2181,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
                 <h2 className="text-sm font-bold text-white tracking-tight">Live Preview</h2>
               </div>
 
-              <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
+              <div className="flex items-center gap-1 bg-black/50 p-1 rounded-xl border border-white/10">
                 <button
                   type="button"
                   onClick={() => setPreviewMode('qr')}
@@ -2208,46 +2207,57 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               </div>
             </div>
 
-            {/* PREVIEW CANVAS CONTAINER (Strict 1:1 for QR, 4:5 for Card) */}
-            <div className="relative p-4 sm:p-6 rounded-2xl bg-black/60 border border-white/10 flex items-center justify-center overflow-hidden min-h-[300px]">
-              {/* MODE A: QR-ONLY PREVIEW (Strict 1:1 Aspect-Square Container) */}
-              <div
-                className={`w-full max-w-[280px] sm:max-w-[320px] aspect-square mx-auto flex items-center justify-center ${
-                  previewMode === 'qr' ? 'block' : 'hidden'
-                }`}
-              >
-                <canvas
-                  ref={qrCanvasRef}
-                  className="w-full h-full object-contain rounded-xl shadow-2xl block transition-all"
-                  style={{
-                    aspectRatio: '1 / 1',
-                  }}
-                />
-              </div>
+            {/* PREVIEW CANVAS CONTAINER (Strictly constrained, centered, never overflows) */}
+            <div className="relative p-4 sm:p-5 rounded-2xl bg-[#06070b]/90 border border-white/10 flex items-center justify-center overflow-hidden">
+              {/* MODE A: QR-ONLY PREVIEW (Strict 1:1 Aspect-Square Container, max-w 320px) */}
+              {previewMode === 'qr' && (
+                <div
+                  className="w-full max-w-[280px] sm:max-w-[320px] aspect-square mx-auto flex items-center justify-center"
+                  style={{ aspectRatio: '1 / 1' }}
+                >
+                  <canvas
+                    ref={qrCanvasRef}
+                    className="w-full h-full max-w-[320px] max-h-[320px] object-contain rounded-xl shadow-xl block"
+                    style={{
+                      aspectRatio: '1 / 1',
+                      maxWidth: '320px',
+                      maxHeight: '320px',
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                </div>
+              )}
 
-              {/* MODE B: BRANDED CARD PREVIEW (Aspect-Ratio 4:5 Poster Container) */}
-              <div
-                className={`w-full max-w-[280px] sm:max-w-[320px] aspect-[4/5] mx-auto flex items-center justify-center ${
-                  previewMode === 'card' ? 'block' : 'hidden'
-                }`}
-              >
-                <canvas
-                  ref={cardCanvasRef}
-                  className="w-full h-full object-contain rounded-xl shadow-2xl block transition-all"
-                  style={{
-                    aspectRatio: '4 / 5',
-                  }}
-                />
-              </div>
+              {/* MODE B: BRANDED CARD PREVIEW (Aspect-Ratio 4:5 Poster Container, max-w 300px) */}
+              {previewMode === 'card' && (
+                <div
+                  className="w-full max-w-[260px] sm:max-w-[300px] aspect-[4/5] mx-auto flex items-center justify-center"
+                  style={{ aspectRatio: '4 / 5' }}
+                >
+                  <canvas
+                    ref={cardCanvasRef}
+                    className="w-full h-full max-w-[300px] object-contain rounded-xl shadow-xl block"
+                    style={{
+                      aspectRatio: '4 / 5',
+                      maxWidth: '300px',
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+                </div>
+              )}
 
               {isRendering && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-10">
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-10 rounded-2xl">
                   <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin" />
                 </div>
               )}
             </div>
 
-            {/* MINI PRESET SWITCHER THUMBNAILS UNDERNEATH PREVIEW (like mockup) */}
+            {/* MINI PRESET SWITCHER THUMBNAILS UNDERNEATH PREVIEW */}
             <div className="space-y-1.5 pt-1">
               <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block text-left">
                 Quick Style Switch:
@@ -2266,10 +2276,10 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
                     title={preset.name}
                   >
                     <div
-                      className="w-full h-7 rounded flex items-center justify-center mb-0.5"
+                      className="w-full h-6 rounded flex items-center justify-center mb-0.5"
                       style={{ backgroundColor: preset.bg }}
                     >
-                      <QrCode className="w-4 h-4" style={{ color: preset.fg }} />
+                      <QrCode className="w-3.5 h-3.5" style={{ color: preset.fg }} />
                     </div>
                     <span className="text-[9px] font-mono text-slate-300 block truncate">
                       {preset.name}
@@ -2281,13 +2291,19 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
 
             {/* PREVIEW STATS INFO BAR (Size, Format, Contrast) */}
             <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-black/40 border border-white/5 text-center text-xs font-mono">
-              <div className="border-r border-white/5 pr-2">
-                <span className="text-[10px] text-slate-500 block">Size</span>
-                <span className="text-white font-bold">
-                  {previewMode === 'qr' ? `${resolution}×${resolution}` : '1200×1500'}
+              <div className="border-r border-white/5 pr-1">
+                <span className="text-[10px] text-slate-500 block">Export Size</span>
+                <span className="text-white font-bold truncate block">
+                  {previewMode === 'qr'
+                    ? `${resolution}×${resolution}`
+                    : resolution === 2048
+                    ? '2400×3000'
+                    : resolution === 512
+                    ? '800×1000'
+                    : '1200×1500'}
                 </span>
               </div>
-              <div className="border-r border-white/5 pr-2">
+              <div className="border-r border-white/5 pr-1">
                 <span className="text-[10px] text-slate-500 block">Format</span>
                 <span className="text-cyan-300 font-bold truncate block">
                   {previewMode === 'qr' ? 'Square QR' : 'Branded Card'}
@@ -2317,7 +2333,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               </div>
             </div>
 
-            {/* Resolution Selector Radio-Cards */}
+            {/* Resolution Selector Radio-Cards (Controls EXPORT size, separated from live preview) */}
             <div className="space-y-1.5">
               <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
                 Export Resolution:
@@ -2345,24 +2361,24 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               </div>
             </div>
 
-            {/* Primary Action Buttons: Download PNG & Download JPG */}
+            {/* Primary Action Buttons: Download PNG & Download JPG (dynamically rendered at full export resolution) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <button
                 type="button"
-                onClick={handlePrimaryDownloadPng}
+                onClick={handleDownloadPng}
                 disabled={!qrText.trim()}
                 className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer disabled:opacity-50 transition-all"
               >
                 <Download className="w-4 h-4 text-black" />
                 <div className="text-left leading-tight">
                   <div>Download PNG</div>
-                  <div className="text-[9px] opacity-80 font-normal">Best quality, transparent</div>
+                  <div className="text-[9px] opacity-80 font-normal">Lossless, best quality</div>
                 </div>
               </button>
 
               <button
                 type="button"
-                onClick={handlePrimaryDownloadJpg}
+                onClick={handleDownloadJpg}
                 disabled={!qrText.trim()}
                 className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 cursor-pointer disabled:opacity-50 transition-all"
               >
