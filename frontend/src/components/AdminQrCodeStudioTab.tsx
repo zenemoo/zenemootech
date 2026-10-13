@@ -20,15 +20,23 @@ import {
   X,
   Layers,
   ChevronDown,
+  ChevronUp,
   Info,
   Type,
-  Maximize2,
   Lock,
   Globe,
   ExternalLink,
   AlignLeft,
   AlignCenter,
   AlignRight,
+  HelpCircle,
+  Clipboard,
+  Smartphone,
+  Printer,
+  FileText,
+  CheckCircle,
+  SlidersHorizontal,
+  Share2,
 } from 'lucide-react';
 import { shortenerApi, ShortenerLinkItem } from '../services/api';
 
@@ -36,24 +44,134 @@ interface AdminQrCodeStudioTabProps {
   onAddToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-// Curated High-Contrast Palettes
-const COLOR_PRESETS = [
-  { name: 'Classic Dark', fg: '#000000', bg: '#ffffff' },
-  { name: 'Zenemoo Cyan', fg: '#22d3ee', bg: '#06070b' },
-  { name: 'Electric Indigo', fg: '#6366f1', bg: '#090b11' },
-  { name: 'Emerald Forest', fg: '#10b981', bg: '#050c08' },
-  { name: 'Royal Violet', fg: '#a855f7', bg: '#0c0714' },
-  { name: 'Amber Sunset', fg: '#f59e0b', bg: '#0d0a04' },
-  { name: 'Monochrome Slate', fg: '#0f172a', bg: '#f8fafc' },
+// 8 Curated Professional Style Presets (matching the mockup design)
+interface StylePreset {
+  id: string;
+  name: string;
+  description: string;
+  fg: string;
+  bg: string;
+  logoOption: 'none' | 'zenemoo' | 'custom';
+  logoBgColor: string;
+  badgeShape: 'rounded' | 'circle' | 'square';
+  cardBgColor: string;
+  tag?: string;
+}
+
+const STYLE_PRESETS: StylePreset[] = [
+  {
+    id: 'classic',
+    name: 'Classic',
+    description: 'Universal black & white high-contrast',
+    fg: '#000000',
+    bg: '#ffffff',
+    logoOption: 'none',
+    logoBgColor: '#ffffff',
+    badgeShape: 'rounded',
+    cardBgColor: '#111827',
+  },
+  {
+    id: 'zenemoo',
+    name: 'Zenemoo',
+    description: 'Signature electric cyan on deep slate',
+    fg: '#22d3ee',
+    bg: '#06070b',
+    logoOption: 'zenemoo',
+    logoBgColor: '#06070b',
+    badgeShape: 'rounded',
+    cardBgColor: '#06070b',
+    tag: 'Default',
+  },
+  {
+    id: 'modern',
+    name: 'Modern',
+    description: 'Electric indigo tech aesthetic',
+    fg: '#6366f1',
+    bg: '#090b11',
+    logoOption: 'zenemoo',
+    logoBgColor: '#090b11',
+    badgeShape: 'rounded',
+    cardBgColor: '#0b0f19',
+  },
+  {
+    id: 'business',
+    name: 'Business',
+    description: 'Refined slate for corporate documents',
+    fg: '#0f172a',
+    bg: '#f8fafc',
+    logoOption: 'zenemoo',
+    logoBgColor: '#ffffff',
+    badgeShape: 'square',
+    cardBgColor: '#0f172a',
+  },
+  {
+    id: 'social',
+    name: 'Social Media',
+    description: 'High-energy vibrant crimson rose',
+    fg: '#f43f5e',
+    bg: '#0c0714',
+    logoOption: 'zenemoo',
+    logoBgColor: '#ffffff',
+    badgeShape: 'circle',
+    cardBgColor: '#170c1e',
+  },
+  {
+    id: 'event',
+    name: 'Event',
+    description: 'Lush emerald green for gatherings & tickets',
+    fg: '#10b981',
+    bg: '#050c08',
+    logoOption: 'zenemoo',
+    logoBgColor: '#050c08',
+    badgeShape: 'circle',
+    cardBgColor: '#051b11',
+  },
+  {
+    id: 'dark',
+    name: 'Dark',
+    description: 'Ultra crisp inverted monochrome',
+    fg: '#ffffff',
+    bg: '#000000',
+    logoOption: 'zenemoo',
+    logoBgColor: '#000000',
+    badgeShape: 'rounded',
+    cardBgColor: '#030303',
+  },
+  {
+    id: 'minimal',
+    name: 'Minimal',
+    description: 'Understated cool graphite on white',
+    fg: '#334155',
+    bg: '#ffffff',
+    logoOption: 'none',
+    logoBgColor: '#ffffff',
+    badgeShape: 'rounded',
+    cardBgColor: '#1e293b',
+  },
 ];
 
 // Quick URL Suggestions
-const QUICK_PRESETS = [
+const QUICK_URL_PRESETS = [
   { label: 'Zenemoo Home', url: 'https://zenemoo.in' },
-  { label: 'Opportunities', url: 'https://zenemoo.in/opportunities' },
   { label: 'Talent Hub', url: 'https://zenemoo.in/talent-hub' },
-  { label: 'DesiCrew Programs', url: 'https://zenemoo.in/desicrew-contributors' },
+  { label: 'Opportunities', url: 'https://zenemoo.in/opportunities' },
   { label: 'Book a Call', url: 'https://zenemoo.in/book-a-call' },
+  { label: 'WhatsApp', url: 'https://wa.me/918000000000' },
+  { label: 'Google Meet', url: 'https://meet.google.com/new' },
+];
+
+// Quick color palette swatches
+const COLOR_SWATCHES = [
+  { name: 'Black', hex: '#000000' },
+  { name: 'White', hex: '#ffffff' },
+  { name: 'Zenemoo Cyan', hex: '#22d3ee' },
+  { name: 'Electric Indigo', hex: '#6366f1' },
+  { name: 'Emerald Forest', hex: '#10b981' },
+  { name: 'Rose Red', hex: '#f43f5e' },
+  { name: 'Amber Gold', hex: '#f59e0b' },
+  { name: 'Royal Violet', hex: '#a855f7' },
+  { name: 'Slate Gray', hex: '#334155' },
+  { name: 'Deep Midnight', hex: '#06070b' },
 ];
 
 /**
@@ -70,12 +188,6 @@ function normalizeHexColor(input: string, fallback: string = '#000000'): string 
     return '#' + clean.toLowerCase();
   }
   return fallback;
-}
-
-function isValidHexColor(input: string): boolean {
-  if (!input) return false;
-  const clean = input.trim().replace(/^#/, '');
-  return /^[0-9a-fA-F]{3}$/.test(clean) || /^[0-9a-fA-F]{6}$/.test(clean);
 }
 
 /**
@@ -138,35 +250,53 @@ function drawRoundedRect(
 }
 
 export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAddToast }) => {
-  // 1. Content State
+  // Navigation / Workflow State
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  // Section Accordion Toggle State
+  const [isContentOpen, setIsContentOpen] = useState(true);
+  const [isDesignOpen, setIsDesignOpen] = useState(true);
+  const [isQrColorsOpen, setIsQrColorsOpen] = useState(true);
+  const [isLogoSectionOpen, setIsLogoSectionOpen] = useState(true);
+  const [isBgSectionOpen, setIsBgSectionOpen] = useState(true);
+  const [isTextCtaOpen, setIsTextCtaOpen] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+
+  // STEP 1: Content State
+  const [contentTab, setContentTab] = useState<'url' | 'shortlink' | 'presets'>('url');
   const [qrText, setQrText] = useState('https://zenemoo.in');
 
   // URL Shortener Links Picker State
   const [shortLinks, setShortLinks] = useState<ShortenerLinkItem[]>([]);
   const [isLoadingShortLinks, setIsLoadingShortLinks] = useState(false);
-  const [isShortLinksDropdownOpen, setIsShortLinksDropdownOpen] = useState(false);
   const [shortLinkSearch, setShortLinkSearch] = useState('');
 
-  // 2. Logo State (memory only)
-  const [logoOption, setLogoOption] = useState<'none' | 'zenemoo' | 'custom'>('zenemoo');
-  const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
-  const [customLogoName, setCustomLogoName] = useState<string>('');
-  const [logoScale, setLogoScale] = useState(20); // 12% to 25% of QR width
-  const [logoPadding, setLogoPadding] = useState(8); // padding around logo badge
-  const [badgeShape, setBadgeShape] = useState<'rounded' | 'circle'>('rounded');
-  const [logoBorderRadius, setLogoBorderRadius] = useState(12); // radius for rounded badge
-  const [logoBgColor, setLogoBgColor] = useState('#ffffff');
+  // Active Style Preset ID
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('zenemoo');
 
-  // 3. QR Colors & Styling
-  const [fgColor, setFgColor] = useState('#000000');
-  const [bgColor, setBgColor] = useState('#ffffff');
+  // STEP 2: Design State
+  // Colors & QR styling
+  const [fgColor, setFgColor] = useState('#22d3ee');
+  const [bgColor, setBgColor] = useState('#06070b');
   const [margin, setMargin] = useState(2); // Quiet zone modules (1 to 5)
   const [resolution, setResolution] = useState<512 | 1024 | 2048>(1024);
   const [errorCorrection, setErrorCorrection] = useState<'L' | 'M' | 'Q' | 'H'>('H');
 
-  // 4. Background & Branded Card State
+  // Center Logo
+  const [isLogoEnabled, setIsLogoEnabled] = useState(true);
+  const [logoOption, setLogoOption] = useState<'none' | 'zenemoo' | 'custom'>('zenemoo');
+  const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
+  const [customLogoName, setCustomLogoName] = useState<string>('');
+  const [logoScale, setLogoScale] = useState(20); // 10% to 40%
+  const [logoPadding, setLogoPadding] = useState(8); // padding around logo badge
+  const [badgeShape, setBadgeShape] = useState<'rounded' | 'circle' | 'square'>('rounded');
+  const [logoBorderRadius, setLogoBorderRadius] = useState(12); // radius for rounded badge
+  const [logoBgColor, setLogoBgColor] = useState('#06070b');
+
+  // Background & Branded Card State
   const [previewMode, setPreviewMode] = useState<'qr' | 'card'>('qr');
-  const [cardBgColor, setCardBgColor] = useState('#0a0d14');
+  const [cardBgColor, setCardBgColor] = useState('#06070b');
   const [bgType, setBgType] = useState<'solid' | 'upload' | 'url'>('solid');
   const [uploadedBgUrl, setUploadedBgUrl] = useState<string | null>(null);
   const [uploadedBgName, setUploadedBgName] = useState('');
@@ -179,7 +309,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   const [overlayColor, setOverlayColor] = useState('#000000');
   const [overlayOpacity, setOverlayOpacity] = useState(35); // 0% to 90%
   const [cardPadding, setCardPadding] = useState(48); // Card padding in export px
-  const [cardRadius, setCardRadius] = useState(32); // Card corner radius in export px
 
   // Backing plate (safeguard for scannability against background images)
   const [backingPlateColor, setBackingPlateColor] = useState('#ffffff');
@@ -187,13 +316,14 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   const [backingPlateRadius, setBackingPlateRadius] = useState(24);
 
   // Card Typography & CTA
+  const [isCardTextEnabled, setIsCardTextEnabled] = useState(true);
   const [cardTitle, setCardTitle] = useState('Zenemoo');
   const [cardSubtitle, setCardSubtitle] = useState('Scan to explore opportunities & updates');
   const [cardCta, setCardCta] = useState('Point camera to scan');
   const [cardTextColor, setCardTextColor] = useState('#ffffff');
   const [cardTextAlign, setCardTextAlign] = useState<'left' | 'center' | 'right'>('center');
 
-  // 5. Canvas References & Execution
+  // STEP 3 & 4: Preview & Download Canvas References
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const cardCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isRendering, setIsRendering] = useState(false);
@@ -204,7 +334,11 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   const isContrastWarning = contrastRatio !== null && contrastRatio < 3.0;
 
   // Enforce Error Correction Level 'H' when a center logo is active
-  const effectiveErrorCorrection = logoOption !== 'none' ? 'H' : errorCorrection;
+  const effectiveErrorCorrection = (isLogoEnabled && logoOption !== 'none') ? 'H' : errorCorrection;
+
+  // Scannability status
+  const isLogoTooLarge = isLogoEnabled && logoOption !== 'none' && logoScale > 25;
+  const isSafeToScan = !isContrastWarning && !isLogoTooLarge && qrText.trim().length > 0;
 
   // Load URL shortener links in memory for quick insertion
   const loadShortLinks = useCallback(async () => {
@@ -259,6 +393,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     setCustomLogoUrl(objectUrl);
     setCustomLogoName(file.name);
     setLogoOption('custom');
+    setIsLogoEnabled(true);
     onAddToast('Logo Loaded', `"${file.name}" loaded locally in memory.`, 'success');
   };
 
@@ -285,7 +420,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     setUploadedBgName(file.name);
     setBgType('upload');
     setBgUrlError(null);
-    onAddToast('Background Uploaded', `"${file.name}" ready for card design.`, 'success');
+    onAddToast('Background Uploaded', `"${file.name}" ready for branded card.`, 'success');
   };
 
   // Handle Testing & Loading Remote HTTPS Background URL
@@ -310,13 +445,13 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       setAppliedBgUrl(trimmed);
       setBgType('url');
       setIsTestingBgUrl(false);
-      onAddToast('Background Loaded', 'Remote HTTPS image preview loaded successfully.', 'success');
+      onAddToast('Background Loaded', 'Remote HTTPS image loaded successfully.', 'success');
     };
 
     testImg.onerror = () => {
       setIsTestingBgUrl(false);
       setBgUrlError(
-        'Unable to load image. The URL may be invalid or the remote server may disallow cross-origin canvas access (CORS). Upload the file directly for guaranteed export.'
+        'Unable to load image. The URL may be invalid or the remote server disallows cross-origin canvas access (CORS). Upload the file directly for guaranteed export.'
       );
       onAddToast('Image Load Failed', 'CORS restriction or network error loading remote URL.', 'warning');
     };
@@ -326,6 +461,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
 
   // Active Logo Source
   const getActiveLogoSrc = (): string | null => {
+    if (!isLogoEnabled) return null;
     if (logoOption === 'zenemoo') {
       return '/assets/logo.png';
     }
@@ -346,8 +482,42 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     return null;
   };
 
+  // Apply a style preset
+  const handleApplyPreset = (preset: StylePreset) => {
+    setSelectedPresetId(preset.id);
+    setFgColor(preset.fg);
+    setBgColor(preset.bg);
+    setCardBgColor(preset.cardBgColor);
+
+    if (preset.logoOption === 'none') {
+      setIsLogoEnabled(false);
+      setLogoOption('none');
+    } else {
+      setIsLogoEnabled(true);
+      setLogoOption(preset.logoOption);
+      setLogoBgColor(preset.logoBgColor);
+      setBadgeShape(preset.badgeShape);
+    }
+    onAddToast('Preset Applied', `"${preset.name}" style applied.`, 'info');
+  };
+
+  // Paste from clipboard helper
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        setQrText(text.trim());
+        onAddToast('Pasted', 'Text pasted from clipboard', 'info');
+      } else {
+        onAddToast('Clipboard Empty', 'No text found in clipboard', 'info');
+      }
+    } catch (_) {
+      onAddToast('Permission Denied', 'Clipboard access not allowed by browser. Paste directly into the field.', 'warning');
+    }
+  };
+
   /**
-   * Helper: Render the square QR Code onto any given target canvas at specified size
+   * Helper: Render the square QR Code onto any target canvas at specified size
    */
   const drawQrToCanvas = useCallback(
     async (targetCanvas: HTMLCanvasElement, targetResolution: number): Promise<boolean> => {
@@ -387,7 +557,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
         });
 
         if (logoImg.naturalWidth > 0 && logoImg.naturalHeight > 0) {
-          // Scale factor relative to 1024px
           const scaleMultiplier = targetResolution / 1024;
           const badgeBoxSize = targetResolution * (logoScale / 100);
           const badgeX = (targetResolution - badgeBoxSize) / 2;
@@ -398,10 +567,10 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
           // A. Draw badge background plate
           ctx.save();
           ctx.fillStyle = normalizeHexColor(logoBgColor, '#ffffff');
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
-          ctx.shadowBlur = 10 * scaleMultiplier;
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+          ctx.shadowBlur = 12 * scaleMultiplier;
           ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 3 * scaleMultiplier;
+          ctx.shadowOffsetY = 4 * scaleMultiplier;
 
           if (badgeShape === 'circle') {
             ctx.beginPath();
@@ -413,6 +582,8 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               Math.PI * 2
             );
             ctx.fill();
+          } else if (badgeShape === 'square') {
+            ctx.fillRect(badgeX, badgeY, badgeBoxSize, badgeBoxSize);
           } else {
             drawRoundedRect(ctx, badgeX, badgeY, badgeBoxSize, badgeBoxSize, radius);
             ctx.fill();
@@ -448,7 +619,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               Math.PI * 2
             );
             ctx.clip();
-          } else {
+          } else if (badgeShape === 'rounded') {
             drawRoundedRect(
               ctx,
               badgeX + 1,
@@ -473,6 +644,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       bgColor,
       margin,
       effectiveErrorCorrection,
+      isLogoEnabled,
       logoOption,
       customLogoUrl,
       logoScale,
@@ -499,7 +671,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       if (!ctx) return false;
 
       // 1. Draw Card Background
-      ctx.fillStyle = normalizeHexColor(cardBgColor, '#0a0d14');
+      ctx.fillStyle = normalizeHexColor(cardBgColor, '#06070b');
       ctx.fillRect(0, 0, width, height);
 
       // 2. Draw Background Image if active
@@ -569,41 +741,42 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       const pad = (cardPadding / 100) * 120;
       const contentTop = pad + 40;
 
-      ctx.save();
-      ctx.fillStyle = normalizeHexColor(cardTextColor, '#ffffff');
-      ctx.textAlign = cardTextAlign;
+      if (isCardTextEnabled) {
+        ctx.save();
+        ctx.fillStyle = normalizeHexColor(cardTextColor, '#ffffff');
+        ctx.textAlign = cardTextAlign;
 
-      let textX = width / 2;
-      if (cardTextAlign === 'left') textX = pad + 40;
-      if (cardTextAlign === 'right') textX = width - pad - 40;
+        let textX = width / 2;
+        if (cardTextAlign === 'left') textX = pad + 40;
+        if (cardTextAlign === 'right') textX = width - pad - 40;
 
-      // Draw Card Title
-      if (cardTitle.trim()) {
-        ctx.font = 'bold 54px system-ui, -apple-system, sans-serif';
-        ctx.fillText(cardTitle.trim(), textX, contentTop + 40);
+        // Draw Card Title
+        if (cardTitle.trim()) {
+          ctx.font = 'bold 54px system-ui, -apple-system, sans-serif';
+          ctx.fillText(cardTitle.trim(), textX, contentTop + 40);
+        }
+
+        // Draw Card Subtitle
+        if (cardSubtitle.trim()) {
+          ctx.font = 'normal 26px system-ui, -apple-system, sans-serif';
+          ctx.fillStyle = normalizeHexColor(cardTextColor, '#ffffff') + 'cc';
+          ctx.fillText(cardSubtitle.trim(), textX, contentTop + 86);
+        }
+        ctx.restore();
       }
-
-      // Draw Card Subtitle
-      if (cardSubtitle.trim()) {
-        ctx.font = 'normal 26px system-ui, -apple-system, sans-serif';
-        ctx.fillStyle = normalizeHexColor(cardTextColor, '#ffffff') + 'cc';
-        ctx.fillText(cardSubtitle.trim(), textX, contentTop + 86);
-      }
-      ctx.restore();
 
       // 5. Draw Safe QR Backing Plate & QR Code
-      // Backing plate guarantees 100% scanning scannability regardless of background image
-      const qrDisplaySize = 620; // 620px square QR
+      const qrDisplaySize = 620;
       const platePad = (backingPlatePadding / 24) * 36;
       const plateWidth = qrDisplaySize + platePad * 2;
       const plateHeight = qrDisplaySize + platePad * 2;
       const plateX = (width - plateWidth) / 2;
-      const plateY = contentTop + 140;
+      const plateY = isCardTextEnabled ? contentTop + 140 : (height - plateHeight) / 2;
 
       ctx.save();
       ctx.fillStyle = normalizeHexColor(backingPlateColor, '#ffffff');
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-      ctx.shadowBlur = 32;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = 36;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 16;
       drawRoundedRect(
@@ -617,7 +790,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       ctx.fill();
       ctx.restore();
 
-      // Draw the QR Code into the backing plate
+      // Draw the QR Code onto backing plate
       ctx.drawImage(
         qrCanvasSource,
         plateX + platePad,
@@ -627,12 +800,11 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       );
 
       // 6. Draw Call-To-Action (CTA) Footer Banner
-      if (cardCta.trim()) {
+      if (isCardTextEnabled && cardCta.trim()) {
         const ctaY = plateY + plateHeight + 60;
         ctx.save();
         ctx.textAlign = 'center';
 
-        // CTA Pill background
         const ctaText = cardCta.trim();
         ctx.font = 'bold 24px system-ui, -apple-system, sans-serif';
         const textMetrics = ctx.measureText(ctaText);
@@ -664,6 +836,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       overlayColor,
       overlayOpacity,
       cardPadding,
+      isCardTextEnabled,
       cardTitle,
       cardSubtitle,
       cardCta,
@@ -792,7 +965,7 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
       const ctx = offscreen.getContext('2d');
       if (!ctx) return;
 
-      ctx.fillStyle = normalizeHexColor(cardBgColor, '#0a0d14');
+      ctx.fillStyle = normalizeHexColor(cardBgColor, '#06070b');
       ctx.fillRect(0, 0, offscreen.width, offscreen.height);
       ctx.drawImage(canvas, 0, 0);
 
@@ -815,6 +988,17 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     }
   };
 
+  // Unified Download Handlers depending on previewMode
+  const handlePrimaryDownloadPng = () => {
+    if (previewMode === 'qr') handleDownloadQrPng();
+    else handleDownloadCardPng();
+  };
+
+  const handlePrimaryDownloadJpg = () => {
+    if (previewMode === 'qr') handleDownloadQrJpg();
+    else handleDownloadCardJpg();
+  };
+
   // EXPORT 5: Copy to Clipboard
   const handleCopyClipboard = async () => {
     const canvas = previewMode === 'qr' ? qrCanvasRef.current : cardCanvasRef.current;
@@ -833,7 +1017,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
           );
           setTimeout(() => setIsCopied(false), 2200);
         } catch (_) {
-          // Fallback to text copy
           await navigator.clipboard.writeText(qrText);
           onAddToast('URL Copied', 'Clipboard image copy unsupported in this browser; copied URL instead.', 'info');
         }
@@ -851,24 +1034,49 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     }
   };
 
+  // EXPORT 6: Open High-Res in New Tab
+  const handleOpenInNewTab = () => {
+    const canvas = previewMode === 'qr' ? qrCanvasRef.current : cardCanvasRef.current;
+    if (!canvas) return;
+
+    try {
+      const dataUrl = canvas.toDataURL('image/png');
+      const win = window.open();
+      if (win) {
+        win.document.write(
+          `<!DOCTYPE html><html><head><title>Zenemoo QR Studio Preview</title><style>body{margin:0;background:#06070b;display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:90vw;max-height:90vh;box-shadow:0 20px 50px rgba(0,0,0,0.8);border-radius:16px;}</style></head><body><img src="${dataUrl}" alt="Zenemoo QR Code" /></body></html>`
+        );
+        win.document.close();
+      } else {
+        onAddToast('Popup Blocked', 'Please allow popups to open full-resolution preview.', 'warning');
+      }
+    } catch (err: any) {
+      onAddToast('Unable to Open Tab', err.message || 'Browser security blocked opening image.', 'error');
+    }
+  };
+
   // Reset Everything to Zenemoo Defaults
   const handleReset = () => {
     setQrText('https://zenemoo.in');
-    setFgColor('#000000');
-    setBgColor('#ffffff');
+    setContentTab('url');
+    setSelectedPresetId('zenemoo');
+
+    setFgColor('#22d3ee');
+    setBgColor('#06070b');
+    setIsLogoEnabled(true);
     setLogoOption('zenemoo');
     setLogoScale(20);
     setLogoPadding(8);
     setBadgeShape('rounded');
     setLogoBorderRadius(12);
-    setLogoBgColor('#ffffff');
+    setLogoBgColor('#06070b');
     setMargin(2);
     setResolution(1024);
     setErrorCorrection('H');
 
     // Background & Card Reset
     setPreviewMode('qr');
-    setCardBgColor('#0a0d14');
+    setCardBgColor('#06070b');
     setBgType('solid');
     if (uploadedBgUrl && uploadedBgUrl.startsWith('blob:')) {
       URL.revokeObjectURL(uploadedBgUrl);
@@ -879,6 +1087,8 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     setAppliedBgUrl(null);
     setBgUrlError(null);
     setOverlayOpacity(35);
+
+    setIsCardTextEnabled(true);
     setCardTitle('Zenemoo');
     setCardSubtitle('Scan to explore opportunities & updates');
     setCardCta('Point camera to scan');
@@ -890,6 +1100,8 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
     }
     setCustomLogoUrl(null);
     setCustomLogoName('');
+
+    setCurrentStep(1);
     onAddToast('Design Reset', 'Restored default Zenemoo branding and QR specifications', 'info');
   };
 
@@ -900,28 +1112,28 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
   );
 
   return (
-    <div className="space-y-6">
-      {/* 1. PAGE HEADER */}
-      <div className="p-5 sm:p-6 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 pb-12">
+      {/* 1. COMPACT PAGE HEADER */}
+      <header className="p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-purple-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-sm shadow-cyan-500/10 shrink-0">
             <QrCode className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 className="text-xl font-bold text-white tracking-tight">QR Code Studio</h2>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] font-mono text-emerald-300">
+              <h1 className="text-xl font-bold text-white tracking-tight">QR Code Studio</h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] font-mono text-emerald-300">
                 <Lock className="w-3 h-3" />
                 Generated locally
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Create branded QR codes for links, campaigns and digital sharing.
+            <p className="text-xs text-slate-400 mt-0.5">
+              Create branded QR codes for links, campaigns and digital sharing. 100% private, no data is stored.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
           <button
             type="button"
             onClick={handleReset}
@@ -929,746 +1141,1063 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
             title="Reset All Designs and Controls to Default"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset design</span>
+            <span>Reset Design</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsHelpOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600/80 to-indigo-600/80 hover:from-purple-500 hover:to-indigo-500 border border-purple-400/30 text-white text-xs font-mono font-medium flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-purple-600/20"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+            <span>Help & Tips</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* 2. MAIN TWO-COLUMN STUDIO LAYOUT */}
+      {/* 2. STEP-BASED WORKFLOW PROGRESS BAR */}
+      <nav aria-label="Workflow Steps" className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+        {[
+          { num: 1, title: 'Content', desc: 'Enter your link or text' },
+          { num: 2, title: 'Design', desc: 'Customize appearance' },
+          { num: 3, title: 'Preview', desc: 'Check and adjust' },
+          { num: 4, title: 'Download', desc: 'Save your QR code' },
+        ].map((s) => {
+          const isActive = currentStep === s.num;
+          return (
+            <button
+              key={s.num}
+              type="button"
+              onClick={() => {
+                setCurrentStep(s.num as any);
+                if (s.num === 1) setIsContentOpen(true);
+                if (s.num === 2) setIsDesignOpen(true);
+              }}
+              className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
+                isActive
+                  ? 'bg-cyan-500/10 border-cyan-500/40 shadow-sm shadow-cyan-500/10'
+                  : 'bg-white/[0.015] border-white/5 hover:bg-white/[0.04] text-slate-400'
+              }`}
+            >
+              <div
+                className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 transition-colors ${
+                  isActive
+                    ? 'bg-cyan-400 text-black shadow-md shadow-cyan-400/30'
+                    : 'bg-white/10 text-slate-300'
+                }`}
+              >
+                {s.num}
+              </div>
+              <div className="min-w-0">
+                <span className={`block text-xs font-bold leading-tight truncate ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                  {s.title}
+                </span>
+                <span className="block text-[10px] text-slate-500 truncate leading-tight mt-0.5">
+                  {s.desc}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* 3. MAIN TWO-COLUMN STUDIO WORKSPACE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN: CONTROLS & DESIGN SYSTEM (7 COLS) */}
+        {/* LEFT COLUMN: CUSTOMIZATION CONTROLS (7 COLS) */}
         <div className="lg:col-span-7 space-y-5">
-          {/* A. QR CONTENT & SHORT LINK INTEGRATION */}
-          <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
-                <Link2 className="w-3.5 h-3.5 text-cyan-400" />
-                QR Code Content
-              </label>
+          {/* ================= STEP 1: CONTENT CARD ================= */}
+          <section className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => setIsContentOpen(!isContentOpen)}
+              className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-white/[0.01] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                  <Link2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    Content
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                      Step 1
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Enter a URL or text to generate QR code</p>
+                </div>
+              </div>
+              <div className="text-slate-400">
+                {isContentOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+            </button>
 
-              {/* URL Shortener Picker Button */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsShortLinksDropdownOpen(!isShortLinksDropdownOpen)}
-                  className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  <span>Insert Short Link</span>
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-
-                {isShortLinksDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-80 max-h-80 overflow-y-auto rounded-xl bg-[#090b11] border border-white/15 shadow-2xl p-2.5 z-50 space-y-2">
-                    <div className="flex items-center justify-between px-1 pb-1 border-b border-white/10">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                        Live Short Links:
+            {isContentOpen && (
+              <div className="p-4 sm:p-5 pt-0 border-t border-white/5 space-y-4">
+                {/* Content Sub-Tabs */}
+                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/40 border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setContentTab('url')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-mono font-medium transition-all cursor-pointer ${
+                      contentTab === 'url'
+                        ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/30 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    URL / Text
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContentTab('shortlink')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-mono font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      contentTab === 'shortlink'
+                        ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/30 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Sparkles className="w-3 h-3 text-cyan-400" />
+                    <span>Short Link</span>
+                    {shortLinks.length > 0 && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300">
+                        {shortLinks.length}
                       </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContentTab('presets')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-mono font-medium transition-all cursor-pointer ${
+                      contentTab === 'presets'
+                        ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/30 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Presets
+                  </button>
+                </div>
+
+                {/* TAB 1: URL / Text Input */}
+                {contentTab === 'url' && (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-3.5 text-slate-500 pointer-events-none">
+                        <Link2 className="w-4 h-4" />
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={qrText}
+                        onChange={(e) => setQrText(e.target.value)}
+                        placeholder="https://zenemoo.in or any plain text..."
+                        className="w-full pl-10 pr-20 py-3 rounded-xl bg-black/50 border border-white/10 text-white placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-400 transition-all resize-none"
+                      />
+                      <div className="absolute right-2.5 top-2.5 flex items-center gap-1">
+                        {qrText && (
+                          <button
+                            type="button"
+                            onClick={() => setQrText('')}
+                            className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
+                            title="Clear Content"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handlePasteClipboard}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-mono border border-white/10 flex items-center gap-1 transition-colors"
+                          title="Paste from clipboard"
+                        >
+                          <Clipboard className="w-3 h-3" />
+                          <span>Paste</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Preset Pills */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {QUICK_URL_PRESETS.map((p) => (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => setQrText(p.url)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${
+                            qrText === p.url
+                              ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-200'
+                              : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/5'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: Short Links List Integration */}
+                {contentTab === 'shortlink' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search short links by code or destination..."
+                        value={shortLinkSearch}
+                        onChange={(e) => setShortLinkSearch(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/10 text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                      />
                       <button
                         type="button"
-                        onClick={() => setIsShortLinksDropdownOpen(false)}
-                        className="text-slate-500 hover:text-white"
+                        onClick={loadShortLinks}
+                        disabled={isLoadingShortLinks}
+                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title="Reload short links"
                       >
-                        <X className="w-3 h-3" />
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLoadingShortLinks ? 'animate-spin' : ''}`} />
                       </button>
                     </div>
 
-                    <input
-                      type="text"
-                      placeholder="Filter short links..."
-                      value={shortLinkSearch}
-                      onChange={(e) => setShortLinkSearch(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-[11px] font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                    />
-
-                    <div className="space-y-1">
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-white/10 divide-y divide-white/5 bg-black/40">
                       {filteredShortLinks.length === 0 ? (
-                        <p className="text-xs text-slate-500 font-mono italic px-2 py-3 text-center">
-                          {isLoadingShortLinks ? 'Loading short links...' : 'No matching short links.'}
-                        </p>
+                        <div className="p-6 text-center text-xs font-mono text-slate-500">
+                          {isLoadingShortLinks ? 'Loading short links...' : 'No matching short links found.'}
+                        </div>
                       ) : (
-                        filteredShortLinks.map((l) => (
-                          <button
-                            key={l.code}
-                            type="button"
-                            onClick={() => {
-                              setQrText(`https://zenemoo.in/l/${l.code}`);
-                              setIsShortLinksDropdownOpen(false);
-                              onAddToast('Short Link Inserted', `https://zenemoo.in/l/${l.code}`, 'info');
-                            }}
-                            className="w-full text-left p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer group"
-                          >
-                            <div className="flex items-center justify-between text-xs font-mono font-bold text-cyan-300 group-hover:text-cyan-200">
-                              <span>/l/{l.code}</span>
-                              <span className="text-[9px] text-slate-500 font-normal">{l.status}</span>
-                            </div>
-                            <p className="text-[10px] text-slate-400 truncate mt-0.5">{l.destination_url}</p>
-                          </button>
-                        ))
+                        filteredShortLinks.map((link) => {
+                          const fullUrl = `https://zenemoo.in/l/${link.code}`;
+                          const isSelected = qrText === fullUrl;
+                          return (
+                            <button
+                              key={link.code}
+                              type="button"
+                              onClick={() => {
+                                setQrText(fullUrl);
+                                onAddToast('Short Link Selected', fullUrl, 'info');
+                              }}
+                              className={`w-full p-2.5 text-left transition-colors flex items-center justify-between gap-3 cursor-pointer ${
+                                isSelected ? 'bg-cyan-500/15' : 'hover:bg-white/5'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-mono font-bold text-cyan-300">
+                                    /l/{link.code}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 px-1.5 py-0.2 rounded bg-white/5">
+                                    {link.status}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                                  {link.destination_url}
+                                </p>
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                            </button>
+                          );
+                        })
                       )}
                     </div>
                   </div>
                 )}
+
+                {/* TAB 3: Category Presets */}
+                {contentTab === 'presets' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {[
+                      {
+                        category: 'Company & Programs',
+                        items: [
+                          { label: 'Zenemoo Main Site', url: 'https://zenemoo.in' },
+                          { label: 'Career Opportunities', url: 'https://zenemoo.in/opportunities' },
+                          { label: 'Talent Network Hub', url: 'https://zenemoo.in/talent-hub' },
+                        ],
+                      },
+                      {
+                        category: 'Contact & Connect',
+                        items: [
+                          { label: 'Schedule Call', url: 'https://zenemoo.in/book-a-call' },
+                          { label: 'WhatsApp Official', url: 'https://wa.me/918000000000' },
+                          { label: 'Google Meet Room', url: 'https://meet.google.com/new' },
+                        ],
+                      },
+                    ].map((group) => (
+                      <div key={group.category} className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">
+                          {group.category}
+                        </span>
+                        <div className="space-y-1">
+                          {group.items.map((item) => (
+                            <button
+                              key={item.label}
+                              type="button"
+                              onClick={() => {
+                                setQrText(item.url);
+                                onAddToast('Preset Selected', item.url, 'info');
+                              }}
+                              className="w-full text-left p-1.5 rounded-lg text-xs font-mono text-slate-300 hover:text-white hover:bg-white/5 flex items-center justify-between transition-colors cursor-pointer"
+                            >
+                              <span>{item.label}</span>
+                              <ExternalLink className="w-3 h-3 text-slate-500" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+          </section>
 
-            {/* Input textarea */}
-            <div className="relative">
-              <textarea
-                rows={2}
-                value={qrText}
-                onChange={(e) => setQrText(e.target.value)}
-                placeholder="Enter any destination URL (e.g. https://zenemoo.in) or plain text..."
-                className="w-full p-3 pr-8 rounded-xl bg-black/50 border border-white/10 text-white placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-400 transition-all resize-none"
-              />
-              {qrText && (
-                <button
-                  type="button"
-                  onClick={() => setQrText('')}
-                  className="absolute right-2.5 top-2.5 text-slate-500 hover:text-white p-1"
-                  title="Clear Input"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Quick URL presets */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] font-mono text-slate-500 mr-1">Presets:</span>
-              {QUICK_PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => setQrText(p.url)}
-                  className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[10px] font-mono text-slate-300 hover:text-white border border-white/5 transition-colors cursor-pointer"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* B. CENTER LOGO & BRANDING */}
-          <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
-                <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
-                Center Logo Embedding
-              </label>
-              <span className="text-[10px] font-mono text-cyan-300">Level H Error Correction</span>
-            </div>
-
-            {/* Logo Options */}
-            <div className="grid grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                onClick={() => setLogoOption('none')}
-                className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                  logoOption === 'none'
-                    ? 'bg-cyan-500/15 border-cyan-400 text-white font-bold'
-                    : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-mono">No Logo</div>
-                <div className="text-[9px] text-slate-500 mt-0.5">Plain QR pattern</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setLogoOption('zenemoo')}
-                className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                  logoOption === 'zenemoo'
-                    ? 'bg-cyan-500/15 border-cyan-400 text-white font-bold'
-                    : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-mono flex items-center justify-center gap-1">
-                  <span>Zenemoo</span>
+          {/* ================= STEP 2: DESIGN & STYLE CARD ================= */}
+          <section className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => setIsDesignOpen(!isDesignOpen)}
+              className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-white/[0.01] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                  <Palette className="w-4 h-4" />
                 </div>
-                <div className="text-[9px] text-slate-500 mt-0.5">Official Badge</div>
-              </button>
-
-              <label
-                className={`p-3 rounded-xl border text-center transition-all cursor-pointer block ${
-                  logoOption === 'custom'
-                    ? 'bg-cyan-500/15 border-cyan-400 text-white font-bold'
-                    : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
-                <div className="text-xs font-mono flex items-center justify-center gap-1">
-                  <Upload className="w-3 h-3" />
-                  <span>Upload</span>
-                </div>
-                <div className="text-[9px] text-slate-500 mt-0.5 truncate">
-                  {customLogoName ? customLogoName : 'Local file'}
-                </div>
-              </label>
-            </div>
-
-            {/* Logo Customization Sliders */}
-            {logoOption !== 'none' && (
-              <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-4">
-                {/* Logo Size */}
                 <div>
-                  <div className="flex justify-between text-xs font-mono text-slate-300 mb-1.5">
-                    <span>Logo Scale ({logoScale}%)</span>
-                    <span className="text-[10px] text-slate-500">Max recommended: 25%</span>
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    Design & Style
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                      Step 2
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Customize the look and feel of your QR code</p>
+                </div>
+              </div>
+              <div className="text-slate-400">
+                {isDesignOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+            </button>
+
+            {isDesignOpen && (
+              <div className="p-4 sm:p-5 pt-0 border-t border-white/5 space-y-6">
+                {/* 2A. QUICK PRESETS CAROUSEL (8 items from mockup) */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">
+                      Quick Presets
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500">1-click styling</span>
                   </div>
-                  <input
-                    type="range"
-                    min={12}
-                    max={25}
-                    value={logoScale}
-                    onChange={(e) => setLogoScale(parseInt(e.target.value, 10))}
-                    className="w-full accent-cyan-400 cursor-pointer"
-                  />
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {STYLE_PRESETS.map((p) => {
+                      const isSelected = selectedPresetId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleApplyPreset(p)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer relative group ${
+                            isSelected
+                              ? 'bg-cyan-500/15 border-cyan-400 shadow-md shadow-cyan-500/10'
+                              : 'bg-black/30 border-white/10 hover:border-white/20 hover:bg-white/[0.03]'
+                          }`}
+                        >
+                          <div
+                            className="w-full h-12 rounded-lg border border-white/10 mb-2 flex items-center justify-center relative overflow-hidden"
+                            style={{ backgroundColor: p.bg }}
+                          >
+                            <QrCode className="w-7 h-7" style={{ color: p.fg }} />
+                            {p.logoOption !== 'none' && (
+                              <div
+                                className="absolute w-3 h-3 rounded-full flex items-center justify-center shadow-sm"
+                                style={{ backgroundColor: p.logoBgColor }}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.fg }} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold text-white group-hover:text-cyan-300 transition-colors">
+                              {p.name}
+                            </span>
+                            {isSelected && <Check className="w-3 h-3 text-cyan-400" />}
+                          </div>
+                          <span className="text-[9px] text-slate-500 block truncate mt-0.5">
+                            {p.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Badge Shape & Padding */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-mono text-slate-300 block mb-1.5">Badge Shape</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setBadgeShape('rounded')}
-                        className={`py-1.5 px-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
-                          badgeShape === 'rounded'
-                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                            : 'bg-white/5 border-white/10 text-slate-400'
-                        }`}
-                      >
-                        Square
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBadgeShape('circle')}
-                        className={`py-1.5 px-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
-                          badgeShape === 'circle'
-                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                            : 'bg-white/5 border-white/10 text-slate-400'
-                        }`}
-                      >
-                        Circle
-                      </button>
+                {/* 2B. SUBSECTION: QR COLORS */}
+                <div className="rounded-xl bg-black/30 border border-white/5 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold font-mono text-white flex items-center gap-2">
+                      <Palette className="w-3.5 h-3.5 text-cyan-400" />
+                      QR Colors
+                    </label>
+
+                    {/* WCAG Contrast Ratio Indicator */}
+                    <div
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full border flex items-center gap-1.5 ${
+                        contrastRatio === null
+                          ? 'bg-slate-800 text-slate-400 border-slate-700'
+                          : isContrastWarning
+                          ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                      }`}
+                    >
+                      {contrastRatio === null ? (
+                        <span>Contrast: N/A</span>
+                      ) : isContrastWarning ? (
+                        <>
+                          <AlertTriangle className="w-3 h-3 text-rose-400" />
+                          <span>Contrast: {contrastRatio.toFixed(1)}:1 (Low)</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <span>Contrast: {contrastRatio.toFixed(1)}:1 (Good)</span>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div>
-                    <div className="flex justify-between text-xs font-mono text-slate-300 mb-1.5">
-                      <span>Badge Padding ({logoPadding}px)</span>
+                  {isContrastWarning && (
+                    <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px] font-mono flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>Low contrast may fail on older phone cameras. Choose a higher contrast combination.</span>
                     </div>
-                    <input
-                      type="range"
-                      min={2}
-                      max={18}
-                      value={logoPadding}
-                      onChange={(e) => setLogoPadding(parseInt(e.target.value, 10))}
-                      className="w-full accent-cyan-400 cursor-pointer"
-                    />
-                  </div>
-                </div>
+                  )}
 
-                {/* Badge Background Color & Corner Radius (if rounded) */}
-                <div className="flex items-center justify-between pt-1 flex-wrap gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-slate-300">Badge Background:</span>
-                    <input
-                      type="color"
-                      value={normalizeHexColor(logoBgColor, '#ffffff')}
-                      onChange={(e) => setLogoBgColor(e.target.value)}
-                      className="w-7 h-7 rounded border border-white/20 bg-transparent cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={logoBgColor}
-                      onChange={(e) => setLogoBgColor(e.target.value)}
-                      className="w-20 px-2 py-1 rounded bg-black/60 border border-white/10 text-white text-[11px] font-mono"
-                    />
+                  {/* Foreground & Background Pickers */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-2.5 rounded-lg bg-black/50 border border-white/10 space-y-1.5">
+                      <span className="text-[11px] font-mono text-slate-400 block">Foreground Color</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={normalizeHexColor(fgColor, '#000000')}
+                          onChange={(e) => setFgColor(e.target.value)}
+                          className="w-8 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={fgColor}
+                          onChange={(e) => setFgColor(e.target.value)}
+                          className="w-full px-2 py-1 rounded bg-black/60 border border-white/10 text-white text-xs font-mono uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-black/50 border border-white/10 space-y-1.5">
+                      <span className="text-[11px] font-mono text-slate-400 block">Background Color</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={normalizeHexColor(bgColor, '#ffffff')}
+                          onChange={(e) => setBgColor(e.target.value)}
+                          className="w-8 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={bgColor}
+                          onChange={(e) => setBgColor(e.target.value)}
+                          className="w-full px-2 py-1 rounded bg-black/60 border border-white/10 text-white text-xs font-mono uppercase"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  {badgeShape === 'rounded' && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-slate-300">Roundness:</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={24}
-                        value={logoBorderRadius}
-                        onChange={(e) => setLogoBorderRadius(parseInt(e.target.value, 10))}
-                        className="w-24 accent-cyan-400 cursor-pointer"
+                  {/* Swatch row */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                    <span className="text-[10px] font-mono text-slate-500 mr-1">Quick swatches:</span>
+                    {COLOR_SWATCHES.map((sw) => (
+                      <button
+                        key={sw.name}
+                        type="button"
+                        onClick={() => setFgColor(sw.hex)}
+                        title={`Set foreground to ${sw.name}`}
+                        className="w-5 h-5 rounded-full border border-white/20 hover:scale-110 transition-transform cursor-pointer shadow-sm"
+                        style={{ backgroundColor: sw.hex }}
                       />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2C. SUBSECTION: CENTER LOGO */}
+                <div className="rounded-xl bg-black/30 border border-white/5 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold font-mono text-white flex items-center gap-2">
+                      <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                      Center Logo
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsLogoEnabled(!isLogoEnabled)}
+                      className={`w-10 h-5 rounded-full p-0.5 transition-colors cursor-pointer flex items-center ${
+                        isLogoEnabled ? 'bg-cyan-500 justify-end' : 'bg-white/10 justify-start'
+                      }`}
+                      aria-label="Toggle Center Logo"
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                    </button>
+                  </div>
+
+                  {isLogoEnabled && (
+                    <div className="space-y-4 pt-1">
+                      {/* Logo Choice Radio-Buttons */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setLogoOption('none')}
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                            logoOption === 'none'
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold'
+                              : 'bg-black/40 border-white/10 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <div className="text-xs font-mono">No Logo</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setLogoOption('zenemoo')}
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                            logoOption === 'zenemoo'
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold'
+                              : 'bg-black/40 border-white/10 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <div className="text-xs font-mono">Zenemoo Logo</div>
+                        </button>
+
+                        <label
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer block ${
+                            logoOption === 'custom'
+                              ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold'
+                              : 'bg-black/40 border-white/10 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/svg+xml"
+                            onChange={handleLogoUpload}
+                            className="hidden"
+                          />
+                          <div className="text-xs font-mono flex items-center justify-center gap-1">
+                            <Upload className="w-3 h-3" />
+                            <span>Upload Logo</span>
+                          </div>
+                          {customLogoName && (
+                            <span className="text-[9px] text-cyan-300 block truncate mt-0.5">
+                              {customLogoName}
+                            </span>
+                          )}
+                        </label>
+                      </div>
+
+                      {logoOption !== 'none' && (
+                        <div className="space-y-3.5 p-3 rounded-xl bg-black/40 border border-white/5">
+                          {/* Logo Size Slider */}
+                          <div>
+                            <div className="flex justify-between text-xs font-mono text-slate-300 mb-1.5">
+                              <span>Logo Size ({logoScale}%)</span>
+                              <span className="text-[10px] text-slate-500">
+                                {logoScale > 25 ? '⚠️ Large size' : 'Safe standard (10-25%)'}
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={10}
+                              max={40}
+                              value={logoScale}
+                              onChange={(e) => setLogoScale(parseInt(e.target.value, 10))}
+                              className="w-full accent-cyan-400 cursor-pointer"
+                            />
+                            {isLogoTooLarge && (
+                              <div className="flex items-center justify-between mt-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-mono">
+                                <span>Logo scale &gt;25% may affect scanning on older devices.</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoScale(20)}
+                                  className="underline font-bold text-amber-200 hover:text-white shrink-0 ml-2"
+                                >
+                                  Use safe 20%
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Badge Shape & Background */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <span className="text-[11px] font-mono text-slate-400 block mb-1.5">
+                                Badge Shape
+                              </span>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {[
+                                  { id: 'square', label: 'Square' },
+                                  { id: 'rounded', label: 'Rounded' },
+                                  { id: 'circle', label: 'Circle' },
+                                ].map((sh) => (
+                                  <button
+                                    key={sh.id}
+                                    type="button"
+                                    onClick={() => setBadgeShape(sh.id as any)}
+                                    className={`py-1.5 px-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
+                                      badgeShape === sh.id
+                                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                                        : 'bg-white/5 border-white/10 text-slate-400'
+                                    }`}
+                                  >
+                                    {sh.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-[11px] font-mono text-slate-400 block mb-1.5">
+                                Badge Background
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="color"
+                                  value={normalizeHexColor(logoBgColor, '#ffffff')}
+                                  onChange={(e) => setLogoBgColor(e.target.value)}
+                                  className="w-7 h-7 rounded border border-white/20 bg-transparent cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={logoBgColor}
+                                  onChange={(e) => setLogoBgColor(e.target.value)}
+                                  className="w-full px-2 py-1 rounded bg-black/60 border border-white/10 text-white text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                <div className="p-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[11px] font-mono flex items-center gap-2">
-                  <Info className="w-4 h-4 shrink-0" />
-                  <span>Always test the generated QR code with a physical scanner before printing.</span>
-                </div>
-              </div>
-            )}
-          </div>
+                {/* 2D. SUBSECTION: BACKGROUND & BRANDED CARD */}
+                <div className="rounded-xl bg-black/30 border border-white/5 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold font-mono text-white flex items-center gap-2">
+                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                      Background & Branded Card
+                    </label>
 
-          {/* C. QR COLORS & WCAG 2.1 CONTRAST CHECKER */}
-          <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
-                <Palette className="w-3.5 h-3.5 text-emerald-400" />
-                Color & Contrast Ratio
-              </label>
-
-              {/* Bulletproof Contrast Ratio Badge - Never NaN */}
-              <div
-                className={`text-[10px] font-mono px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${
-                  contrastRatio === null
-                    ? 'bg-slate-800 text-slate-400 border-slate-700'
-                    : isContrastWarning
-                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                }`}
-              >
-                {contrastRatio === null ? (
-                  <>
-                    <Info className="w-3 h-3" />
-                    <span>Contrast: Unavailable</span>
-                  </>
-                ) : isContrastWarning ? (
-                  <>
-                    <AlertTriangle className="w-3 h-3 text-rose-400" />
-                    <span>Contrast: {contrastRatio.toFixed(1)}:1 (Low)</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>Contrast: {contrastRatio.toFixed(1)}:1 (Good)</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Warning if contrast is low */}
-            {isContrastWarning && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-start gap-2.5">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <p>
-                  Low contrast detected ({contrastRatio ? contrastRatio.toFixed(1) : ''}:1). Smartphone cameras may fail
-                  to recognize this code in dim lighting. A contrast ratio of 3.0:1 or greater is strongly advised.
-                </p>
-              </div>
-            )}
-
-            {/* Custom Color Inputs */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-2">
-                <span className="text-[11px] font-mono text-slate-400 block">Foreground (Pattern)</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={normalizeHexColor(fgColor, '#000000')}
-                    onChange={(e) => setFgColor(e.target.value)}
-                    className="w-8 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={fgColor}
-                    onChange={(e) => setFgColor(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-2">
-                <span className="text-[11px] font-mono text-slate-400 block">Background</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={normalizeHexColor(bgColor, '#ffffff')}
-                    onChange={(e) => setBgColor(e.target.value)}
-                    className="w-8 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={bgColor}
-                    onChange={(e) => setBgColor(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Preset Color Palettes */}
-            <div>
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block mb-2">
-                High-Contrast Presets:
-              </span>
-              <div className="flex items-center gap-2 flex-wrap">
-                {COLOR_PRESETS.map((preset) => (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    onClick={() => {
-                      setFgColor(preset.fg);
-                      setBgColor(preset.bg);
-                      setLogoBgColor(preset.bg === '#06070b' || preset.bg.startsWith('#0') ? '#000000' : '#ffffff');
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-300 flex items-center gap-2 cursor-pointer transition-all"
-                  >
-                    <span
-                      className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
-                      style={{ backgroundColor: preset.fg }}
-                    />
-                    <span className="text-[11px]">{preset.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* D. BACKGROUND IMAGE & BRANDED CAMPAIGN CARD CUSTOMIZATION */}
-          <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                Background & Branded Card
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setBgType('solid');
-                  setAppliedBgUrl(null);
-                  if (uploadedBgUrl && uploadedBgUrl.startsWith('blob:')) {
-                    URL.revokeObjectURL(uploadedBgUrl);
-                  }
-                  setUploadedBgUrl(null);
-                  setUploadedBgName('');
-                  setBgUrlInput('');
-                  setBgUrlError(null);
-                }}
-                className="text-[11px] font-mono text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                Reset Background
-              </button>
-            </div>
-
-            {/* Background Source Selector */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setBgType('solid')}
-                className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
-                  bgType === 'solid'
-                    ? 'bg-indigo-500/20 border-indigo-400 text-white font-bold'
-                    : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-mono">Solid Color</div>
-              </button>
-
-              <label
-                className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer block ${
-                  bgType === 'upload'
-                    ? 'bg-indigo-500/20 border-indigo-400 text-white font-bold'
-                    : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={handleBgUpload}
-                  className="hidden"
-                />
-                <div className="text-xs font-mono flex items-center justify-center gap-1">
-                  <Upload className="w-3 h-3" />
-                  <span>Upload</span>
-                </div>
-                <div className="text-[9px] text-slate-500 truncate">
-                  {uploadedBgName ? uploadedBgName : 'Local file'}
-                </div>
-              </label>
-
-              <button
-                type="button"
-                onClick={() => setBgType('url')}
-                className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
-                  bgType === 'url'
-                    ? 'bg-indigo-500/20 border-indigo-400 text-white font-bold'
-                    : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-mono flex items-center justify-center gap-1">
-                  <Globe className="w-3 h-3" />
-                  <span>Image URL</span>
-                </div>
-              </button>
-            </div>
-
-            {/* URL Background Loader with Explicit Preview Action */}
-            {bgType === 'url' && (
-              <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 space-y-2.5">
-                <span className="text-[11px] font-mono text-slate-400 block">
-                  Enter HTTPS Image URL (fetched only when previewed):
-                </span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="url"
-                    value={bgUrlInput}
-                    onChange={(e) => {
-                      setBgUrlInput(e.target.value);
-                      setBgUrlError(null);
-                    }}
-                    placeholder="https://example.com/background.jpg"
-                    className="w-full px-3 py-2 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyBgUrl}
-                    disabled={isTestingBgUrl}
-                    className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-all"
-                  >
-                    {isTestingBgUrl ? 'Loading...' : 'Preview Image'}
-                  </button>
-                </div>
-
-                {bgUrlError && (
-                  <div className="p-2.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[11px] font-mono">
-                    {bgUrlError}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Solid Card Color Picker */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-black/30 border border-white/5">
-              <span className="text-xs font-mono text-slate-300">Card Base Color:</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={normalizeHexColor(cardBgColor, '#0a0d14')}
-                  onChange={(e) => setCardBgColor(e.target.value)}
-                  className="w-7 h-7 rounded border border-white/20 bg-transparent cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={cardBgColor}
-                  onChange={(e) => setCardBgColor(e.target.value)}
-                  className="w-20 px-2 py-1 rounded bg-black/60 border border-white/10 text-white text-[11px] font-mono"
-                />
-              </div>
-            </div>
-
-            {/* Fitting & Overlay Controls (when background image is used) */}
-            {(uploadedBgUrl || appliedBgUrl) && (
-              <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3.5">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-mono text-slate-400 block mb-1">Image Fit</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(['cover', 'contain'] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setBgFit(mode)}
-                          className={`py-1.5 text-xs font-mono rounded-lg border capitalize transition-all cursor-pointer ${
-                            bgFit === mode
-                              ? 'bg-indigo-500/20 border-indigo-400 text-indigo-200'
-                              : 'bg-white/5 border-white/10 text-slate-400'
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
+                    {(uploadedBgUrl || appliedBgUrl) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBgType('solid');
+                          setAppliedBgUrl(null);
+                          if (uploadedBgUrl && uploadedBgUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(uploadedBgUrl);
+                          }
+                          setUploadedBgUrl(null);
+                          setUploadedBgName('');
+                          setBgUrlInput('');
+                        }}
+                        className="text-[11px] font-mono text-slate-400 hover:text-white transition-colors"
+                      >
+                        Reset Background
+                      </button>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="text-[11px] font-mono text-slate-400 block mb-1">Position</label>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(['top', 'center', 'bottom'] as const).map((pos) => (
-                        <button
-                          key={pos}
-                          type="button"
-                          onClick={() => setBgPosition(pos)}
-                          className={`py-1.5 text-xs font-mono rounded-lg border capitalize transition-all cursor-pointer ${
-                            bgPosition === pos
-                              ? 'bg-indigo-500/20 border-indigo-400 text-indigo-200'
-                              : 'bg-white/5 border-white/10 text-slate-400'
-                          }`}
-                        >
-                          {pos}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tint Overlay Slider */}
-                <div>
-                  <div className="flex justify-between text-xs font-mono text-slate-300 mb-1">
-                    <span>Dark Tint Overlay ({overlayOpacity}%)</span>
-                    <span className="text-[10px] text-slate-500">Ensures text & QR pop</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={90}
-                    value={overlayOpacity}
-                    onChange={(e) => setOverlayOpacity(parseInt(e.target.value, 10))}
-                    className="w-full accent-indigo-400 cursor-pointer"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Campaign Typography Controls */}
-            <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3">
-              <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider block">
-                Card Typography & Branding:
-              </span>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="text-[11px] font-mono text-slate-400 block mb-1">Card Title</label>
-                  <input
-                    type="text"
-                    value={cardTitle}
-                    onChange={(e) => setCardTitle(e.target.value)}
-                    placeholder="e.g. Zenemoo Global"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-mono text-slate-400 block mb-1">Call To Action (CTA)</label>
-                  <input
-                    type="text"
-                    value={cardCta}
-                    onChange={(e) => setCardCta(e.target.value)}
-                    placeholder="e.g. Scan with camera"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-mono text-slate-400 block mb-1">Card Subtitle</label>
-                <input
-                  type="text"
-                  value={cardSubtitle}
-                  onChange={(e) => setCardSubtitle(e.target.value)}
-                  placeholder="e.g. Scan to explore talent & opportunities"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-slate-300">Text Color:</span>
-                  <input
-                    type="color"
-                    value={normalizeHexColor(cardTextColor, '#ffffff')}
-                    onChange={(e) => setCardTextColor(e.target.value)}
-                    className="w-6 h-6 rounded border border-white/20 bg-transparent cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {(['left', 'center', 'right'] as const).map((align) => (
+                  {/* Mode Buttons */}
+                  <div className="grid grid-cols-3 gap-2">
                     <button
-                      key={align}
                       type="button"
-                      onClick={() => setCardTextAlign(align)}
-                      className={`p-1.5 rounded-md border transition-all cursor-pointer ${
-                        cardTextAlign === align
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                          : 'bg-white/5 border-white/10 text-slate-400'
+                      onClick={() => setBgType('solid')}
+                      className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
+                        bgType === 'solid'
+                          ? 'bg-indigo-500/20 border-indigo-400 text-white font-bold'
+                          : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
                       }`}
-                      title={`Align ${align}`}
                     >
-                      {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
-                      {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
-                      {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                      <div className="text-xs font-mono">Solid Color</div>
                     </button>
-                  ))}
+
+                    <label
+                      className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer block ${
+                        bgType === 'upload'
+                          ? 'bg-indigo-500/20 border-indigo-400 text-white font-bold'
+                          : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handleBgUpload}
+                        className="hidden"
+                      />
+                      <div className="text-xs font-mono flex items-center justify-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        <span>Upload Image</span>
+                      </div>
+                      {uploadedBgName && (
+                        <div className="text-[9px] text-indigo-300 truncate mt-0.5">
+                          {uploadedBgName}
+                        </div>
+                      )}
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setBgType('url')}
+                      className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
+                        bgType === 'url'
+                          ? 'bg-indigo-500/20 border-indigo-400 text-white font-bold'
+                          : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="text-xs font-mono flex items-center justify-center gap-1">
+                        <Globe className="w-3 h-3" />
+                        <span>Image URL</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Remote URL Input */}
+                  {bgType === 'url' && (
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/10 space-y-2">
+                      <span className="text-[11px] font-mono text-slate-400 block">
+                        Enter HTTPS Image URL:
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="url"
+                          value={bgUrlInput}
+                          onChange={(e) => {
+                            setBgUrlInput(e.target.value);
+                            setBgUrlError(null);
+                          }}
+                          placeholder="https://example.com/poster.jpg"
+                          className="w-full px-3 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyBgUrl}
+                          disabled={isTestingBgUrl}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-all"
+                        >
+                          {isTestingBgUrl ? 'Loading...' : 'Preview'}
+                        </button>
+                      </div>
+                      {bgUrlError && (
+                        <p className="text-[11px] text-rose-300 font-mono">{bgUrlError}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Card Base Color & Card Style */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-black/40 border border-white/5">
+                      <span className="text-xs font-mono text-slate-300">Card Base Color:</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="color"
+                          value={normalizeHexColor(cardBgColor, '#06070b')}
+                          onChange={(e) => setCardBgColor(e.target.value)}
+                          className="w-7 h-7 rounded border border-white/20 bg-transparent cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={cardBgColor}
+                          onChange={(e) => setCardBgColor(e.target.value)}
+                          className="w-20 px-2 py-1 rounded bg-black/60 border border-white/10 text-white text-[11px] font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-black/40 border border-white/5">
+                      <span className="text-xs font-mono text-slate-300">Card Style:</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewMode('qr')}
+                          className={`px-2 py-1 rounded text-[11px] font-mono border transition-all ${
+                            previewMode === 'qr'
+                              ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400'
+                              : 'text-slate-400 border-white/5'
+                          }`}
+                        >
+                          QR Only
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewMode('card')}
+                          className={`px-2 py-1 rounded text-[11px] font-mono border transition-all ${
+                            previewMode === 'card'
+                              ? 'bg-indigo-500/20 text-indigo-200 border-indigo-400'
+                              : 'text-slate-400 border-white/5'
+                          }`}
+                        >
+                          Branded Card
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Image Fit & Overlay if background image used */}
+                  {(uploadedBgUrl || appliedBgUrl) && (
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-mono text-slate-400 block mb-1">Image Fit</label>
+                          <div className="grid grid-cols-2 gap-1">
+                            {(['cover', 'contain'] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                type="button"
+                                onClick={() => setBgFit(mode)}
+                                className={`py-1 text-xs font-mono rounded border capitalize transition-all cursor-pointer ${
+                                  bgFit === mode
+                                    ? 'bg-indigo-500/20 border-indigo-400 text-indigo-200'
+                                    : 'bg-white/5 border-white/10 text-slate-400'
+                                }`}
+                              >
+                                {mode}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-mono text-slate-400 block mb-1">Position</label>
+                          <div className="grid grid-cols-3 gap-1">
+                            {(['top', 'center', 'bottom'] as const).map((pos) => (
+                              <button
+                                key={pos}
+                                type="button"
+                                onClick={() => setBgPosition(pos)}
+                                className={`py-1 text-xs font-mono rounded border capitalize transition-all cursor-pointer ${
+                                  bgPosition === pos
+                                    ? 'bg-indigo-500/20 border-indigo-400 text-indigo-200'
+                                    : 'bg-white/5 border-white/10 text-slate-400'
+                                }`}
+                              >
+                                {pos}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-xs font-mono text-slate-300 mb-1">
+                          <span>Dark Tint Overlay ({overlayOpacity}%)</span>
+                          <span className="text-[10px] text-slate-500">Improves contrast & readability</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={90}
+                          value={overlayOpacity}
+                          onChange={(e) => setOverlayOpacity(parseInt(e.target.value, 10))}
+                          className="w-full accent-indigo-400 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2E. SUBSECTION: TEXT & CALL TO ACTION (Branded Card) */}
+                <div className="rounded-xl bg-black/30 border border-white/5 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold font-mono text-white flex items-center gap-2">
+                      <Type className="w-3.5 h-3.5 text-purple-400" />
+                      Text & Call to Action (Branded Card)
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsCardTextEnabled(!isCardTextEnabled)}
+                      className={`w-10 h-5 rounded-full p-0.5 transition-colors cursor-pointer flex items-center ${
+                        isCardTextEnabled ? 'bg-cyan-500 justify-end' : 'bg-white/10 justify-start'
+                      }`}
+                      aria-label="Toggle Card Text"
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                    </button>
+                  </div>
+
+                  {isCardTextEnabled && (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-mono text-slate-400 block mb-1">Card Title</label>
+                          <input
+                            type="text"
+                            value={cardTitle}
+                            onChange={(e) => setCardTitle(e.target.value)}
+                            placeholder="Zenemoo"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-mono text-slate-400 block mb-1">Call To Action (CTA)</label>
+                          <input
+                            type="text"
+                            value={cardCta}
+                            onChange={(e) => setCardCta(e.target.value)}
+                            placeholder="Point camera to scan"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-mono text-slate-400 block mb-1">Card Subtitle</label>
+                        <input
+                          type="text"
+                          value={cardSubtitle}
+                          onChange={(e) => setCardSubtitle(e.target.value)}
+                          placeholder="Scan to explore opportunities & updates"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-slate-300">Text Color:</span>
+                          <input
+                            type="color"
+                            value={normalizeHexColor(cardTextColor, '#ffffff')}
+                            onChange={(e) => setCardTextColor(e.target.value)}
+                            className="w-6 h-6 rounded border border-white/20 bg-transparent cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {(['left', 'center', 'right'] as const).map((align) => (
+                            <button
+                              key={align}
+                              type="button"
+                              onClick={() => setCardTextAlign(align)}
+                              className={`p-1.5 rounded-md border transition-all cursor-pointer ${
+                                cardTextAlign === align
+                                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                                  : 'bg-white/5 border-white/10 text-slate-400'
+                              }`}
+                              title={`Align ${align}`}
+                            >
+                              {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
+                              {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
+                              {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2F. SUBSECTION: ADVANCED SETTINGS (Collapsible) */}
+                <div className="rounded-xl bg-black/30 border border-white/5 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+                    className="w-full p-3.5 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold font-mono text-white">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Advanced Settings</span>
+                    </div>
+                    <div className="text-slate-400">
+                      {isAdvancedOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </div>
+                  </button>
+
+                  {isAdvancedOpen && (
+                    <div className="p-4 pt-1 border-t border-white/5 space-y-4">
+                      {/* Quiet zone */}
+                      <div>
+                        <div className="flex justify-between text-xs font-mono text-slate-300 mb-1">
+                          <span>Quiet Zone Margin ({margin} modules)</span>
+                          <span className="text-[10px] text-slate-500">Standard: 2-4 modules</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={1}
+                          max={5}
+                          value={margin}
+                          onChange={(e) => setMargin(parseInt(e.target.value, 10))}
+                          className="w-full accent-cyan-400 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Error Correction Level */}
+                      <div>
+                        <div className="flex justify-between text-xs font-mono text-slate-300 mb-1.5">
+                          <span>Error Correction Level</span>
+                          <span className="text-[10px] font-mono text-cyan-300">
+                            {isLogoEnabled && logoOption !== 'none' ? 'Locked to Level H (Logo active)' : `${errorCorrection} Level`}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {(['L', 'M', 'Q', 'H'] as const).map((lvl) => {
+                            const isSelected = effectiveErrorCorrection === lvl;
+                            return (
+                              <button
+                                key={lvl}
+                                type="button"
+                                disabled={isLogoEnabled && logoOption !== 'none' && lvl !== 'H'}
+                                onClick={() => setErrorCorrection(lvl)}
+                                className={`py-1.5 rounded-lg text-xs font-mono border transition-all cursor-pointer disabled:opacity-30 ${
+                                  isSelected
+                                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold'
+                                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                Level {lvl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* E. RESOLUTION & QUIET ZONE */}
-          <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
-            <label className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
-              <Sliders className="w-3.5 h-3.5 text-cyan-400" />
-              Resolution & Quiet Zone
-            </label>
-
-            <div className="grid grid-cols-3 gap-2.5">
-              {[
-                { label: '512 px', value: 512, sub: 'Web / Social' },
-                { label: '1024 px', value: 1024, sub: 'High-Res Digital' },
-                { label: '2048 px', value: 2048, sub: 'Ultra Print Poster' },
-              ].map((res) => (
-                <button
-                  key={res.value}
-                  type="button"
-                  onClick={() => setResolution(res.value as any)}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                    resolution === res.value
-                      ? 'bg-cyan-500/15 border-cyan-400 text-white font-bold'
-                      : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <div className="text-xs font-mono">{res.label}</div>
-                  <div className="text-[9px] text-slate-500 mt-0.5">{res.sub}</div>
-                </button>
-              ))}
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-mono text-slate-300 mb-1">
-                <span>Quiet Zone Margin ({margin} modules)</span>
-                <span className="text-[10px] text-slate-500">Industry standard: 2-4 modules</span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={5}
-                value={margin}
-                onChange={(e) => setMargin(parseInt(e.target.value, 10))}
-                className="w-full accent-cyan-400 cursor-pointer"
-              />
-            </div>
-          </div>
+            )}
+          </section>
         </div>
 
-        {/* RIGHT COLUMN: PREVIEW & EXPORT SUITE (5 COLS) */}
-        <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-4">
-          <div className="p-5 sm:p-6 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md shadow-2xl space-y-5 text-center">
-            {/* Mode Switcher Tabs */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+        {/* RIGHT COLUMN: PREVIEW & DOWNLOAD SUITE (5 COLS) */}
+        <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-6">
+          {/* ================= STEP 3: LIVE PREVIEW CARD ================= */}
+          <section className="p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md shadow-2xl space-y-4">
+            {/* Header with QR Only / Branded Card Toggle */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4 text-cyan-400" />
+                <h2 className="text-sm font-bold text-white tracking-tight">Live Preview</h2>
+              </div>
+
               <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10">
                 <button
                   type="button"
                   onClick={() => setPreviewMode('qr')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer ${
                     previewMode === 'qr'
                       ? 'bg-cyan-500/20 text-cyan-200 font-bold border border-cyan-500/40'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  QR Code Only
+                  QR Only
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewMode('card')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer ${
                     previewMode === 'card'
                       ? 'bg-indigo-500/20 text-indigo-200 font-bold border border-indigo-500/40'
                       : 'text-slate-400 hover:text-white'
@@ -1677,17 +2206,13 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
                   Branded Card
                 </button>
               </div>
-
-              <span className="text-[10px] font-mono text-cyan-300">
-                {previewMode === 'qr' ? `${resolution}×${resolution} px` : '1200×1500 px'}
-              </span>
             </div>
 
-            {/* CANVASES PREVIEW CONTAINER */}
-            <div className="relative p-4 sm:p-6 rounded-2xl bg-black/60 border border-white/10 flex items-center justify-center overflow-hidden min-h-[320px]">
+            {/* PREVIEW CANVAS CONTAINER (Strict 1:1 for QR, 4:5 for Card) */}
+            <div className="relative p-4 sm:p-6 rounded-2xl bg-black/60 border border-white/10 flex items-center justify-center overflow-hidden min-h-[300px]">
               {/* MODE A: QR-ONLY PREVIEW (Strict 1:1 Aspect-Square Container) */}
               <div
-                className={`w-full max-w-[280px] sm:max-w-[300px] aspect-square mx-auto flex items-center justify-center ${
+                className={`w-full max-w-[280px] sm:max-w-[320px] aspect-square mx-auto flex items-center justify-center ${
                   previewMode === 'qr' ? 'block' : 'hidden'
                 }`}
               >
@@ -1696,7 +2221,6 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
                   className="w-full h-full object-contain rounded-xl shadow-2xl block transition-all"
                   style={{
                     aspectRatio: '1 / 1',
-                    imageRendering: 'pixelated',
                   }}
                 />
               </div>
@@ -1723,86 +2247,243 @@ export const AdminQrCodeStudioTab: React.FC<AdminQrCodeStudioTabProps> = ({ onAd
               )}
             </div>
 
-            {/* Target Encoded Info */}
-            <div className="text-left bg-black/40 p-3 rounded-xl border border-white/5 space-y-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Encoded Target:</span>
-              <p className="text-xs font-mono text-cyan-300 break-all truncate">
-                {qrText || <span className="text-slate-600 italic">No content</span>}
-              </p>
+            {/* MINI PRESET SWITCHER THUMBNAILS UNDERNEATH PREVIEW (like mockup) */}
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block text-left">
+                Quick Style Switch:
+              </span>
+              <div className="grid grid-cols-5 gap-1.5">
+                {STYLE_PRESETS.slice(0, 5).map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleApplyPreset(preset)}
+                    className={`p-1 rounded-lg border text-center transition-all cursor-pointer ${
+                      selectedPresetId === preset.id
+                        ? 'border-cyan-400 bg-cyan-500/20 shadow-sm'
+                        : 'border-white/10 bg-black/40 hover:border-white/20'
+                    }`}
+                    title={preset.name}
+                  >
+                    <div
+                      className="w-full h-7 rounded flex items-center justify-center mb-0.5"
+                      style={{ backgroundColor: preset.bg }}
+                    >
+                      <QrCode className="w-4 h-4" style={{ color: preset.fg }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-slate-300 block truncate">
+                      {preset.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* DEDICATED EXPORT ACTIONS */}
-            <div className="space-y-2.5 pt-1">
-              {previewMode === 'qr' ? (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDownloadQrPng}
-                      disabled={!qrText.trim()}
-                      className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-black font-bold text-xs font-mono flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer disabled:opacity-50 transition-all"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Download PNG</span>
-                    </button>
+            {/* PREVIEW STATS INFO BAR (Size, Format, Contrast) */}
+            <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-black/40 border border-white/5 text-center text-xs font-mono">
+              <div className="border-r border-white/5 pr-2">
+                <span className="text-[10px] text-slate-500 block">Size</span>
+                <span className="text-white font-bold">
+                  {previewMode === 'qr' ? `${resolution}×${resolution}` : '1200×1500'}
+                </span>
+              </div>
+              <div className="border-r border-white/5 pr-2">
+                <span className="text-[10px] text-slate-500 block">Format</span>
+                <span className="text-cyan-300 font-bold truncate block">
+                  {previewMode === 'qr' ? 'Square QR' : 'Branded Card'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 block">Contrast</span>
+                <span
+                  className={`font-bold flex items-center justify-center gap-1 ${
+                    isContrastWarning ? 'text-amber-400' : 'text-emerald-400'
+                  }`}
+                >
+                  {contrastRatio ? `${contrastRatio.toFixed(1)}:1` : 'N/A'}
+                  {!isContrastWarning && <CheckCircle className="w-3 h-3 text-emerald-400" />}
+                </span>
+              </div>
+            </div>
+          </section>
 
-                    <button
-                      type="button"
-                      onClick={handleDownloadQrJpg}
-                      disabled={!qrText.trim()}
-                      className="w-full py-3 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold text-xs font-mono flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
-                    >
-                      <Download className="w-4 h-4 text-purple-400" />
-                      <span>Download JPG</span>
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDownloadCardPng}
-                      disabled={!qrText.trim()}
-                      className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs font-mono flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-500/20 cursor-pointer disabled:opacity-50 transition-all"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Card PNG</span>
-                    </button>
+          {/* ================= STEP 4: DOWNLOAD & SHARE CARD ================= */}
+          <section className="p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-md shadow-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <Download className="w-4 h-4 text-cyan-400" />
+              <div>
+                <h2 className="text-sm font-bold text-white tracking-tight">Download & Share</h2>
+                <p className="text-[11px] text-slate-400">High-quality export ready for digital and print use</p>
+              </div>
+            </div>
 
-                    <button
-                      type="button"
-                      onClick={handleDownloadCardJpg}
-                      disabled={!qrText.trim()}
-                      className="w-full py-3 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold text-xs font-mono flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
-                    >
-                      <Download className="w-4 h-4 text-indigo-400" />
-                      <span>Card JPG</span>
-                    </button>
-                  </div>
-                </>
-              )}
+            {/* Resolution Selector Radio-Cards */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                Export Resolution:
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 512, label: '512 px', sub: 'Web (Small)' },
+                  { value: 1024, label: '1024 px', sub: 'High-Res (Rec.)' },
+                  { value: 2048, label: '2048 px', sub: 'Print (Ultra HD)' },
+                ].map((res) => (
+                  <button
+                    key={res.value}
+                    type="button"
+                    onClick={() => setResolution(res.value as any)}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                      resolution === res.value
+                        ? 'bg-cyan-500/20 border-cyan-400 text-white font-bold shadow-sm'
+                        : 'bg-black/30 border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="text-xs font-mono">{res.label}</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 truncate">{res.sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              {/* Copy to Clipboard */}
+            {/* Primary Action Buttons: Download PNG & Download JPG */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={handlePrimaryDownloadPng}
+                disabled={!qrText.trim()}
+                className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                <Download className="w-4 h-4 text-black" />
+                <div className="text-left leading-tight">
+                  <div>Download PNG</div>
+                  <div className="text-[9px] opacity-80 font-normal">Best quality, transparent</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrimaryDownloadJpg}
+                disabled={!qrText.trim()}
+                className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs font-mono flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                <Download className="w-4 h-4 text-purple-200" />
+                <div className="text-left leading-tight">
+                  <div>Download JPG</div>
+                  <div className="text-[9px] opacity-80 font-normal">Smaller size, solid bg</div>
+                </div>
+              </button>
+            </div>
+
+            {/* Secondary Actions: Copy to Clipboard & Open in New Tab */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 type="button"
                 onClick={handleCopyClipboard}
                 disabled={!qrText.trim()}
-                className="w-full py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-mono flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-mono flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
               >
                 {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{isCopied ? 'Image Copied to Clipboard!' : `Copy ${previewMode === 'qr' ? 'QR' : 'Card'} to Clipboard`}</span>
+                <span>{isCopied ? 'Copied!' : 'Copy to Clipboard'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenInNewTab}
+                disabled={!qrText.trim()}
+                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-mono flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Open in New Tab</span>
               </button>
             </div>
 
-            {/* Privacy and Verification Assurance */}
-            <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] font-mono text-slate-400 flex items-center gap-2 text-left">
+            {/* Privacy Guarantee Note */}
+            <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] font-mono text-slate-400 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Generated 100% locally in browser memory. Zero tracking, zero storage.</span>
+              <span>Zero server uploads. 100% private in-browser rendering.</span>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* ================= HELP & TIPS MODAL ================= */}
+      {isHelpOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-[#090b11] border border-white/15 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <HelpCircle className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-bold text-white">QR Code Studio — Best Practices</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHelpOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs font-mono text-slate-300">
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                  1. Maintain High Contrast (&gt; 3.0:1)
+                </span>
+                <p className="text-slate-400">
+                  QR code modules must stand out distinctly from the background. Dark foreground on light background or bright neon on deep slate scan most reliably.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <span className="font-bold text-purple-300 flex items-center gap-1.5">
+                  <ImageIcon className="w-4 h-4 text-purple-400" />
+                  2. Center Logo Sizing (&le; 25%)
+                </span>
+                <p className="text-slate-400">
+                  When a logo is present, Level H Error Correction is automatically applied (can recover up to 30% obstructed code). Keep your logo scale below 25% for reliable scans.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Printer className="w-4 h-4 text-emerald-400" />
+                  3. Print Recommendations
+                </span>
+                <p className="text-slate-400">
+                  Minimum recommended print size is 2×2 cm (0.8×0.8 in) for close-range business cards and 10×10 cm for banners. Use 2048px Ultra HD export for print graphics.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <span className="font-bold text-blue-300 flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-blue-400" />
+                  4. Privacy & Zero-Cloud Guarantee
+                </span>
+                <p className="text-slate-400">
+                  Your QR codes, links, images, and logos are rendered strictly in your browser memory. Nothing is stored on any server or sent across the network.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsHelpOpen(false)}
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs font-mono cursor-pointer transition-all"
+              >
+                Got It
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

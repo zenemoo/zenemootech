@@ -61,6 +61,7 @@ import { ZenemooTeamJoinPage } from './components/ZenemooTeamJoinPage';
 import { ZenemooPoolPage } from './components/pool/ZenemooPoolPage';
 import { ZenemooPoolHistoryPage } from './components/pool/ZenemooPoolHistoryPage';
 import { ZenemooRedirectGateway } from './components/ZenemooRedirectGateway';
+import { AdminQrCodeStudioTab } from './components/AdminQrCodeStudioTab';
 import { TalentHubAuthProvider, useTalentHubAuth } from './components/talent-hub/TalentHubAuthContext';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -70,7 +71,7 @@ import { getAuthReturnDestination, clearAuthReturnDestination } from './lib/auth
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'pool' | 'pool-detail' | 'pool-history' | 'redirect-gateway' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'pool' | 'pool-detail' | 'pool-history' | 'redirect-gateway' | 'qr-studio' | '404'
   >('home');
   const [selectedShortCode, setSelectedShortCode] = useState<string>('');
   const [selectedPoolPublicId, setSelectedPoolPublicId] = useState<string>('');
@@ -339,6 +340,7 @@ function AppInner() {
         | 'pool-detail'
         | 'pool-history'
         | 'redirect-gateway'
+        | 'qr-studio'
         | '404' = 'home';
 
       // ── Capture Referral Code from URL parameters & persist across sessions ──
@@ -812,6 +814,14 @@ function AppInner() {
         rCode = (rCode || '').split('?')[0].split('#')[0].replace(/\/+$/, '');
         setSelectedShortCode(rCode);
         matchedRoute = 'redirect-gateway';
+      } else if (
+        path === '/qr-studio' ||
+        path === '/qr-studio/' ||
+        hash === '#qr-studio' ||
+        hash === '#/qr-studio' ||
+        hash === '#qr'
+      ) {
+        matchedRoute = 'qr-studio';
       } else if (path === '/' || path === '' || path === '/subscribe' || path === '/subscribe/') {
         matchedRoute = 'home';
       } else {
@@ -1151,7 +1161,11 @@ function AppInner() {
 
   return (
     <>
-      {currentRoute === 'admin' ? (
+      {currentRoute === 'qr-studio' ? (
+        <div className="min-h-screen bg-[#030304] text-slate-200 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+          <AdminQrCodeStudioTab onAddToast={(title, msg, type) => console.log(title, msg, type)} />
+        </div>
+      ) : currentRoute === 'admin' ? (
         <AdminDashboard onExit={handleExitAdmin} />
       ) : currentRoute === 'email' ? (
         <AdminDashboard initialTab="history" isStandaloneEmailView={true} onExit={handleExitAdmin} />
