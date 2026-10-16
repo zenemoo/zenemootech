@@ -14,6 +14,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { BankAccount, invoiceApi } from '../../services/invoiceApi';
+import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 
 interface BankAccountsSettingsViewProps {
   bankAccounts: BankAccount[];
@@ -28,6 +29,8 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<BankAccount | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form State
   const [displayName, setDisplayName] = useState('');
@@ -129,17 +132,22 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
     }
   };
 
-  const handleDelete = async (acc: BankAccount) => {
-    if (!window.confirm(`Are you sure you want to remove the bank account "${acc.account_display_name}"?`)) {
-      return;
-    }
+  const handleDelete = (acc: BankAccount) => {
+    setAccountToDelete(acc);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!accountToDelete) return;
+    setIsDeleting(true);
     try {
-      await invoiceApi.deleteBankAccount(acc.id);
+      await invoiceApi.deleteBankAccount(accountToDelete.id);
       showToast?.('Account Removed', 'Bank account removed from active selection.', 'info');
+      setAccountToDelete(null);
       onRefresh();
     } catch (err: any) {
       showToast?.('Delete Error', err.message || 'Could not delete bank account', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -455,6 +463,28 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
           </div>
         </div>
       )}
+      {/* Confirmation Modal for Bank Account Deletion */}
+      <InvoiceConfirmationModal
+        isOpen={!!accountToDelete}
+        onClose={() => !isDeleting && setAccountToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Remove Bank Account"
+        message={`Are you sure you want to remove the bank account "${accountToDelete?.account_display_name}"?`}
+        description="This account profile will be removed from future invoice creation. Historical invoices that recorded this snapshot remain intact."
+        details={
+          accountToDelete
+            ? [
+                { label: 'Bank Name', value: accountToDelete.bank_name },
+                { label: 'Account Number', value: accountToDelete.account_number },
+                { label: 'IFSC Code', value: accountToDelete.ifsc_code },
+              ]
+            : []
+        }
+        confirmText="Remove Account"
+        cancelText="Keep Account"
+        variant="danger"
+        isLoading={isDeleting}
+      />
     </div>
   );
 };

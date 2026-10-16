@@ -272,6 +272,28 @@ export const invoiceApi = {
     window.URL.revokeObjectURL(url);
   },
 
+  // Download Word (.docx) Document
+  async downloadDocx(id: string, invoiceNumber: string): Promise<void> {
+    const res = await api.get(`/admin/invoices/${id}/docx`, { responseType: 'blob' });
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${invoiceNumber || 'Zenemoo-Invoice'}.docx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  // Delete Invoice from History (Enforces financial guards & cleans associated R2 storage)
+  async deleteInvoice(id: string): Promise<boolean> {
+    const res = await api.delete<{ success: boolean; message: string }>(`/admin/invoices/${id}`);
+    return res.data.success;
+  },
+
   // Handwritten Original Signature Management
   async getSignature(): Promise<InvoiceSignatureData> {
     const res = await api.get<{ success: boolean; data: InvoiceSignatureData }>('/admin/invoices/settings/signature');

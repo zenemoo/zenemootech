@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { invoiceD1Service } from '../services/invoiceD1Service.js';
 import { generateInvoicePdfBuffer } from '../services/invoicePdfService.js';
+import { generateInvoiceDocxBuffer } from '../services/invoiceWordService.js';
 import { invoiceStorageService } from '../services/invoiceStorageService.js';
 import { getAmountInWords } from '../services/currencyWordsService.js';
 
@@ -663,5 +664,78 @@ export const getInvoicePdf = async (req, res) => {
     res.send(pdfBuffer);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * 12. Secure Stream or Download Authoritative Invoice Word (.docx) Document
+ */
+export const getInvoiceDocx = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const targetInvoice = await invoiceD1Service.getInvoiceById(id);
+    if (!targetInvoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    const docxBuffer = await generateInvoiceDocxBuffer(targetInvoice);
+    const filename = `${targetInvoice.invoice_number || 'Zenemoo-Invoice'}.docx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', docxBuffer.length);
+    res.send(docxBuffer);
+  } catch (err) {
+    console.error('[invoiceController] getInvoiceDocx error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * 13. Delete Invoice from History (Enforces financial guards & cleans associated R2 storage)
+ */
+export const deleteInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const targetInvoice = await invoiceD1Service.getInvoiceById(id);
+    if (!targetInvoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    // Server-side financial protection: Do not allow deletion of invoices with recorded payments
+    const amountPaid = Number(targetInvoice.amount_paid) || 0;
+    const hasPayments = (targetInvoice.payments && targetInvoice.payments.length > 0) || amountPaid > 0;
+    if (hasPayments) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete invoice with recorded payments. Please cancel/void the invoice instead to preserve the financial ledger.',
+      });
+    }
+
+    // Clean up associated PDF storage object if present
+    if (targetInvoice.pdf_storage_key) {
+      try {
+        await invoiceStorageService.deleteInvoicePdf(targetInvoice.pdf_storage_key);
+      } catch (storageErr) {
+        console.warn(`[invoiceController] Storage deletion warning for ${targetInvoice.pdf_storage_key}:`, storageErr.message);
+      }
+    }
+
+    // Delete record from database
+    await invoiceD1Service.deleteInvoice(id, req.user?.email || 'admin');
+
+    res.json({
+      success: true,
+      message: `Invoice ${targetInvoice.invoice_number || id} has been successfully deleted.`,
+    });
+  } catch (err) {
+    console.error('[invoiceController] deleteInvoice error:', err);
+    const status = err.message?.includes('Cannot permanently delete') ? 400 : 500;
+    res.status(status).json({ success: false, message: err.message });
   }
 };

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FileText,
   X,
   Download,
+  Trash2,
   Building,
   CreditCard,
   Calendar,
@@ -14,18 +15,26 @@ import {
 } from 'lucide-react';
 import { Invoice } from '../../services/invoiceApi';
 import { formatCurrency } from '../../utils/invoicePdfGenerator';
+import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 
 interface InvoiceDetailModalProps {
   invoice: Invoice | null;
   onClose: () => void;
   onDownloadPdf: (inv: Invoice) => void;
+  onDownloadDocx?: (inv: Invoice) => void;
+  onDeleteInvoice?: (inv: Invoice) => Promise<void> | void;
 }
 
 export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   invoice,
   onClose,
   onDownloadPdf,
+  onDownloadDocx,
+  onDeleteInvoice,
 }) => {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   if (!invoice) return null;
 
   const statusColors: Record<string, string> = {
@@ -69,10 +78,44 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
             <button
               onClick={() => onDownloadPdf(invoice)}
               className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg flex items-center gap-1.5 transition-all shadow-lg shadow-blue-500/20"
+              title="Download Authoritative PDF"
             >
               <Download className="w-3.5 h-3.5" />
               Download PDF
             </button>
+
+            {onDownloadDocx && (
+              <button
+                onClick={() => onDownloadDocx(invoice)}
+                className="px-3 py-1.5 text-xs font-semibold text-sky-200 bg-sky-950/70 hover:bg-sky-900 border border-sky-500/30 rounded-lg flex items-center gap-1.5 transition-all shadow-sm"
+                title="Download Editable Word (.docx) Document"
+              >
+                <FileText className="w-3.5 h-3.5 text-sky-400" />
+                Word (.docx)
+              </button>
+            )}
+
+            {onDeleteInvoice && (
+              !((invoice.payments && invoice.payments.length > 0) || (Number(invoice.amount_paid) || 0) > 0) ? (
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="px-2.5 py-1.5 text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg flex items-center gap-1.5 transition-all"
+                  title="Permanently delete invoice"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete
+                </button>
+              ) : (
+                <span
+                  className="px-2.5 py-1.5 text-[11px] font-medium text-slate-500 bg-slate-800/50 rounded-lg border border-white/5 cursor-not-allowed flex items-center gap-1"
+                  title="Invoices with recorded payments cannot be deleted to preserve financial audit trail."
+                >
+                  <ShieldCheck className="w-3 h-3 text-slate-500" />
+                  Protected
+                </span>
+              )
+            )}
+
             <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg">
               <X className="w-5 h-5" />
             </button>
@@ -296,6 +339,35 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Delete Invoice Confirmation Modal */}
+      <InvoiceConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => !isDeleting && setShowDeleteModal(false)}
+        onConfirm={async () => {
+          setIsDeleting(true);
+          try {
+            await onDeleteInvoice?.(invoice);
+            setShowDeleteModal(false);
+            onClose();
+          } finally {
+            setIsDeleting(false);
+          }
+        }}
+        title="Delete Invoice Record"
+        message={`Are you sure you want to permanently delete invoice ${invoice.invoice_number}?`}
+        description="This will permanently delete this invoice record from the database and remove the PDF document from Cloudflare R2. This action cannot be undone."
+        details={[
+          { label: 'Invoice Number', value: invoice.invoice_number },
+          { label: 'Client', value: client.company_name || 'N/A' },
+          { label: 'Total Amount', value: formatCurrency(invoice.total_amount, invoice.currency) },
+          { label: 'Status', value: invoice.status.toUpperCase() },
+        ]}
+        confirmText="Delete Invoice"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={isDeleting}
+      />
     </div>
   );
 };

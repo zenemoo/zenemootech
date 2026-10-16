@@ -4,6 +4,7 @@ import {
   Search,
   Filter,
   Download,
+  Trash2,
   Eye,
   Edit,
   DollarSign,
@@ -17,6 +18,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Invoice, invoiceApi } from '../../services/invoiceApi';
+import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 
 interface InvoiceHistoryViewProps {
   invoices: Invoice[];
@@ -38,6 +40,8 @@ interface InvoiceHistoryViewProps {
   onViewInvoice: (inv: Invoice) => void;
   onEditDraft: (inv: Invoice) => void;
   onDownloadPdf: (inv: Invoice) => void;
+  onDownloadDocx?: (inv: Invoice) => void;
+  onDeleteInvoice?: (inv: Invoice) => Promise<void> | void;
   onInvoiceUpdated: (updated: Invoice) => void;
   showToast?: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
@@ -62,6 +66,8 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
   onViewInvoice,
   onEditDraft,
   onDownloadPdf,
+  onDownloadDocx,
+  onDeleteInvoice,
   onInvoiceUpdated,
   showToast,
 }) => {
@@ -77,6 +83,10 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
   const [cancelModalInvoice, setCancelModalInvoice] = useState<Invoice | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+
+  // Delete invoice state
+  const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState(false);
 
   // Status Colors
   const statusColors: Record<string, string> = {
@@ -355,6 +365,17 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
                             <Download className="w-3.5 h-3.5" />
                           </button>
 
+                          {/* Download Word (.docx) */}
+                          {onDownloadDocx && (
+                            <button
+                              onClick={() => onDownloadDocx(inv)}
+                              className="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded transition-colors"
+                              title="Download Word (.docx)"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           {/* Edit Draft */}
                           {inv.status === 'draft' && (
                             <button
@@ -386,6 +407,26 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
                             >
                               <Ban className="w-3.5 h-3.5" />
                             </button>
+                          )}
+
+                          {/* Delete Invoice */}
+                          {onDeleteInvoice && (
+                            !((inv.payments && inv.payments.length > 0) || (Number(inv.amount_paid) || 0) > 0) ? (
+                              <button
+                                onClick={() => setInvoiceToDelete(inv)}
+                                className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded transition-colors"
+                                title="Delete Invoice"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span
+                                className="p-1.5 text-slate-600 cursor-not-allowed opacity-30"
+                                title="Invoices with recorded payments cannot be deleted"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </span>
+                            )
                           )}
                         </div>
                       </td>
@@ -611,6 +652,42 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Delete Invoice Confirmation Modal */}
+      <InvoiceConfirmationModal
+        isOpen={!!invoiceToDelete}
+        onClose={() => !isDeletingInvoice && setInvoiceToDelete(null)}
+        onConfirm={async () => {
+          if (!invoiceToDelete) return;
+          setIsDeletingInvoice(true);
+          try {
+            await onDeleteInvoice?.(invoiceToDelete);
+            setInvoiceToDelete(null);
+          } finally {
+            setIsDeletingInvoice(false);
+          }
+        }}
+        title="Delete Invoice Record"
+        message={`Are you sure you want to permanently delete invoice ${invoiceToDelete?.invoice_number}?`}
+        description="This will permanently delete this invoice record from the database and remove the PDF document from Cloudflare R2. This action cannot be undone."
+        details={
+          invoiceToDelete
+            ? [
+                { label: 'Invoice Number', value: invoiceToDelete.invoice_number },
+                { label: 'Client', value: invoiceToDelete.client_snapshot?.company_name || 'N/A' },
+                {
+                  label: 'Total Amount',
+                  value: formatCurrency(invoiceToDelete.total_amount, invoiceToDelete.currency),
+                },
+                { label: 'Status', value: invoiceToDelete.status.toUpperCase() },
+              ]
+            : []
+        }
+        confirmText="Delete Invoice"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={isDeletingInvoice}
+      />
     </div>
   );
 };

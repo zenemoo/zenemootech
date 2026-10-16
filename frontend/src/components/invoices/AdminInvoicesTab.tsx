@@ -132,6 +132,29 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
     }
   };
 
+  const handleDownloadDocx = async (inv: Invoice) => {
+    try {
+      await invoiceApi.downloadDocx(inv.id, inv.invoice_number);
+      showToast?.('Download Started', `Downloading Word (.docx) for ${inv.invoice_number}`, 'info');
+    } catch (err: any) {
+      showToast?.('Download Error', err.message || 'Could not download Word document', 'error');
+    }
+  };
+
+  const handleDeleteInvoice = async (inv: Invoice) => {
+    try {
+      await invoiceApi.deleteInvoice(inv.id);
+      showToast?.('Invoice Deleted', `Invoice ${inv.invoice_number} has been permanently deleted.`, 'info');
+      if (viewingInvoice?.id === inv.id) {
+        setViewingInvoice(null);
+      }
+      loadInvoices();
+      loadCoreData();
+    } catch (err: any) {
+      showToast?.('Delete Error', err.response?.data?.message || err.message || 'Could not delete invoice', 'error');
+    }
+  };
+
   const handleInvoiceSaved = (saved: Invoice) => {
     setEditingInvoice(null);
     loadCoreData();
@@ -274,6 +297,8 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
             onViewInvoice={handleViewInvoice}
             onEditDraft={handleEditDraft}
             onDownloadPdf={handleDownloadPdf}
+            onDownloadDocx={handleDownloadDocx}
+            onDeleteInvoice={handleDeleteInvoice}
             onInvoiceUpdated={handleInvoiceUpdatedInHistory}
             showToast={showToast}
           />
@@ -305,6 +330,8 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
           invoice={viewingInvoice}
           onClose={() => setViewingInvoice(null)}
           onDownloadPdf={handleDownloadPdf}
+          onDownloadDocx={handleDownloadDocx}
+          onDeleteInvoice={handleDeleteInvoice}
         />
       )}
     </div>

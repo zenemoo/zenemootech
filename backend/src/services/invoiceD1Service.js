@@ -1259,6 +1259,47 @@ export class InvoiceD1Service {
     };
   }
 
+  /**
+   * 12. Delete Invoice (Enforces server-side financial protections)
+   */
+  async deleteInvoice(id, deletedBy) {
+    const list = this._localStore.invoices || [];
+    const idx = list.findIndex((i) => i.id === id);
+    if (idx === -1) {
+      throw new Error('Invoice not found.');
+    }
+
+    const targetInvoice = list[idx];
+
+    // Server-side safety guard: Protect genuine accounting history with payments
+    const payments = (this._localStore.payments || []).filter((p) => p.invoice_id === id);
+    const amountPaid = Number(targetInvoice.amount_paid) || 0;
+    if (payments.length > 0 || amountPaid > 0) {
+      throw new Error(
+        'Cannot permanently delete an invoice with recorded payments. Please cancel/void the invoice instead to preserve the financial ledger.'
+      );
+    }
+
+    if (this.isD1Configured()) {
+      try {
+        await this.executeD1(`DELETE FROM invoice_line_items WHERE invoice_id = ?;`, [id]);
+        await this.executeD1(`DELETE FROM invoices WHERE id = ?;`, [id]);
+      } catch (err) {
+        console.warn('[InvoiceD1Service] Remote deleteInvoice failed:', err.message);
+      }
+    }
+
+    // Remove from in-memory / local store
+    list.splice(idx, 1);
+    this.saveLocalStore();
+
+    return {
+      success: true,
+      deletedInvoice: targetInvoice,
+      message: `Invoice ${targetInvoice.invoice_number || id} successfully deleted.`,
+    };
+  }
+
   deserializeInvoiceRow(row) {
     if (!row) return null;
     return {

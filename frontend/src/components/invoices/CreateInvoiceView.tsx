@@ -28,6 +28,7 @@ import {
   invoiceApi,
 } from '../../services/invoiceApi';
 import { formatAmountInWords, generateInvoicePdfDoc, formatCurrency } from '../../utils/invoicePdfGenerator';
+import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 
 interface CreateInvoiceViewProps {
   settings: InvoiceSettings | null;
@@ -191,6 +192,227 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   // Loading & View States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
+
+  // Local Draft Persistence State & Confirmation Modals
+  const DRAFT_STORAGE_KEY = 'zenemoo_invoice_draft_v1';
+  const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [hasStoredDraft, setHasStoredDraft] = useState<boolean>(false);
+  const [showDiscardModal, setShowDiscardModal] = useState<boolean>(false);
+  const [showIssueModal, setShowIssueModal] = useState<boolean>(false);
+  const [hasInitializedDraft, setHasInitializedDraft] = useState<boolean>(false);
+
+  // Reset form to clean initial defaults
+  const resetFormToDefaults = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const defaultTerms = settings?.default_payment_terms || 'Net 15 Days';
+    setInvoiceDate(today);
+    setPaymentTerms(defaultTerms);
+    setDueDate(calculateDueDate(today, defaultTerms));
+    setServiceStart('');
+    setServiceEnd('');
+    setInvoicePeriod('');
+    setPoReference('');
+    setCurrency(settings?.default_currency || 'INR');
+    setProjectName('AI Speech & Data Services');
+    setProjectDescription('');
+    setSelectedClientId('');
+    setClientCompanyName('');
+    setClientContactPerson('');
+    setClientBillingEmail('');
+    setClientPhone('');
+    setClientAddress('');
+    setClientCity('');
+    setClientState('');
+    setClientPostalCode('');
+    setClientCountry('India');
+    setClientPan('');
+    setClientGstin('');
+    setSelectedBankId(defaultBank?.id || '');
+    setLineItems([
+      {
+        id: 'item_1',
+        serial_number: 1,
+        description: 'AI Dataset Annotation & Speech Data Processing',
+        quantity: 1,
+        unit: 'Milestone',
+        rate: 25000,
+        amount: 25000,
+      },
+    ]);
+    setDiscountType('percentage');
+    setDiscountValue(0);
+    setTaxEnabled(Boolean(settings?.default_tax_enabled));
+    setTaxLabel(settings?.default_tax_label || 'GST');
+    setTaxRate(settings?.default_tax_rate !== undefined ? settings.default_tax_rate : 18);
+    setInvoiceNotes(settings?.default_invoice_notes || '');
+    setSignatoryName(settings?.authorized_signatory_name || 'Prem Prasad');
+    setIncludeSignature(false);
+  };
+
+  // 1. Restore local draft on mount (only for fresh creation, never overwriting existing invoices)
+  useEffect(() => {
+    if (isEditing) {
+      setHasInitializedDraft(true);
+      return;
+    }
+
+    try {
+      const savedDraftRaw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (savedDraftRaw) {
+        const parsed = JSON.parse(savedDraftRaw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.invoiceDate) setInvoiceDate(parsed.invoiceDate);
+          if (parsed.paymentTerms) setPaymentTerms(parsed.paymentTerms);
+          if (parsed.dueDate) setDueDate(parsed.dueDate);
+          if (parsed.serviceStart !== undefined) setServiceStart(parsed.serviceStart);
+          if (parsed.serviceEnd !== undefined) setServiceEnd(parsed.serviceEnd);
+          if (parsed.invoicePeriod !== undefined) setInvoicePeriod(parsed.invoicePeriod);
+          if (parsed.poReference !== undefined) setPoReference(parsed.poReference);
+          if (parsed.currency) setCurrency(parsed.currency);
+          if (parsed.projectName !== undefined) setProjectName(parsed.projectName);
+          if (parsed.projectDescription !== undefined) setProjectDescription(parsed.projectDescription);
+          if (parsed.selectedClientId !== undefined) setSelectedClientId(parsed.selectedClientId);
+          if (parsed.clientCompanyName !== undefined) setClientCompanyName(parsed.clientCompanyName);
+          if (parsed.clientContactPerson !== undefined) setClientContactPerson(parsed.clientContactPerson);
+          if (parsed.clientBillingEmail !== undefined) setClientBillingEmail(parsed.clientBillingEmail);
+          if (parsed.clientPhone !== undefined) setClientPhone(parsed.clientPhone);
+          if (parsed.clientAddress !== undefined) setClientAddress(parsed.clientAddress);
+          if (parsed.clientCity !== undefined) setClientCity(parsed.clientCity);
+          if (parsed.clientState !== undefined) setClientState(parsed.clientState);
+          if (parsed.clientPostalCode !== undefined) setClientPostalCode(parsed.clientPostalCode);
+          if (parsed.clientCountry !== undefined) setClientCountry(parsed.clientCountry);
+          if (parsed.clientPan !== undefined) setClientPan(parsed.clientPan);
+          if (parsed.clientGstin !== undefined) setClientGstin(parsed.clientGstin);
+          if (parsed.selectedBankId) setSelectedBankId(parsed.selectedBankId);
+          if (Array.isArray(parsed.lineItems) && parsed.lineItems.length > 0) setLineItems(parsed.lineItems);
+          if (parsed.discountType) setDiscountType(parsed.discountType);
+          if (parsed.discountValue !== undefined) setDiscountValue(parsed.discountValue);
+          if (parsed.taxEnabled !== undefined) setTaxEnabled(Boolean(parsed.taxEnabled));
+          if (parsed.taxLabel) setTaxLabel(parsed.taxLabel);
+          if (parsed.taxRate !== undefined) setTaxRate(Number(parsed.taxRate));
+          if (parsed.invoiceNotes !== undefined) setInvoiceNotes(parsed.invoiceNotes);
+          if (parsed.signatoryName) setSignatoryName(parsed.signatoryName);
+          if (parsed.includeSignature !== undefined) setIncludeSignature(Boolean(parsed.includeSignature));
+
+          setHasStoredDraft(true);
+          const savedTime = parsed.savedAt ? new Date(parsed.savedAt).toLocaleTimeString() : 'earlier';
+          setDraftSavedAt(savedTime);
+          setDraftStatus('saved');
+          showToast?.('Draft Restored', `Restored unsaved invoice draft from ${savedTime}.`, 'info');
+        }
+      }
+    } catch (e) {
+      console.warn('[CreateInvoiceView] Failed to load local draft:', e);
+    } finally {
+      setHasInitializedDraft(true);
+    }
+  }, [isEditing]);
+
+  // 2. Auto-save draft debounced to localStorage whenever form values change
+  useEffect(() => {
+    if (isEditing || !hasInitializedDraft) return;
+
+    setDraftStatus('saving');
+    const timer = setTimeout(() => {
+      try {
+        const draftData = {
+          invoiceDate,
+          paymentTerms,
+          dueDate,
+          serviceStart,
+          serviceEnd,
+          invoicePeriod,
+          poReference,
+          currency,
+          projectName,
+          projectDescription,
+          selectedClientId,
+          clientCompanyName,
+          clientContactPerson,
+          clientBillingEmail,
+          clientPhone,
+          clientAddress,
+          clientCity,
+          clientState,
+          clientPostalCode,
+          clientCountry,
+          clientPan,
+          clientGstin,
+          selectedBankId,
+          lineItems,
+          discountType,
+          discountValue,
+          taxEnabled,
+          taxLabel,
+          taxRate,
+          invoiceNotes,
+          signatoryName,
+          includeSignature,
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftData));
+        const timeStr = new Date().toLocaleTimeString();
+        setDraftSavedAt(timeStr);
+        setDraftStatus('saved');
+        setHasStoredDraft(true);
+      } catch (err) {
+        console.warn('[CreateInvoiceView] Failed to auto-save draft:', err);
+        setDraftStatus('error');
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [
+    isEditing,
+    hasInitializedDraft,
+    invoiceDate,
+    paymentTerms,
+    dueDate,
+    serviceStart,
+    serviceEnd,
+    invoicePeriod,
+    poReference,
+    currency,
+    projectName,
+    projectDescription,
+    selectedClientId,
+    clientCompanyName,
+    clientContactPerson,
+    clientBillingEmail,
+    clientPhone,
+    clientAddress,
+    clientCity,
+    clientState,
+    clientPostalCode,
+    clientCountry,
+    clientPan,
+    clientGstin,
+    selectedBankId,
+    lineItems,
+    discountType,
+    discountValue,
+    taxEnabled,
+    taxLabel,
+    taxRate,
+    invoiceNotes,
+    signatoryName,
+    includeSignature,
+  ]);
+
+  const handleDiscardDraft = () => {
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      setHasStoredDraft(false);
+      setDraftSavedAt(null);
+      setDraftStatus('idle');
+      resetFormToDefaults();
+      setShowDiscardModal(false);
+      showToast?.('Draft Discarded', 'Your local invoice draft was cleared and reset.', 'info');
+    } catch (e) {
+      console.warn('Could not clear local draft', e);
+    }
+  };
 
   // Recalculate due date when terms change
   const handleTermsChange = (newTerms: string) => {
@@ -502,8 +724,8 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     }
   };
 
-  // Issue Invoice
-  const handleIssueInvoice = async () => {
+  // Trigger Issue Invoice validation & confirmation modal
+  const handleIssueInvoice = () => {
     if (!clientCompanyName.trim()) {
       showToast?.('Validation Error', 'Client company name is required.', 'warning');
       return;
@@ -526,10 +748,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       return;
     }
 
-    if (!window.confirm('Are you sure you want to officially ISSUE this invoice? Once issued, its number, company details, and bank account snapshot will be permanently locked.')) {
-      return;
-    }
+    setShowIssueModal(true);
+  };
 
+  // Perform confirmed invoice issuance
+  const handleConfirmIssueInvoice = async () => {
     setIsSubmitting(true);
     try {
       const payload = buildPayload();
@@ -561,9 +784,23 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         } catch (e) {}
       }
 
+      // ONLY clear draft upon confirmed successful issuance
+      if (!isEditing) {
+        try {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          setHasStoredDraft(false);
+          setDraftSavedAt(null);
+          setDraftStatus('idle');
+        } catch (storageErr) {
+          console.warn('Could not clear local draft storage', storageErr);
+        }
+      }
+
+      setShowIssueModal(false);
       showToast?.('Invoice Issued', `Invoice ${issued.invoice_number} has been officially issued and PDF stored.`, 'success');
       onSaved(issued);
     } catch (err: any) {
+      // Preserve local draft completely on failure
       showToast?.('Issuance Failed', err.response?.data?.message || err.message || 'Failed to issue invoice', 'error');
     } finally {
       setIsSubmitting(false);
@@ -585,17 +822,41 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-400" />
-              {isEditing ? `Edit Draft ${editingInvoice?.invoice_number}` : 'Create New Invoice'}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-400" />
+                {isEditing ? `Edit Draft ${editingInvoice?.invoice_number}` : 'Create New Invoice'}
+              </h2>
+              {!isEditing && (
+                <div className="flex items-center">
+                  {draftStatus === 'saving' && (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-amber-400 font-medium bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Saving draft...
+                    </span>
+                  )}
+                  {draftStatus === 'saved' && draftSavedAt && (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Draft saved at {draftSavedAt}
+                    </span>
+                  )}
+                  {draftStatus === 'error' && (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-rose-400 font-medium bg-rose-500/10 px-2.5 py-0.5 rounded-full border border-rose-500/20">
+                      <AlertCircle className="w-3 h-3" />
+                      Draft sync error
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <p className="text-xs text-slate-400">
               Interactive document builder with synchronized A4 live preview.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Mobile Preview Toggle Button */}
           <button
             onClick={() => setShowMobilePreview(!showMobilePreview)}
@@ -613,6 +874,18 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             <Download className="w-3.5 h-3.5 text-blue-400" />
             Download Preview
           </button>
+
+          {!isEditing && hasStoredDraft && (
+            <button
+              onClick={() => setShowDiscardModal(true)}
+              disabled={isSubmitting}
+              className="px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              title="Discard local draft and reset form"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Discard Draft
+            </button>
+          )}
 
           <button
             onClick={handleSaveDraft}
@@ -1408,6 +1681,43 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Discard Draft Confirmation Modal */}
+      <InvoiceConfirmationModal
+        isOpen={showDiscardModal}
+        onClose={() => setShowDiscardModal(false)}
+        onConfirm={handleDiscardDraft}
+        title="Discard Invoice Draft?"
+        message="Are you sure you want to discard your unsaved local draft? All entered client information, line items, calculations, and terms will be cleared and reset to fresh defaults."
+        confirmText="Discard Draft"
+        cancelText="Keep Working"
+        variant="danger"
+      />
+
+      {/* Issue Invoice Confirmation Modal */}
+      <InvoiceConfirmationModal
+        isOpen={showIssueModal}
+        onClose={() => !isSubmitting && setShowIssueModal(false)}
+        onConfirm={handleConfirmIssueInvoice}
+        title="Issue Official Invoice"
+        message="Are you sure you want to officially issue this invoice? Once issued, its sequential invoice number, company metadata snapshot, and bank remittance snapshot will be permanently locked."
+        details={[
+          { label: 'Client', value: clientCompanyName || 'Unspecified Client' },
+          { label: 'Project', value: projectName || 'Service Engagement' },
+          { label: 'Invoice Date', value: invoiceDate },
+          { label: 'Due Date', value: dueDate },
+          { label: 'Total Payable', value: `${currency} ${totalAmount.toLocaleString('en-IN')}` },
+          { label: 'Remittance Bank', value: selectedBankAccount.bank_name || 'Configured Bank' },
+          {
+            label: 'Signature Included',
+            value: includeSignature ? 'Yes (Handwritten signature)' : 'No (Standard signature)',
+          },
+        ]}
+        confirmText="Issue Invoice"
+        cancelText="Continue Editing"
+        variant="primary"
+        isLoading={isSubmitting}
+      />
     </div>
   );
 };

@@ -20,6 +20,8 @@ import {
   cancelInvoice,
   recordInvoicePayment,
   getInvoicePdf,
+  getInvoiceDocx,
+  deleteInvoice,
 } from '../controllers/invoiceController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -69,5 +71,7 @@ router.post('/:id/issue', issueInvoice);
 router.post('/:id/cancel', cancelInvoice);
 router.post('/:id/payments', recordInvoicePayment);
 router.get('/:id/pdf', getInvoicePdf);
+router.get('/:id/docx', getInvoiceDocx);
+router.delete('/:id', deleteInvoice);
 
 export default router;

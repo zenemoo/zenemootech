@@ -204,6 +204,45 @@ class InvoiceStorageService {
     return null;
   }
 
+  /**
+   * Delete an invoice PDF from Cloudflare R2 and durable local disk
+   * @param {string} storageKey e.g. "invoices/ZEN-INV-2026-0001.pdf"
+   */
+  async deleteInvoicePdf(storageKey) {
+    if (!storageKey) return false;
+
+    // 1. Clear in-memory hot cache
+    this._memoryFallback.delete(storageKey);
+
+    // 2. Remove from Cloudflare R2
+    const client = this.getClient();
+    if (client) {
+      try {
+        await client.send(
+          new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: storageKey,
+          })
+        );
+      } catch (err) {
+        console.warn(`[InvoiceStorageService] R2 DeleteObject warning for ${storageKey}:`, err.message);
+      }
+    }
+
+    // 3. Remove from durable local disk storage
+    try {
+      const cleanFilename = path.basename(storageKey);
+      const localFilePath = path.join(DISK_STORAGE_DIR, cleanFilename);
+      if (fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+      }
+    } catch (diskErr) {
+      console.warn(`[InvoiceStorageService] Disk unlink warning for ${storageKey}:`, diskErr.message);
+    }
+
+    return true;
+  }
+
   ensureSignatureStorageDir() {
     try {
       if (!fs.existsSync(DISK_SIGNATURES_DIR)) {
