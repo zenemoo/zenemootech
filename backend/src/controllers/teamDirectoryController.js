@@ -40,62 +40,62 @@ export const getTeamDirectoryMembers = async (req, res) => {
   try {
     const userRole = req.user?.role || 'team';
 
-    // 1. Fetch all members from primary `team` table in Supabase
-    let teamQuery = supabase
-      ? supabase.from('team').select('*').order('position', { ascending: true })
-      : null;
-
-    let teamMembers = [];
-    if (teamQuery) {
-      const { data, error } = await teamQuery;
-      if (!error && data) {
-        teamMembers = data;
-      }
+    // 1. Fetch team members, private profiles, and pending photo updates concurrently
+    if (!supabase) {
+      return res.status(500).json({
+        success: false,
+        message: 'Database service is temporarily unavailable.',
+      });
     }
 
-    // 2. Fetch all private profiles from `employee_private_profiles`
+    const [teamResult, privResult, pendingResult] = await Promise.all([
+      supabase.from('team').select('*').order('position', { ascending: true }),
+      supabase.from('employee_private_profiles').select('*'),
+      supabase.from('pending_profile_updates').select('*').eq('status', 'pending'),
+    ]);
+
+    if (teamResult.error) {
+      console.error('Supabase error fetching team members:', teamResult.error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch team directory members from database',
+        error: teamResult.error.message,
+      });
+    }
+
+    const teamMembers = teamResult.data || [];
+
+    // 2. Fetch and prepare private profiles map
+    // Decrypt sensitive fields once if requester is admin or hr (team role only views public data)
     let privateProfilesMap = {};
-    if (supabase) {
-      const { data: privData, error: privError } = await supabase
-        .from('employee_private_profiles')
-        .select('*');
-
-      if (!privError && privData) {
-        privData.forEach((p) => {
-          const decryptedP = decryptObjectFields(p);
-          if (decryptedP.team_member_id) privateProfilesMap[decryptedP.team_member_id] = decryptedP;
-          if (decryptedP.employee_id) privateProfilesMap[decryptedP.employee_id] = decryptedP;
-          if (decryptedP.email) privateProfilesMap[decryptedP.email.toLowerCase()] = decryptedP;
-          if (decryptedP.personal_email) privateProfilesMap[decryptedP.personal_email.toLowerCase()] = decryptedP;
-        });
-      }
+    if (privResult.data) {
+      const isPrivileged = userRole === 'admin' || userRole === 'hr';
+      privResult.data.forEach((p) => {
+        const processedProfile = isPrivileged ? decryptObjectFields(p) : p;
+        if (processedProfile.team_member_id) privateProfilesMap[processedProfile.team_member_id] = processedProfile;
+        if (processedProfile.employee_id) privateProfilesMap[processedProfile.employee_id] = processedProfile;
+        if (processedProfile.email) privateProfilesMap[processedProfile.email.toLowerCase()] = processedProfile;
+        if (processedProfile.personal_email) privateProfilesMap[processedProfile.personal_email.toLowerCase()] = processedProfile;
+      });
     }
 
-    // 2.5 Fetch active pending photo updates from `pending_profile_updates`
+    // 2.5 Map active pending photo updates from pending_profile_updates
     let pendingUpdatesMap = {};
-    if (supabase) {
-      try {
-        const { data: pData } = await supabase
-          .from('pending_profile_updates')
-          .select('*')
-          .eq('status', 'pending');
-        if (Array.isArray(pData)) {
-          pData.forEach((p) => {
-            if (p.team_member_id) pendingUpdatesMap[p.team_member_id] = p;
-            if (p.employee_id) pendingUpdatesMap[p.employee_id] = p;
-          });
-        }
-      } catch (e) {}
+    if (Array.isArray(pendingResult.data)) {
+      pendingResult.data.forEach((p) => {
+        if (p.team_member_id) pendingUpdatesMap[p.team_member_id] = p;
+        if (p.employee_id) pendingUpdatesMap[p.employee_id] = p;
+      });
     }
 
     // 3. Merge and sanitize fields based on User Role (Enforced on Backend)
     const sanitizedDirectory = teamMembers.map((member) => {
-      const rawPriv =
+      const priv =
         privateProfilesMap[member.id] ||
         privateProfilesMap[member.employee_id] ||
-        (member.email ? privateProfilesMap[member.email.toLowerCase()] : null);
+        (member.email ? privateProfilesMap[member.email.toLowerCase()] : null) ||
+        null;
 
-      const priv = rawPriv ? decryptObjectFields(rawPriv) : null;
       const explicitEmployeeId = getEmployeeId(member, priv);
 
       const pendingForMember = pendingUpdatesMap[member.id] || pendingUpdatesMap[explicitEmployeeId] || null;

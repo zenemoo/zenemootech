@@ -830,7 +830,7 @@ export const pendingProfileUpdatesApi = {
 
 // Enterprise Team Directory API
 export const directoryApi = {
-  getMembers: () => api.get('/directory/members'),
+  getMembers: () => deduplicatedGet('/directory/members'),
 };
 
 // Zenemoo AI Data Talent & Partner Registration API

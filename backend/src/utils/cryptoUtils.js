@@ -2,8 +2,13 @@ import crypto from 'crypto';
 import { decrypt as decryptCbc } from '../services/encryptionService.js';
 
 let cachedPiiKey = null;
+let cachedCandidateKeys = null;
 
-function getCandidateKeys() {
+export function getCandidateKeys() {
+  if (cachedCandidateKeys && cachedCandidateKeys.length > 0) {
+    return cachedCandidateKeys;
+  }
+
   const secrets = [
     process.env.ZENEMOO_PII_ENCRYPTION_KEY,
     process.env.ENCRYPTION_SECRET,
@@ -25,7 +30,17 @@ function getCandidateKeys() {
       keys.push(crypto.scryptSync(trimmed, 'zenemoo_salt', 32));
     } catch (_) {}
   }
-  return keys;
+
+  cachedCandidateKeys = keys;
+  return cachedCandidateKeys;
+}
+
+/**
+ * Reset crypto key caches (useful for unit testing or credential rotation)
+ */
+export function resetCryptoKeyCache() {
+  cachedPiiKey = null;
+  cachedCandidateKeys = null;
 }
 
 function getPiiKey() {

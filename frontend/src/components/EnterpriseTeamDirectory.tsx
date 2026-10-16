@@ -94,6 +94,8 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
 }) => {
   const [members, setMembers] = useState<DirectoryMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const isFetchingRef = React.useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
@@ -151,17 +153,31 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
   };
 
   const fetchDirectory = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setIsLoading(true);
+    setFetchError(null);
     try {
       const res = await directoryApi.getMembers();
       if (res.data && res.data.success) {
         setMembers(res.data.data || []);
+      } else {
+        const msg = res.data?.message || 'Failed to load team directory.';
+        setFetchError(msg);
+        showToast(msg, 'error');
       }
     } catch (err: any) {
       console.warn('Failed to fetch team directory:', err);
-      showToast('Failed to load enterprise team directory.', 'error');
+      const errorMsg =
+        err.response?.data?.message ||
+        (err.code === 'ECONNABORTED' || err.message?.includes('timeout')
+          ? 'Directory request timed out. Please try refreshing.'
+          : 'Failed to load enterprise team directory.');
+      setFetchError(errorMsg);
+      showToast(errorMsg, 'error');
     } finally {
       setIsLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -304,6 +320,22 @@ export const EnterpriseTeamDirectory: React.FC<EnterpriseTeamDirectoryProps> = (
               <div className="h-3 bg-white/10 rounded w-full" />
             </div>
           ))}
+        </div>
+      ) : fetchError && members.length === 0 ? (
+        <div className="glass-panel p-10 sm:p-12 rounded-3xl border border-rose-500/30 text-center space-y-4 shadow-xl">
+          <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm sm:text-base font-bold text-white">Failed to Load Enterprise Directory</h3>
+            <p className="text-xs text-rose-300 max-w-md mx-auto">{fetchError}</p>
+          </div>
+          <button
+            onClick={() => fetchDirectory()}
+            className="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold transition-all cursor-pointer inline-flex items-center gap-2"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Retry Loading
+          </button>
         </div>
       ) : filteredMembers.length === 0 ? (
         <div className="glass-panel p-12 rounded-3xl border border-white/10 text-center space-y-3">
