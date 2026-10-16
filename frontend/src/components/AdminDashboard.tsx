@@ -41,6 +41,7 @@ import { Megaphone } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { AdminUrlShortenerTab } from './AdminUrlShortenerTab';
 import { AdminQrCodeStudioTab } from './AdminQrCodeStudioTab';
+import { AdminInvoicesTab } from './invoices/AdminInvoicesTab';
 
 export type AdminTabType =
   | 'team'
@@ -75,7 +76,8 @@ export type AdminTabType =
   | 'talent-pools'
   | 'portfolio'
   | 'shortener'
-  | 'qr-studio';
+  | 'qr-studio'
+  | 'invoices';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
   'notifications',
@@ -111,6 +113,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'announcements',
   'shortener',
   'qr-studio',
+  'invoices',
 ];
 
 const OAUTH_KEYWORDS = [
@@ -171,6 +174,7 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'announcements': 'Announcements Ticker',
   'shortener': 'URL Shortener Gateway',
   'qr-studio': 'QR Code Studio',
+  'invoices': 'Invoices & Billing',
 };
 
 export const getAdminTabTitle = (tab: string | null | undefined): string => {
@@ -2976,6 +2980,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'referrals', name: 'Talent Referrals', icon: UserCheck },
         { id: 'shortener', name: 'URL Shortener', icon: Link2 },
         { id: 'qr-studio', name: 'QR Code Studio', icon: QrCode },
+        { id: 'invoices', name: 'Invoices & Billing', icon: FileText },
       ],
     },
     {
@@ -5193,6 +5198,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {activeTab === 'qr-studio' && (
           <AdminQrCodeStudioTab
             onAddToast={addToast}
+          />
+        )}
+
+        {/* TAB: INVOICES & BILLING GENERATOR */}
+        {activeTab === 'invoices' && (
+          <AdminInvoicesTab
+            showToast={addToast}
+            showConfirm={showConfirm}
           />
         )}
 

@@ -1,0 +1,18 @@
+name = "zenemoo-invoice-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+account_id = "c3e84d8a84eaa06c632f189765eaa9c6"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zenemoo-invoices"
+database_id = "583f0b9f-e953-44ff-925e-bf9312421f1b"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "INVOICE_BUCKET"
+bucket_name = "zenemoo-invoice-storage"
+
+[vars]
+CORS_ORIGIN = "https://zenemoo.in,https://www.zenemoo.in,https://web.zenemoo.in,http://localhost:5173,http://localhost:3000,http://localhost:5000"
+JWT_SECRET = "zenemoo_super_secret_jwt_key_2026"

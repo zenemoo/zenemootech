@@ -39,6 +39,7 @@ import reviewRoutes from './routes/reviewRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
 import poolRoutes from './routes/poolRoutes.js';
 import shortenerRoutes from './routes/shortenerRoutes.js';
+import invoiceRoutes from './routes/invoiceRoutes.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -213,6 +214,8 @@ app.use('/api/pools', poolRoutes);
 app.use('/api/talent-pools', poolRoutes);
 app.use('/api/shortener', shortenerRoutes);
 app.use('/api/admin/shortener', shortenerRoutes);
+app.use('/api/admin/invoices', invoiceRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);
