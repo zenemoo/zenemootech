@@ -17,6 +17,12 @@ export interface InvoiceSettings {
   company_logo_url?: string;
   authorized_signatory_name?: string;
   signature_image_url?: string;
+  signature_configured?: boolean;
+  signature_key?: string | null;
+  signature_file_name?: string | null;
+  signature_updated_at?: string | null;
+  signature_data_url?: string | null;
+  include_signature?: boolean;
   default_currency: string;
   default_payment_terms: string;
   default_invoice_notes?: string;
@@ -24,6 +30,14 @@ export interface InvoiceSettings {
   default_tax_label: string;
   default_tax_rate: number;
   updated_at?: string;
+}
+
+export interface InvoiceSignatureData {
+  configured: boolean;
+  data_url: string | null;
+  file_name?: string | null;
+  storage_key?: string | null;
+  updated_at?: string | null;
 }
 
 export interface BankAccount {
@@ -119,6 +133,9 @@ export interface Invoice {
   payment_terms?: string;
   invoice_notes?: string;
   payment_instructions?: string;
+  include_signature?: boolean;
+  signature_key?: string | null;
+  signature_data_url?: string | null;
   pdf_storage_key?: string;
   pdf_generated_at?: string;
   created_by?: string;
@@ -253,5 +270,31 @@ export const invoiceApi = {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
+  },
+
+  // Handwritten Original Signature Management
+  async getSignature(): Promise<InvoiceSignatureData> {
+    const res = await api.get<{ success: boolean; data: InvoiceSignatureData }>('/admin/invoices/settings/signature');
+    return res.data.data;
+  },
+
+  async uploadSignature(file: File): Promise<InvoiceSignatureData> {
+    const formData = new FormData();
+    formData.append('signature', file);
+    const res = await api.post<{ success: boolean; data: InvoiceSignatureData; message: string }>(
+      '/admin/invoices/settings/signature',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return res.data.data;
+  },
+
+  async deleteSignature(): Promise<boolean> {
+    const res = await api.delete<{ success: boolean; message: string }>('/admin/invoices/settings/signature');
+    return res.data.success;
   },
 };

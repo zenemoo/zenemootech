@@ -35,5 +35,6 @@ cloudflare-workers/**/node_modules/
 cloudflare-workers/**/.wrangler/
 .wrangler/
 
-
-
+# Local invoice and signature storage
+storage/
+backend/storage/

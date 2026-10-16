@@ -13,6 +13,7 @@ import {
   User,
 } from 'lucide-react';
 import { Invoice } from '../../services/invoiceApi';
+import { formatCurrency } from '../../utils/invoicePdfGenerator';
 
 interface InvoiceDetailModalProps {
   invoice: Invoice | null;
@@ -33,14 +34,6 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     paid: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     partially_paid: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     cancelled: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-  };
-
-  const formatCurrency = (amount: number, curr = 'INR') => {
-    const symbol = curr === 'INR' ? '₹' : curr === 'USD' ? '$' : `${curr} `;
-    return `${symbol}${Number(amount || 0).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
   };
 
   const client = invoice.client_snapshot || {};
@@ -171,7 +164,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   <tr>
                     <th className="p-2.5 text-center w-8">#</th>
                     <th className="p-2.5">Service Description</th>
-                    <th className="p-2.5 text-center w-24">Quantity</th>
+                    <th className="p-2.5 text-right w-24">Quantity</th>
                     <th className="p-2.5 text-right w-28">Rate</th>
                     <th className="p-2.5 text-right w-28">Amount</th>
                   </tr>
@@ -181,7 +174,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     <tr key={item.id || idx}>
                       <td className="p-2.5 text-center text-slate-500">{idx + 1}</td>
                       <td className="p-2.5 font-medium text-white">{item.description}</td>
-                      <td className="p-2.5 text-center text-slate-400">
+                      <td className="p-2.5 text-right text-slate-400">
                         {item.quantity} {item.unit || ''}
                       </td>
                       <td className="p-2.5 text-right text-slate-300">
@@ -281,11 +274,19 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
           )}
 
           {/* Audit Lifecycle Footer */}
-          <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between text-[11px] text-slate-500">
+          <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2">
             <div>
               Created by <span className="text-slate-300">{invoice.created_by}</span> on{' '}
               {invoice.created_at ? new Date(invoice.created_at).toLocaleString() : '—'}
             </div>
+            {invoice.include_signature ? (
+              <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Authorized Signature Attached</span>
+              </div>
+            ) : (
+              <div className="text-slate-500 italic">No signature requested</div>
+            )}
             {invoice.issued_at && (
               <div>
                 Issued by <span className="text-blue-400">{invoice.issued_by}</span> on{' '}

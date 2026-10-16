@@ -1,8 +1,12 @@
 import { Router } from 'express';
+import multer from 'multer';
 import {
   getInvoiceDashboardMetrics,
   getInvoiceSettings,
   updateInvoiceSettings,
+  uploadInvoiceSignature,
+  getInvoiceSignature,
+  deleteInvoiceSignature,
   getBankAccounts,
   createBankAccount,
   updateBankAccount,
@@ -21,6 +25,18 @@ import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = Router();
 
+// Strict signature upload multer (PNG or JPEG, max 2MB)
+const uploadSignature = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'image/png' || file.mimetype === 'image/jpeg') {
+      return cb(null, true);
+    }
+    cb(new Error('Invalid signature format. Only genuine PNG or JPEG images are accepted.'));
+  },
+});
+
 // Protect ALL invoice endpoints strictly with JWT verification and admin role check
 router.use(verifyToken);
 router.use(requireRole(['admin']));
@@ -28,9 +44,12 @@ router.use(requireRole(['admin']));
 // Metrics & Analytics
 router.get('/metrics', getInvoiceDashboardMetrics);
 
-// Company Invoice Settings
+// Company Invoice Settings & Signature
 router.get('/settings', getInvoiceSettings);
 router.put('/settings', updateInvoiceSettings);
+router.post('/settings/signature', uploadSignature.single('signature'), uploadInvoiceSignature);
+router.get('/settings/signature', getInvoiceSignature);
+router.delete('/settings/signature', deleteInvoiceSignature);
 
 // Multiple Bank Accounts
 router.get('/banks', getBankAccounts);

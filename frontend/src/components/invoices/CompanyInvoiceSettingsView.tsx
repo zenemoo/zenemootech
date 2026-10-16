@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Building,
   Save,
@@ -10,8 +10,14 @@ import {
   MapPin,
   RefreshCw,
   Info,
+  PenTool,
+  UploadCloud,
+  Trash2,
+  AlertCircle,
+  X,
+  Lock,
 } from 'lucide-react';
-import { InvoiceSettings, invoiceApi } from '../../services/invoiceApi';
+import { InvoiceSettings, InvoiceSignatureData, invoiceApi } from '../../services/invoiceApi';
 
 interface CompanyInvoiceSettingsViewProps {
   initialSettings: InvoiceSettings | null;
@@ -58,6 +64,93 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
   const [defaultTaxRate, setDefaultTaxRate] = useState(initialSettings?.default_tax_rate || 18.0);
 
   const [isSaving, setIsSaving] = useState(false);
+
+  // Handwritten Original Signature State
+  const [signatureData, setSignatureData] = useState<InvoiceSignatureData | null>(null);
+  const [isLoadingSignature, setIsLoadingSignature] = useState(false);
+  const [isUploadingSig, setIsUploadingSig] = useState(false);
+  const [isDeletingSig, setIsDeletingSig] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [sigError, setSigError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchSignature = async () => {
+    setIsLoadingSignature(true);
+    try {
+      const sig = await invoiceApi.getSignature();
+      setSignatureData(sig);
+    } catch (err: any) {
+      console.warn('[CompanyInvoiceSettingsView] Could not fetch signature:', err);
+    } finally {
+      setIsLoadingSignature(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSignature();
+  }, []);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const validTypes = ['image/png', 'image/jpeg'];
+    if (!validTypes.includes(file.type)) {
+      setSigError('Invalid file format. Please upload a genuine PNG (recommended with transparent background) or JPEG image.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setSigError(`File size is ${(file.size / (1024 * 1024)).toFixed(2)} MB. Maximum allowed size is 2.0 MB.`);
+      return;
+    }
+
+    setSigError(null);
+    setIsUploadingSig(true);
+    try {
+      const updated = await invoiceApi.uploadSignature(file);
+      setSignatureData(updated);
+      showToast?.('Signature Uploaded', 'Original handwritten signature securely saved to Cloudflare R2.', 'success');
+      if (initialSettings) {
+        onSaved({
+          ...initialSettings,
+          signature_configured: true,
+          signature_key: updated.storage_key,
+          signature_file_name: updated.file_name,
+        });
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Failed to upload signature';
+      setSigError(msg);
+      showToast?.('Upload Failed', msg, 'error');
+    } finally {
+      setIsUploadingSig(false);
+    }
+  };
+
+  const handleDeleteSignature = async () => {
+    setIsDeletingSig(true);
+    try {
+      await invoiceApi.deleteSignature();
+      setSignatureData({ configured: false, data_url: null });
+      setShowDeleteModal(false);
+      showToast?.('Signature Removed', 'Authorized signature removed from invoice settings. Historical invoices remain safely preserved.', 'info');
+      if (initialSettings) {
+        onSaved({
+          ...initialSettings,
+          signature_configured: false,
+          signature_key: null,
+          signature_file_name: null,
+        });
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Failed to delete signature';
+      showToast?.('Delete Failed', msg, 'error');
+    } finally {
+      setIsDeletingSig(false);
+    }
+  };
 
   useEffect(() => {
     if (initialSettings) {
@@ -368,6 +461,164 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
           </div>
         </div>
 
+        {/* Section 4: Authorized Handwritten Signature Management */}
+        <div className="bg-slate-900/60 border border-white/10 rounded-xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <PenTool className="w-4 h-4 text-blue-400" />
+                Section 4: Authorized Handwritten Signature
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Upload your genuine handwritten signature image to appear on signed invoices. Zenemoo never fabricates, generates, or font-renders signatures.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
+                  signatureData?.configured
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                }`}
+              >
+                {signatureData?.configured ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Configured & Active
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Not Configured
+                  </>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-slate-400 bg-white/5 border border-white/10">
+                <Lock className="w-3 h-3 text-blue-400" />
+                Cloudflare R2
+              </span>
+            </div>
+          </div>
+
+          {/* Validation or error display */}
+          {sigError && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-start gap-2.5 text-xs text-rose-300">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-400" />
+              <span>{sigError}</span>
+            </div>
+          )}
+
+          {/* Preview and Controls Area */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-2">
+            {/* Visual Preview Box */}
+            <div className="relative rounded-lg border border-white/10 bg-slate-950 p-4 min-h-[140px] flex flex-col items-center justify-center text-center overflow-hidden">
+              {isLoadingSignature ? (
+                <div className="flex flex-col items-center gap-2 text-slate-400 text-xs py-6">
+                  <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />
+                  <span>Loading signature preview...</span>
+                </div>
+              ) : signatureData?.configured && signatureData?.data_url ? (
+                <div className="w-full flex flex-col items-center">
+                  {/* Subtle checkered canvas backdrop for transparent PNGs */}
+                  <div
+                    className="w-full max-w-[280px] h-28 rounded border border-white/10 p-3 flex items-center justify-center"
+                    style={{
+                      backgroundImage:
+                        'linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)',
+                      backgroundSize: '16px 16px',
+                      backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+                      backgroundColor: '#0f172a',
+                    }}
+                  >
+                    <img
+                      src={signatureData.data_url}
+                      alt="Authorized Handwritten Signature"
+                      className="max-h-20 max-w-full object-contain filter drop-shadow"
+                    />
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400">
+                    {signatureData.file_name && (
+                      <span className="font-mono text-slate-300">{signatureData.file_name}</span>
+                    )}
+                    {signatureData.updated_at && (
+                      <span className="block text-[10px] text-slate-500">
+                        Updated {new Date(signatureData.updated_at).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-6 px-4 flex flex-col items-center text-slate-400">
+                  <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-2 text-slate-500">
+                    <PenTool className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-medium text-slate-300">No original signature configured</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 max-w-xs">
+                    Upload your authentic signature image to enable the "Include authorized signature" option when creating invoices.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons and guidelines */}
+            <div className="space-y-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png, image/jpeg"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingSig || isDeletingSig}
+                  className="px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 transition-all"
+                >
+                  {isUploadingSig ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <UploadCloud className="w-3.5 h-3.5" />
+                  )}
+                  {signatureData?.configured ? 'Replace Signature' : 'Upload Original Signature'}
+                </button>
+
+                {signatureData?.configured && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteModal(true)}
+                    disabled={isUploadingSig || isDeletingSig}
+                    className="px-3.5 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg flex items-center gap-1.5 transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Signature
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-[11px] text-slate-400 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-slate-300 font-medium">
+                  <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                  <span>Signature Guidelines</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 pl-1 text-[11px] text-slate-400">
+                  <li>Format: <strong className="text-slate-300">PNG</strong> with transparent background (recommended) or JPEG.</li>
+                  <li>Max file size: <strong className="text-slate-300">2.0 MB</strong>.</li>
+                  <li>Storage: Stored securely in Cloudflare R2 (<code className="text-blue-300 text-[10px]">zenemoo-invoice-storage</code>).</li>
+                  <li>Integrity: Raw image binaries are never stored in D1. Only versioned storage keys are mapped.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Action Button */}
         <div className="flex justify-end">
           <button
@@ -380,6 +631,58 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
           </button>
         </div>
       </form>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400" />
+                Remove Authorized Signature?
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to remove your configured signature?
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed bg-white/5 p-3 rounded-lg border border-white/10">
+              New invoices will not include a signature until a new one is uploaded. Previously issued invoices are snapshot-locked and will safely retain their historical signed state.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingSig}
+                onClick={() => setShowDeleteModal(false)}
+                className="px-3.5 py-1.5 text-xs text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingSig}
+                onClick={handleDeleteSignature}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg shadow-lg shadow-rose-600/20 flex items-center gap-1.5 transition-all"
+              >
+                {isDeletingSig ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                {isDeletingSig ? 'Deleting...' : 'Yes, Delete Signature'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

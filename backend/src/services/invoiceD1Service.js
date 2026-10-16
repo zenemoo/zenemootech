@@ -61,15 +61,20 @@ export class InvoiceD1Service {
 
   // --- Local Disk Persistence (Survives Restarts) ---
 
+  getStoreFilePath() {
+    return process.env.INVOICE_STORE_FILE || LOCAL_STORE_FILE;
+  }
+
   loadLocalStore() {
+    const storePath = this.getStoreFilePath();
     try {
-      const dir = path.dirname(LOCAL_STORE_FILE);
+      const dir = path.dirname(storePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      if (fs.existsSync(LOCAL_STORE_FILE)) {
-        const raw = fs.readFileSync(LOCAL_STORE_FILE, 'utf-8');
+      if (fs.existsSync(storePath)) {
+        const raw = fs.readFileSync(storePath, 'utf-8');
         return JSON.parse(raw);
       }
     } catch (err) {
@@ -93,6 +98,10 @@ export class InvoiceD1Service {
         udyam_registration: '',
         gstin: '',
         authorized_signatory_name: 'Prem Prasad',
+        signature_key: '',
+        signature_configured: false,
+        signature_file_name: '',
+        signature_updated_at: '',
         default_currency: 'INR',
         default_payment_terms: 'Net 15 Days',
         default_invoice_notes: 'Thank you for partnering with Zenemoo. Payment is expected within the agreed terms.',
@@ -127,15 +136,16 @@ export class InvoiceD1Service {
     };
 
     try {
-      fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+      fs.writeFileSync(storePath, JSON.stringify(initial, null, 2), 'utf-8');
     } catch (_) {}
 
     return initial;
   }
 
   saveLocalStore() {
+    const storePath = this.getStoreFilePath();
     try {
-      fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(this._localStore, null, 2), 'utf-8');
+      fs.writeFileSync(storePath, JSON.stringify(this._localStore, null, 2), 'utf-8');
     } catch (err) {
       console.error('[InvoiceD1Service] Fatal: Failed to persist store to disk:', err.message);
       throw new Error(`Storage failure: Could not persist invoice data to disk (${err.message})`);
@@ -239,8 +249,14 @@ export class InvoiceD1Service {
         const res = await this.executeD1(sql);
         if (res && res.results && res.results.length > 0) {
           const row = res.results[0];
+          const rawSigKey = row.signature_key || row.signature_image_url || this._localStore.settings?.signature_key;
+          const sigKey = rawSigKey ? String(rawSigKey).trim() : null;
           return {
             ...row,
+            signature_key: sigKey,
+            signature_configured: Boolean(sigKey),
+            signature_file_name: row.signature_file_name || this._localStore.settings?.signature_file_name || null,
+            signature_updated_at: row.signature_updated_at || this._localStore.settings?.signature_updated_at || null,
             default_tax_enabled: Boolean(row.default_tax_enabled),
           };
         }
@@ -249,9 +265,15 @@ export class InvoiceD1Service {
       }
     }
 
+    const currentRaw = this._localStore.settings?.signature_key;
+    const currentSigKey = currentRaw ? String(currentRaw).trim() : null;
     return {
       ...this._localStore.settings,
-      default_tax_enabled: Boolean(this._localStore.settings.default_tax_enabled),
+      signature_key: currentSigKey,
+      signature_configured: Boolean(currentSigKey),
+      signature_file_name: this._localStore.settings?.signature_file_name || null,
+      signature_updated_at: this._localStore.settings?.signature_updated_at || null,
+      default_tax_enabled: Boolean(this._localStore.settings?.default_tax_enabled),
     };
   }
 
@@ -259,27 +281,36 @@ export class InvoiceD1Service {
    * 2. Update Company Invoice Settings
    */
   async updateSettings(data) {
+    const currentSettings = this._localStore.settings || {};
+    const sigKey = data.signature_key !== undefined
+      ? (data.signature_key ? String(data.signature_key).trim() : null)
+      : (currentSettings.signature_key || null);
+
     const updated = {
-      ...this._localStore.settings,
-      legal_name: String(data.legal_name || 'Zenemoo').trim(),
+      ...currentSettings,
+      legal_name: String(data.legal_name || currentSettings.legal_name || 'Zenemoo').trim(),
       display_name: 'Zenemoo', // Strictly "Zenemoo"
-      registered_address: String(data.registered_address || '').trim(),
-      city: String(data.city || '').trim(),
-      state: String(data.state || '').trim(),
-      postal_code: String(data.postal_code || '').trim(),
-      country: String(data.country || 'India').trim(),
-      official_email: String(data.official_email || 'contact@zenemoo.in').trim(),
-      contact_number: String(data.contact_number || '').trim(),
-      pan_number: String(data.pan_number || '').trim().toUpperCase(),
-      udyam_registration: String(data.udyam_registration || '').trim().toUpperCase(),
-      gstin: String(data.gstin || '').trim().toUpperCase(),
-      authorized_signatory_name: String(data.authorized_signatory_name || 'Prem Prasad').trim(),
-      default_currency: String(data.default_currency || 'INR').toUpperCase().trim(),
-      default_payment_terms: String(data.default_payment_terms || 'Net 15 Days').trim(),
-      default_invoice_notes: String(data.default_invoice_notes || '').trim(),
-      default_tax_enabled: data.default_tax_enabled ? 1 : 0,
-      default_tax_label: String(data.default_tax_label || 'GST').trim(),
-      default_tax_rate: Number(data.default_tax_rate) || 0,
+      registered_address: data.registered_address !== undefined ? String(data.registered_address).trim() : currentSettings.registered_address,
+      city: data.city !== undefined ? String(data.city).trim() : currentSettings.city,
+      state: data.state !== undefined ? String(data.state).trim() : currentSettings.state,
+      postal_code: data.postal_code !== undefined ? String(data.postal_code).trim() : currentSettings.postal_code,
+      country: data.country !== undefined ? String(data.country).trim() : currentSettings.country,
+      official_email: data.official_email !== undefined ? String(data.official_email).trim() : currentSettings.official_email,
+      contact_number: data.contact_number !== undefined ? String(data.contact_number).trim() : currentSettings.contact_number,
+      pan_number: data.pan_number !== undefined ? String(data.pan_number).trim().toUpperCase() : currentSettings.pan_number,
+      udyam_registration: data.udyam_registration !== undefined ? String(data.udyam_registration).trim().toUpperCase() : currentSettings.udyam_registration,
+      gstin: data.gstin !== undefined ? String(data.gstin).trim().toUpperCase() : currentSettings.gstin,
+      authorized_signatory_name: data.authorized_signatory_name !== undefined ? String(data.authorized_signatory_name).trim() : (currentSettings.authorized_signatory_name || 'Prem Prasad'),
+      signature_key: sigKey,
+      signature_configured: Boolean(sigKey),
+      signature_file_name: sigKey ? (data.signature_file_name !== undefined ? String(data.signature_file_name) : (currentSettings.signature_file_name || null)) : null,
+      signature_updated_at: sigKey ? (data.signature_updated_at !== undefined ? String(data.signature_updated_at) : (currentSettings.signature_updated_at || null)) : null,
+      default_currency: data.default_currency !== undefined ? String(data.default_currency).toUpperCase().trim() : currentSettings.default_currency,
+      default_payment_terms: data.default_payment_terms !== undefined ? String(data.default_payment_terms).trim() : currentSettings.default_payment_terms,
+      default_invoice_notes: data.default_invoice_notes !== undefined ? String(data.default_invoice_notes).trim() : currentSettings.default_invoice_notes,
+      default_tax_enabled: data.default_tax_enabled !== undefined ? (data.default_tax_enabled ? 1 : 0) : currentSettings.default_tax_enabled,
+      default_tax_label: data.default_tax_label !== undefined ? String(data.default_tax_label).trim() : currentSettings.default_tax_label,
+      default_tax_rate: data.default_tax_rate !== undefined ? Number(data.default_tax_rate) || 0 : currentSettings.default_tax_rate,
       updated_at: new Date().toISOString(),
       updated_by: data.updated_by || 'admin',
     };

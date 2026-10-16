@@ -15,6 +15,8 @@ import {
   ArrowLeft,
   DollarSign,
   Percent,
+  PenTool,
+  Lock,
 } from 'lucide-react';
 import {
   Invoice,
@@ -22,9 +24,10 @@ import {
   BankAccount,
   InvoiceClient,
   InvoiceLineItem,
+  InvoiceSignatureData,
   invoiceApi,
 } from '../../services/invoiceApi';
-import { formatAmountInWords, generateInvoicePdfDoc } from '../../utils/invoicePdfGenerator';
+import { formatAmountInWords, generateInvoicePdfDoc, formatCurrency } from '../../utils/invoicePdfGenerator';
 
 interface CreateInvoiceViewProps {
   settings: InvoiceSettings | null;
@@ -153,6 +156,37 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   const [signatoryName, setSignatoryName] = useState(() => {
     return settings?.authorized_signatory_name || 'Prem Prasad';
   });
+
+  // Handwritten Original Signature Option
+  // Default it to OFF unless editing an existing invoice that explicitly had it enabled
+  const [includeSignature, setIncludeSignature] = useState(() => {
+    return Boolean(editingInvoice?.include_signature);
+  });
+  const [signatureData, setSignatureData] = useState<InvoiceSignatureData | null>(null);
+  const [isLoadingSignature, setIsLoadingSignature] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSignature = async () => {
+      setIsLoadingSignature(true);
+      try {
+        const sig = await invoiceApi.getSignature();
+        if (isMounted) {
+          setSignatureData(sig);
+        }
+      } catch (err) {
+        console.warn('[CreateInvoiceView] Could not load signature:', err);
+      } finally {
+        if (isMounted) {
+          setIsLoadingSignature(false);
+        }
+      }
+    };
+    fetchSignature();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Loading & View States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -307,11 +341,16 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         gstin: settings?.gstin || '',
         authorized_signatory_name: signatoryName,
         default_invoice_notes: invoiceNotes,
+        include_signature: includeSignature,
+        signature_key: signatureData?.storage_key || settings?.signature_key || null,
+        signature_data_url: includeSignature ? (signatureData?.data_url || null) : null,
       },
       bank_snapshot: selectedBankAccount,
       payment_terms: paymentTerms,
       invoice_notes: invoiceNotes,
       status: editingInvoice?.status || 'draft',
+      include_signature: includeSignature,
+      signature_data_url: includeSignature ? (signatureData?.data_url || null) : null,
     };
   }, [
     editingInvoice,
@@ -351,12 +390,16 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     invoiceNotes,
     selectedBankAccount,
     paymentTerms,
+    includeSignature,
+    signatureData,
   ]);
 
   // Client PDF Preview Downloader
   const handleDownloadPreviewPdf = () => {
     try {
-      const doc = generateInvoicePdfDoc(previewInvoiceData);
+      const doc = generateInvoicePdfDoc(previewInvoiceData, {
+        signatureDataUrl: includeSignature && signatureData?.data_url ? signatureData.data_url : undefined,
+      });
       doc.save(`PREVIEW-${previewInvoiceData.invoice_number || 'Zenemoo-Invoice'}.pdf`);
       showToast?.('Preview Downloaded', 'PDF preview generated successfully.', 'info');
     } catch (err: any) {
@@ -379,6 +422,8 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       project_description: projectDescription,
       payment_terms: paymentTerms,
       invoice_notes: invoiceNotes,
+      include_signature: includeSignature,
+      signature_key: includeSignature ? (signatureData?.storage_key || settings?.signature_key || null) : null,
       line_items: lineItems,
       discount_type: discountType,
       discount_value: discountValue,
@@ -416,6 +461,9 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         gstin: settings?.gstin || '',
         authorized_signatory_name: signatoryName,
         default_invoice_notes: invoiceNotes,
+        include_signature: includeSignature,
+        signature_key: includeSignature ? (signatureData?.storage_key || settings?.signature_key || null) : null,
+        signature_configured: Boolean(signatureData?.configured || settings?.signature_configured),
       },
     };
   };
@@ -466,6 +514,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     }
     if (serviceStart && serviceEnd && serviceEnd < serviceStart) {
       showToast?.('Validation Error', 'Service end date cannot be earlier than start date.', 'warning');
+      return;
+    }
+
+    if (includeSignature && !signatureData?.configured && !settings?.signature_configured) {
+      showToast?.(
+        'Signature Required',
+        'You have enabled "Include authorized signature", but no genuine handwritten signature has been uploaded yet. Please upload your signature in Invoice Settings or disable this option.',
+        'warning'
+      );
       return;
     }
 
@@ -1095,13 +1152,81 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Authorized Signatory</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Authorized Signatory Name</label>
               <input
                 type="text"
                 value={signatoryName}
                 onChange={(e) => setSignatoryName(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-950 border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500"
               />
+            </div>
+
+            {/* Signature Option Checkbox & Preview */}
+            <div className="pt-3 border-t border-white/10 space-y-2.5">
+              <label className="flex items-start gap-3 cursor-pointer group select-none">
+                <input
+                  type="checkbox"
+                  checked={includeSignature}
+                  onChange={(e) => setIncludeSignature(e.target.checked)}
+                  className="mt-0.5 rounded border-white/20 bg-slate-950 text-blue-500 focus:ring-blue-500/20"
+                />
+                <div className="text-xs">
+                  <span className="font-semibold text-white group-hover:text-blue-300 transition-colors flex items-center gap-1.5">
+                    <PenTool className="w-3.5 h-3.5 text-blue-400" />
+                    Include authorized signature on this invoice
+                  </span>
+                  <p className="text-slate-400 text-[11px] mt-0.5">
+                    Embeds your genuine handwritten signature image in the authorized signatory block of the official PDF.
+                  </p>
+                </div>
+              </label>
+
+              {/* Status and Thumbnail Preview or Validation Warning */}
+              {includeSignature && (
+                <div className="mt-2 pl-7">
+                  {signatureData?.configured && signatureData?.data_url ? (
+                    <div className="p-3 bg-slate-950/80 border border-white/10 rounded-lg flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="h-10 w-24 rounded border border-white/10 p-1 flex items-center justify-center"
+                          style={{
+                            backgroundImage:
+                              'linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)',
+                            backgroundSize: '12px 12px',
+                            backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
+                            backgroundColor: '#0f172a',
+                          }}
+                        >
+                          <img
+                            src={signatureData.data_url}
+                            alt="Original Signature"
+                            className="max-h-8 max-w-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-emerald-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Genuine Handwritten Signature Attached
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            {signatureData.file_name || 'signature.png'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-300">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+                      <div>
+                        <span className="font-semibold text-amber-200">No original signature configured</span>
+                        <p className="text-[11px] text-amber-300/80 mt-0.5">
+                          An original signature must be uploaded in Settings before this option can be included on the invoice. You can upload it in the Settings tab or disable this option.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1191,7 +1316,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                     <tr className="bg-slate-900 text-white font-bold">
                       <th className="p-1 text-center w-5">#</th>
                       <th className="p-1">Description</th>
-                      <th className="p-1 text-center w-12">Qty</th>
+                      <th className="p-1 text-right w-12">Qty</th>
                       <th className="p-1 text-right w-14">Rate</th>
                       <th className="p-1 text-right w-16">Amount</th>
                     </tr>
@@ -1201,16 +1326,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       <tr key={item.id || idx} className="hover:bg-slate-50">
                         <td className="p-1 text-center text-slate-500">{idx + 1}</td>
                         <td className="p-1 font-medium text-slate-800">{item.description || '—'}</td>
-                        <td className="p-1 text-center text-slate-600">
+                        <td className="p-1 text-right text-slate-600">
                           {item.quantity} {item.unit || ''}
                         </td>
                         <td className="p-1 text-right text-slate-600">
-                          {currSymbol}
-                          {Number(item.rate || 0).toFixed(2)}
+                          {formatCurrency(item.rate, currency)}
                         </td>
                         <td className="p-1 text-right font-semibold text-slate-900">
-                          {currSymbol}
-                          {Number(item.amount || 0).toFixed(2)}
+                          {formatCurrency(item.amount, currency)}
                         </td>
                       </tr>
                     ))}
@@ -1239,18 +1362,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                 <div className="col-span-6 space-y-1 text-[8.5px]">
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal:</span>
-                    <span>
-                      {currSymbol}
-                      {subtotal.toFixed(2)}
-                    </span>
+                    <span>{formatCurrency(subtotal, currency)}</span>
                   </div>
                   {discountAmount > 0 && (
                     <div className="flex justify-between text-emerald-600 font-medium">
                       <span>Discount:</span>
-                      <span>
-                        -{currSymbol}
-                        {discountAmount.toFixed(2)}
-                      </span>
+                      <span>-{formatCurrency(discountAmount, currency)}</span>
                     </div>
                   )}
                   {taxEnabled && taxAmount > 0 && (
@@ -1258,18 +1375,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
                       <span>
                         {taxLabel} ({taxRate}%):
                       </span>
-                      <span>
-                        +{currSymbol}
-                        {taxAmount.toFixed(2)}
-                      </span>
+                      <span>+{formatCurrency(taxAmount, currency)}</span>
                     </div>
                   )}
                   <div className="p-1.5 rounded bg-slate-900 text-white font-extrabold flex justify-between mt-1 text-[9.5px]">
                     <span>TOTAL:</span>
-                    <span>
-                      {currSymbol}
-                      {totalAmount.toFixed(2)}
-                    </span>
+                    <span>{formatCurrency(totalAmount, currency)}</span>
                   </div>
                 </div>
               </div>
@@ -1278,6 +1389,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
               <div className="mt-4 pt-2 border-t border-slate-200 flex justify-between items-end text-[7.5px] text-slate-500">
                 <span>Computer-generated official invoice by Zenemoo.</span>
                 <div className="text-right">
+                  {includeSignature && signatureData?.data_url && (
+                    <div className="flex justify-end mb-1">
+                      <img
+                        src={signatureData.data_url}
+                        alt="Authorized Handwritten Signature"
+                        className="max-h-7 max-w-[110px] object-contain"
+                      />
+                    </div>
+                  )}
                   <div className="border-b border-slate-400 pb-0.5 font-bold text-slate-800">
                     {signatoryName}
                   </div>
