@@ -7,6 +7,7 @@ import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { sanitizePostgrestExact, sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
+import { invoiceD1Service } from '../services/invoiceD1Service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -490,6 +491,58 @@ export const handleCashfreeWebhook = async (req, res) => {
     if (!orderId) {
       return res.status(200).json({ success: true, message: 'Ignored: No order_id' });
     }
+
+    // --- DEDICATED INVOICE PAYMENT RECONCILIATION ROUTE ---
+    const linkIdCandidate = payload.data?.link?.link_id || orderData?.link_id || (orderId.startsWith('PL_INV_') ? orderId : null);
+    const invoiceCandidate = await invoiceD1Service.findInvoiceByPaymentLinkId(linkIdCandidate || orderId);
+
+    if (invoiceCandidate) {
+      const incomingPaymentId = paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined;
+      const isSuccess = eventType === 'PAYMENT_SUCCESS_WEBHOOK' || paymentData?.payment_status === 'SUCCESS';
+
+      if (isSuccess && incomingPaymentId) {
+        // Strict idempotency: check if already recorded
+        const existingPayments = await invoiceD1Service.getInvoicePayments(invoiceCandidate.id);
+        const alreadyRecorded = (existingPayments || []).some(
+          (p) => String(p.reference_number) === incomingPaymentId
+        );
+
+        if (!alreadyRecorded) {
+          // If invoice is still in draft status, officially promote to issued before recording payment
+          if (invoiceCandidate.status === 'draft') {
+            await invoiceD1Service.updateInvoice(invoiceCandidate.id, {
+              status: 'issued',
+              issued_at: new Date().toISOString(),
+              issued_by: 'Cashfree Webhook Autopay',
+            });
+          }
+
+          const payAmount = Number(orderData?.order_amount || paymentData?.payment_amount || invoiceCandidate.total_amount);
+          await invoiceD1Service.recordPayment(invoiceCandidate.id, {
+            amount: payAmount,
+            currency: invoiceCandidate.currency || 'INR',
+            payment_date: paymentData?.payment_time
+              ? new Date(paymentData.payment_time).toISOString().split('T')[0]
+              : new Date().toISOString().split('T')[0],
+            payment_method: 'Cashfree Payment Link',
+            reference_number: incomingPaymentId,
+            notes: `Cashfree Payment Link verified (${linkIdCandidate || orderId})`,
+            recorded_by: 'Cashfree Webhook',
+          });
+
+          await invoiceD1Service.updateInvoice(invoiceCandidate.id, {
+            payment_link_status: 'PAID',
+          });
+        }
+      } else if (eventType === 'PAYMENT_FAILED_WEBHOOK' || paymentData?.payment_status === 'FAILED') {
+        await invoiceD1Service.updateInvoice(invoiceCandidate.id, {
+          payment_link_status: 'FAILED',
+        });
+      }
+
+      return res.status(200).json({ success: true, message: 'Invoice payment webhook processed' });
+    }
+    // --- END DEDICATED INVOICE PAYMENT RECONCILIATION ROUTE ---
 
     const currentRec = await findPaymentRecord(orderId);
     const incomingPaymentId = paymentData?.cf_payment_id ? String(paymentData.cf_payment_id) : undefined;

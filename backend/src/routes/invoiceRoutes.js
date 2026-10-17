@@ -24,6 +24,8 @@ import {
   getInvoicePdf,
   getInvoiceDocx,
   deleteInvoice,
+  generateInvoicePaymentLink,
+  cancelInvoicePaymentLink,
 } from '../controllers/invoiceController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -74,6 +76,8 @@ router.post('/draft', saveDraftInvoice);
 router.post('/:id/issue', issueInvoice);
 router.post('/:id/cancel', cancelInvoice);
 router.post('/:id/payments', recordInvoicePayment);
+router.post('/:id/payment-link', generateInvoicePaymentLink);
+router.delete('/:id/payment-link', cancelInvoicePaymentLink);
 router.get('/:id/pdf', getInvoicePdf);
 router.get('/:id/docx', getInvoiceDocx);
 router.delete('/:id', deleteInvoice);

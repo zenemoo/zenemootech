@@ -125,7 +125,7 @@ export function formatCurrency(amount: number | string | undefined, currency = '
  */
 export function generateInvoicePdfDoc(
   invoice: Partial<Invoice>,
-  options: { signatureDataUrl?: string } = {}
+  options: { signatureDataUrl?: string; qrDataUrl?: string } = {}
 ): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -495,10 +495,18 @@ export function generateInvoicePdfDoc(
   // B. Left Side: Bank Remittance Details
   let bankBoxY = currentY + 19;
   if (bank.bank_name || bank.account_number) {
+    const wantsQr = Boolean(invoice.include_payment_qr && (options.qrDataUrl || (invoice as any).payment_qr_data_url));
+    const wantsLink = Boolean(invoice.include_payment_link && invoice.payment_link_url);
+    const remitExtras: string[] = [];
+    if (bank.branch_name) remitExtras.push(`Branch: ${bank.branch_name}`);
+    if (bank.swift_bic_code) remitExtras.push(`SWIFT: ${bank.swift_bic_code}`);
+
+    const cardH = (wantsLink && remitExtras.length > 0) ? 31 : 27;
+
     doc.setFillColor(...colorCardBg);
-    doc.roundedRect(margin, bankBoxY, leftDetailsWidth, 27, 1.5, 1.5, 'F');
+    doc.roundedRect(margin, bankBoxY, leftDetailsWidth, cardH, 1.5, 1.5, 'F');
     doc.setDrawColor(...colorBorder);
-    doc.roundedRect(margin, bankBoxY, leftDetailsWidth, 27, 1.5, 1.5, 'S');
+    doc.roundedRect(margin, bankBoxY, leftDetailsWidth, cardH, 1.5, 1.5, 'S');
 
     doc.setFont(fontName, 'bold');
     doc.setFontSize(7.2);
@@ -514,11 +522,36 @@ export function generateInvoicePdfDoc(
     doc.text(`Account Number: ${bank.account_number || '-'} (${bank.account_type || 'Current'})`, margin + 3.5, bankBoxY + 17);
     doc.text(`IFSC Code: ${bank.ifsc_code || '-'}`, margin + 3.5, bankBoxY + 21);
 
-    const remitExtras: string[] = [];
-    if (bank.branch_name) remitExtras.push(`Branch: ${bank.branch_name}`);
-    if (bank.swift_bic_code) remitExtras.push(`SWIFT: ${bank.swift_bic_code}`);
     if (remitExtras.length > 0) {
       doc.text(remitExtras.join('   |   '), margin + 3.5, bankBoxY + 25);
+    }
+
+    // Optional Clickable Payment URL
+    if (wantsLink && invoice.payment_link_url) {
+      const linkY = remitExtras.length > 0 ? bankBoxY + 29 : bankBoxY + 25;
+      doc.setFont(fontName, 'bold');
+      doc.setFontSize(6.8);
+      doc.setTextColor(...colorAccent);
+      (doc as any).textWithLink('Pay Online: ' + invoice.payment_link_url, margin + 3.5, linkY, { url: invoice.payment_link_url });
+    }
+
+    // Optional Crisp QR Code
+    if (wantsQr) {
+      try {
+        const qrImg = options.qrDataUrl || (invoice as any).payment_qr_data_url;
+        if (qrImg) {
+          const qrSize = 19;
+          const qrX = margin + leftDetailsWidth - qrSize - 3.5;
+          const qrY = bankBoxY + 3.5;
+          doc.addImage(qrImg, 'PNG', qrX, qrY, qrSize, qrSize, undefined, 'FAST');
+          doc.setFont(fontName, 'bold');
+          doc.setFontSize(5.5);
+          doc.setTextColor(...colorAccent);
+          doc.text('Scan to Pay', qrX + qrSize / 2, qrY + qrSize + 2.5, { align: 'center' });
+        }
+      } catch (qrErr: any) {
+        console.warn('[invoicePdfGenerator] QR code embed note:', qrErr?.message);
+      }
     }
   }
 

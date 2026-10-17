@@ -227,8 +227,8 @@ class CashfreeService {
         customer_name: cleanName,
       },
       link_notify: {
-        send_sms: notify.sendSms ?? false,
-        send_email: notify.sendEmail ?? Boolean(customer.customerEmail),
+        send_sms: typeof notify.sendSms === 'boolean' ? notify.sendSms : false,
+        send_email: typeof notify.sendEmail === 'boolean' ? notify.sendEmail : Boolean(customer.customerEmail),
       },
       link_meta: {
         return_url: validReturnUrl,

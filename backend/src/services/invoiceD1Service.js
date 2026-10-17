@@ -959,6 +959,21 @@ export class InvoiceD1Service {
     return { ...found, payments };
   }
 
+  async getInvoicePayments(invoiceId) {
+    if (!invoiceId) return [];
+    if (this.isD1Configured()) {
+      try {
+        const sql = `SELECT * FROM invoice_payments WHERE invoice_id = ? ORDER BY created_at DESC;`;
+        const res = await this.executeD1(sql, [invoiceId]);
+        if (res && Array.isArray(res.results)) return res.results;
+      } catch (err) {
+        console.warn('[InvoiceD1Service] Remote getInvoicePayments note:', err.message);
+      }
+    }
+    const list = this._localStore.payments || [];
+    return list.filter((p) => p.invoice_id === invoiceId);
+  }
+
   /**
    * 8. Save or Update Draft
    */
@@ -971,9 +986,23 @@ export class InvoiceD1Service {
         throw new Error('Only draft invoices can be edited. Issued invoices are immutable.');
       }
 
+      const existing = list[idx] || {};
+      const amountPaid = Number(invoiceData.amount_paid ?? existing.amount_paid ?? 0);
+      const totalAmount = Number(invoiceData.total_amount ?? existing.total_amount ?? 0);
+      const outstandingBalance = Math.max(0, totalAmount - amountPaid);
+
       const updated = {
-        ...(list[idx] || {}),
+        ...existing,
         ...invoiceData,
+        total_amount: totalAmount,
+        amount_paid: amountPaid,
+        outstanding_balance: outstandingBalance,
+        include_payment_link: Boolean(invoiceData.include_payment_link ?? existing.include_payment_link),
+        include_payment_qr: Boolean(invoiceData.include_payment_qr ?? existing.include_payment_qr),
+        payment_link_id: invoiceData.payment_link_id !== undefined ? invoiceData.payment_link_id : (existing.payment_link_id || null),
+        payment_link_url: invoiceData.payment_link_url !== undefined ? invoiceData.payment_link_url : (existing.payment_link_url || null),
+        payment_link_status: invoiceData.payment_link_status !== undefined ? invoiceData.payment_link_status : (existing.payment_link_status || 'NOT_CREATED'),
+        payment_link_amount: invoiceData.payment_link_amount !== undefined ? Number(invoiceData.payment_link_amount) : (Number(existing.payment_link_amount) || 0),
         status: 'draft',
         updated_at: new Date().toISOString(),
       };
@@ -990,6 +1019,9 @@ export class InvoiceD1Service {
               project_name = ?, project_description = ?, line_items = ?,
               client_snapshot = ?, company_snapshot = ?, bank_snapshot = ?,
               payment_terms = ?, invoice_notes = ?, payment_instructions = ?,
+              payment_link_id = ?, payment_link_url = ?, payment_link_status = ?,
+              payment_link_amount = ?, payment_link_expiry = ?,
+              include_payment_link = ?, include_payment_qr = ?,
               updated_at = (datetime('now'))
             WHERE id = ? AND status = 'draft';
           `;
@@ -1021,6 +1053,13 @@ export class InvoiceD1Service {
             updated.payment_terms,
             updated.invoice_notes,
             updated.payment_instructions,
+            updated.payment_link_id || null,
+            updated.payment_link_url || null,
+            updated.payment_link_status || 'NOT_CREATED',
+            Number(updated.payment_link_amount) || 0,
+            updated.payment_link_expiry || null,
+            updated.include_payment_link ? 1 : 0,
+            updated.include_payment_qr ? 1 : 0,
             updated.id,
           ]);
         } catch (err) {
@@ -1048,8 +1087,16 @@ export class InvoiceD1Service {
       sequence_year: year,
       sequence_number: seqNum,
       status: 'draft',
+      project_name: invoiceData.project_name || 'AI Speech & Data Services',
       amount_paid: 0.0,
-      outstanding_balance: invoiceData.total_amount,
+      outstanding_balance: Number(invoiceData.total_amount) || 0,
+      include_payment_link: Boolean(invoiceData.include_payment_link),
+      include_payment_qr: Boolean(invoiceData.include_payment_qr),
+      payment_link_id: invoiceData.payment_link_id || null,
+      payment_link_url: invoiceData.payment_link_url || null,
+      payment_link_status: invoiceData.payment_link_status || 'NOT_CREATED',
+      payment_link_amount: Number(invoiceData.payment_link_amount) || 0,
+      payment_link_expiry: invoiceData.payment_link_expiry || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -1065,7 +1112,9 @@ export class InvoiceD1Service {
             tax_amount, total_amount, amount_in_words, amount_paid, outstanding_balance,
             project_name, project_description, line_items, client_snapshot,
             company_snapshot, bank_snapshot, payment_terms, invoice_notes,
-            payment_instructions, created_by, created_at, updated_at
+            payment_instructions, created_by, payment_link_id, payment_link_url,
+            payment_link_status, payment_link_amount, payment_link_expiry,
+            include_payment_link, include_payment_qr, created_at, updated_at
           ) VALUES (
             ?, ?, ?, ?, 'draft',
             ?, ?, ?, ?,
@@ -1074,6 +1123,8 @@ export class InvoiceD1Service {
             ?, ?, ?, 0.0, ?,
             ?, ?, ?, ?,
             ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
             ?, ?, datetime('now'), datetime('now')
           );
         `;
@@ -1110,6 +1161,13 @@ export class InvoiceD1Service {
           newDraft.invoice_notes,
           newDraft.payment_instructions,
           newDraft.created_by || 'admin',
+          newDraft.payment_link_id || null,
+          newDraft.payment_link_url || null,
+          newDraft.payment_link_status || 'NOT_CREATED',
+          Number(newDraft.payment_link_amount) || 0,
+          newDraft.payment_link_expiry || null,
+          newDraft.include_payment_link ? 1 : 0,
+          newDraft.include_payment_qr ? 1 : 0,
         ]);
       } catch (err) {
         console.warn('[InvoiceD1Service] Remote draft insert failed:', err.message);
@@ -1136,8 +1194,8 @@ export class InvoiceD1Service {
     const newTotal = Number(invoiceData.total_amount) || Number(current.total_amount) || 0;
     const outstandingBalance = Math.max(0, Math.round((newTotal - amountPaid) * 100) / 100);
 
-    let status = current.status;
-    if (current.status !== 'cancelled' && current.status !== 'draft') {
+    let status = invoiceData.status || current.status;
+    if (status !== 'cancelled' && status !== 'draft') {
       if (newTotal > 0 && amountPaid >= newTotal) {
         status = 'paid';
       } else if (amountPaid > 0) {
@@ -1176,6 +1234,9 @@ export class InvoiceD1Service {
             client_snapshot = ?, company_snapshot = ?, bank_snapshot = ?,
             payment_terms = ?, invoice_notes = ?, payment_instructions = ?,
             pdf_storage_key = ?, pdf_generated_at = ?,
+            payment_link_id = ?, payment_link_url = ?, payment_link_status = ?,
+            payment_link_amount = ?, payment_link_expiry = ?,
+            include_payment_link = ?, include_payment_qr = ?,
             updated_at = (datetime('now'))
           WHERE id = ?;
         `;
@@ -1210,6 +1271,13 @@ export class InvoiceD1Service {
           updated.payment_instructions,
           updated.pdf_storage_key || null,
           updated.pdf_generated_at || null,
+          updated.payment_link_id || null,
+          updated.payment_link_url || null,
+          updated.payment_link_status || 'NOT_CREATED',
+          Number(updated.payment_link_amount) || 0,
+          updated.payment_link_expiry || null,
+          updated.include_payment_link ? 1 : 0,
+          updated.include_payment_qr ? 1 : 0,
           updated.id,
         ]);
       } catch (err) {
@@ -1265,6 +1333,13 @@ export class InvoiceD1Service {
             subtotal = ?,
             total_amount = ?,
             outstanding_balance = ?,
+            payment_link_id = ?,
+            payment_link_url = ?,
+            payment_link_status = ?,
+            payment_link_amount = ?,
+            payment_link_expiry = ?,
+            include_payment_link = ?,
+            include_payment_qr = ?,
             updated_at = (datetime('now'))
           WHERE id = ? AND status = 'draft';
         `;
@@ -1278,6 +1353,13 @@ export class InvoiceD1Service {
           issuedRecord.subtotal,
           issuedRecord.total_amount,
           issuedRecord.outstanding_balance,
+          issuedRecord.payment_link_id || null,
+          issuedRecord.payment_link_url || null,
+          issuedRecord.payment_link_status || 'NOT_CREATED',
+          Number(issuedRecord.payment_link_amount) || 0,
+          issuedRecord.payment_link_expiry || null,
+          issuedRecord.include_payment_link ? 1 : 0,
+          issuedRecord.include_payment_qr ? 1 : 0,
           id,
         ]);
       } catch (err) {
@@ -1533,6 +1615,27 @@ export class InvoiceD1Service {
     };
   }
 
+  async findInvoiceByPaymentLinkId(linkId) {
+    if (!linkId) return null;
+    const cleanId = String(linkId).trim();
+
+    if (this.isD1Configured()) {
+      try {
+        const sql = `SELECT * FROM invoices WHERE payment_link_id = ? OR invoice_number = ? LIMIT 1;`;
+        const res = await this.executeD1(sql, [cleanId, cleanId]);
+        if (res && res.results && res.results.length > 0) {
+          return this.deserializeInvoiceRow(res.results[0]);
+        }
+      } catch (err) {
+        console.warn('[InvoiceD1Service] Remote findInvoiceByPaymentLinkId note:', err.message);
+      }
+    }
+
+    const list = this._localStore.invoices || [];
+    const found = list.find((i) => i.payment_link_id === cleanId || i.invoice_number === cleanId);
+    return found ? this.deserializeInvoiceRow(found) : null;
+  }
+
   deserializeInvoiceRow(row) {
     if (!row) return null;
     return {
@@ -1546,6 +1649,13 @@ export class InvoiceD1Service {
       amount_paid: Number(row.amount_paid) || 0,
       outstanding_balance: Number(row.outstanding_balance) || 0,
       tax_enabled: Boolean(row.tax_enabled),
+      include_payment_link: Boolean(row.include_payment_link),
+      include_payment_qr: Boolean(row.include_payment_qr),
+      payment_link_amount: Number(row.payment_link_amount) || 0,
+      payment_link_id: row.payment_link_id || null,
+      payment_link_url: row.payment_link_url || null,
+      payment_link_status: row.payment_link_status || 'NOT_CREATED',
+      payment_link_expiry: row.payment_link_expiry || null,
       line_items: typeof row.line_items === 'string' ? JSON.parse(row.line_items || '[]') : row.line_items || [],
       client_snapshot: typeof row.client_snapshot === 'string' ? JSON.parse(row.client_snapshot || '{}') : row.client_snapshot || {},
       company_snapshot: typeof row.company_snapshot === 'string' ? JSON.parse(row.company_snapshot || '{}') : row.company_snapshot || {},

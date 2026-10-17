@@ -152,6 +152,13 @@ export interface Invoice {
   include_signature?: boolean;
   signature_key?: string | null;
   signature_data_url?: string | null;
+  payment_link_id?: string | null;
+  payment_link_url?: string | null;
+  payment_link_status?: string | null;
+  payment_link_amount?: number | null;
+  payment_link_expiry?: string | null;
+  include_payment_link?: boolean;
+  include_payment_qr?: boolean;
   pdf_storage_key?: string;
   pdf_generated_at?: string;
   created_by?: string;
@@ -276,6 +283,35 @@ export const invoiceApi = {
       `/admin/invoices/${id}/payments`,
       data
     );
+    return res.data;
+  },
+
+  // Payment Link & QR Code
+  async generatePaymentLink(
+    id: string,
+    data?: { include_payment_link?: boolean; include_payment_qr?: boolean; force_regenerate?: boolean }
+  ): Promise<{
+    success: boolean;
+    reused?: boolean;
+    message?: string;
+    amount_mismatch?: boolean;
+    current_invoice_total?: number;
+    existing_link_amount?: number;
+    link: {
+      link_id: string;
+      link_url: string;
+      link_amount: number;
+      link_status: string;
+      include_payment_link?: boolean;
+      include_payment_qr?: boolean;
+    };
+  }> {
+    const res = await api.post(`/admin/invoices/${id}/payment-link`, data || {});
+    return res.data;
+  },
+
+  async cancelPaymentLink(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await api.delete(`/admin/invoices/${id}/payment-link`);
     return res.data;
   },
 

@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import QRCode from 'qrcode';
+import { cashfreeService } from '../services/cashfreeService.js';
 import { invoiceD1Service } from '../services/invoiceD1Service.js';
 import { generateInvoicePdfBuffer } from '../services/invoicePdfService.js';
 import { generateInvoiceDocxBuffer } from '../services/invoiceWordService.js';
@@ -550,8 +552,23 @@ export const issueInvoice = async (req, res) => {
       }
     }
 
+    // Load QR data URL if payment QR is included
+    let qrDataUrl = undefined;
+    if (issuedPayload.include_payment_qr && issuedPayload.payment_link_url) {
+      try {
+        qrDataUrl = await QRCode.toDataURL(issuedPayload.payment_link_url, {
+          errorCorrectionLevel: 'H',
+          margin: 1,
+          scale: 6,
+          width: 240,
+        });
+      } catch (qrErr) {
+        console.warn('[invoiceController] QR code generation error:', qrErr.message);
+      }
+    }
+
     // Generate authoritative server-side PDF
-    const pdfBuffer = generateInvoicePdfBuffer(issuedPayload, { signatureDataUrl });
+    const pdfBuffer = generateInvoicePdfBuffer(issuedPayload, { signatureDataUrl, qrDataUrl });
     const storageKey = `invoices/${issuedPayload.invoice_number}.pdf`;
 
     // Upload to private Cloudflare R2 / durable disk storage
@@ -647,7 +664,21 @@ export const updateInvoice = async (req, res) => {
           }
         }
 
-        const pdfBuffer = generateInvoicePdfBuffer(updatedData, { signatureDataUrl });
+        let qrDataUrl = undefined;
+        if (updatedData.include_payment_qr && updatedData.payment_link_url) {
+          try {
+            qrDataUrl = await QRCode.toDataURL(updatedData.payment_link_url, {
+              errorCorrectionLevel: 'H',
+              margin: 1,
+              scale: 6,
+              width: 240,
+            });
+          } catch (qrErr) {
+            console.warn('[invoiceController] QR code generation error on update:', qrErr.message);
+          }
+        }
+
+        const pdfBuffer = generateInvoicePdfBuffer(updatedData, { signatureDataUrl, qrDataUrl });
         const storageKey = targetInvoice.pdf_storage_key || `invoices/${targetInvoice.invoice_number}.pdf`;
         const uploadRes = await invoiceStorageService.uploadInvoicePdf(storageKey, pdfBuffer);
         updatedData.pdf_storage_key = uploadRes.key;
@@ -761,7 +792,21 @@ export const getInvoicePdf = async (req, res) => {
         }
       }
 
-      pdfBuffer = generateInvoicePdfBuffer(targetInvoice, { signatureDataUrl });
+      let qrDataUrl = undefined;
+      if (targetInvoice.include_payment_qr && targetInvoice.payment_link_url) {
+        try {
+          qrDataUrl = await QRCode.toDataURL(targetInvoice.payment_link_url, {
+            errorCorrectionLevel: 'H',
+            margin: 1,
+            scale: 6,
+            width: 240,
+          });
+        } catch (qrErr) {
+          console.warn('[invoiceController] QR code generation error on fetch:', qrErr.message);
+        }
+      }
+
+      pdfBuffer = generateInvoicePdfBuffer(targetInvoice, { signatureDataUrl, qrDataUrl });
       const key = `invoices/${targetInvoice.invoice_number}.pdf`;
       await invoiceStorageService.uploadInvoicePdf(key, pdfBuffer);
     }
@@ -846,5 +891,187 @@ export const deleteInvoice = async (req, res) => {
     console.error('[invoiceController] deleteInvoice error:', err);
     const status = err.message?.includes('Cannot permanently delete') ? 400 : 500;
     res.status(status).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * 13. Create or Retrieve Cashfree Payment Link for Invoice (Idempotent & Notification-Suppressed)
+ */
+export const generateInvoicePaymentLink = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { include_payment_link, include_payment_qr, force_regenerate } = req.body || {};
+
+    const targetInvoice = await invoiceD1Service.getInvoiceById(id);
+    if (!targetInvoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found.' });
+    }
+
+    if (targetInvoice.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Cannot generate payment link for a cancelled invoice.' });
+    }
+
+    if (targetInvoice.status === 'paid') {
+      return res.status(400).json({ success: false, message: 'This invoice has already been fully paid.' });
+    }
+
+    // Amount must strictly derive from authoritative invoice calculation on the server
+    const total = Number(targetInvoice.total_amount || 0);
+    const paid = Number(targetInvoice.amount_paid || 0);
+    const payableAmount = targetInvoice.status === 'draft' ? total : Math.max(0, Number(targetInvoice.outstanding_balance ?? (total - paid)));
+    if (isNaN(payableAmount) || payableAmount < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invoice payable amount must be at least ₹1.00 to generate a payment link.',
+      });
+    }
+
+    const incLink = include_payment_link !== undefined ? Boolean(include_payment_link) : (targetInvoice.include_payment_link !== undefined ? Boolean(targetInvoice.include_payment_link) : true);
+    const incQr = include_payment_qr !== undefined ? Boolean(include_payment_qr) : (targetInvoice.include_payment_qr !== undefined ? Boolean(targetInvoice.include_payment_qr) : true);
+
+    // Idempotency: If an active link already exists for this exact amount, reuse it without duplicate API calls
+    const existingLinkId = targetInvoice.payment_link_id;
+    const existingUrl = targetInvoice.payment_link_url;
+    const existingStatus = targetInvoice.payment_link_status;
+    const existingAmount = Number(targetInvoice.payment_link_amount || 0);
+
+    const isExistingAmountMatching = Math.abs(existingAmount - payableAmount) < 0.01;
+
+    if (!force_regenerate && existingLinkId && existingUrl && existingStatus === 'ACTIVE') {
+      if (isExistingAmountMatching) {
+        // Persist preferences if modified
+        if (targetInvoice.include_payment_link !== incLink || targetInvoice.include_payment_qr !== incQr) {
+          await invoiceD1Service.updateInvoice(targetInvoice.id, {
+            include_payment_link: incLink,
+            include_payment_qr: incQr,
+          });
+        }
+
+        return res.json({
+          success: true,
+          reused: true,
+          message: 'Existing active payment link retrieved successfully.',
+          link: {
+            link_id: existingLinkId,
+            link_url: existingUrl,
+            link_amount: existingAmount,
+            link_status: 'ACTIVE',
+            include_payment_link: incLink,
+            include_payment_qr: incQr,
+          },
+        });
+      } else {
+        // Amount changed! Return warning or require regeneration
+        return res.status(409).json({
+          success: false,
+          amount_mismatch: true,
+          current_invoice_total: payableAmount,
+          existing_link_amount: existingAmount,
+          message: `The invoice total has changed from ₹${existingAmount.toFixed(2)} to ₹${payableAmount.toFixed(2)}. Please confirm regeneration to update the Cashfree payment link.`,
+        });
+      }
+    }
+
+    // If recreating or amount changed, cancel old link if one was present
+    if (existingLinkId && (!isExistingAmountMatching || force_regenerate)) {
+      try {
+        await cashfreeService.cancelPaymentLink(existingLinkId);
+      } catch (cancelErr) {
+        console.warn(`[generateInvoicePaymentLink] Could not cancel previous link ${existingLinkId}:`, cancelErr.message);
+      }
+    }
+
+    // Clean client details
+    const client = targetInvoice.client_snapshot || {};
+    const cleanName = (client.company_name || client.contact_person || 'Zenemoo Client').trim().slice(0, 50);
+    const cleanEmail = (client.billing_email && client.billing_email.includes('@'))
+      ? client.billing_email.trim().toLowerCase()
+      : 'billing@zenemoo.in';
+    const cleanPhone = (client.phone || '').replace(/[^0-9]/g, '').slice(-10) || '9999999999';
+
+    // Format unique deterministic link ID: PL_INV_<invoice_number_cleaned>_<salt>
+    const cleanNum = (targetInvoice.invoice_number || 'INV').replace(/[^a-zA-Z0-9]/g, '_');
+    const salt = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const linkId = `PL_INV_${cleanNum}_${salt}`.slice(0, 45);
+
+    // Call Cashfree PG API with EXPLICIT notification suppression
+    const cfLink = await cashfreeService.createPaymentLink({
+      linkId,
+      amount: payableAmount,
+      currency: targetInvoice.currency || 'INR',
+      purpose: `Invoice ${targetInvoice.invoice_number} Payment — Zenemoo`,
+      customer: {
+        customerName: cleanName,
+        customerEmail: cleanEmail,
+        customerPhone: cleanPhone,
+      },
+      returnUrl: `https://www.zenemoo.in/pay/invoice-success?invoice_id=${encodeURIComponent(targetInvoice.id)}&order_id={order_id}`,
+      notify: {
+        sendSms: false,
+        sendEmail: false,
+      },
+    });
+
+    // Update authoritative invoice record in D1 / local store
+    await invoiceD1Service.updateInvoice(targetInvoice.id, {
+      payment_link_id: cfLink.linkId,
+      payment_link_url: cfLink.linkUrl,
+      payment_link_status: cfLink.linkStatus || 'ACTIVE',
+      payment_link_amount: payableAmount,
+      payment_link_expiry: cfLink.linkExpiryTime || null,
+      include_payment_link: incLink,
+      include_payment_qr: incQr,
+    });
+
+    return res.status(201).json({
+      success: true,
+      reused: false,
+      message: 'Cashfree payment link generated successfully without sending notifications.',
+      link: {
+        link_id: cfLink.linkId,
+        link_url: cfLink.linkUrl,
+        link_amount: payableAmount,
+        link_status: cfLink.linkStatus || 'ACTIVE',
+        include_payment_link: incLink,
+        include_payment_qr: incQr,
+      },
+    });
+  } catch (err) {
+    console.error('[generateInvoicePaymentLink] error:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to generate Cashfree payment link.',
+    });
+  }
+};
+
+/**
+ * 14. Cancel / Disable Invoice Payment Link
+ */
+export const cancelInvoicePaymentLink = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const targetInvoice = await invoiceD1Service.getInvoiceById(id);
+    if (!targetInvoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found.' });
+    }
+
+    if (targetInvoice.payment_link_id) {
+      try {
+        await cashfreeService.cancelPaymentLink(targetInvoice.payment_link_id);
+      } catch (err) {
+        console.warn('[cancelInvoicePaymentLink] Cashfree cancel warning:', err.message);
+      }
+    }
+
+    await invoiceD1Service.updateInvoice(targetInvoice.id, {
+      payment_link_status: 'CANCELLED',
+      include_payment_link: false,
+      include_payment_qr: false,
+    });
+
+    res.json({ success: true, message: 'Payment link disabled for this invoice.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };

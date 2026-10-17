@@ -17,6 +17,11 @@ import {
   Percent,
   PenTool,
   Lock,
+  Link2,
+  Copy,
+  ExternalLink,
+  Check,
+  QrCode,
 } from 'lucide-react';
 import {
   Invoice,
@@ -28,6 +33,7 @@ import {
   invoiceApi,
 } from '../../services/invoiceApi';
 import { formatAmountInWords, generateInvoicePdfDoc, formatCurrency } from '../../utils/invoicePdfGenerator';
+import { generateQrDataUrl } from '../../utils/upiQrUtils';
 import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 
 interface CreateInvoiceViewProps {
@@ -203,6 +209,53 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
 
+  // Authoritative Invoice ID (from editingInvoice or newly saved draft)
+  const [currentInvoiceId, setCurrentInvoiceId] = useState<string>(() => editingInvoice?.id || '');
+
+  // Payment Link & QR Code State (Optional - default disabled)
+  const [enablePaymentLink, setEnablePaymentLink] = useState<boolean>(() => {
+    return Boolean(
+      editingInvoice?.payment_link_id ||
+      editingInvoice?.include_payment_link ||
+      editingInvoice?.include_payment_qr
+    );
+  });
+  const [paymentLinkId, setPaymentLinkId] = useState<string>(() => editingInvoice?.payment_link_id || '');
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string>(() => editingInvoice?.payment_link_url || '');
+  const [paymentLinkStatus, setPaymentLinkStatus] = useState<string>(() => editingInvoice?.payment_link_status || '');
+  const [paymentLinkAmount, setPaymentLinkAmount] = useState<number>(() => {
+    return editingInvoice?.payment_link_amount ? Number(editingInvoice.payment_link_amount) : 0;
+  });
+  const [includePaymentLinkInPdf, setIncludePaymentLinkInPdf] = useState<boolean>(() => {
+    return editingInvoice?.include_payment_link !== undefined ? Boolean(editingInvoice.include_payment_link) : true;
+  });
+  const [includeQrCodeInPdf, setIncludeQrCodeInPdf] = useState<boolean>(() => {
+    return editingInvoice?.include_payment_qr !== undefined ? Boolean(editingInvoice.include_payment_qr) : true;
+  });
+  const [paymentQrDataUrl, setPaymentQrDataUrl] = useState<string>('');
+  const [isGeneratingPaymentLink, setIsGeneratingPaymentLink] = useState<boolean>(false);
+  const [hasCopiedLink, setHasCopiedLink] = useState<boolean>(false);
+
+  // Synchronize QR Data URL whenever paymentLinkUrl changes
+  useEffect(() => {
+    let isMounted = true;
+    if (paymentLinkUrl) {
+      generateQrDataUrl(paymentLinkUrl)
+        .then((dataUrl) => {
+          if (isMounted) setPaymentQrDataUrl(dataUrl);
+        })
+        .catch((err) => {
+          console.warn('[CreateInvoiceView] QR generation failed:', err);
+          if (isMounted) setPaymentQrDataUrl('');
+        });
+    } else {
+      setPaymentQrDataUrl('');
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [paymentLinkUrl]);
+
   // Local Draft Persistence State & Confirmation Modals
   const DRAFT_STORAGE_KEY = 'zenemoo_invoice_draft_v1';
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -258,6 +311,15 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     setInvoiceNotes(settings?.default_invoice_notes || '');
     setSignatoryName(settings?.authorized_signatory_name || 'Prem Prasad');
     setIncludeSignature(false);
+    setEnablePaymentLink(false);
+    setPaymentLinkId('');
+    setPaymentLinkUrl('');
+    setPaymentLinkStatus('');
+    setPaymentLinkAmount(0);
+    setIncludePaymentLinkInPdf(true);
+    setIncludeQrCodeInPdf(true);
+    setPaymentQrDataUrl('');
+    setCurrentInvoiceId('');
   };
 
   // 1. Restore local draft on mount (only for fresh creation, never overwriting existing invoices)
@@ -304,6 +366,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
           if (parsed.invoiceNotes !== undefined) setInvoiceNotes(parsed.invoiceNotes);
           if (parsed.signatoryName) setSignatoryName(parsed.signatoryName);
           if (parsed.includeSignature !== undefined) setIncludeSignature(Boolean(parsed.includeSignature));
+          if (parsed.enablePaymentLink !== undefined) setEnablePaymentLink(Boolean(parsed.enablePaymentLink));
+          if (parsed.paymentLinkId) setPaymentLinkId(parsed.paymentLinkId);
+          if (parsed.paymentLinkUrl) setPaymentLinkUrl(parsed.paymentLinkUrl);
+          if (parsed.paymentLinkStatus) setPaymentLinkStatus(parsed.paymentLinkStatus);
+          if (parsed.paymentLinkAmount !== undefined) setPaymentLinkAmount(Number(parsed.paymentLinkAmount));
+          if (parsed.includePaymentLinkInPdf !== undefined) setIncludePaymentLinkInPdf(Boolean(parsed.includePaymentLinkInPdf));
+          if (parsed.includeQrCodeInPdf !== undefined) setIncludeQrCodeInPdf(Boolean(parsed.includeQrCodeInPdf));
+          if (parsed.currentInvoiceId) setCurrentInvoiceId(parsed.currentInvoiceId);
 
           setHasStoredDraft(true);
           const savedTime = parsed.savedAt ? new Date(parsed.savedAt).toLocaleTimeString() : 'earlier';
@@ -359,6 +429,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
           invoiceNotes,
           signatoryName,
           includeSignature,
+          enablePaymentLink,
+          paymentLinkId,
+          paymentLinkUrl,
+          paymentLinkStatus,
+          paymentLinkAmount,
+          includePaymentLinkInPdf,
+          includeQrCodeInPdf,
+          currentInvoiceId,
           savedAt: new Date().toISOString(),
         };
         localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftData));
@@ -408,6 +486,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     invoiceNotes,
     signatoryName,
     includeSignature,
+    enablePaymentLink,
+    paymentLinkId,
+    paymentLinkUrl,
+    paymentLinkStatus,
+    paymentLinkAmount,
+    includePaymentLinkInPdf,
+    includeQrCodeInPdf,
+    currentInvoiceId,
   ]);
 
   const handleDiscardDraft = () => {
@@ -583,6 +669,13 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       status: editingInvoice?.status || 'draft',
       include_signature: includeSignature,
       signature_data_url: includeSignature ? (signatureData?.data_url || null) : null,
+      payment_link_id: enablePaymentLink ? (paymentLinkId || undefined) : undefined,
+      payment_link_url: enablePaymentLink ? (paymentLinkUrl || undefined) : undefined,
+      payment_link_status: enablePaymentLink ? (paymentLinkStatus || undefined) : undefined,
+      payment_link_amount: enablePaymentLink ? (paymentLinkAmount || undefined) : undefined,
+      include_payment_link: enablePaymentLink ? includePaymentLinkInPdf : false,
+      include_payment_qr: enablePaymentLink ? includeQrCodeInPdf : false,
+      payment_qr_data_url: (enablePaymentLink && includeQrCodeInPdf && paymentQrDataUrl) ? paymentQrDataUrl : null,
     };
   }, [
     editingInvoice,
@@ -624,6 +717,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     paymentTerms,
     includeSignature,
     signatureData,
+    enablePaymentLink,
+    paymentLinkId,
+    paymentLinkUrl,
+    paymentLinkStatus,
+    paymentLinkAmount,
+    includePaymentLinkInPdf,
+    includeQrCodeInPdf,
+    paymentQrDataUrl,
   ]);
 
   // Client PDF Preview Downloader
@@ -631,6 +732,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     try {
       const doc = generateInvoicePdfDoc(previewInvoiceData, {
         signatureDataUrl: includeSignature && signatureData?.data_url ? signatureData.data_url : undefined,
+        qrDataUrl: (enablePaymentLink && includeQrCodeInPdf && paymentQrDataUrl) ? paymentQrDataUrl : undefined,
       });
       doc.save(`PREVIEW-${previewInvoiceData.invoice_number || 'Zenemoo-Invoice'}.pdf`);
       showToast?.('Preview Downloaded', 'PDF preview generated successfully.', 'info');
@@ -642,7 +744,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   // Build Payload
   const buildPayload = () => {
     return {
-      id: editingInvoice?.id,
+      id: editingInvoice?.id || currentInvoiceId || undefined,
       invoice_date: invoiceDate,
       due_date: dueDate,
       service_period_start: serviceStart || null,
@@ -663,6 +765,12 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       tax_label: taxLabel,
       tax_rate: taxRate,
       client_id: selectedClientId || undefined,
+      payment_link_id: enablePaymentLink ? (paymentLinkId || null) : null,
+      payment_link_url: enablePaymentLink ? (paymentLinkUrl || null) : null,
+      payment_link_status: enablePaymentLink ? (paymentLinkStatus || null) : null,
+      payment_link_amount: enablePaymentLink ? (paymentLinkAmount || null) : null,
+      include_payment_link: enablePaymentLink ? includePaymentLinkInPdf : false,
+      include_payment_qr: enablePaymentLink ? includeQrCodeInPdf : false,
       client_snapshot: {
         company_name: clientCompanyName,
         contact_person: clientContactPerson,
@@ -700,12 +808,108 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     };
   };
 
+  const isAmountMismatched = useMemo(() => {
+    if (!paymentLinkUrl || !paymentLinkAmount) return false;
+    return Math.abs(paymentLinkAmount - totalAmount) > 0.01;
+  }, [paymentLinkUrl, paymentLinkAmount, totalAmount]);
+
+  const handleGeneratePaymentLink = async (forceRegenerate = false) => {
+    if (!clientCompanyName.trim()) {
+      showToast?.('Validation Error', 'Please enter a Client / Company Name before generating a payment link.', 'warning');
+      return;
+    }
+    if (totalAmount < 1) {
+      showToast?.('Validation Error', 'Invoice total must be at least ₹1.00 to generate a payment link.', 'warning');
+      return;
+    }
+
+    setIsGeneratingPaymentLink(true);
+    try {
+      let invoiceId = currentInvoiceId || editingInvoice?.id;
+      if (!invoiceId) {
+        const draftPayload = buildPayload();
+        const savedDraft = await invoiceApi.saveDraft(draftPayload);
+        invoiceId = savedDraft.id;
+        setCurrentInvoiceId(savedDraft.id);
+        onSaved(savedDraft);
+      }
+
+      const res = await invoiceApi.generatePaymentLink(invoiceId, {
+        include_payment_link: includePaymentLinkInPdf,
+        include_payment_qr: includeQrCodeInPdf,
+        force_regenerate: forceRegenerate,
+      });
+
+      if (res.link) {
+        setPaymentLinkId(res.link.link_id);
+        setPaymentLinkUrl(res.link.link_url);
+        setPaymentLinkStatus(res.link.link_status);
+        setPaymentLinkAmount(res.link.link_amount);
+        if (res.link.include_payment_link !== undefined) setIncludePaymentLinkInPdf(res.link.include_payment_link);
+        if (res.link.include_payment_qr !== undefined) setIncludeQrCodeInPdf(res.link.include_payment_qr);
+        showToast?.(
+          res.reused ? 'Payment Link Retrieved' : 'Payment Link Created',
+          res.message || 'Cashfree payment link generated successfully without sending notifications.',
+          'success'
+        );
+      }
+    } catch (err: any) {
+      if (err.response?.status === 409 && err.response?.data?.amount_mismatch) {
+        showToast?.(
+          'Amount Mismatch',
+          err.response.data.message || 'Invoice total changed. Please regenerate link.',
+          'warning'
+        );
+      } else {
+        showToast?.(
+          'Payment Link Error',
+          err.response?.data?.message || err.message || 'Could not generate Cashfree payment link.',
+          'error'
+        );
+      }
+    } finally {
+      setIsGeneratingPaymentLink(false);
+    }
+  };
+
+  const handleCancelPaymentLink = async () => {
+    const invoiceId = currentInvoiceId || editingInvoice?.id;
+    if (!invoiceId) {
+      setPaymentLinkId('');
+      setPaymentLinkUrl('');
+      setPaymentLinkStatus('');
+      setPaymentLinkAmount(0);
+      setPaymentQrDataUrl('');
+      return;
+    }
+    try {
+      await invoiceApi.cancelPaymentLink(invoiceId);
+      setPaymentLinkId('');
+      setPaymentLinkUrl('');
+      setPaymentLinkStatus('CANCELLED');
+      setPaymentLinkAmount(0);
+      setPaymentQrDataUrl('');
+      showToast?.('Payment Link Removed', 'Cashfree payment link cancelled and removed from this invoice.', 'info');
+    } catch (err: any) {
+      showToast?.('Error', err.response?.data?.message || err.message || 'Failed to cancel payment link', 'error');
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (!paymentLinkUrl) return;
+    navigator.clipboard.writeText(paymentLinkUrl);
+    setHasCopiedLink(true);
+    showToast?.('Copied to Clipboard', 'Payment link copied to clipboard.', 'info');
+    setTimeout(() => setHasCopiedLink(false), 2000);
+  };
+
   // Save Draft
   const handleSaveDraft = async () => {
     setIsSubmitting(true);
     try {
       const payload = buildPayload();
       const saved = await invoiceApi.saveDraft(payload);
+      setCurrentInvoiceId(saved.id);
 
       if (saveClientForFuture && clientCompanyName && clientBillingEmail) {
         try {
@@ -775,6 +979,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
       }
 
       const issued = await invoiceApi.issueInvoice(draftId, payload);
+      setCurrentInvoiceId(issued.id);
 
       if (saveClientForFuture && clientCompanyName && clientBillingEmail) {
         try {
@@ -837,6 +1042,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     try {
       const payload = buildPayload();
       const updated = await invoiceApi.updateInvoice(editingInvoice.id, payload);
+      setCurrentInvoiceId(updated.id);
 
       if (saveClientForFuture && clientCompanyName && clientBillingEmail) {
         try {
@@ -1577,6 +1783,251 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
               )}
             </div>
           </div>
+
+          {/* Card 6: Payment Link & QR Code (Optional) */}
+          <div className="p-5 rounded-xl bg-slate-900/60 border border-white/10 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                Payment Link & QR Code
+              </h3>
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-800 border border-white/10 text-slate-300">
+                Optional
+              </span>
+            </div>
+
+            {/* Toggle Enable Payment Link */}
+            <label className="flex items-start gap-3 cursor-pointer group select-none">
+              <input
+                type="checkbox"
+                checked={enablePaymentLink}
+                onChange={(e) => {
+                  setEnablePaymentLink(e.target.checked);
+                  if (e.target.checked && !includePaymentLinkInPdf && !includeQrCodeInPdf) {
+                    setIncludePaymentLinkInPdf(true);
+                    setIncludeQrCodeInPdf(true);
+                  }
+                }}
+                className="mt-0.5 rounded border-white/20 bg-slate-950 text-blue-500 focus:ring-blue-500/20"
+              />
+              <div className="text-xs">
+                <span className="font-semibold text-white group-hover:text-blue-300 transition-colors">
+                  Enable Cashfree Payment Link & QR for this invoice
+                </span>
+                <p className="text-slate-400 text-[11px] mt-0.5">
+                  Generates an online checkout link and high-resolution QR code using Cashfree Payment Gateway without automated emails or SMS.
+                </p>
+              </div>
+            </label>
+
+            {enablePaymentLink && (
+              <div className="pt-3 border-t border-white/10 space-y-4">
+                {/* Notice disclaimer */}
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-300 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-400" />
+                  <div>
+                    <span className="font-semibold text-blue-200">Manual Distribution Only</span>
+                    <p className="text-[11px] text-blue-300/80 mt-0.5">
+                      Automatic email and SMS notifications are disabled. Share the payment link yourself with your client.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Amount and Client Details (Read-Only) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950/80 rounded-lg border border-white/10 text-xs">
+                  <div>
+                    <span className="text-slate-400 text-[11px] block">Payable Invoice Amount:</span>
+                    <span className="text-base font-bold text-white">
+                      {currSymbol}{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[11px] block">Billed Client:</span>
+                    <span className="font-medium text-slate-200 truncate block">
+                      {clientCompanyName || '(Enter client name above)'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 truncate block">
+                      {clientBillingEmail || '(Enter billing email above)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Outdated Amount Warning */}
+                {isAmountMismatched && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+                      <div>
+                        <span className="font-semibold text-amber-200">Invoice Total Changed</span>
+                        <p className="text-[11px] text-amber-300/80 mt-0.5">
+                          Active payment link was created for {currSymbol}{paymentLinkAmount.toFixed(2)}, but invoice total is now {currSymbol}{totalAmount.toFixed(2)}. The link must be regenerated before sharing.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleGeneratePaymentLink(true)}
+                      disabled={isGeneratingPaymentLink}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-xs transition-colors whitespace-nowrap disabled:opacity-50"
+                    >
+                      {isGeneratingPaymentLink ? 'Updating...' : 'Regenerate Link'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Generate / Regenerate Controls */}
+                {!paymentLinkUrl ? (
+                  <div className="text-center py-2">
+                    <button
+                      type="button"
+                      onClick={() => handleGeneratePaymentLink(false)}
+                      disabled={isGeneratingPaymentLink || totalAmount < 1 || !clientCompanyName.trim()}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs shadow-lg shadow-emerald-500/20 inline-flex items-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      {isGeneratingPaymentLink ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          Creating Cashfree Link...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-3.5 h-3.5" />
+                          Generate Cashfree Payment Link
+                        </>
+                      )}
+                    </button>
+                    {(!clientCompanyName.trim() || totalAmount < 1) && (
+                      <p className="text-[11px] text-slate-500 mt-1.5">
+                        Client company name and an invoice total of at least {currSymbol}1.00 are required.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Link URL Box with Copy and Open */}
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                        Cashfree Payment URL
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            readOnly
+                            value={paymentLinkUrl}
+                            className="w-full pl-8 pr-3 py-2 bg-slate-950 border border-white/10 rounded-lg text-xs text-emerald-400 font-mono select-all focus:outline-none"
+                          />
+                          <Link2 className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyLink}
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-all"
+                          title="Copy Link"
+                        >
+                          {hasCopiedLink ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                        <a
+                          href={paymentLinkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-all"
+                          title="Open Link in New Tab"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Open
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* QR Code and Actions */}
+                    <div className="p-3.5 bg-slate-950/80 border border-white/10 rounded-lg flex flex-col sm:flex-row items-center gap-4">
+                      {paymentQrDataUrl ? (
+                        <div className="p-2 bg-white rounded-lg shadow border border-slate-300 flex-shrink-0">
+                          <img
+                            src={paymentQrDataUrl}
+                            alt="Cashfree Payment QR"
+                            className="w-24 h-24 object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-24 h-24 rounded-lg bg-slate-900 border border-white/10 flex items-center justify-center flex-shrink-0">
+                          <RefreshCw className="w-5 h-5 text-slate-500 animate-spin" />
+                        </div>
+                      )}
+
+                      <div className="flex-1 space-y-2 text-xs text-center sm:text-left">
+                        <div className="flex items-center justify-center sm:justify-start gap-2">
+                          <span className="font-semibold text-white">Payment Link Active</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            {paymentLinkStatus || 'ACTIVE'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Customers scanning this QR will be directed to the official Cashfree checkout page for invoice amount {currSymbol}{paymentLinkAmount.toFixed(2)}.
+                        </p>
+                        <div className="pt-1 flex flex-wrap gap-2 justify-center sm:justify-start">
+                          <button
+                            type="button"
+                            onClick={() => handleGeneratePaymentLink(true)}
+                            disabled={isGeneratingPaymentLink}
+                            className="text-[11px] text-slate-400 hover:text-blue-400 flex items-center gap-1 transition-colors"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isGeneratingPaymentLink ? 'animate-spin' : ''}`} />
+                            Regenerate
+                          </button>
+                          <span className="text-slate-600">•</span>
+                          <button
+                            type="button"
+                            onClick={handleCancelPaymentLink}
+                            className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove Link
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* PDF Inclusion Preferences */}
+                    <div className="p-3 bg-slate-900/40 rounded-lg border border-white/5 space-y-2.5">
+                      <span className="text-xs font-semibold text-slate-300 block">
+                        PDF Document Options:
+                      </span>
+                      <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300 select-none">
+                        <input
+                          type="checkbox"
+                          checked={includePaymentLinkInPdf}
+                          onChange={(e) => setIncludePaymentLinkInPdf(e.target.checked)}
+                          className="rounded border-white/20 bg-slate-950 text-blue-500"
+                        />
+                        <span>Include clickable payment link in PDF</span>
+                      </label>
+                      <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300 select-none">
+                        <input
+                          type="checkbox"
+                          checked={includeQrCodeInPdf}
+                          onChange={(e) => setIncludeQrCodeInPdf(e.target.checked)}
+                          className="rounded border-white/20 bg-slate-950 text-blue-500"
+                        />
+                        <span>Include payment QR code in PDF</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* RIGHT COLUMN: LIVE A4 PAPER PREVIEW (5 Cols) */}
@@ -1699,10 +2150,29 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
 
                   {selectedBankAccount?.bank_name && (
                     <div className="p-1.5 rounded bg-slate-50 border border-slate-200 mt-2 text-[7.5px] leading-tight">
-                      <div className="font-bold text-blue-600 mb-0.5">Remittance Account</div>
-                      <div>Bank: {selectedBankAccount.bank_name}</div>
-                      <div>A/C: {selectedBankAccount.account_number}</div>
-                      <div>IFSC: {selectedBankAccount.ifsc_code}</div>
+                      <div className="flex justify-between items-start gap-1">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-blue-600 mb-0.5">Remittance Account</div>
+                          <div>Bank: {selectedBankAccount.bank_name}</div>
+                          <div>A/C: {selectedBankAccount.account_number}</div>
+                          <div>IFSC: {selectedBankAccount.ifsc_code}</div>
+                          {enablePaymentLink && includePaymentLinkInPdf && paymentLinkUrl && (
+                            <div className="mt-1 text-[7px] text-blue-600 font-semibold truncate max-w-[130px]" title={paymentLinkUrl}>
+                              Pay Online: {paymentLinkUrl}
+                            </div>
+                          )}
+                        </div>
+                        {enablePaymentLink && includeQrCodeInPdf && paymentQrDataUrl && (
+                          <div className="flex flex-col items-center flex-shrink-0 ml-1">
+                            <img
+                              src={paymentQrDataUrl}
+                              alt="Cashfree Payment QR"
+                              className="w-10 h-10 border border-slate-200 rounded p-0.5 bg-white object-contain"
+                            />
+                            <span className="text-[6px] font-bold text-blue-600 mt-0.5">Scan to Pay</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
