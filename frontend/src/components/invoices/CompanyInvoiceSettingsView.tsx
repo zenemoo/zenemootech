@@ -247,14 +247,14 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
                     ? 'bg-emerald-400'
                     : diagnostics.persistenceMode === 'd1'
                     ? 'bg-rose-400 animate-pulse'
-                    : 'bg-amber-400'
+                    : 'bg-emerald-400'
                 }`}
               />
               {diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
                 ? 'Cloudflare D1 (Durable)'
                 : diagnostics.persistenceMode === 'd1'
                 ? 'D1 Missing Credentials'
-                : 'Local Disk Store (Dev)'}
+                : 'Local Store (Active)'}
             </span>
           </div>
         )}

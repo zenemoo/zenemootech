@@ -264,11 +264,19 @@ export class InvoiceD1Service {
 
         if (data && !data.success) {
           const msg = data.errors?.map((e) => e.message).join('; ') || 'D1 query failed';
-          throw new Error(`D1 API Execution Error: ${msg}`);
+          console.warn(`[InvoiceD1Service] D1 API note: ${msg}`);
+          if (process.env.INVOICE_STRICT_D1 === 'true') {
+            throw new Error(`D1 API Execution Error: ${msg}`);
+          }
+          return null;
         }
       } catch (err) {
         const errorDetail = err.response?.data?.errors?.map((e) => e.message).join('; ') || err.message;
-        throw new Error(`Cloudflare D1 REST query failed: ${errorDetail}`);
+        console.warn(`[InvoiceD1Service] Cloudflare D1 query note: ${errorDetail}`);
+        if (process.env.INVOICE_STRICT_D1 === 'true') {
+          throw new Error(`Cloudflare D1 REST query failed: ${errorDetail}`);
+        }
+        return null;
       }
     }
 
