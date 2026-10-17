@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import {
   FileText,
   X,
@@ -13,6 +14,11 @@ import {
   ShieldCheck,
   User,
   Edit,
+  QrCode,
+  Link2,
+  ExternalLink,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Invoice } from '../../services/invoiceApi';
 import { formatCurrency } from '../../utils/invoicePdfGenerator';
@@ -37,6 +43,41 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
 }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+
+  const paymentUrl = invoice?.payment_link_url || (invoice?.payment_link_id ? `https://www.zenemoo.in/pay/${invoice.payment_link_id}` : '');
+  const hasPaymentLink = Boolean(paymentUrl || invoice?.payment_link_id || invoice?.include_payment_link || invoice?.include_payment_qr);
+
+  useEffect(() => {
+    let isSubscribed = true;
+    if (paymentUrl) {
+      QRCode.toDataURL(paymentUrl, {
+        width: 256,
+        margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then((url) => {
+          if (isSubscribed) setQrCodeDataUrl(url);
+        })
+        .catch((err) => {
+          console.warn('QR code generation failed:', err);
+        });
+    } else {
+      setQrCodeDataUrl(null);
+    }
+    return () => {
+      isSubscribed = false;
+    };
+  }, [paymentUrl]);
+
+  const handleCopyLink = () => {
+    if (!paymentUrl) return;
+    navigator.clipboard.writeText(paymentUrl).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    });
+  };
 
   if (!invoice) return null;
 
@@ -214,6 +255,114 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Cashfree Online Payment Link & UPI QR Code Section */}
+          {hasPaymentLink && paymentUrl && (
+            <div className="p-4 rounded-xl bg-gradient-to-br from-[#061224] via-[#091a36] to-[#040914] border border-cyan-500/30 shadow-lg shadow-cyan-950/40 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-500/20 pb-2.5">
+                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs">
+                  <QrCode className="w-4 h-4 text-cyan-400" />
+                  <span>Cashfree Online Payment Link & UPI QR Code</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                      invoice.payment_link_status === 'PAID'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : invoice.payment_link_status === 'ACTIVE'
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                        : 'bg-slate-700/40 text-slate-300 border-slate-600/40'
+                    }`}
+                  >
+                    {invoice.payment_link_status || 'ACTIVE'}
+                  </span>
+                  <span className="text-[11px] font-mono text-cyan-300 font-semibold">
+                    Payable: {formatCurrency(outstanding > 0 ? outstanding : invoice.total_amount, invoice.currency)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                {/* QR Code Container */}
+                {qrCodeDataUrl ? (
+                  <div className="shrink-0 flex flex-col items-center gap-1.5 p-2 bg-white rounded-lg shadow-md border border-cyan-400/30">
+                    <img
+                      src={qrCodeDataUrl}
+                      alt="Invoice Payment QR Code"
+                      className="w-24 h-24 object-contain"
+                    />
+                    <span className="text-[9px] font-mono text-slate-800 font-bold uppercase tracking-tighter">
+                      Scan to Pay
+                    </span>
+                  </div>
+                ) : (
+                  <div className="shrink-0 w-28 h-28 rounded-lg bg-slate-800/80 border border-white/10 flex flex-col items-center justify-center text-slate-400 text-[10px] gap-1">
+                    <QrCode className="w-6 h-6 text-slate-500 animate-pulse" />
+                    <span>Generating QR...</span>
+                  </div>
+                )}
+
+                {/* Link Details and Action Buttons */}
+                <div className="flex-1 space-y-2.5 min-w-0 w-full">
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                      <span>Online Payment Link:</span>
+                      {invoice.payment_link_id && (
+                        <span className="font-mono text-[10px] text-slate-500 truncate max-w-[220px]" title={invoice.payment_link_id}>
+                          ID: {invoice.payment_link_id}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 bg-black/40 border border-cyan-500/30 rounded-lg p-1.5 px-2.5">
+                      <Link2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span className="font-mono text-[11px] text-cyan-200 truncate select-all flex-1" title={paymentUrl}>
+                        {paymentUrl}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-cyan-300 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 rounded flex items-center gap-1 transition-all shrink-0 active:scale-95"
+                        title="Copy payment link to clipboard"
+                      >
+                        {copiedLink ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                      <a
+                        href={paymentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded flex items-center gap-1 transition-all shrink-0 shadow-sm"
+                        title="Open payment page in new tab"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Open</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400 pt-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500">Gateway:</span>
+                      <span className="font-medium text-slate-200">Cashfree PG</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500">Supported:</span>
+                      <span className="font-medium text-slate-200">UPI, Cards, NetBanking</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Line Items Table */}
           <div className="space-y-2">

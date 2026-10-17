@@ -501,7 +501,9 @@ export function generateInvoicePdfDoc(
     if (bank.branch_name) remitExtras.push(`Branch: ${bank.branch_name}`);
     if (bank.swift_bic_code) remitExtras.push(`SWIFT: ${bank.swift_bic_code}`);
 
-    const cardH = (wantsLink && remitExtras.length > 0) ? 31 : 27;
+    const cardH = (wantsLink && remitExtras.length > 0)
+      ? 35
+      : (wantsLink ? 30 : (remitExtras.length > 0 ? 29 : 25));
 
     doc.setFillColor(...colorCardBg);
     doc.roundedRect(margin, bankBoxY, leftDetailsWidth, cardH, 1.5, 1.5, 'F');
@@ -528,9 +530,9 @@ export function generateInvoicePdfDoc(
 
     // Optional Clickable Payment URL
     if (wantsLink && invoice.payment_link_url) {
-      const linkY = remitExtras.length > 0 ? bankBoxY + 29 : bankBoxY + 25;
+      const linkY = remitExtras.length > 0 ? bankBoxY + 29.5 : bankBoxY + 25.5;
       doc.setFont(fontName, 'bold');
-      doc.setFontSize(6.8);
+      doc.setFontSize(6.5);
       doc.setTextColor(...colorAccent);
       (doc as any).textWithLink('Pay Online: ' + invoice.payment_link_url, margin + 3.5, linkY, { url: invoice.payment_link_url });
     }
@@ -540,9 +542,9 @@ export function generateInvoicePdfDoc(
       try {
         const qrImg = options.qrDataUrl || (invoice as any).payment_qr_data_url;
         if (qrImg) {
-          const qrSize = 19;
+          const qrSize = 18;
           const qrX = margin + leftDetailsWidth - qrSize - 3.5;
-          const qrY = bankBoxY + 3.5;
+          const qrY = bankBoxY + 4;
           doc.addImage(qrImg, 'PNG', qrX, qrY, qrSize, qrSize, undefined, 'FAST');
           doc.setFont(fontName, 'bold');
           doc.setFontSize(5.5);
@@ -620,7 +622,10 @@ export function generateInvoicePdfDoc(
     doc.text(formatCurrency(outstanding, currency), pageWidth - margin, tY + 3, { align: 'right' });
   }
 
-  currentY = Math.max(tY + 16, bankBoxY + 31);
+  const bankCardHeight = (invoice.include_payment_link && (bank.branch_name || bank.swift_bic_code)) ? 35 : (invoice.include_payment_link ? 30 : 27);
+  const bankBoxBottom = (bank.bank_name || bank.account_number) ? (bankBoxY + bankCardHeight) : bankBoxY;
+  const totalsBoxBottom = tY + 13 + (amountPaid > 0 ? 10 : 0);
+  currentY = Math.max(totalsBoxBottom + 6, bankBoxBottom + 7);
 
   // 5. INVOICE NOTES & AUTHORIZED SIGNATURE
   const notesWidth = contentWidth - 62;

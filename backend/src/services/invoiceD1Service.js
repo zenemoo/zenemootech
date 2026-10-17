@@ -1071,6 +1071,48 @@ export class InvoiceD1Service {
     return { ...found, payments };
   }
 
+  /**
+   * 7b. Find Single Invoice by Payment Link ID or URL
+   */
+  async findInvoiceByPaymentLinkId(linkId) {
+    if (!linkId) return null;
+    const cleanId = String(linkId).trim();
+
+    if (this.isD1Configured()) {
+      try {
+        const sql = `
+          SELECT * FROM invoices 
+          WHERE payment_link_id = ? 
+             OR payment_link_url LIKE ? 
+             OR id = ? 
+             OR invoice_number = ?
+          LIMIT 1;
+        `;
+        const res = await this.executeD1(sql, [cleanId, `%${cleanId}%`, cleanId, cleanId]);
+        if (res && res.results && res.results.length > 0) {
+          const inv = this.deserializeInvoiceRow(res.results[0]);
+          const payments = await this.getInvoicePayments(inv.id);
+          inv.payments = payments;
+          return inv;
+        }
+      } catch (err) {
+        console.warn('[InvoiceD1Service] Remote findInvoiceByPaymentLinkId failed:', err.message);
+      }
+    }
+
+    const found = (this._localStore.invoices || []).find((i) => {
+      if (i.payment_link_id && i.payment_link_id === cleanId) return true;
+      if (i.payment_link_url && i.payment_link_url.includes(cleanId)) return true;
+      if (i.id === cleanId) return true;
+      if (i.invoice_number === cleanId) return true;
+      return false;
+    });
+
+    if (!found) return null;
+    const payments = (this._localStore.payments || []).filter((p) => p.invoice_id === found.id);
+    return { ...found, payments };
+  }
+
   async getInvoicePayments(invoiceId) {
     if (!invoiceId) return [];
     if (this.isD1Configured()) {

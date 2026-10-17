@@ -446,6 +446,7 @@ export function generateInvoicePdfDoc(invoice, options = {}) {
 
   // B. Left Side: Bank Remittance Details
   let bankBoxY = currentY + 19;
+  let bankBoxBottom = bankBoxY;
   if (bank.bank_name || bank.account_number) {
     const wantsQr = Boolean(invoice.include_payment_qr && (options.qrDataUrl || invoice.payment_qr_data_url));
     const wantsLink = Boolean(invoice.include_payment_link && invoice.payment_link_url);
@@ -453,7 +454,9 @@ export function generateInvoicePdfDoc(invoice, options = {}) {
     if (bank.branch_name) remitExtras.push(`Branch: ${bank.branch_name}`);
     if (bank.swift_bic_code) remitExtras.push(`SWIFT: ${bank.swift_bic_code}`);
 
-    const cardH = (wantsLink && remitExtras.length > 0) ? 31 : 27;
+    const cardH = (wantsLink && remitExtras.length > 0)
+      ? 35
+      : (wantsLink ? 30 : (remitExtras.length > 0 ? 29 : 25));
 
     doc.setFillColor(...colorCardBg);
     doc.roundedRect(margin, bankBoxY, leftDetailsWidth, cardH, 1.5, 1.5, 'F');
@@ -480,9 +483,9 @@ export function generateInvoicePdfDoc(invoice, options = {}) {
 
     // Optional Clickable Payment URL
     if (wantsLink) {
-      const linkY = remitExtras.length > 0 ? bankBoxY + 29 : bankBoxY + 25;
+      const linkY = remitExtras.length > 0 ? bankBoxY + 29.5 : bankBoxY + 25.5;
       doc.setFont(fontName, 'bold');
-      doc.setFontSize(6.8);
+      doc.setFontSize(6.5);
       doc.setTextColor(...colorAccent);
       doc.textWithLink('Pay Online: ' + invoice.payment_link_url, margin + 3.5, linkY, { url: invoice.payment_link_url });
     }
@@ -492,9 +495,9 @@ export function generateInvoicePdfDoc(invoice, options = {}) {
       try {
         const qrImg = options.qrDataUrl || invoice.payment_qr_data_url;
         if (qrImg) {
-          const qrSize = 19;
+          const qrSize = 18;
           const qrX = margin + leftDetailsWidth - qrSize - 3.5;
-          const qrY = bankBoxY + 3.5;
+          const qrY = bankBoxY + 4;
           doc.addImage(qrImg, 'PNG', qrX, qrY, qrSize, qrSize, undefined, 'FAST');
           doc.setFont(fontName, 'bold');
           doc.setFontSize(5.5);
@@ -505,6 +508,7 @@ export function generateInvoicePdfDoc(invoice, options = {}) {
         console.warn('[invoicePdfService] QR code embed note:', qrErr.message);
       }
     }
+    bankBoxBottom = bankBoxY + cardH;
   }
 
   // C. Right Side: Financial Breakdown
@@ -573,7 +577,8 @@ export function generateInvoicePdfDoc(invoice, options = {}) {
     doc.text(formatCurrency(outstanding, currency), pageWidth - margin, tY + 3, { align: 'right' });
   }
 
-  currentY = Math.max(tY + 16, bankBoxY + 31);
+  const totalsBoxBottom = tY + 13 + (amountPaid > 0 ? 10 : 0);
+  currentY = Math.max(totalsBoxBottom + 6, bankBoxBottom + 7);
 
   // 5. INVOICE NOTES & AUTHORIZED SIGNATURE
   const notesWidth = contentWidth - 62;

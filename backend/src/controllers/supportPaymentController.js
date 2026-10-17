@@ -214,20 +214,26 @@ export const createPaymentOrder = async (req, res, next) => {
       });
     }
 
-    const MIN_AMOUNT = 10; // Minimum ₹10
+    const isInvoicePayment = Boolean(
+      (link_id && (link_id.startsWith('PL_INV_') || link_id.includes('_INV_'))) ||
+      (purpose && purpose.toLowerCase().includes('invoice')) ||
+      (source && source.toLowerCase().includes('invoice'))
+    );
+
+    const MIN_AMOUNT = 1; // Cashfree PG minimum order is ₹1.00
     const MAX_AMOUNT = 500000; // Maximum ₹5,00,000
 
     if (numericAmount < MIN_AMOUNT) {
       return res.status(400).json({
         success: false,
-        message: `Contribution amount must be at least ₹${MIN_AMOUNT}.`,
+        message: `Payment amount must be at least ₹${MIN_AMOUNT}.`,
       });
     }
 
     if (numericAmount > MAX_AMOUNT) {
       return res.status(400).json({
         success: false,
-        message: `Contribution amount cannot exceed ₹${MAX_AMOUNT.toLocaleString('en-IN')}.`,
+        message: `Payment amount cannot exceed ₹${MAX_AMOUNT.toLocaleString('en-IN')}.`,
       });
     }
 
@@ -243,13 +249,14 @@ export const createPaymentOrder = async (req, res, next) => {
     const userEmail = cleanStr(customer_email || req.user?.email || 'supporter@zenemoo.in', 120);
     const userName = cleanStr(customer_name || req.user?.name || 'Zenemoo Supporter', 80);
     const userPhone = cleanStr(customer_phone || req.user?.phone || '9999999999', 20).replace(/[^0-9]/g, '');
-    const cleanPurpose = cleanStr(purpose || 'HELP US BUILD', 60);
+    const cleanPurpose = cleanStr(purpose || (isInvoicePayment ? 'Zenemoo Invoice Payment' : 'HELP US BUILD'), 60);
 
     // 3. Generate unique order ID
-    // Format: ZNM_SUP_<timestamp>_<random>
+    // Format: ZNM_INV_<timestamp>_<random> or ZNM_SUP_<timestamp>_<random>
     const timestamp = Date.now();
     const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
-    const orderId = `ZNM_SUP_${timestamp}_${randomSuffix}`;
+    const orderPrefix = isInvoicePayment ? 'ZNM_INV' : 'ZNM_SUP';
+    const orderId = `${orderPrefix}_${timestamp}_${randomSuffix}`;
 
     // 4. Save initial PENDING payment record
     const initialRecord = {
@@ -263,8 +270,8 @@ export const createPaymentOrder = async (req, res, next) => {
       customer_email: userEmail,
       customer_phone: userPhone,
       purpose: cleanPurpose,
-      source: source || (link_id ? 'Admin Payment Link' : 'Direct Support Page'),
-      metadata: { purpose: cleanPurpose, link_id: link_id || undefined },
+      source: source || (isInvoicePayment ? 'Invoice Payment Link' : (link_id ? 'Admin Payment Link' : 'Direct Support Page')),
+      metadata: { purpose: cleanPurpose, link_id: link_id || undefined, is_invoice: isInvoicePayment },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -301,7 +308,9 @@ export const createPaymentOrder = async (req, res, next) => {
         return_url && return_url.startsWith('https://')
           ? return_url
           : `https://www.zenemoo.in/support-zenemooindia?order_id=${orderId}`,
-      orderNote: `Zenemoo Support (${cleanPurpose}) - ₹${numericAmount}`,
+      orderNote: isInvoicePayment
+        ? `${cleanPurpose} - ₹${numericAmount}`
+        : `Zenemoo Support (${cleanPurpose}) - ₹${numericAmount}`,
     });
 
     // Update with payment session id and cf_order_id
@@ -416,9 +425,51 @@ export const verifyPaymentOrder = async (req, res, next) => {
             }
           }
 
-          // If payment newly succeeded and customer email provided, send receipt email
+          // Authoritative Invoice Settlement Reconciler
+          const isInvoice = Boolean(
+            localRecord?.source === 'Invoice Payment Link' ||
+            associatedLinkId?.startsWith('PL_INV_') ||
+            orderId?.startsWith('ZNM_INV_')
+          );
+
+          if (orderStatus === 'SUCCESS') {
+            try {
+              const invCandidate = await invoiceD1Service.findInvoiceByPaymentLinkId(associatedLinkId || orderId);
+              if (invCandidate) {
+                if (invCandidate.status === 'draft') {
+                  await invoiceD1Service.updateInvoice(invCandidate.id, {
+                    status: 'issued',
+                    issued_at: new Date().toISOString(),
+                    issued_by: 'Cashfree Gateway Settlement',
+                  });
+                }
+                const existingPayments = await invoiceD1Service.getInvoicePayments(invCandidate.id);
+                const alreadyRecorded = (existingPayments || []).some(
+                  (p) => String(p.reference_number) === String(paymentId)
+                );
+                if (!alreadyRecorded && paymentId) {
+                  await invoiceD1Service.recordPayment(invCandidate.id, {
+                    amount: Number(amount),
+                    currency: invCandidate.currency || 'INR',
+                    payment_date: paymentTime ? new Date(paymentTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                    payment_method: paymentMethod || 'Cashfree Payment Link',
+                    reference_number: paymentId,
+                    notes: `Online Settlement Verified (${associatedLinkId || orderId})`,
+                    recorded_by: 'Cashfree Payment Gateway',
+                  });
+                }
+                await invoiceD1Service.updateInvoice(invCandidate.id, {
+                  payment_link_status: 'PAID',
+                });
+              }
+            } catch (invReconErr) {
+              console.warn('[verifyPayment] invoice auto-reconciliation note:', invReconErr.message);
+            }
+          }
+
+          // If payment newly succeeded and customer email provided, send receipt email (SUPPORT DONATIONS ONLY)
           const isNewlySuccessful = orderStatus === 'SUCCESS' && localRecord?.status !== 'SUCCESS' && localRecord?.status !== 'PAID';
-          if (isNewlySuccessful && localRecord?.customer_email) {
+          if (isNewlySuccessful && localRecord?.customer_email && !isInvoice) {
             try {
               await sendPaymentSuccessEmail({
                 orderId,
@@ -1245,6 +1296,39 @@ async function findPaymentLinkRecord(linkId) {
     }
   }
 
+  // Authoritative fallback: Check Cloudflare D1 / Local Store for Invoice Payment Links
+  try {
+    const inv = await invoiceD1Service.findInvoiceByPaymentLinkId(linkId);
+    if (inv) {
+      const outstanding = Number(inv.outstanding_balance ?? (inv.total_amount - (inv.amount_paid || 0)));
+      const client = inv.client_snapshot || {};
+      const linkRec = {
+        link_id: inv.payment_link_id || linkId,
+        cf_link_id: inv.payment_link_id || linkId,
+        link_url: inv.payment_link_url || `https://www.zenemoo.in/pay/${linkId}`,
+        link_amount: outstanding > 0 ? outstanding : Number(inv.total_amount || 0),
+        link_currency: inv.currency || 'INR',
+        link_purpose: `Invoice ${inv.invoice_number} Payment — Zenemoo`,
+        customer_phone: (client.phone || '').replace(/[^0-9]/g, '').slice(-10) || '',
+        customer_email: client.billing_email || '',
+        customer_name: client.company_name || client.contact_person || 'Zenemoo Client',
+        link_status: inv.payment_link_status === 'PAID' || inv.status === 'paid' ? 'PAID' : (inv.payment_link_status || 'ACTIVE'),
+        link_expiry_time: inv.payment_link_expiry || null,
+        created_by: inv.created_by || 'billing@zenemoo.in',
+        source: 'Invoice Payment Link',
+        invoice_id: inv.id,
+        invoice_number: inv.invoice_number,
+        order_id: null,
+        created_at: inv.created_at,
+        updated_at: inv.updated_at,
+      };
+      memoryPaymentLinks.set(linkId, linkRec);
+      return linkRec;
+    }
+  } catch (invErr) {
+    console.warn('[findPaymentLinkRecord] invoice lookup note:', invErr.message);
+  }
+
   return null;
 }
 
@@ -1853,6 +1937,8 @@ export const getPublicPaymentLink = async (req, res) => {
         link_expiry_time: link.link_expiry_time || null,
         source: link.source || 'Admin Payment Link',
         gateway_mode: link.cf_link_id?.startsWith('ZNM_PG_') ? 'ZENEMOO_FALLBACK' : 'CASHFREE',
+        invoice_id: link.invoice_id || undefined,
+        invoice_number: link.invoice_number || undefined,
       },
     });
   } catch (err) {
