@@ -1082,6 +1082,107 @@ export class InvoiceD1Service {
   }
 
   /**
+   * 8b. Update Existing Invoice (Draft, Issued, Partially Paid)
+   */
+  async updateInvoice(id, invoiceData, updatedBy) {
+    const list = this._localStore.invoices || [];
+    const idx = list.findIndex((i) => i.id === id);
+    if (idx === -1) {
+      throw new Error('Invoice not found.');
+    }
+
+    const current = list[idx];
+    const amountPaid = Number(current.amount_paid) || 0;
+    const newTotal = Number(invoiceData.total_amount) || Number(current.total_amount) || 0;
+    const outstandingBalance = Math.max(0, Math.round((newTotal - amountPaid) * 100) / 100);
+
+    let status = current.status;
+    if (current.status !== 'cancelled' && current.status !== 'draft') {
+      if (newTotal > 0 && amountPaid >= newTotal) {
+        status = 'paid';
+      } else if (amountPaid > 0) {
+        status = 'partially_paid';
+      } else {
+        status = 'issued';
+      }
+    }
+
+    const updated = {
+      ...current,
+      ...invoiceData,
+      id: current.id, // Strictly immutable ID
+      invoice_number: current.invoice_number, // Strictly preserve original invoice number
+      sequence_year: current.sequence_year,
+      sequence_number: current.sequence_number,
+      created_at: current.created_at,
+      created_by: current.created_by,
+      amount_paid: amountPaid,
+      outstanding_balance: outstandingBalance,
+      status,
+      updated_by: updatedBy || 'admin',
+      updated_at: new Date().toISOString(),
+    };
+
+    if (this.isD1Configured()) {
+      try {
+        const sql = `
+          UPDATE invoices SET
+            invoice_date = ?, due_date = ?, service_period_start = ?, service_period_end = ?,
+            invoice_period = ?, po_reference = ?, currency = ?, subtotal = ?,
+            discount_type = ?, discount_value = ?, discount_amount = ?,
+            tax_enabled = ?, tax_label = ?, tax_rate = ?, tax_amount = ?,
+            total_amount = ?, amount_in_words = ?, outstanding_balance = ?, status = ?,
+            project_name = ?, project_description = ?, line_items = ?,
+            client_snapshot = ?, company_snapshot = ?, bank_snapshot = ?,
+            payment_terms = ?, invoice_notes = ?, payment_instructions = ?,
+            pdf_storage_key = ?, pdf_generated_at = ?,
+            updated_at = (datetime('now'))
+          WHERE id = ?;
+        `;
+        await this.executeD1(sql, [
+          updated.invoice_date,
+          updated.due_date,
+          updated.service_period_start,
+          updated.service_period_end,
+          updated.invoice_period,
+          updated.po_reference,
+          updated.currency,
+          updated.subtotal,
+          updated.discount_type,
+          updated.discount_value,
+          updated.discount_amount,
+          updated.tax_enabled ? 1 : 0,
+          updated.tax_label,
+          updated.tax_rate,
+          updated.tax_amount,
+          updated.total_amount,
+          updated.amount_in_words,
+          updated.outstanding_balance,
+          updated.status,
+          updated.project_name,
+          updated.project_description,
+          JSON.stringify(updated.line_items || []),
+          JSON.stringify(updated.client_snapshot || {}),
+          JSON.stringify(updated.company_snapshot || {}),
+          JSON.stringify(updated.bank_snapshot || {}),
+          updated.payment_terms,
+          updated.invoice_notes,
+          updated.payment_instructions,
+          updated.pdf_storage_key || null,
+          updated.pdf_generated_at || null,
+          updated.id,
+        ]);
+      } catch (err) {
+        console.warn('[InvoiceD1Service] Remote updateInvoice failed:', err.message);
+      }
+    }
+
+    list[idx] = updated;
+    this.saveLocalStore();
+    return updated;
+  }
+
+  /**
    * 9. Issue Invoice (Locks immutability, snapshots, and records R2 key)
    */
   async issueInvoice(id, payload, storageKey) {

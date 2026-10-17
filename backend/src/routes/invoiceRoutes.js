@@ -17,6 +17,7 @@ import {
   getInvoices,
   getInvoiceById,
   saveDraftInvoice,
+  updateInvoice,
   issueInvoice,
   cancelInvoice,
   recordInvoicePayment,
@@ -68,6 +69,7 @@ router.post('/clients', saveInvoiceClient);
 // Invoice CRUD & Lifecycle
 router.get('/', getInvoices);
 router.get('/:id', getInvoiceById);
+router.put('/:id', updateInvoice);
 router.post('/draft', saveDraftInvoice);
 router.post('/:id/issue', issueInvoice);
 router.post('/:id/cancel', cancelInvoice);

@@ -172,7 +172,11 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
 
   const navTabs: Array<{ id: InvoiceSubTab; label: string; icon: React.FC<any>; count?: number }> = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'create', label: editingInvoice ? 'Edit Draft' : 'Create Invoice', icon: PlusCircle },
+    {
+      id: 'create',
+      label: editingInvoice ? (editingInvoice.status === 'draft' ? 'Edit Draft' : 'Edit Invoice') : 'Create Invoice',
+      icon: PlusCircle,
+    },
     { id: 'history', label: 'Invoice History', icon: History, count: totalInvoices },
     { id: 'settings', label: 'Company & Settings', icon: Building },
     { id: 'banks', label: 'Bank Accounts', icon: CreditCard, count: bankAccounts.length },
@@ -251,6 +255,7 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
 
         {activeSubTab === 'create' && (
           <CreateInvoiceView
+            key={editingInvoice?.id || 'new'}
             settings={settings}
             bankAccounts={bankAccounts}
             clients={clients}
@@ -296,6 +301,7 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
             onRefresh={loadInvoices}
             onViewInvoice={handleViewInvoice}
             onEditDraft={handleEditDraft}
+            onEditInvoice={handleEditDraft}
             onDownloadPdf={handleDownloadPdf}
             onDownloadDocx={handleDownloadDocx}
             onDeleteInvoice={handleDeleteInvoice}
@@ -329,6 +335,7 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
         <InvoiceDetailModal
           invoice={viewingInvoice}
           onClose={() => setViewingInvoice(null)}
+          onEditInvoice={handleEditDraft}
           onDownloadPdf={handleDownloadPdf}
           onDownloadDocx={handleDownloadDocx}
           onDeleteInvoice={handleDeleteInvoice}

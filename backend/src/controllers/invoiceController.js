@@ -576,6 +576,100 @@ export const issueInvoice = async (req, res) => {
 };
 
 /**
+ * 8b. Update Invoice Details (Edit Draft or Issued Invoices)
+ */
+export const updateInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const b = req.body || {};
+
+    const targetInvoice = await invoiceD1Service.getInvoiceById(id);
+    if (!targetInvoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    // Recompute financial calculations securely
+    const totals = calculateInvoiceTotals(b);
+
+    const clientSnapshot = b.client_snapshot || targetInvoice.client_snapshot || {};
+    if (!clientSnapshot.company_name) {
+      return res.status(400).json({ success: false, message: 'Client / Billed-To company name is required.' });
+    }
+    if (!totals.line_items || totals.line_items.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one line item is required.' });
+    }
+
+    if (b.service_period_start && b.service_period_end) {
+      if (b.service_period_end < b.service_period_start) {
+        return res.status(400).json({ success: false, message: 'Service period end date cannot be earlier than start date.' });
+      }
+    }
+
+    const currentSettings = await invoiceD1Service.getSettings();
+    const wantsSignature = b.include_signature !== undefined ? Boolean(b.include_signature) : Boolean(targetInvoice.include_signature);
+
+    let companySnapshot = b.company_snapshot || targetInvoice.company_snapshot || currentSettings;
+    companySnapshot = {
+      ...currentSettings,
+      ...companySnapshot,
+      display_name: 'Zenemoo', // Strictly "Zenemoo"
+      include_signature: wantsSignature,
+      signature_key: wantsSignature ? (companySnapshot.signature_key || currentSettings.signature_key || '') : '',
+    };
+
+    let bankSnapshot = b.bank_snapshot || targetInvoice.bank_snapshot;
+    if (!bankSnapshot || !bankSnapshot.account_number) {
+      const bankAccounts = await invoiceD1Service.getBankAccounts();
+      bankSnapshot = bankAccounts.find((a) => a.is_default && a.is_active) || bankAccounts[0] || {};
+    }
+
+    const updatedData = {
+      ...targetInvoice,
+      ...b,
+      ...totals,
+      include_signature: wantsSignature,
+      company_snapshot: companySnapshot,
+      bank_snapshot: bankSnapshot,
+      client_snapshot: clientSnapshot,
+      updated_by: req.user?.email || 'admin',
+    };
+
+    // If invoice is already issued or paid, regenerate and re-upload the authoritative PDF
+    if (targetInvoice.status !== 'draft') {
+      try {
+        let signatureDataUrl = undefined;
+        if (wantsSignature && companySnapshot.signature_key) {
+          const sigBuf = await invoiceStorageService.getSignatureImageBuffer(companySnapshot.signature_key);
+          if (sigBuf) {
+            const isJpeg = companySnapshot.signature_key.endsWith('.jpg') || companySnapshot.signature_key.endsWith('.jpeg');
+            const mime = isJpeg ? 'image/jpeg' : 'image/png';
+            signatureDataUrl = `data:${mime};base64,${sigBuf.toString('base64')}`;
+          }
+        }
+
+        const pdfBuffer = generateInvoicePdfBuffer(updatedData, { signatureDataUrl });
+        const storageKey = targetInvoice.pdf_storage_key || `invoices/${targetInvoice.invoice_number}.pdf`;
+        const uploadRes = await invoiceStorageService.uploadInvoicePdf(storageKey, pdfBuffer);
+        updatedData.pdf_storage_key = uploadRes.key;
+        updatedData.pdf_generated_at = new Date().toISOString();
+      } catch (pdfErr) {
+        console.warn('[updateInvoice] PDF regeneration note:', pdfErr.message);
+      }
+    }
+
+    const saved = await invoiceD1Service.updateInvoice(id, updatedData, req.user?.email || 'admin');
+
+    res.json({
+      success: true,
+      data: saved,
+      message: 'Invoice updated successfully',
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
  * 9. Cancel an Invoice (With Audit Trail)
  */
 export const cancelInvoice = async (req, res) => {

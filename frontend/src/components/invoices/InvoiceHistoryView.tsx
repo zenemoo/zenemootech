@@ -39,6 +39,7 @@ interface InvoiceHistoryViewProps {
   onRefresh: () => void;
   onViewInvoice: (inv: Invoice) => void;
   onEditDraft: (inv: Invoice) => void;
+  onEditInvoice?: (inv: Invoice) => void;
   onDownloadPdf: (inv: Invoice) => void;
   onDownloadDocx?: (inv: Invoice) => void;
   onDeleteInvoice?: (inv: Invoice) => Promise<void> | void;
@@ -65,6 +66,7 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
   onRefresh,
   onViewInvoice,
   onEditDraft,
+  onEditInvoice,
   onDownloadPdf,
   onDownloadDocx,
   onDeleteInvoice,
@@ -376,16 +378,14 @@ export const InvoiceHistoryView: React.FC<InvoiceHistoryViewProps> = ({
                             </button>
                           )}
 
-                          {/* Edit Draft */}
-                          {inv.status === 'draft' && (
-                            <button
-                              onClick={() => onEditDraft(inv)}
-                              className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition-colors"
-                              title="Edit Draft"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          {/* Edit Invoice / Draft */}
+                          <button
+                            onClick={() => (onEditInvoice ? onEditInvoice(inv) : onEditDraft(inv))}
+                            className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition-colors"
+                            title={inv.status === 'draft' ? 'Edit Draft' : 'Edit Invoice'}
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
 
                           {/* Record Payment */}
                           {(inv.status === 'issued' || inv.status === 'partially_paid') && (

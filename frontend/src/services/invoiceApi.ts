@@ -256,6 +256,11 @@ export const invoiceApi = {
     return res.data.data;
   },
 
+  async updateInvoice(id: string, data: Partial<Invoice>): Promise<Invoice> {
+    const res = await api.put<{ success: boolean; data: Invoice }>(`/admin/invoices/${id}`, data);
+    return res.data.data;
+  },
+
   async cancelInvoice(id: string, cancellation_reason: string): Promise<Invoice> {
     const res = await api.post<{ success: boolean; data: Invoice }>(`/admin/invoices/${id}/cancel`, {
       cancellation_reason,

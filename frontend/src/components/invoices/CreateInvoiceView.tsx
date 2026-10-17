@@ -108,12 +108,22 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     [activeBanks]
   );
   const [selectedBankId, setSelectedBankId] = useState<string>(() => {
-    return editingInvoice?.bank_account_id || defaultBank?.id || '';
+    return editingInvoice?.bank_account_id || editingInvoice?.bank_snapshot?.id || defaultBank?.id || '';
   });
 
   const selectedBankAccount = useMemo(() => {
-    return activeBanks.find((b) => b.id === selectedBankId) || defaultBank || ({} as BankAccount);
-  }, [activeBanks, selectedBankId, defaultBank]);
+    const found = activeBanks.find((b) => b.id === selectedBankId);
+    if (found) return found;
+    if (
+      editingInvoice?.bank_snapshot &&
+      (!selectedBankId ||
+        selectedBankId === editingInvoice.bank_snapshot.id ||
+        selectedBankId === editingInvoice.bank_account_id)
+    ) {
+      return editingInvoice.bank_snapshot;
+    }
+    return defaultBank || ({} as BankAccount);
+  }, [activeBanks, selectedBankId, defaultBank, editingInvoice]);
 
   // Line Items
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>(() => {
@@ -161,7 +171,7 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
   // Handwritten Original Signature Option
   // Default it to OFF unless editing an existing invoice that explicitly had it enabled
   const [includeSignature, setIncludeSignature] = useState(() => {
-    return Boolean(editingInvoice?.include_signature);
+    return Boolean(editingInvoice?.include_signature ?? editingInvoice?.company_snapshot?.include_signature);
   });
   const [signatureData, setSignatureData] = useState<InvoiceSignatureData | null>(null);
   const [isLoadingSignature, setIsLoadingSignature] = useState(false);
@@ -807,6 +817,54 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
     }
   };
 
+  // Update an existing invoice (draft, issued, or settled)
+  const handleUpdateInvoice = async () => {
+    if (!editingInvoice?.id) return;
+    if (!clientCompanyName.trim()) {
+      showToast?.('Validation Error', 'Client company name is required.', 'warning');
+      return;
+    }
+    if (!lineItems || lineItems.length === 0 || !lineItems[0].description) {
+      showToast?.('Validation Error', 'At least one line item with a description is required.', 'warning');
+      return;
+    }
+    if (serviceStart && serviceEnd && serviceEnd < serviceStart) {
+      showToast?.('Validation Error', 'Service end date cannot be earlier than start date.', 'warning');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = buildPayload();
+      const updated = await invoiceApi.updateInvoice(editingInvoice.id, payload);
+
+      if (saveClientForFuture && clientCompanyName && clientBillingEmail) {
+        try {
+          await invoiceApi.saveClient({
+            company_name: clientCompanyName,
+            contact_person: clientContactPerson,
+            billing_email: clientBillingEmail,
+            phone: clientPhone,
+            address: clientAddress,
+            city: clientCity,
+            state: clientState,
+            postal_code: clientPostalCode,
+            country: clientCountry,
+            pan_number: clientPan,
+            gstin: clientGstin,
+          });
+        } catch (e) {}
+      }
+
+      showToast?.('Invoice Updated', `Invoice ${updated.invoice_number} has been successfully updated.`, 'success');
+      onSaved(updated);
+    } catch (err: any) {
+      showToast?.('Update Failed', err.response?.data?.message || err.message || 'Failed to update invoice', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const currSymbol = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : `${currency} `;
 
   return (
@@ -825,7 +883,11 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             <div className="flex flex-wrap items-center gap-2.5">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-400" />
-                {isEditing ? `Edit Draft ${editingInvoice?.invoice_number}` : 'Create New Invoice'}
+                {isEditing
+                  ? (editingInvoice?.status === 'draft'
+                      ? `Edit Draft ${editingInvoice?.invoice_number}`
+                      : `Edit Invoice ${editingInvoice?.invoice_number}`)
+                  : 'Create New Invoice'}
               </h2>
               {!isEditing && (
                 <div className="flex items-center">
@@ -887,23 +949,36 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             </button>
           )}
 
-          <button
-            onClick={handleSaveDraft}
-            disabled={isSubmitting}
-            className="px-4 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"
-          >
-            <Save className="w-3.5 h-3.5" />
-            Save Draft
-          </button>
+          {isEditing && editingInvoice?.status !== 'draft' ? (
+            <button
+              onClick={handleUpdateInvoice}
+              disabled={isSubmitting}
+              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg shadow-blue-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {isSubmitting ? 'Updating...' : 'Update Invoice'}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleSaveDraft}
+                disabled={isSubmitting}
+                className="px-4 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                Save Draft
+              </button>
 
-          <button
-            onClick={handleIssueInvoice}
-            disabled={isSubmitting}
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg shadow-blue-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Issue Invoice
-          </button>
+              <button
+                onClick={handleIssueInvoice}
+                disabled={isSubmitting}
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg shadow-blue-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Issue Invoice
+              </button>
+            </>
+          )}
         </div>
       </div>
 

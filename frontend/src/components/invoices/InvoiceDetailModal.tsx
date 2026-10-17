@@ -12,6 +12,7 @@ import {
   Ban,
   ShieldCheck,
   User,
+  Edit,
 } from 'lucide-react';
 import { Invoice } from '../../services/invoiceApi';
 import { formatCurrency } from '../../utils/invoicePdfGenerator';
@@ -20,6 +21,7 @@ import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 interface InvoiceDetailModalProps {
   invoice: Invoice | null;
   onClose: () => void;
+  onEditInvoice?: (inv: Invoice) => void;
   onDownloadPdf: (inv: Invoice) => void;
   onDownloadDocx?: (inv: Invoice) => void;
   onDeleteInvoice?: (inv: Invoice) => Promise<void> | void;
@@ -28,6 +30,7 @@ interface InvoiceDetailModalProps {
 export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   invoice,
   onClose,
+  onEditInvoice,
   onDownloadPdf,
   onDownloadDocx,
   onDeleteInvoice,
@@ -75,6 +78,20 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {onEditInvoice && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditInvoice(invoice);
+                }}
+                className="px-3 py-1.5 text-xs font-semibold text-amber-200 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/30 rounded-lg flex items-center gap-1.5 transition-all shadow-sm"
+                title="Edit this invoice"
+              >
+                <Edit className="w-3.5 h-3.5 text-amber-400" />
+                Edit Invoice
+              </button>
+            )}
+
             <button
               onClick={() => onDownloadPdf(invoice)}
               className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg flex items-center gap-1.5 transition-all shadow-lg shadow-blue-500/20"
