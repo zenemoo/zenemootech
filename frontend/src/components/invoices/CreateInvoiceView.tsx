@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Check,
   QrCode,
+  RotateCcw,
 } from 'lucide-react';
 import {
   Invoice,
@@ -1134,6 +1135,19 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             {showMobilePreview ? 'Edit Form' : 'Live Preview'}
           </button>
 
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={() => setShowDiscardModal(true)}
+              disabled={isSubmitting}
+              className="px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              title="Clear draft and reset form to fresh defaults"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Clear Draft
+            </button>
+          )}
+
           <button
             onClick={handleDownloadPreviewPdf}
             className="px-3 py-2 text-xs font-medium text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg flex items-center gap-1.5 transition-colors"
@@ -1142,18 +1156,6 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
             <Download className="w-3.5 h-3.5 text-blue-400" />
             Download Preview
           </button>
-
-          {!isEditing && hasStoredDraft && (
-            <button
-              onClick={() => setShowDiscardModal(true)}
-              disabled={isSubmitting}
-              className="px-3 py-2 text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50"
-              title="Discard local draft and reset form"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Discard Draft
-            </button>
-          )}
 
           {isEditing && editingInvoice?.status !== 'draft' ? (
             <button
@@ -2227,14 +2229,14 @@ export const CreateInvoiceView: React.FC<CreateInvoiceViewProps> = ({
         </div>
       </div>
 
-      {/* Discard Draft Confirmation Modal */}
+      {/* Clear Draft Confirmation Modal */}
       <InvoiceConfirmationModal
         isOpen={showDiscardModal}
         onClose={() => setShowDiscardModal(false)}
         onConfirm={handleDiscardDraft}
-        title="Discard Invoice Draft?"
-        message="Are you sure you want to discard your unsaved local draft? All entered client information, line items, calculations, and terms will be cleared and reset to fresh defaults."
-        confirmText="Discard Draft"
+        title="Clear Invoice Draft?"
+        message="Are you sure you want to clear your local draft? All entered client information, line items, calculations, and terms will be cleared and reset to fresh defaults."
+        confirmText="Clear Draft"
         cancelText="Keep Working"
         variant="danger"
       />
