@@ -133,21 +133,49 @@ export default {
       // 2. Settings
       if (pathname === '/api/invoices/settings') {
         if (request.method === 'GET') {
-          const row = await env.DB.prepare("SELECT * FROM invoice_settings WHERE id = 'settings_main' LIMIT 1").first();
+          let row = await env.DB.prepare("SELECT * FROM invoice_settings WHERE id = 'settings_main' LIMIT 1").first();
+          if (row) {
+            // Auto-heal any legacy mock data
+            if (row.pan_number === 'AABCP1234D' || !row.pan_number) {
+              row.pan_number = 'IDWPP3025F';
+            }
+            if (row.udyam_registration === 'UDYAM-OD-00-1234567' || !row.udyam_registration) {
+              row.udyam_registration = 'UDYAM-OD-11-0124893';
+            }
+            if (!row.signature_key || row.signature_key === 'signatures/sig_1792213558605_e32ac446.png') {
+              row.signature_key = 'signatures/sig_1792217794390_f9e14249.png';
+              row.signature_image_url = 'signatures/sig_1792217794390_f9e14249.png';
+              row.signature_file_name = 'prem-signature.png';
+            }
+            if (!row.authorized_signatory_name || row.authorized_signatory_name === 'Prem Prasad') {
+              row.authorized_signatory_name = 'Prem Prasad Pradhan';
+            }
+          }
           return jsonResponse({ success: true, data: row || {} });
         }
         if (request.method === 'PUT') {
           const b = await request.json();
+          let pan = String(b.pan_number || '').trim().toUpperCase();
+          if (pan === 'AABCP1234D' || !pan) pan = 'IDWPP3025F';
+
+          let udyam = String(b.udyam_registration || '').trim().toUpperCase();
+          if (udyam === 'UDYAM-OD-00-1234567' || !udyam) udyam = 'UDYAM-OD-11-0124893';
+
+          const sigKey = b.signature_key || 'signatures/sig_1792217794390_f9e14249.png';
+          const sigFileName = b.signature_file_name || 'prem-signature.png';
+
           const sql = `
             INSERT INTO invoice_settings (
               id, legal_name, display_name, registered_address, city, state, postal_code, country,
               official_email, contact_number, pan_number, udyam_registration, gstin,
-              authorized_signatory_name, default_currency, default_payment_terms, default_invoice_notes,
+              authorized_signatory_name, signature_key, signature_image_url, signature_file_name, signature_updated_at,
+              default_currency, default_payment_terms, default_invoice_notes,
               default_tax_enabled, default_tax_label, default_tax_rate, updated_at, updated_by
             ) VALUES (
               'settings_main', ?, 'Zenemoo', ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?,
-              ?, ?, ?, ?,
+              ?, ?, ?, ?, datetime('now'),
+              ?, ?, ?,
               ?, ?, ?, datetime('now'), ?
             )
             ON CONFLICT(id) DO UPDATE SET
@@ -163,6 +191,10 @@ export default {
               udyam_registration = excluded.udyam_registration,
               gstin = excluded.gstin,
               authorized_signatory_name = excluded.authorized_signatory_name,
+              signature_key = COALESCE(NULLIF(excluded.signature_key, ''), invoice_settings.signature_key),
+              signature_image_url = COALESCE(NULLIF(excluded.signature_image_url, ''), invoice_settings.signature_image_url),
+              signature_file_name = COALESCE(NULLIF(excluded.signature_file_name, ''), invoice_settings.signature_file_name),
+              signature_updated_at = COALESCE(NULLIF(excluded.signature_updated_at, ''), invoice_settings.signature_updated_at),
               default_currency = excluded.default_currency,
               default_payment_terms = excluded.default_payment_terms,
               default_invoice_notes = excluded.default_invoice_notes,
@@ -174,17 +206,20 @@ export default {
           `;
           await env.DB.prepare(sql).bind(
             b.legal_name || 'Zenemoo',
-            b.registered_address || '',
-            b.city || '',
-            b.state || '',
-            b.postal_code || '',
+            b.registered_address || 'K. Barida, Main Road',
+            b.city || 'Ganjam',
+            b.state || 'Odisha',
+            b.postal_code || '761031',
             b.country || 'India',
             b.official_email || 'contact@zenemoo.in',
-            b.contact_number || '',
-            b.pan_number || '',
-            b.udyam_registration || '',
+            b.contact_number || '+91 9827775230',
+            pan,
+            udyam,
             b.gstin || '',
-            b.authorized_signatory_name || 'Prem Prasad',
+            b.authorized_signatory_name || 'Prem Prasad Pradhan',
+            sigKey,
+            sigKey,
+            sigFileName,
             b.default_currency || 'INR',
             b.default_payment_terms || 'Net 15 Days',
             b.default_invoice_notes || '',
@@ -202,11 +237,21 @@ export default {
       // 3. Banks
       if (pathname === '/api/invoices/banks') {
         if (request.method === 'GET') {
-          const { results } = await env.DB.prepare('SELECT * FROM bank_accounts ORDER BY is_default DESC, created_at DESC').all();
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM bank_accounts 
+            WHERE ifsc_code NOT IN ('HDFC0001234', 'SBIN0001234')
+              AND account_number NOT LIKE '%8374'
+              AND id NOT IN ('7630cf65-19a1-4568-9051-4df1bdfb7e57', 'bank_acc_primary')
+            ORDER BY is_default DESC, created_at ASC
+          `).all();
           return jsonResponse({ success: true, data: results || [] });
         }
         if (request.method === 'POST') {
           const b = await request.json();
+          const ifsc = String(b.ifsc_code || '').trim().toUpperCase();
+          if (ifsc === 'HDFC0001234' || ifsc === 'SBIN0001234') {
+            return jsonResponse({ success: false, message: 'Invalid bank details. Placeholder IFSC codes are prohibited.' }, 400);
+          }
           const id = crypto.randomUUID();
           if (b.is_default) {
             await env.DB.prepare('UPDATE bank_accounts SET is_default = 0').run();
@@ -221,11 +266,11 @@ export default {
           await env.DB.prepare(sql).bind(
             id,
             b.account_display_name,
-            b.account_holder_name || 'Zenemoo',
+            b.account_holder_name || 'Prem Prasad Pradhan',
             b.bank_name,
             b.account_number,
-            b.account_type || 'Current',
-            b.ifsc_code,
+            b.account_type || 'Savings',
+            ifsc,
             b.branch_name || '',
             b.branch_address || '',
             b.swift_bic_code || '',

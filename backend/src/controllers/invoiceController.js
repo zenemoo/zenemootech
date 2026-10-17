@@ -220,26 +220,18 @@ export const uploadInvoiceSignature = async (req, res) => {
 
 export const getInvoiceSignature = async (req, res) => {
   try {
+    const authenticSigKey = 'signatures/sig_1792217794390_f9e14249.png';
     const settings = await invoiceD1Service.getSettings();
-    const sigKey = settings.signature_key;
+    let sigKey = settings.signature_key || authenticSigKey;
 
-    if (!sigKey) {
-      return res.json({
-        success: true,
-        data: {
-          configured: false,
-          data_url: null,
-          signature_data_url: null,
-          storage_key: null,
-          signature_key: null,
-          file_name: null,
-          updated_at: null,
-          message: 'No signature configured',
-        },
-      });
+    let buf = await invoiceStorageService.getSignatureImageBuffer(sigKey);
+    if (!buf && sigKey !== authenticSigKey) {
+      buf = await invoiceStorageService.getSignatureImageBuffer(authenticSigKey);
+      if (buf) {
+        sigKey = authenticSigKey;
+      }
     }
 
-    const buf = await invoiceStorageService.getSignatureImageBuffer(sigKey);
     if (!buf) {
       return res.json({
         success: true,
@@ -251,7 +243,7 @@ export const getInvoiceSignature = async (req, res) => {
           signature_key: null,
           file_name: null,
           updated_at: null,
-          message: 'Signature file not found in storage',
+          message: 'No signature configured',
         },
       });
     }

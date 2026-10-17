@@ -133,7 +133,8 @@ export class InvoiceD1Service {
       console.warn('[InvoiceD1Service] Note reading local store file:', err.message);
     }
 
-    // Default Seed
+    // Default Seed — 100% Authentic Zenemoo Legal & Settlement Identity
+    const authenticSigKey = 'signatures/sig_1792217794390_f9e14249.png';
     const initial = {
       settings: {
         id: 'settings_main',
@@ -146,39 +147,60 @@ export class InvoiceD1Service {
         country: 'India',
         official_email: 'contact@zenemoo.in',
         contact_number: '+91 9827775230',
-        pan_number: '',
-        udyam_registration: '',
+        pan_number: 'IDWPP3025F',
+        udyam_registration: 'UDYAM-OD-11-0124893',
         gstin: '',
-        authorized_signatory_name: 'Prem Prasad',
-        signature_key: '',
-        signature_configured: false,
-        signature_file_name: '',
-        signature_updated_at: '',
+        company_logo_url: '',
+        authorized_signatory_name: 'Prem Prasad Pradhan',
+        signature_key: authenticSigKey,
+        signature_image_url: authenticSigKey,
+        signature_configured: true,
+        signature_file_name: 'prem-signature.png',
+        signature_updated_at: '2026-10-17 06:16:34',
         default_currency: 'INR',
         default_payment_terms: 'Net 15 Days',
         default_invoice_notes: 'Thank you for partnering with Zenemoo. Payment is expected within the agreed terms.',
         default_tax_enabled: 0,
         default_tax_label: 'GST',
         default_tax_rate: 18.0,
+        created_at: '2026-10-16 09:27:52',
         updated_at: new Date().toISOString(),
+        updated_by: 'system',
       },
       bank_accounts: [
         {
-          id: 'bank_acc_primary',
-          account_display_name: 'Primary Corporate Current Account',
-          account_holder_name: 'Zenemoo',
+          id: 'bank_prem_sbi_7838',
+          account_display_name: 'Prem Prasad Pradhan - SBI',
+          account_holder_name: 'Prem Prasad Pradhan',
           bank_name: 'State Bank of India',
-          account_number: '40928172615',
-          account_type: 'Current',
-          ifsc_code: 'SBIN0001234',
-          branch_name: 'Main Branch, Ganjam',
-          branch_address: 'Main Road, Odisha 761031',
+          account_number: 'XXXX7838',
+          account_type: 'Savings',
+          ifsc_code: 'SBIN0001336',
+          branch_name: 'Kodala Branch',
+          branch_address: 'Kodala, Ganjam, Odisha',
           swift_bic_code: 'SBININBB123',
-          payment_instructions: 'Please mention Invoice Number in remittance remarks.',
+          payment_instructions: 'Please include the invoice number in transaction remarks.',
           is_active: 1,
           is_default: 1,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: '2026-10-17 06:08:14',
+          updated_at: '2026-10-17 06:08:14',
+        },
+        {
+          id: 'bank_prem_iob_9221',
+          account_display_name: 'Prem Prasad Pradhan - IOB',
+          account_holder_name: 'Prem Prasad Pradhan',
+          bank_name: 'Indian Overseas Bank',
+          account_number: 'XXXX9221',
+          account_type: 'Current',
+          ifsc_code: 'IOBA0000636',
+          branch_name: 'Begunapada Branch',
+          branch_address: 'Begunapada, Ganjam, Odisha',
+          swift_bic_code: 'IOBAINBB123',
+          payment_instructions: 'Please include the invoice number in transaction remarks.',
+          is_active: 1,
+          is_default: 0,
+          created_at: '2026-10-17 06:08:16',
+          updated_at: '2026-10-17 06:08:16',
         },
       ],
       clients: [],
@@ -331,6 +353,7 @@ export class InvoiceD1Service {
    * 1. Get Company Invoice Settings
    */
   async getSettings() {
+    const authenticSigKey = 'signatures/sig_1792217794390_f9e14249.png';
     const mode = this.getPersistenceMode();
     if (mode === 'd1') {
       this.assertD1Operational('getSettings');
@@ -338,14 +361,31 @@ export class InvoiceD1Service {
       const res = await this.executeD1(sql);
       if (res && res.results && res.results.length > 0) {
         const row = res.results[0];
-        const rawSigKey = row.signature_key || row.signature_image_url || this._localStore.settings?.signature_key;
+        let rawSigKey = row.signature_key || row.signature_image_url || this._localStore.settings?.signature_key;
+        if (!rawSigKey || rawSigKey === 'signatures/sig_1792213558605_e32ac446.png') {
+          rawSigKey = authenticSigKey;
+        }
         const sigKey = rawSigKey ? String(rawSigKey).trim() : null;
+
+        let pan = row.pan_number || '';
+        if (pan === 'AABCP1234D' || !pan) pan = 'IDWPP3025F';
+
+        let udyam = row.udyam_registration || '';
+        if (udyam === 'UDYAM-OD-00-1234567' || !udyam) udyam = 'UDYAM-OD-11-0124893';
+
+        let signatory = row.authorized_signatory_name || '';
+        if (signatory === 'Prem Prasad' || !signatory) signatory = 'Prem Prasad Pradhan';
+
         const formatted = {
           ...row,
+          pan_number: pan,
+          udyam_registration: udyam,
+          authorized_signatory_name: signatory,
           signature_key: sigKey,
+          signature_image_url: sigKey,
           signature_configured: Boolean(sigKey),
-          signature_file_name: row.signature_file_name || this._localStore.settings?.signature_file_name || null,
-          signature_updated_at: row.signature_updated_at || this._localStore.settings?.signature_updated_at || null,
+          signature_file_name: row.signature_file_name || this._localStore.settings?.signature_file_name || 'prem-signature.png',
+          signature_updated_at: row.signature_updated_at || this._localStore.settings?.signature_updated_at || '2026-10-17 06:16:34',
           default_tax_enabled: Boolean(row.default_tax_enabled),
         };
         // Synchronize local cache with remote authoritative D1 record
@@ -356,14 +396,30 @@ export class InvoiceD1Service {
     }
 
     // Local persistence mode or default fallback
-    const currentRaw = this._localStore.settings?.signature_key;
+    let currentRaw = this._localStore.settings?.signature_key;
+    if (!currentRaw || currentRaw === 'signatures/sig_1792213558605_e32ac446.png') {
+      currentRaw = authenticSigKey;
+    }
     const currentSigKey = currentRaw ? String(currentRaw).trim() : null;
+    let localPan = this._localStore.settings?.pan_number || '';
+    if (localPan === 'AABCP1234D' || !localPan) localPan = 'IDWPP3025F';
+
+    let localUdyam = this._localStore.settings?.udyam_registration || '';
+    if (localUdyam === 'UDYAM-OD-00-1234567' || !localUdyam) localUdyam = 'UDYAM-OD-11-0124893';
+
+    let localSignatory = this._localStore.settings?.authorized_signatory_name || '';
+    if (localSignatory === 'Prem Prasad' || !localSignatory) localSignatory = 'Prem Prasad Pradhan';
+
     return {
       ...this._localStore.settings,
+      pan_number: localPan,
+      udyam_registration: localUdyam,
+      authorized_signatory_name: localSignatory,
       signature_key: currentSigKey,
+      signature_image_url: currentSigKey,
       signature_configured: Boolean(currentSigKey),
-      signature_file_name: this._localStore.settings?.signature_file_name || null,
-      signature_updated_at: this._localStore.settings?.signature_updated_at || null,
+      signature_file_name: this._localStore.settings?.signature_file_name || 'prem-signature.png',
+      signature_updated_at: this._localStore.settings?.signature_updated_at || '2026-10-17 06:16:34',
       default_tax_enabled: Boolean(this._localStore.settings?.default_tax_enabled),
     };
   }
@@ -500,11 +556,47 @@ export class InvoiceD1Service {
       const sql = `SELECT * FROM bank_accounts ORDER BY created_at ASC, rowid ASC;`;
       const res = await this.executeD1(sql);
       if (res && res.results) {
-        const rows = res.results.map((r) => ({
+        // Filter out any AI-added mock presets (HDFC0001234, 8374, mock IDs)
+        let foundMock = false;
+        const cleanResults = res.results.filter((r) => {
+          const ifsc = (r.ifsc_code || '').toUpperCase();
+          const name = (r.bank_name || '').toUpperCase();
+          const accNum = String(r.account_number || '');
+          const isMock =
+            ifsc === 'HDFC0001234' ||
+            ifsc === 'SBIN0001234' ||
+            (name.includes('HDFC') && accNum.includes('8374')) ||
+            r.id === '7630cf65-19a1-4568-9051-4df1bdfb7e57' ||
+            r.id === 'bank_acc_primary';
+          if (isMock) {
+            foundMock = true;
+            return false;
+          }
+          return true;
+        });
+
+        if (foundMock) {
+          // Asynchronously purge mock accounts from D1
+          this.executeD1(`
+            DELETE FROM bank_accounts
+            WHERE ifsc_code IN ('HDFC0001234', 'SBIN0001234')
+               OR id IN ('7630cf65-19a1-4568-9051-4df1bdfb7e57', 'bank_acc_primary')
+               OR (bank_name LIKE '%HDFC%' AND account_number LIKE '%8374');
+          `).catch(() => null);
+        }
+
+        const rows = cleanResults.map((r) => ({
           ...r,
           is_active: Boolean(r.is_active),
           is_default: Boolean(r.is_default),
         }));
+
+        // Guarantee at least one default account (SBI 7838)
+        if (rows.length > 0 && !rows.some((r) => r.is_default)) {
+          const sbi = rows.find((r) => r.id === 'bank_prem_sbi_7838') || rows[0];
+          sbi.is_default = true;
+        }
+
         this._localStore.bank_accounts = rows;
         this.saveLocalStore();
         return rows;
@@ -512,18 +604,38 @@ export class InvoiceD1Service {
     }
 
     // Local mode: deterministically sorted by created_at ASC with stable array order preservation
-    const accounts = [...(this._localStore.bank_accounts || [])].sort((a, b) => {
-      const timeA = new Date(a.created_at || 0).getTime();
-      const timeB = new Date(b.created_at || 0).getTime();
-      if (timeA !== timeB) return timeA - timeB;
-      return 0; // Preserves stable insertion order
-    });
+    const accounts = [...(this._localStore.bank_accounts || [])]
+      .filter((r) => {
+        const ifsc = (r.ifsc_code || '').toUpperCase();
+        const name = (r.bank_name || '').toUpperCase();
+        const accNum = String(r.account_number || '');
+        return !(
+          ifsc === 'HDFC0001234' ||
+          ifsc === 'SBIN0001234' ||
+          (name.includes('HDFC') && accNum.includes('8374')) ||
+          r.id === '7630cf65-19a1-4568-9051-4df1bdfb7e57' ||
+          r.id === 'bank_acc_primary'
+        );
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        return 0; // Preserves stable insertion order
+      });
 
-    return accounts.map((r) => ({
+    const mapped = accounts.map((r) => ({
       ...r,
       is_active: Boolean(r.is_active),
       is_default: Boolean(r.is_default),
     }));
+
+    if (mapped.length > 0 && !mapped.some((r) => r.is_default)) {
+      const sbi = mapped.find((r) => r.id === 'bank_prem_sbi_7838') || mapped[0];
+      sbi.is_default = true;
+    }
+
+    return mapped;
   }
 
   async createBankAccount(data) {
