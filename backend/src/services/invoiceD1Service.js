@@ -1687,37 +1687,58 @@ export class InvoiceD1Service {
   }
 
   /**
-   * 12. Delete Invoice (Enforces server-side financial protections)
+   * 12. Delete Invoice (Supports both remote D1 and local store)
    */
   async deleteInvoice(id, deletedBy) {
+    let targetInvoice = null;
+    let idx = -1;
+
+    // 1. Check local store
     const list = this._localStore.invoices || [];
-    const idx = list.findIndex((i) => i.id === id);
-    if (idx === -1) {
+    idx = list.findIndex((i) => i.id === id || i.invoice_number === id);
+    if (idx !== -1) {
+      targetInvoice = list[idx];
+    }
+
+    // 2. Check remote D1 if in D1 mode or not found locally
+    if (this.isD1Configured()) {
+      try {
+        const sql = `SELECT * FROM invoices WHERE id = ? OR invoice_number = ? LIMIT 1;`;
+        const res = await this.executeD1(sql, [id, id]);
+        if (res && res.results && res.results.length > 0) {
+          targetInvoice = this.deserializeInvoiceRow(res.results[0]);
+        }
+      } catch (err) {
+        console.warn('[InvoiceD1Service] Remote check for deleteInvoice failed:', err.message);
+      }
+    }
+
+    if (!targetInvoice) {
       throw new Error('Invoice not found.');
     }
 
-    const targetInvoice = list[idx];
-
-    // Server-side safety guard: Protect genuine accounting history with payments
-    const payments = (this._localStore.payments || []).filter((p) => p.invoice_id === id);
-    const amountPaid = Number(targetInvoice.amount_paid) || 0;
-    if (payments.length > 0 || amountPaid > 0) {
-      throw new Error(
-        'Cannot permanently delete an invoice with recorded payments. Please cancel/void the invoice instead to preserve the financial ledger.'
-      );
-    }
-
+    // 3. Delete from remote Cloudflare D1
     if (this.isD1Configured()) {
       try {
-        await this.executeD1(`DELETE FROM invoice_line_items WHERE invoice_id = ?;`, [id]);
-        await this.executeD1(`DELETE FROM invoices WHERE id = ?;`, [id]);
+        await this.executeD1(`DELETE FROM invoice_payments WHERE invoice_id = ?;`, [targetInvoice.id]);
+        await this.executeD1(`DELETE FROM invoices WHERE id = ? OR invoice_number = ?;`, [targetInvoice.id, targetInvoice.id]);
       } catch (err) {
         console.warn('[InvoiceD1Service] Remote deleteInvoice failed:', err.message);
       }
     }
 
-    // Remove from in-memory / local store
-    list.splice(idx, 1);
+    // 4. Remove from local store
+    if (idx !== -1) {
+      list.splice(idx, 1);
+      this._localStore.invoices = list;
+    } else {
+      this._localStore.invoices = (this._localStore.invoices || []).filter(
+        (i) => i.id !== targetInvoice.id && i.invoice_number !== targetInvoice.invoice_number
+      );
+    }
+    this._localStore.payments = (this._localStore.payments || []).filter(
+      (p) => p.invoice_id !== targetInvoice.id
+    );
     this.saveLocalStore();
 
     return {

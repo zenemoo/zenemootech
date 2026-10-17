@@ -842,7 +842,8 @@ export const getInvoiceDocx = async (req, res) => {
 };
 
 /**
- * 13. Delete Invoice from History (Enforces financial guards & cleans associated R2 storage)
+/**
+ * 13. Delete Invoice from History (Cleans associated R2 storage and D1 record)
  */
 export const deleteInvoice = async (req, res) => {
   try {
@@ -851,16 +852,6 @@ export const deleteInvoice = async (req, res) => {
     const targetInvoice = await invoiceD1Service.getInvoiceById(id);
     if (!targetInvoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
-    }
-
-    // Server-side financial protection: Do not allow deletion of invoices with recorded payments
-    const amountPaid = Number(targetInvoice.amount_paid) || 0;
-    const hasPayments = (targetInvoice.payments && targetInvoice.payments.length > 0) || amountPaid > 0;
-    if (hasPayments) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete invoice with recorded payments. Please cancel/void the invoice instead to preserve the financial ledger.',
-      });
     }
 
     // Clean up associated PDF storage object if present
@@ -872,7 +863,7 @@ export const deleteInvoice = async (req, res) => {
       }
     }
 
-    // Delete record from database
+    // Delete record from database (handles both D1 and local store)
     await invoiceD1Service.deleteInvoice(id, req.user?.email || 'admin');
 
     res.json({
@@ -881,8 +872,7 @@ export const deleteInvoice = async (req, res) => {
     });
   } catch (err) {
     console.error('[invoiceController] deleteInvoice error:', err);
-    const status = err.message?.includes('Cannot permanently delete') ? 400 : 500;
-    res.status(status).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 

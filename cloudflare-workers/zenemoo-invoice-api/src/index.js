@@ -399,6 +399,15 @@ export default {
         });
       }
 
+      // 7. Delete Invoice Endpoint
+      const deleteMatch = pathname.match(/^\/api\/invoices\/([^/]+)$/);
+      if (deleteMatch && request.method === 'DELETE') {
+        const id = deleteMatch[1];
+        await env.DB.prepare('DELETE FROM invoice_payments WHERE invoice_id = ?').bind(id).run();
+        await env.DB.prepare('DELETE FROM invoices WHERE id = ? OR invoice_number = ?').bind(id, id).run();
+        return jsonResponse({ success: true, message: 'Invoice deleted' });
+      }
+
       return jsonResponse({ success: false, message: 'Endpoint not found' }, 404);
     } catch (err) {
       return jsonResponse({ success: false, message: err.message }, 500);
