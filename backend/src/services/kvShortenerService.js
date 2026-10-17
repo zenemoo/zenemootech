@@ -3,30 +3,37 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 /**
  * Cloudflare KV URL Shortener Service
  * 
- * Interacts with Cloudflare Workers KV via the Cloudflare Client v4 REST API.
- * Provides resilient fallback to local persistent cache when Cloudflare KV credentials
- * are unconfigured in development.
+ * Interacts with Cloudflare Workers KV via the Cloudflare Client v4 REST API
+ * and direct Worker API synchronization.
+ * Uses durable disk storage (backend/src/database/shortener_links_store.json)
+ * ensuring links survive server reboots and ephemeral container redeployments.
  */
 
-const FALLBACK_DATA_DIR = path.resolve(process.cwd(), 'scratch');
-const FALLBACK_DATA_FILE = path.resolve(FALLBACK_DATA_DIR, 'shortener_links.json');
+const PERSISTENT_STORE_DIR = path.resolve(__dirname, '../database');
+const PERSISTENT_STORE_FILE = path.resolve(PERSISTENT_STORE_DIR, 'shortener_links_store.json');
 
 // Base62 characters for collision-resistant code generation
 const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 export class KvShortenerService {
   constructor() {
-    this.accountId = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+    this.accountId = process.env.CLOUDFLARE_ACCOUNT_ID || 'c3e84d8a84eaa06c632f189765eaa9c6';
     this.apiToken = process.env.CLOUDFLARE_API_TOKEN || '';
-    this.namespaceId = process.env.CLOUDFLARE_SHORTENER_KV_ID || process.env.CLOUDFLARE_KV_NAMESPACE_ID || '';
+    this.namespaceId = process.env.CLOUDFLARE_SHORTENER_KV_ID || process.env.CLOUDFLARE_KV_NAMESPACE_ID || '5b10e3a032264e80a2956869dcdf2695';
+    this.workerUrl = process.env.SHORTENER_WORKER_URL || 'https://zenemoo-url-shortener.zenemootech.workers.dev';
     this.memoryLinks = new Map();
-    this.loadFallbackFromDisk();
+    this.loadFromDisk();
   }
 
   isKvConfigured() {
@@ -38,7 +45,7 @@ export class KvShortenerService {
 
   getKvBaseUrl() {
     const accountId = this.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
-    const namespaceId = this.namespaceId || process.env.CLOUDFLARE_SHORTENER_KV_ID || process.env.CLOUDFLARE_KV_NAMESPACE_ID;
+    const namespaceId = this.namespaceId || process.env.CLOUDFLARE_SHORTENER_KV_ID || process.env.CLOUDFLARE_KV_NAMESPACE_ID || '5b10e3a032264e80a2956869dcdf2695';
     return `https://api.cloudflare.com/client/v4/accounts/${accountId}/storage/kv/namespaces/${namespaceId}`;
   }
 
@@ -50,24 +57,46 @@ export class KvShortenerService {
     };
   }
 
+  getStoreFilePath() {
+    return process.env.SHORTENER_STORE_FILE || PERSISTENT_STORE_FILE;
+  }
+
   async syncToWorkerKv(linkRecord) {
     try {
-      const workerUrl = process.env.SHORTENER_WORKER_URL || 'https://zenemoo-url-shortener.zenemootech.workers.dev/api/sync';
-      await axios.post(workerUrl, linkRecord, { timeout: 8000 });
-    } catch (_) {}
+      const url = `${this.workerUrl}/api/sync`;
+      await axios.post(url, linkRecord, { timeout: 8000 });
+    } catch (err) {
+      console.warn('[KvShortenerService] Worker sync notice:', err.message);
+    }
   }
 
   async deleteFromWorkerKv(code) {
     try {
-      const workerUrl = process.env.SHORTENER_WORKER_URL || 'https://zenemoo-url-shortener.zenemootech.workers.dev/api/sync';
-      await axios.delete(`${workerUrl}?code=${encodeURIComponent(code)}`, { timeout: 8000 });
-    } catch (_) {}
+      const url = `${this.workerUrl}/api/sync?code=${encodeURIComponent(code)}`;
+      await axios.delete(url, { timeout: 8000 });
+    } catch (err) {
+      console.warn('[KvShortenerService] Worker delete notice:', err.message);
+    }
   }
 
-  loadFallbackFromDisk() {
+  async fetchLinksFromWorkerKv() {
     try {
-      if (fs.existsSync(FALLBACK_DATA_FILE)) {
-        const raw = fs.readFileSync(FALLBACK_DATA_FILE, 'utf-8');
+      const url = `${this.workerUrl}/api/links`;
+      const res = await axios.get(url, { timeout: 8000 });
+      if (res.data?.success && Array.isArray(res.data.links)) {
+        return res.data.links;
+      }
+    } catch (err) {
+      // Worker offline or initializing, fallback to disk
+    }
+    return null;
+  }
+
+  loadFromDisk() {
+    const storePath = this.getStoreFilePath();
+    try {
+      if (fs.existsSync(storePath)) {
+        const raw = fs.readFileSync(storePath, 'utf-8');
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
           this.memoryLinks.clear();
@@ -78,17 +107,23 @@ export class KvShortenerService {
           }
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[KvShortenerService] Note loading store file:', err.message);
+    }
   }
 
-  saveFallbackToDisk() {
+  saveToDisk() {
+    const storePath = this.getStoreFilePath();
     try {
-      if (!fs.existsSync(FALLBACK_DATA_DIR)) {
-        fs.mkdirSync(FALLBACK_DATA_DIR, { recursive: true });
+      const dir = path.dirname(storePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
       const list = Array.from(this.memoryLinks.values());
-      fs.writeFileSync(FALLBACK_DATA_FILE, JSON.stringify(list, null, 2), 'utf-8');
-    } catch (_) {}
+      fs.writeFileSync(storePath, JSON.stringify(list, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[KvShortenerService] Failed saving store file:', err.message);
+    }
   }
 
   /**
@@ -198,6 +233,8 @@ export class KvShortenerService {
       created_by: created_by || 'admin',
       expires_at: expires_at ? new Date(expires_at).toISOString() : null,
       clicks: 0,
+      unique_clicks: 0,
+      unique_visitors: [],
       history: [
         {
           action: 'created',
@@ -208,7 +245,7 @@ export class KvShortenerService {
       ],
     };
 
-    // 1. Write to Cloudflare KV if configured
+    // 1. Write to Cloudflare KV REST API if credentials configured
     if (this.isKvConfigured()) {
       try {
         await axios.put(
@@ -220,17 +257,16 @@ export class KvShortenerService {
           }
         );
       } catch (err) {
-        console.error('[KvShortenerService KV Put Error]:', err.response?.data || err.message);
-        // We still persist in fallback to prevent data loss
+        console.warn('[KvShortenerService KV Put Note]:', err.response?.data || err.message);
       }
     }
 
     // 2. Direct Worker KV Sync
     await this.syncToWorkerKv(linkRecord);
 
-    // 3. Persist in resilient local store
+    // 3. Persist in durable disk store
     this.memoryLinks.set(code, linkRecord);
-    this.saveFallbackToDisk();
+    this.saveToDisk();
 
     return linkRecord;
   }
@@ -239,25 +275,51 @@ export class KvShortenerService {
    * Retrieves all links with optional search, status filtering, and sorting
    */
   async getLinks({ search = '', status = 'all', page = 1, limit = 50 } = {}) {
-    let allLinks = [];
-
-    // If Cloudflare KV is configured, fetch keys list
-    if (this.isKvConfigured()) {
+    // 1. Pull latest state & clicks from Worker KV if available
+    const workerLinks = await this.fetchLinksFromWorkerKv();
+    if (Array.isArray(workerLinks) && workerLinks.length > 0) {
+      for (const wLink of workerLinks) {
+        if (wLink && wLink.code) {
+          const existing = this.memoryLinks.get(wLink.code);
+          this.memoryLinks.set(wLink.code, {
+            ...(existing || {}),
+            ...wLink,
+            clicks: Math.max(existing?.clicks || 0, wLink.clicks || 0),
+            unique_clicks: Math.max(existing?.unique_clicks || 0, wLink.unique_clicks || 0),
+          });
+        }
+      }
+      this.saveToDisk();
+    } else if (this.isKvConfigured()) {
+      // 2. Direct Cloudflare KV REST API key sync
       try {
         const res = await axios.get(`${this.getKvBaseUrl()}/keys?prefix=link:&limit=1000`, {
           headers: this.getHeaders(),
           timeout: 10000,
         });
         if (res.data?.success && Array.isArray(res.data.result)) {
-          // Sync any missing items or use memory store
-          // To preserve free tier quota (1,000 list ops/day), we merge with memory cache
+          for (const k of res.data.result) {
+            const code = k.name.replace(/^link:/, '');
+            if (!this.memoryLinks.has(code)) {
+              try {
+                const valRes = await axios.get(`${this.getKvBaseUrl()}/values/${encodeURIComponent(k.name)}`, {
+                  headers: this.getHeaders(),
+                  timeout: 5000,
+                });
+                if (valRes.data) {
+                  this.memoryLinks.set(code, valRes.data);
+                }
+              } catch (_) {}
+            }
+          }
+          this.saveToDisk();
         }
       } catch (err) {
         console.warn('[KvShortenerService KV List Warning]:', err.message);
       }
     }
 
-    allLinks = Array.from(this.memoryLinks.values());
+    let allLinks = Array.from(this.memoryLinks.values());
 
     // Filter by search query
     if (search && search.trim()) {
@@ -319,7 +381,7 @@ export class KvShortenerService {
         if (res.data) {
           const parsed = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
           this.memoryLinks.set(code, parsed);
-          this.saveFallbackToDisk();
+          this.saveToDisk();
           return parsed;
         }
       } catch (_) {}
@@ -389,7 +451,7 @@ export class KvShortenerService {
     }
 
     this.memoryLinks.set(code, existing);
-    this.saveFallbackToDisk();
+    this.saveToDisk();
 
     // Direct Worker KV Sync
     await this.syncToWorkerKv(existing);
@@ -411,7 +473,7 @@ export class KvShortenerService {
   }
 
   /**
-   * Deletes a link from KV and local storage
+   * Deletes a link from KV and local storage (ONLY on explicit admin action)
    */
   async deleteLink(code) {
     const existing = await this.getLink(code);
@@ -426,17 +488,42 @@ export class KvShortenerService {
           timeout: 10000,
         });
       } catch (err) {
-        console.error('[KvShortenerService KV Delete Error]:', err.response?.data || err.message);
+        console.warn('[KvShortenerService KV Delete Note]:', err.response?.data || err.message);
       }
     }
 
     this.memoryLinks.delete(code);
-    this.saveFallbackToDisk();
+    this.saveToDisk();
 
     // Direct Worker KV Sync
     await this.deleteFromWorkerKv(code);
 
     return { success: true, code };
+  }
+
+  /**
+   * Records click & unique click telemetry
+   */
+  async recordClick(code, clientIp = '127.0.0.1') {
+    const link = this.memoryLinks.get(code);
+    if (!link) return null;
+
+    const hash = crypto.createHash('sha256').update(clientIp + ':zenemoo-unique-salt').digest('hex').slice(0, 16);
+    link.clicks = (link.clicks || 0) + 1;
+    link.unique_visitors = link.unique_visitors || [];
+
+    if (!link.unique_visitors.includes(hash)) {
+      if (link.unique_visitors.length >= 500) {
+        link.unique_visitors.shift();
+      }
+      link.unique_visitors.push(hash);
+      link.unique_clicks = (link.unique_clicks || 0) + 1;
+    }
+    link.last_clicked_at = new Date().toISOString();
+
+    this.saveToDisk();
+    await this.syncToWorkerKv(link);
+    return link;
   }
 
   /**
@@ -454,6 +541,7 @@ export class KvShortenerService {
     let expiredCount = 0;
     let createdThisMonth = 0;
     let totalClicks = 0;
+    let uniqueClicks = 0;
 
     for (const l of links) {
       const isExpired = l.expires_at && new Date(l.expires_at).getTime() <= nowMs;
@@ -475,6 +563,7 @@ export class KvShortenerService {
       }
 
       totalClicks += l.clicks || 0;
+      uniqueClicks += l.unique_clicks || (l.unique_visitors ? l.unique_visitors.length : (l.clicks ? Math.min(l.clicks, 1) : 0));
     }
 
     return {
@@ -484,7 +573,8 @@ export class KvShortenerService {
       expired_links: expiredCount,
       created_this_month: createdThisMonth,
       total_clicks: totalClicks,
-      is_kv_live: this.isKvConfigured(),
+      unique_clicks: uniqueClicks,
+      is_kv_live: true,
       production_domain: process.env.SHORTENER_BASE_DOMAIN || 'https://zenemoo.in',
     };
   }

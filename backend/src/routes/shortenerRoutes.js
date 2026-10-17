@@ -13,7 +13,10 @@ import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
 
-// Strict Admin-Only Authorization Guard applied to all routes
+// Public lookup endpoint for redirection (accessible without admin JWT for visitor redirects)
+router.get('/links/:code', getShortenerLinkByCode);
+
+// Strict Admin-Only Authorization Guard applied to administrative management routes below
 router.use(verifyToken);
 router.use(requireRole(['admin', 'super_admin']));
 
@@ -25,7 +28,6 @@ router.get('/export/csv', exportShortenerLinksCsv);
 
 // CRUD operations
 router.get('/links', getShortenerLinks);
-router.get('/links/:code', getShortenerLinkByCode);
 router.post('/links', createShortenerLink);
 router.patch('/links/:code', updateShortenerLink);
 router.patch('/links/:code/status', toggleShortenerLinkStatus);

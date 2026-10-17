@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import {
   getInvoiceDashboardMetrics,
+  getInvoiceDiagnostics,
   getInvoiceSettings,
   updateInvoiceSettings,
   uploadInvoiceSignature,
@@ -45,6 +46,7 @@ router.use(requireRole(['admin']));
 
 // Metrics & Analytics
 router.get('/metrics', getInvoiceDashboardMetrics);
+router.get('/diagnostics', getInvoiceDiagnostics);
 
 // Company Invoice Settings & Signature
 router.get('/settings', getInvoiceSettings);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CreditCard,
   Plus,
@@ -12,8 +12,9 @@ import {
   X,
   AlertCircle,
   Lock,
+  Info,
 } from 'lucide-react';
-import { BankAccount, invoiceApi } from '../../services/invoiceApi';
+import { BankAccount, InvoiceDiagnostics, invoiceApi } from '../../services/invoiceApi';
 import { InvoiceConfirmationModal } from './InvoiceConfirmationModal';
 
 interface BankAccountsSettingsViewProps {
@@ -31,6 +32,11 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [accountToDelete, setAccountToDelete] = useState<BankAccount | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<InvoiceDiagnostics | null>(null);
+
+  useEffect(() => {
+    invoiceApi.getDiagnostics().then(setDiagnostics).catch(() => null);
+  }, []);
 
   // Form State
   const [displayName, setDisplayName] = useState('');
@@ -47,8 +53,22 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
   const [isDefault, setIsDefault] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const openAddModal = () => {
-    setEditingAccount(null);
+  // Safe deterministic card ordering by creation time (stable sort preserving backend order)
+  const sortedAccounts = useMemo(() => {
+    return [...bankAccounts].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeA !== timeB) return timeA - timeB; // Chronological: oldest first
+      return 0; // Stable sort preserving exact array insertion order
+    });
+  }, [bankAccounts]);
+
+  // Current default account (excluding the account being edited)
+  const currentDefaultAccount = useMemo(() => {
+    return bankAccounts.find((b) => b.is_default && b.id !== editingAccount?.id);
+  }, [bankAccounts, editingAccount]);
+
+  const resetFormFields = () => {
     setDisplayName('');
     setHolderName('Zenemoo');
     setBankName('');
@@ -60,6 +80,18 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
     setSwiftCode('');
     setInstructions('Please include the invoice number in transaction remarks.');
     setIsActive(true);
+    setIsDefault(false);
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setEditingAccount(null);
+    resetFormFields();
+  };
+
+  const openAddModal = () => {
+    setEditingAccount(null);
+    resetFormFields();
     setIsDefault(bankAccounts.length === 0);
     setModalOpen(true);
   };
@@ -113,7 +145,7 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
         showToast?.('Account Added', 'New remittance bank account added.', 'success');
       }
 
-      setModalOpen(false);
+      handleCloseModal();
       onRefresh();
     } catch (err: any) {
       showToast?.('Save Error', err.response?.data?.message || err.message || 'Failed to save bank account', 'error');
@@ -164,18 +196,47 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
             Maintain multiple corporate settlement accounts. Selected account details are snapshotted permanently on invoice issuance.
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg shadow-blue-500/20 flex items-center gap-2 self-start sm:self-auto transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          Add Bank Account
-        </button>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          {diagnostics && (
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+                diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : diagnostics.persistenceMode === 'd1'
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              }`}
+              title={`Persistence Mode: ${diagnostics.persistenceMode.toUpperCase()} | Env: ${diagnostics.environment}`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
+                    ? 'bg-emerald-400'
+                    : diagnostics.persistenceMode === 'd1'
+                    ? 'bg-rose-400 animate-pulse'
+                    : 'bg-amber-400'
+                }`}
+              />
+              {diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
+                ? 'Cloudflare D1 (Durable)'
+                : diagnostics.persistenceMode === 'd1'
+                ? 'D1 Missing Credentials'
+                : 'Local Disk Store (Dev)'}
+            </span>
+          )}
+          <button
+            onClick={openAddModal}
+            className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Add Bank Account
+          </button>
+        </div>
       </div>
 
-      {/* Accounts Grid */}
+      {/* Accounts Grid - Rendered in deterministic, stable creation order */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {bankAccounts.map((acc) => (
+        {sortedAccounts.map((acc) => (
           <div
             key={acc.id}
             className={`p-5 rounded-xl border transition-all relative flex flex-col justify-between ${
@@ -296,7 +357,7 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
                 <CreditCard className="w-4 h-4 text-emerald-400" />
                 {editingAccount ? 'Edit Bank Account' : 'Add New Bank Account'}
               </h3>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={handleCloseModal} className="text-slate-400 hover:text-white" title="Close modal">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -441,12 +502,27 @@ export const BankAccountsSettingsView: React.FC<BankAccountsSettingsViewProps> =
                     Set as default account
                   </label>
                 </div>
+
+                {/* Clear explanation of single-default rule and previous default preservation */}
+                {isDefault && currentDefaultAccount && (
+                  <div className="sm:col-span-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-200 text-xs flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <p className="font-semibold text-white">Default Account Reassignment Notice:</p>
+                      <p className="text-slate-300 leading-relaxed">
+                        Setting this account as default will remove default settlement status from{' '}
+                        <strong className="text-emerald-400">"{currentDefaultAccount.account_display_name}" ({currentDefaultAccount.bank_name})</strong>.{' '}
+                        Its account number, IFSC, branch, and all historical issued invoice snapshots will remain completely unchanged.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setModalOpen(false)}
+                  onClick={handleCloseModal}
                   className="px-4 py-2 text-slate-400 hover:text-white"
                 >
                   Cancel

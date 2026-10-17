@@ -31,7 +31,8 @@ import {
   AlertCircle,
   Video,
   FileText,
-  MessageCircle
+  MessageCircle,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import QRCode from 'qrcode';
@@ -347,7 +348,7 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
       </div>
 
       {/* SECTION 2: METRICS SUMMARY CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-sm">
           <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Active Links</p>
           <div className="mt-2 flex items-baseline justify-between">
@@ -392,11 +393,11 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
           <p className="text-[10px] text-slate-500 font-mono mt-1">Free quota: 3,000/mo</p>
         </div>
 
-        <div className="col-span-2 lg:col-span-1 p-4 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-sm">
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Total Redirects</p>
             <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10">
-              Approximate
+              All Visits
             </span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
@@ -406,6 +407,22 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
             <Sparkles className="w-4 h-4 text-purple-400" />
           </div>
           <p className="text-[10px] text-slate-500 font-mono mt-1">Aggregated telemetry</p>
+        </div>
+
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400">Unique Clicks</p>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
+              Unique
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline justify-between">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-cyan-300">
+              {stats?.unique_clicks ?? 0}
+            </span>
+            <Users className="w-4 h-4 text-cyan-400" />
+          </div>
+          <p className="text-[10px] text-cyan-400/80 font-mono mt-1">De-duplicated visitors</p>
         </div>
       </div>
 
@@ -482,7 +499,8 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                     <th className="py-3.5 px-4 font-semibold">Destination URL</th>
                     <th className="py-3.5 px-4 font-semibold">Status</th>
                     <th className="py-3.5 px-4 font-semibold">Expiry</th>
-                    <th className="py-3.5 px-4 font-semibold">Clicks*</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">Redirects</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">Unique Clicks</th>
                     <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
@@ -568,9 +586,17 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                           )}
                         </td>
 
-                        {/* CLICKS */}
-                        <td className="py-3.5 px-4 text-slate-300 font-mono">
+                        {/* TOTAL CLICKS */}
+                        <td className="py-3.5 px-4 text-center text-slate-300 font-mono font-medium">
                           {link.clicks || 0}
+                        </td>
+
+                        {/* UNIQUE CLICKS */}
+                        <td className="py-3.5 px-4 text-center font-mono">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold text-[11px]">
+                            <Users className="w-3 h-3 text-cyan-400" />
+                            {link.unique_clicks ?? 0}
+                          </span>
                         </td>
 
                         {/* ACTIONS */}
@@ -688,7 +714,13 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
-                    <span>Clicks: <strong className="text-white">{link.clicks || 0}</strong></span>
+                    <div className="flex items-center gap-3">
+                      <span>Clicks: <strong className="text-white">{link.clicks || 0}</strong></span>
+                      <span className="inline-flex items-center gap-1 text-cyan-300">
+                        <Users className="w-3 h-3 text-cyan-400" />
+                        Unique: <strong className="text-cyan-400">{link.unique_clicks ?? 0}</strong>
+                      </span>
+                    </div>
                     <span>
                       {link.expires_at ? `Exp: ${new Date(link.expires_at).toLocaleDateString()}` : 'No Expiry'}
                     </span>
@@ -1072,6 +1104,14 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                   <div className="flex justify-between">
                     <span className="text-slate-500">Status:</span>
                     <span className="text-emerald-400 capitalize">{activeDetailLink.status}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Total Redirects:</span>
+                    <span className="text-white font-bold">{activeDetailLink.clicks || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Unique Clicks:</span>
+                    <span className="text-cyan-400 font-bold">{activeDetailLink.unique_clicks || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Expires At:</span>

@@ -36,6 +36,46 @@ export class InvoiceD1Service {
     this.workerUrl = process.env.CLOUDFLARE_INVOICE_WORKER_URL || '';
 
     this._localStore = this.loadLocalStore();
+
+    // Observable startup diagnostic (without exposing secrets)
+    const mode = this.getPersistenceMode();
+    const d1Ready = this.isD1Configured();
+    console.log(`[InvoiceD1Service] Initialized | Mode: ${mode.toUpperCase()} | Cloudflare D1 Configured: ${d1Ready}`);
+    if (mode === 'd1' && !d1Ready) {
+      console.warn(`[InvoiceD1Service] CRITICAL: d1 persistence mode is active, but CLOUDFLARE_API_TOKEN is missing. D1 writes will require configuration.`);
+    }
+  }
+
+  getPersistenceMode() {
+    if (process.env.INVOICE_PERSISTENCE_MODE) {
+      return process.env.INVOICE_PERSISTENCE_MODE.toLowerCase();
+    }
+    if (process.env.NODE_ENV === 'production') {
+      return 'd1';
+    }
+    return this.isD1Configured() ? 'd1' : 'local';
+  }
+
+  getDiagnostics() {
+    const mode = this.getPersistenceMode();
+    const isConfigured = this.isD1Configured();
+    return {
+      persistenceMode: mode,
+      isD1Configured: isConfigured,
+      environment: process.env.NODE_ENV || 'development',
+      cloudflareAccountIdConfigured: Boolean(this.accountId || process.env.CLOUDFLARE_ACCOUNT_ID),
+      cloudflareDatabaseIdConfigured: Boolean(this.databaseId || process.env.CLOUDFLARE_D1_INVOICE_DATABASE_ID),
+      cloudflareApiTokenConfigured: Boolean(this.apiToken || process.env.CLOUDFLARE_API_TOKEN),
+      localStoreFile: path.basename(this.getStoreFilePath()),
+      recordsSummary: {
+        settingsConfigured: Boolean(this._localStore.settings?.id),
+        bankAccountsCount: (this._localStore.bank_accounts || []).length,
+        invoicesCount: (this._localStore.invoices || []).length,
+      },
+      status: mode === 'd1' && !isConfigured
+        ? 'MISCONFIGURED_D1_MISSING_API_TOKEN'
+        : 'HEALTHY',
+    };
   }
 
   isD1Configured() {
@@ -43,6 +83,14 @@ export class InvoiceD1Service {
     const databaseId = this.databaseId || process.env.CLOUDFLARE_D1_INVOICE_DATABASE_ID || process.env.CLOUDFLARE_D1_DATABASE_ID;
     const apiToken = this.apiToken || process.env.CLOUDFLARE_API_TOKEN;
     return Boolean(accountId && databaseId && apiToken && !databaseId.includes('placeholder'));
+  }
+
+  assertD1Operational(operationName = 'operation') {
+    if (this.getPersistenceMode() === 'd1' && !this.isD1Configured()) {
+      throw new Error(
+        `[InvoiceD1Service] Durable persistence failure: Authoritative mode is 'd1', but Cloudflare D1 credentials (CLOUDFLARE_API_TOKEN) are missing. Refusing to perform ${operationName} or fallback silently to ephemeral disk.`
+      );
+    }
   }
 
   getD1Endpoint() {
@@ -219,20 +267,23 @@ export class InvoiceD1Service {
 
         if (data && !data.success) {
           const msg = data.errors?.map((e) => e.message).join('; ') || 'D1 query failed';
-          console.warn('[InvoiceD1Service] D1 API Error:', msg);
+          throw new Error(`D1 API Execution Error: ${msg}`);
         }
       } catch (err) {
-        console.warn('[InvoiceD1Service] D1 REST query failed:', err.response?.data || err.message);
+        const errorDetail = err.response?.data?.errors?.map((e) => e.message).join('; ') || err.message;
+        throw new Error(`Cloudflare D1 REST query failed: ${errorDetail}`);
       }
     }
 
-    // 2. Authenticated Wrangler remote execution (OAuth session)
-    try {
-      const wranglerRes = await this.executeD1ViaWrangler(sql, params);
-      if (wranglerRes && wranglerRes.success) {
-        return wranglerRes;
-      }
-    } catch (_) {}
+    // 2. Authenticated Wrangler remote execution (OAuth session in non-production environments)
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const wranglerRes = await this.executeD1ViaWrangler(sql, params);
+        if (wranglerRes && wranglerRes.success) {
+          return wranglerRes;
+        }
+      } catch (_) {}
+    }
 
     return null;
   }
@@ -243,28 +294,31 @@ export class InvoiceD1Service {
    * 1. Get Company Invoice Settings
    */
   async getSettings() {
-    if (this.isD1Configured()) {
-      try {
-        const sql = `SELECT * FROM invoice_settings WHERE id = 'settings_main' LIMIT 1;`;
-        const res = await this.executeD1(sql);
-        if (res && res.results && res.results.length > 0) {
-          const row = res.results[0];
-          const rawSigKey = row.signature_key || row.signature_image_url || this._localStore.settings?.signature_key;
-          const sigKey = rawSigKey ? String(rawSigKey).trim() : null;
-          return {
-            ...row,
-            signature_key: sigKey,
-            signature_configured: Boolean(sigKey),
-            signature_file_name: row.signature_file_name || this._localStore.settings?.signature_file_name || null,
-            signature_updated_at: row.signature_updated_at || this._localStore.settings?.signature_updated_at || null,
-            default_tax_enabled: Boolean(row.default_tax_enabled),
-          };
-        }
-      } catch (err) {
-        console.warn('[InvoiceD1Service] Remote getSettings failed:', err.message);
+    const mode = this.getPersistenceMode();
+    if (mode === 'd1') {
+      this.assertD1Operational('getSettings');
+      const sql = `SELECT * FROM invoice_settings WHERE id = 'settings_main' LIMIT 1;`;
+      const res = await this.executeD1(sql);
+      if (res && res.results && res.results.length > 0) {
+        const row = res.results[0];
+        const rawSigKey = row.signature_key || row.signature_image_url || this._localStore.settings?.signature_key;
+        const sigKey = rawSigKey ? String(rawSigKey).trim() : null;
+        const formatted = {
+          ...row,
+          signature_key: sigKey,
+          signature_configured: Boolean(sigKey),
+          signature_file_name: row.signature_file_name || this._localStore.settings?.signature_file_name || null,
+          signature_updated_at: row.signature_updated_at || this._localStore.settings?.signature_updated_at || null,
+          default_tax_enabled: Boolean(row.default_tax_enabled),
+        };
+        // Synchronize local cache with remote authoritative D1 record
+        this._localStore.settings = formatted;
+        this.saveLocalStore();
+        return formatted;
       }
     }
 
+    // Local persistence mode or default fallback
     const currentRaw = this._localStore.settings?.signature_key;
     const currentSigKey = currentRaw ? String(currentRaw).trim() : null;
     return {
@@ -278,104 +332,107 @@ export class InvoiceD1Service {
   }
 
   /**
-   * 2. Update Company Invoice Settings
+   * 2. Update Company Invoice Settings (Partial-safe & Non-destructive)
    */
   async updateSettings(data) {
-    const currentSettings = this._localStore.settings || {};
+    const mode = this.getPersistenceMode();
+    if (mode === 'd1') {
+      this.assertD1Operational('updateSettings');
+    }
+
+    // Always fetch existing settings first so partial updates preserve untouched fields
+    const currentSettings = await this.getSettings();
     const sigKey = data.signature_key !== undefined
       ? (data.signature_key ? String(data.signature_key).trim() : null)
       : (currentSettings.signature_key || null);
 
     const updated = {
       ...currentSettings,
-      legal_name: String(data.legal_name || currentSettings.legal_name || 'Zenemoo').trim(),
+      legal_name: data.legal_name !== undefined ? String(data.legal_name).trim() : (currentSettings.legal_name || 'Zenemoo'),
       display_name: 'Zenemoo', // Strictly "Zenemoo"
-      registered_address: data.registered_address !== undefined ? String(data.registered_address).trim() : currentSettings.registered_address,
-      city: data.city !== undefined ? String(data.city).trim() : currentSettings.city,
-      state: data.state !== undefined ? String(data.state).trim() : currentSettings.state,
-      postal_code: data.postal_code !== undefined ? String(data.postal_code).trim() : currentSettings.postal_code,
-      country: data.country !== undefined ? String(data.country).trim() : currentSettings.country,
-      official_email: data.official_email !== undefined ? String(data.official_email).trim() : currentSettings.official_email,
-      contact_number: data.contact_number !== undefined ? String(data.contact_number).trim() : currentSettings.contact_number,
-      pan_number: data.pan_number !== undefined ? String(data.pan_number).trim().toUpperCase() : currentSettings.pan_number,
-      udyam_registration: data.udyam_registration !== undefined ? String(data.udyam_registration).trim().toUpperCase() : currentSettings.udyam_registration,
-      gstin: data.gstin !== undefined ? String(data.gstin).trim().toUpperCase() : currentSettings.gstin,
+      registered_address: data.registered_address !== undefined ? String(data.registered_address).trim() : (currentSettings.registered_address || ''),
+      city: data.city !== undefined ? String(data.city).trim() : (currentSettings.city || ''),
+      state: data.state !== undefined ? String(data.state).trim() : (currentSettings.state || ''),
+      postal_code: data.postal_code !== undefined ? String(data.postal_code).trim() : (currentSettings.postal_code || ''),
+      country: data.country !== undefined ? String(data.country).trim() : (currentSettings.country || 'India'),
+      official_email: data.official_email !== undefined ? String(data.official_email).trim() : (currentSettings.official_email || ''),
+      contact_number: data.contact_number !== undefined ? String(data.contact_number).trim() : (currentSettings.contact_number || ''),
+      pan_number: data.pan_number !== undefined ? String(data.pan_number).trim().toUpperCase() : (currentSettings.pan_number || ''),
+      udyam_registration: data.udyam_registration !== undefined ? String(data.udyam_registration).trim().toUpperCase() : (currentSettings.udyam_registration || ''),
+      gstin: data.gstin !== undefined ? String(data.gstin).trim().toUpperCase() : (currentSettings.gstin || ''),
       authorized_signatory_name: data.authorized_signatory_name !== undefined ? String(data.authorized_signatory_name).trim() : (currentSettings.authorized_signatory_name || 'Prem Prasad'),
       signature_key: sigKey,
       signature_configured: Boolean(sigKey),
       signature_file_name: sigKey ? (data.signature_file_name !== undefined ? String(data.signature_file_name) : (currentSettings.signature_file_name || null)) : null,
       signature_updated_at: sigKey ? (data.signature_updated_at !== undefined ? String(data.signature_updated_at) : (currentSettings.signature_updated_at || null)) : null,
-      default_currency: data.default_currency !== undefined ? String(data.default_currency).toUpperCase().trim() : currentSettings.default_currency,
-      default_payment_terms: data.default_payment_terms !== undefined ? String(data.default_payment_terms).trim() : currentSettings.default_payment_terms,
-      default_invoice_notes: data.default_invoice_notes !== undefined ? String(data.default_invoice_notes).trim() : currentSettings.default_invoice_notes,
-      default_tax_enabled: data.default_tax_enabled !== undefined ? (data.default_tax_enabled ? 1 : 0) : currentSettings.default_tax_enabled,
-      default_tax_label: data.default_tax_label !== undefined ? String(data.default_tax_label).trim() : currentSettings.default_tax_label,
-      default_tax_rate: data.default_tax_rate !== undefined ? Number(data.default_tax_rate) || 0 : currentSettings.default_tax_rate,
+      default_currency: data.default_currency !== undefined ? String(data.default_currency).toUpperCase().trim() : (currentSettings.default_currency || 'INR'),
+      default_payment_terms: data.default_payment_terms !== undefined ? String(data.default_payment_terms).trim() : (currentSettings.default_payment_terms || 'Net 15 Days'),
+      default_invoice_notes: data.default_invoice_notes !== undefined ? String(data.default_invoice_notes).trim() : (currentSettings.default_invoice_notes || ''),
+      default_tax_enabled: data.default_tax_enabled !== undefined ? (data.default_tax_enabled ? 1 : 0) : (currentSettings.default_tax_enabled ? 1 : 0),
+      default_tax_label: data.default_tax_label !== undefined ? String(data.default_tax_label).trim() : (currentSettings.default_tax_label || 'GST'),
+      default_tax_rate: data.default_tax_rate !== undefined ? Number(data.default_tax_rate) || 0 : (Number(currentSettings.default_tax_rate) || 0),
       updated_at: new Date().toISOString(),
       updated_by: data.updated_by || 'admin',
     };
 
-    if (this.isD1Configured()) {
-      try {
-        const sql = `
-          INSERT INTO invoice_settings (
-            id, legal_name, display_name, registered_address, city, state, postal_code, country,
-            official_email, contact_number, pan_number, udyam_registration, gstin,
-            authorized_signatory_name, default_currency, default_payment_terms, default_invoice_notes,
-            default_tax_enabled, default_tax_label, default_tax_rate, updated_at, updated_by
-          ) VALUES (
-            'settings_main', ?, 'Zenemoo', ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?, ?
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            legal_name = excluded.legal_name,
-            registered_address = excluded.registered_address,
-            city = excluded.city,
-            state = excluded.state,
-            postal_code = excluded.postal_code,
-            country = excluded.country,
-            official_email = excluded.official_email,
-            contact_number = excluded.contact_number,
-            pan_number = excluded.pan_number,
-            udyam_registration = excluded.udyam_registration,
-            gstin = excluded.gstin,
-            authorized_signatory_name = excluded.authorized_signatory_name,
-            default_currency = excluded.default_currency,
-            default_payment_terms = excluded.default_payment_terms,
-            default_invoice_notes = excluded.default_invoice_notes,
-            default_tax_enabled = excluded.default_tax_enabled,
-            default_tax_label = excluded.default_tax_label,
-            default_tax_rate = excluded.default_tax_rate,
-            updated_at = excluded.updated_at,
-            updated_by = excluded.updated_by;
-        `;
-        await this.executeD1(sql, [
-          updated.legal_name,
-          updated.registered_address,
-          updated.city,
-          updated.state,
-          updated.postal_code,
-          updated.country,
-          updated.official_email,
-          updated.contact_number,
-          updated.pan_number,
-          updated.udyam_registration,
-          updated.gstin,
-          updated.authorized_signatory_name,
-          updated.default_currency,
-          updated.default_payment_terms,
-          updated.default_invoice_notes,
-          updated.default_tax_enabled,
-          updated.default_tax_label,
-          updated.default_tax_rate,
-          updated.updated_at,
-          updated.updated_by,
-        ]);
-      } catch (err) {
-        console.warn('[InvoiceD1Service] Remote updateSettings failed:', err.message);
-      }
+    if (mode === 'd1') {
+      const sql = `
+        INSERT INTO invoice_settings (
+          id, legal_name, display_name, registered_address, city, state, postal_code, country,
+          official_email, contact_number, pan_number, udyam_registration, gstin,
+          authorized_signatory_name, default_currency, default_payment_terms, default_invoice_notes,
+          default_tax_enabled, default_tax_label, default_tax_rate, updated_at, updated_by
+        ) VALUES (
+          'settings_main', ?, 'Zenemoo', ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          legal_name = excluded.legal_name,
+          registered_address = excluded.registered_address,
+          city = excluded.city,
+          state = excluded.state,
+          postal_code = excluded.postal_code,
+          country = excluded.country,
+          official_email = excluded.official_email,
+          contact_number = excluded.contact_number,
+          pan_number = excluded.pan_number,
+          udyam_registration = excluded.udyam_registration,
+          gstin = excluded.gstin,
+          authorized_signatory_name = excluded.authorized_signatory_name,
+          default_currency = excluded.default_currency,
+          default_payment_terms = excluded.default_payment_terms,
+          default_invoice_notes = excluded.default_invoice_notes,
+          default_tax_enabled = excluded.default_tax_enabled,
+          default_tax_label = excluded.default_tax_label,
+          default_tax_rate = excluded.default_tax_rate,
+          updated_at = excluded.updated_at,
+          updated_by = excluded.updated_by;
+      `;
+      // In d1 mode, execute without swallowing errors so client receives explicit failure
+      await this.executeD1(sql, [
+        updated.legal_name,
+        updated.registered_address,
+        updated.city,
+        updated.state,
+        updated.postal_code,
+        updated.country,
+        updated.official_email,
+        updated.contact_number,
+        updated.pan_number,
+        updated.udyam_registration,
+        updated.gstin,
+        updated.authorized_signatory_name,
+        updated.default_currency,
+        updated.default_payment_terms,
+        updated.default_invoice_notes,
+        updated.default_tax_enabled,
+        updated.default_tax_label,
+        updated.default_tax_rate,
+        updated.updated_at,
+        updated.updated_by,
+      ]);
     }
 
     this._localStore.settings = updated;
@@ -388,26 +445,36 @@ export class InvoiceD1Service {
   }
 
   /**
-   * 3. Bank Accounts
+   * 3. Bank Accounts (Deterministic creation ordering & Atomic single-default invariant)
    */
   async getBankAccounts() {
-    if (this.isD1Configured()) {
-      try {
-        const sql = `SELECT * FROM bank_accounts ORDER BY is_default DESC, created_at DESC;`;
-        const res = await this.executeD1(sql);
-        if (res && res.results) {
-          return res.results.map((r) => ({
-            ...r,
-            is_active: Boolean(r.is_active),
-            is_default: Boolean(r.is_default),
-          }));
-        }
-      } catch (err) {
-        console.warn('[InvoiceD1Service] Remote getBankAccounts failed:', err.message);
+    const mode = this.getPersistenceMode();
+    if (mode === 'd1') {
+      this.assertD1Operational('getBankAccounts');
+      // Crucial: ORDER BY created_at ASC, rowid ASC ensures stable card ordering
+      const sql = `SELECT * FROM bank_accounts ORDER BY created_at ASC, rowid ASC;`;
+      const res = await this.executeD1(sql);
+      if (res && res.results) {
+        const rows = res.results.map((r) => ({
+          ...r,
+          is_active: Boolean(r.is_active),
+          is_default: Boolean(r.is_default),
+        }));
+        this._localStore.bank_accounts = rows;
+        this.saveLocalStore();
+        return rows;
       }
     }
 
-    return (this._localStore.bank_accounts || []).map((r) => ({
+    // Local mode: deterministically sorted by created_at ASC with stable array order preservation
+    const accounts = [...(this._localStore.bank_accounts || [])].sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return 0; // Preserves stable insertion order
+    });
+
+    return accounts.map((r) => ({
       ...r,
       is_active: Boolean(r.is_active),
       is_default: Boolean(r.is_default),
@@ -415,64 +482,71 @@ export class InvoiceD1Service {
   }
 
   async createBankAccount(data) {
+    const mode = this.getPersistenceMode();
+    if (mode === 'd1') {
+      this.assertD1Operational('createBankAccount');
+    }
+
     const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const isFirstAccount = (this._localStore.bank_accounts || []).length === 0;
+    const isDefault = data.is_default || isFirstAccount ? 1 : 0;
+
     const newAcc = {
       id,
-      account_display_name: String(data.account_display_name).trim(),
+      account_display_name: String(data.account_display_name || '').trim(),
       account_holder_name: String(data.account_holder_name || 'Zenemoo').trim(),
-      bank_name: String(data.bank_name).trim(),
-      account_number: String(data.account_number).trim(),
+      bank_name: String(data.bank_name || '').trim(),
+      account_number: String(data.account_number || '').trim(),
       account_type: String(data.account_type || 'Current').trim(),
-      ifsc_code: String(data.ifsc_code).trim().toUpperCase(),
+      ifsc_code: String(data.ifsc_code || '').trim().toUpperCase(),
       branch_name: String(data.branch_name || '').trim(),
       branch_address: String(data.branch_address || '').trim(),
       swift_bic_code: String(data.swift_bic_code || '').trim().toUpperCase(),
       payment_instructions: String(data.payment_instructions || '').trim(),
       is_active: data.is_active !== false ? 1 : 0,
-      is_default: data.is_default ? 1 : 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      is_default: isDefault,
+      created_at: now,
+      updated_at: now,
     };
 
-    if (newAcc.is_default) {
-      (this._localStore.bank_accounts || []).forEach((b) => (b.is_default = 0));
-    }
-
-    if (this.isD1Configured()) {
-      try {
-        if (newAcc.is_default) {
-          await this.executeD1(`UPDATE bank_accounts SET is_default = 0 WHERE id != ?;`, [id]);
-        }
-        const sql = `
-          INSERT INTO bank_accounts (
-            id, account_display_name, account_holder_name, bank_name, account_number,
-            account_type, ifsc_code, branch_name, branch_address, swift_bic_code,
-            payment_instructions, is_active, is_default, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        `;
-        await this.executeD1(sql, [
-          newAcc.id,
-          newAcc.account_display_name,
-          newAcc.account_holder_name,
-          newAcc.bank_name,
-          newAcc.account_number,
-          newAcc.account_type,
-          newAcc.ifsc_code,
-          newAcc.branch_name,
-          newAcc.branch_address,
-          newAcc.swift_bic_code,
-          newAcc.payment_instructions,
-          newAcc.is_active,
-          newAcc.is_default,
-          newAcc.created_at,
-          newAcc.updated_at,
-        ]);
-      } catch (err) {
-        console.warn('[InvoiceD1Service] Remote createBankAccount failed:', err.message);
+    if (mode === 'd1') {
+      if (isDefault) {
+        await this.executeD1(`UPDATE bank_accounts SET is_default = 0;`);
       }
+      const sql = `
+        INSERT INTO bank_accounts (
+          id, account_display_name, account_holder_name, bank_name, account_number,
+          account_type, ifsc_code, branch_name, branch_address, swift_bic_code,
+          payment_instructions, is_active, is_default, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `;
+      await this.executeD1(sql, [
+        newAcc.id,
+        newAcc.account_display_name,
+        newAcc.account_holder_name,
+        newAcc.bank_name,
+        newAcc.account_number,
+        newAcc.account_type,
+        newAcc.ifsc_code,
+        newAcc.branch_name,
+        newAcc.branch_address,
+        newAcc.swift_bic_code,
+        newAcc.payment_instructions,
+        newAcc.is_active,
+        newAcc.is_default,
+        newAcc.created_at,
+        newAcc.updated_at,
+      ]);
     }
 
-    this._localStore.bank_accounts.unshift(newAcc);
+    // Immutable local array update, preserving creation order by appending
+    const existingList = this._localStore.bank_accounts || [];
+    const updatedExisting = isDefault
+      ? existingList.map((b) => ({ ...b, is_default: 0 }))
+      : [...existingList];
+
+    this._localStore.bank_accounts = [...updatedExisting, newAcc];
     this.saveLocalStore();
 
     return {
@@ -483,73 +557,88 @@ export class InvoiceD1Service {
   }
 
   async updateBankAccount(id, data) {
+    const mode = this.getPersistenceMode();
+    if (mode === 'd1') {
+      this.assertD1Operational('updateBankAccount');
+    }
+
     const list = this._localStore.bank_accounts || [];
-    const idx = list.findIndex((b) => b.id === id);
-    if (idx === -1) {
+    const current = list.find((b) => b.id === id);
+    if (!current) {
       throw new Error('Bank account not found.');
     }
 
-    const current = list[idx];
     const isDefault = data.is_default !== undefined ? (data.is_default ? 1 : 0) : current.is_default;
-
-    if (isDefault) {
-      list.forEach((b) => (b.is_default = 0));
-    }
 
     const updated = {
       ...current,
       ...data,
-      ifsc_code: data.ifsc_code ? String(data.ifsc_code).toUpperCase().trim() : current.ifsc_code,
-      swift_bic_code: data.swift_bic_code ? String(data.swift_bic_code).toUpperCase().trim() : current.swift_bic_code,
+      id: current.id, // Strictly immutable ID
+      created_at: current.created_at, // Strictly preserve original creation timestamp
+      account_display_name: data.account_display_name !== undefined ? String(data.account_display_name).trim() : current.account_display_name,
+      account_holder_name: data.account_holder_name !== undefined ? String(data.account_holder_name).trim() : current.account_holder_name,
+      bank_name: data.bank_name !== undefined ? String(data.bank_name).trim() : current.bank_name,
+      account_number: data.account_number !== undefined ? String(data.account_number).trim() : current.account_number,
+      account_type: data.account_type !== undefined ? String(data.account_type).trim() : current.account_type,
+      ifsc_code: data.ifsc_code !== undefined ? String(data.ifsc_code).toUpperCase().trim() : current.ifsc_code,
+      branch_name: data.branch_name !== undefined ? String(data.branch_name).trim() : current.branch_name,
+      branch_address: data.branch_address !== undefined ? String(data.branch_address).trim() : current.branch_address,
+      swift_bic_code: data.swift_bic_code !== undefined ? String(data.swift_bic_code).toUpperCase().trim() : current.swift_bic_code,
+      payment_instructions: data.payment_instructions !== undefined ? String(data.payment_instructions).trim() : current.payment_instructions,
       is_active: data.is_active !== undefined ? (data.is_active ? 1 : 0) : current.is_active,
       is_default: isDefault,
       updated_at: new Date().toISOString(),
     };
 
-    if (this.isD1Configured()) {
-      try {
-        if (isDefault) {
-          await this.executeD1(`UPDATE bank_accounts SET is_default = 0 WHERE id != ?;`, [id]);
-        }
-        const sql = `
-          UPDATE bank_accounts SET
-            account_display_name = ?,
-            account_holder_name = ?,
-            bank_name = ?,
-            account_number = ?,
-            account_type = ?,
-            ifsc_code = ?,
-            branch_name = ?,
-            branch_address = ?,
-            swift_bic_code = ?,
-            payment_instructions = ?,
-            is_active = ?,
-            is_default = ?,
-            updated_at = ?
-          WHERE id = ?;
-        `;
-        await this.executeD1(sql, [
-          updated.account_display_name,
-          updated.account_holder_name,
-          updated.bank_name,
-          updated.account_number,
-          updated.account_type,
-          updated.ifsc_code,
-          updated.branch_name,
-          updated.branch_address,
-          updated.swift_bic_code,
-          updated.payment_instructions,
-          updated.is_active,
-          updated.is_default,
-          updated.updated_at,
-          id,
-        ]);
-      } catch (err) {
-        console.warn('[InvoiceD1Service] Remote updateBankAccount failed:', err.message);
+    if (mode === 'd1') {
+      if (isDefault) {
+        await this.executeD1(`UPDATE bank_accounts SET is_default = 0 WHERE id != ?;`, [id]);
       }
+      const sql = `
+        UPDATE bank_accounts SET
+          account_display_name = ?,
+          account_holder_name = ?,
+          bank_name = ?,
+          account_number = ?,
+          account_type = ?,
+          ifsc_code = ?,
+          branch_name = ?,
+          branch_address = ?,
+          swift_bic_code = ?,
+          payment_instructions = ?,
+          is_active = ?,
+          is_default = ?,
+          updated_at = ?
+        WHERE id = ?;
+      `;
+      await this.executeD1(sql, [
+        updated.account_display_name,
+        updated.account_holder_name,
+        updated.bank_name,
+        updated.account_number,
+        updated.account_type,
+        updated.ifsc_code,
+        updated.branch_name,
+        updated.branch_address,
+        updated.swift_bic_code,
+        updated.payment_instructions,
+        updated.is_active,
+        updated.is_default,
+        updated.updated_at,
+        id,
+      ]);
     }
 
-    list[idx] = updated;
+    // Safe immutable array replacement: un-default others if requested, replace target account without altering others' details
+    this._localStore.bank_accounts = list.map((b) => {
+      if (b.id === id) {
+        return updated;
+      }
+      if (isDefault) {
+        return { ...b, is_default: 0 };
+      }
+      return b;
+    });
     this.saveLocalStore();
 
     return {
@@ -560,12 +649,10 @@ export class InvoiceD1Service {
   }
 
   async deleteBankAccount(id) {
-    if (this.isD1Configured()) {
-      try {
-        await this.executeD1(`DELETE FROM bank_accounts WHERE id = ?;`, [id]);
-      } catch (err) {
-        console.warn('[InvoiceD1Service] Remote deleteBankAccount failed:', err.message);
-      }
+    const mode = this.getPersistenceMode();
+    if (mode === 'd1') {
+      this.assertD1Operational('deleteBankAccount');
+      await this.executeD1(`DELETE FROM bank_accounts WHERE id = ?;`, [id]);
     }
 
     this._localStore.bank_accounts = (this._localStore.bank_accounts || []).filter((b) => b.id !== id);

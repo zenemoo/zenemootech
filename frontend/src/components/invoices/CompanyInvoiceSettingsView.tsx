@@ -17,7 +17,7 @@ import {
   X,
   Lock,
 } from 'lucide-react';
-import { InvoiceSettings, InvoiceSignatureData, invoiceApi } from '../../services/invoiceApi';
+import { InvoiceSettings, InvoiceSignatureData, InvoiceDiagnostics, invoiceApi } from '../../services/invoiceApi';
 
 interface CompanyInvoiceSettingsViewProps {
   initialSettings: InvoiceSettings | null;
@@ -64,6 +64,7 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
   const [defaultTaxRate, setDefaultTaxRate] = useState(initialSettings?.default_tax_rate || 18.0);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<InvoiceDiagnostics | null>(null);
 
   // Handwritten Original Signature State
   const [signatureData, setSignatureData] = useState<InvoiceSignatureData | null>(null);
@@ -88,6 +89,7 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
 
   useEffect(() => {
     fetchSignature();
+    invoiceApi.getDiagnostics().then(setDiagnostics).catch(() => null);
   }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,6 +229,35 @@ export const CompanyInvoiceSettingsView: React.FC<CompanyInvoiceSettingsViewProp
             Configure legal identifiers, registered domicile, and default financial rules for all generated invoices.
           </p>
         </div>
+        {diagnostics && (
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+                diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : diagnostics.persistenceMode === 'd1'
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              }`}
+              title={`Persistence Mode: ${diagnostics.persistenceMode.toUpperCase()} | Env: ${diagnostics.environment}`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
+                    ? 'bg-emerald-400'
+                    : diagnostics.persistenceMode === 'd1'
+                    ? 'bg-rose-400 animate-pulse'
+                    : 'bg-amber-400'
+                }`}
+              />
+              {diagnostics.persistenceMode === 'd1' && diagnostics.isD1Configured
+                ? 'Cloudflare D1 (Durable)'
+                : diagnostics.persistenceMode === 'd1'
+                ? 'D1 Missing Credentials'
+                : 'Local Disk Store (Dev)'}
+            </span>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

@@ -1,0 +1,72 @@
+[
+  {
+    "code": "prem",
+    "destination_url": "https://www.zenemoo.in/opportunity/0562723b-abf8-4fa3-b29d-0ca63dee8b24",
+    "title": "Opportunity 0562723b",
+    "notes": "",
+    "status": "active",
+    "is_active": true,
+    "created_at": "2026-10-12T17:42:45.281Z",
+    "updated_at": "2026-10-12T17:42:45.281Z",
+    "created_by": "mr.prem2006@gmail.com",
+    "expires_at": null,
+    "clicks": 0,
+    "unique_clicks": 0,
+    "unique_visitors": [],
+    "history": [
+      {
+        "action": "created",
+        "timestamp": "2026-10-12T17:42:45.281Z",
+        "user": "mr.prem2006@gmail.com",
+        "initial_destination": "https://www.zenemoo.in/opportunity/0562723b-abf8-4fa3-b29d-0ca63dee8b24"
+      }
+    ]
+  },
+  {
+    "code": "H2KrJl",
+    "destination_url": "https://www.zenemoo.in/opportunity/0562723b-abf8-4fa3-b29d-0ca63dee8b24",
+    "title": "iPhone Live Photo Collection – Handwritten Text",
+    "notes": "",
+    "status": "active",
+    "is_active": true,
+    "created_at": "2026-10-12T18:09:47.066Z",
+    "updated_at": "2026-10-12T18:09:47.066Z",
+    "created_by": "mr.prem2006@gmail.com",
+    "expires_at": null,
+    "clicks": 0,
+    "unique_clicks": 0,
+    "unique_visitors": [],
+    "history": [
+      {
+        "action": "created",
+        "timestamp": "2026-10-12T18:09:47.066Z",
+        "user": "mr.prem2006@gmail.com",
+        "initial_destination": "https://www.zenemoo.in/opportunity/0562723b-abf8-4fa3-b29d-0ca63dee8b24"
+      }
+    ]
+  },
+  {
+    "code": "VR4FTB",
+    "destination_url": "https://www.zenemoo.in/opportunity/f3e5db25-97d9-45ee-8ecd-0cd638670979?ref=ZEN-9MKK-OZKJ",
+    "title": "https://www.zenemoo.in/opportunity/f3e5db25-97d9-45ee-8ecd-0cd638670979?ref=ZEN-9MKK-OZKJ",
+    "notes": "",
+    "status": "active",
+    "is_active": true,
+    "created_at": "2026-10-16T13:53:47.894Z",
+    "updated_at": "2026-10-16T13:53:47.894Z",
+    "created_by": "mr.prem2006@gmail.com",
+    "expires_at": null,
+    "clicks": 0,
+    "unique_clicks": 0,
+    "unique_visitors": [],
+    "history": [
+      {
+        "action": "created",
+        "timestamp": "2026-10-16T13:53:47.894Z",
+        "user": "mr.prem2006@gmail.com",
+        "initial_destination": "https://www.zenemoo.in/opportunity/f3e5db25-97d9-45ee-8ecd-0cd638670979?ref=ZEN-9MKK-OZKJ"
+      }
+    ],
+    "last_clicked_at": "2026-10-17T03:36:38.680Z"
+  }
+]

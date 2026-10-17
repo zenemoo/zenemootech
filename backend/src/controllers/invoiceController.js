@@ -111,6 +111,21 @@ export const getInvoiceDashboardMetrics = async (req, res) => {
 };
 
 /**
+ * 1b. Diagnostics & Persistence Health Check
+ */
+export const getInvoiceDiagnostics = async (req, res) => {
+  try {
+    const diagnostics = invoiceD1Service.getDiagnostics();
+    res.json({
+      success: true,
+      data: diagnostics,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
  * 2. Company Invoice Settings
  */
 export const getInvoiceSettings = async (req, res) => {

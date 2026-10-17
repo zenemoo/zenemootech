@@ -46,6 +46,15 @@ export const getShortenerLinkByCode = async (req, res, next) => {
         message: `Short link '${code}' not found.`,
       });
     }
+
+    // Record click telemetry when link is resolved for redirection (unless explicitly bypassed via ?track=false)
+    if (req.query.track !== 'false') {
+      const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+      kvShortenerService.recordClick(code, clientIp).catch((trackErr) => {
+        console.warn('[Shortener Controller] Telemetry error:', trackErr.message);
+      });
+    }
+
     return res.json({
       success: true,
       link,
@@ -156,7 +165,7 @@ export const exportShortenerLinksCsv = async (req, res, next) => {
     const { links } = await kvShortenerService.getLinks({ limit: 5000 });
     const baseDomain = process.env.SHORTENER_BASE_DOMAIN || 'https://zenemoo.in';
 
-    const headers = ['Code', 'Short URL', 'Title', 'Destination URL', 'Status', 'Expires At', 'Clicks', 'Created At', 'Created By', 'Notes'];
+    const headers = ['Code', 'Short URL', 'Title', 'Destination URL', 'Status', 'Expires At', 'Total Clicks', 'Unique Clicks', 'Created At', 'Created By', 'Notes'];
     const rows = links.map((l) => [
       `"${(l.code || '').replace(/"/g, '""')}"`,
       `"${baseDomain}/l/${l.code}"`,
@@ -165,6 +174,7 @@ export const exportShortenerLinksCsv = async (req, res, next) => {
       `"${l.status || 'active'}"`,
       `"${l.expires_at || 'Never'}"`,
       l.clicks || 0,
+      l.unique_clicks || (l.unique_visitors ? l.unique_visitors.length : (l.clicks ? Math.min(l.clicks, 1) : 0)),
       `"${l.created_at || ''}"`,
       `"${(l.created_by || '').replace(/"/g, '""')}"`,
       `"${(l.notes || '').replace(/"/g, '""')}"`,

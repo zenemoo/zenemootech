@@ -40,6 +40,22 @@ export interface InvoiceSignatureData {
   updated_at?: string | null;
 }
 
+export interface InvoiceDiagnostics {
+  persistenceMode: 'd1' | 'local';
+  isD1Configured: boolean;
+  environment: string;
+  cloudflareAccountIdConfigured: boolean;
+  cloudflareDatabaseIdConfigured: boolean;
+  cloudflareApiTokenConfigured: boolean;
+  localStoreFile: string;
+  recordsSummary: {
+    settingsConfigured: boolean;
+    bankAccountsCount: number;
+    invoicesCount: number;
+  };
+  status: string;
+}
+
 export interface BankAccount {
   id: string;
   account_display_name: string;
@@ -318,5 +334,11 @@ export const invoiceApi = {
   async deleteSignature(): Promise<boolean> {
     const res = await api.delete<{ success: boolean; message: string }>('/admin/invoices/settings/signature');
     return res.data.success;
+  },
+
+  // Observability & Persistence Diagnostics
+  async getDiagnostics(): Promise<InvoiceDiagnostics> {
+    const res = await api.get<{ success: boolean; data: InvoiceDiagnostics }>('/admin/invoices/diagnostics');
+    return res.data.data;
   },
 };

@@ -1011,6 +1011,8 @@ export interface ShortenerLinkItem {
   created_by: string;
   expires_at: string | null;
   clicks: number;
+  unique_clicks?: number;
+  last_clicked_at?: string | null;
   history?: Array<{
     action: string;
     timestamp: string;
@@ -1027,6 +1029,7 @@ export interface ShortenerStats {
   expired_links: number;
   created_this_month: number;
   total_clicks: number;
+  unique_clicks?: number;
   is_kv_live: boolean;
   production_domain: string;
 }

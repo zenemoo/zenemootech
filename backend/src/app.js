@@ -40,6 +40,7 @@ import announcementRoutes from './routes/announcementRoutes.js';
 import poolRoutes from './routes/poolRoutes.js';
 import shortenerRoutes from './routes/shortenerRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
+import { kvShortenerService } from './services/kvShortenerService.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -219,6 +220,22 @@ app.use('/api/invoices', invoiceRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);
+
+// Direct Public URL Shortener Redirection
+app.get('/l/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const link = await kvShortenerService.getLink(code);
+    if (!link || link.status === 'disabled' || (link.expires_at && new Date(link.expires_at).getTime() <= Date.now())) {
+      return res.redirect(`https://zenemoo.in/l/${encodeURIComponent(code)}`);
+    }
+    const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+    await kvShortenerService.recordClick(code, clientIp).catch(() => null);
+    return res.redirect(307, link.destination_url);
+  } catch (err) {
+    return res.redirect('https://zenemoo.in');
+  }
+});
 
 // Root Fallback Aliases
 app.use('/datasets', datasetRoutes);

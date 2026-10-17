@@ -217,6 +217,34 @@ export default {
 
     // Direct KV Sync API (Server-to-Worker)
     if (url.pathname === '/api/sync' || url.pathname === '/api/links') {
+      if (request.method === 'GET') {
+        try {
+          if (!env.SHORTENER_KV) {
+            return new Response(JSON.stringify({ success: true, links: [] }), {
+              status: 200,
+              headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+            });
+          }
+          const listRes = await env.SHORTENER_KV.list({ prefix: 'link:' });
+          const links = [];
+          for (const key of listRes.keys) {
+            const val = await env.SHORTENER_KV.get(key.name, { type: 'json' });
+            if (val) {
+              links.push(val);
+            }
+          }
+          return new Response(JSON.stringify({ success: true, links }), {
+            status: 200,
+            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ success: false, message: err.message }), {
+            status: 500,
+            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
       if (request.method === 'POST') {
         try {
           const body = await request.json();
@@ -369,19 +397,34 @@ export default {
       // 5. Merge incoming query parameters into destination safely
       const finalDestination = mergeQueryParams(destinationUrl, request.url);
 
-      // 6. Optional Zero-Cost / Bounded Analytics Event
-      // To strictly protect Cloudflare KV free-tier (1,000 writes/day), WE NEVER PERFORM A KV WRITE ON REDIRECT.
-      // If Cloudflare Analytics Engine is bound, record zero-cost telemetry
-      if (env.SHORTENER_ANALYTICS && typeof env.SHORTENER_ANALYTICS.writeDataPoint === 'function') {
-        try {
-          ctx.waitUntil(
-            env.SHORTENER_ANALYTICS.writeDataPoint({
-              blobs: [code, rawData.title || 'untitled'],
-              doubles: [1],
-              indexes: [code],
-            })
-          );
-        } catch (_) {}
+      // 6. Record Total & Unique Click Telemetry (Asynchronous Background Execution)
+      if (env.SHORTENER_KV) {
+        ctx.waitUntil((async () => {
+          try {
+            const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
+            // Privacy-preserving visitor hash (SHA-256 of IP + salt)
+            const encoder = new TextEncoder();
+            const data = encoder.encode(clientIp + ':zenemoo-unique-salt');
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            const visitorHash = Array.from(new Uint8Array(digest)).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
+
+            rawData.clicks = (rawData.clicks || 0) + 1;
+            rawData.unique_visitors = rawData.unique_visitors || [];
+
+            if (!rawData.unique_visitors.includes(visitorHash)) {
+              if (rawData.unique_visitors.length >= 500) {
+                rawData.unique_visitors.shift();
+              }
+              rawData.unique_visitors.push(visitorHash);
+              rawData.unique_clicks = (rawData.unique_clicks || 0) + 1;
+            }
+            rawData.last_clicked_at = new Date().toISOString();
+
+            await env.SHORTENER_KV.put(`link:${code}`, JSON.stringify(rawData));
+          } catch (trackErr) {
+            console.error('[Shortener Click Tracking Error]:', trackErr);
+          }
+        })());
       }
 
       // 7. Temporary redirect (307) so destination updates take effect without permanent browser caching
