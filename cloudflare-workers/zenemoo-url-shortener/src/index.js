@@ -402,17 +402,19 @@ export default {
         ctx.waitUntil((async () => {
           try {
             const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
-            // Privacy-preserving visitor hash (SHA-256 of IP + salt)
+            const userAgent = request.headers.get('user-agent') || '';
+
+            // Privacy-preserving visitor fingerprint (SHA-256 of IP + User-Agent + salt)
             const encoder = new TextEncoder();
-            const data = encoder.encode(clientIp + ':zenemoo-unique-salt');
+            const data = encoder.encode(`${clientIp}:${userAgent}:zenemoo-unique-salt`);
             const digest = await crypto.subtle.digest('SHA-256', data);
             const visitorHash = Array.from(new Uint8Array(digest)).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
 
             rawData.clicks = (rawData.clicks || 0) + 1;
-            rawData.unique_visitors = rawData.unique_visitors || [];
+            rawData.unique_visitors = Array.isArray(rawData.unique_visitors) ? rawData.unique_visitors : [];
 
             if (!rawData.unique_visitors.includes(visitorHash)) {
-              if (rawData.unique_visitors.length >= 500) {
+              if (rawData.unique_visitors.length >= 1000) {
                 rawData.unique_visitors.shift();
               }
               rawData.unique_visitors.push(visitorHash);
@@ -420,7 +422,24 @@ export default {
             }
             rawData.last_clicked_at = new Date().toISOString();
 
+            // 1. Update Cloudflare Workers KV
             await env.SHORTENER_KV.put(`link:${code}`, JSON.stringify(rawData));
+
+            // 2. Real-time background telemetry notification to Zenemoo Backend API
+            await fetch('https://zenemootech-api.onrender.com/api/shortener/telemetry/click', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'CF-Connecting-IP': clientIp,
+                'User-Agent': userAgent,
+              },
+              body: JSON.stringify({
+                code,
+                visitorHash,
+                clicks: rawData.clicks,
+                unique_clicks: rawData.unique_clicks,
+              }),
+            }).catch(() => null);
           } catch (trackErr) {
             console.error('[Shortener Click Tracking Error]:', trackErr);
           }

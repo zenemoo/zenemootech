@@ -8,6 +8,7 @@ import {
   toggleShortenerLinkStatus,
   deleteShortenerLink,
   exportShortenerLinksCsv,
+  recordShortenerClickTelemetry,
 } from '../controllers/shortenerController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -15,6 +16,9 @@ const router = express.Router();
 
 // Public lookup endpoint for redirection (accessible without admin JWT for visitor redirects)
 router.get('/links/:code', getShortenerLinkByCode);
+
+// Public telemetry ping endpoint called by Cloudflare Workers on visitor redirect
+router.post('/telemetry/click', recordShortenerClickTelemetry);
 
 // Strict Admin-Only Authorization Guard applied to administrative management routes below
 router.use(verifyToken);

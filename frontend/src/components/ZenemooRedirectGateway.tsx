@@ -20,7 +20,7 @@ export const ZenemooRedirectGateway: React.FC<ZenemooRedirectGatewayProps> = ({ 
 
     const resolveLink = async () => {
       try {
-        const res = await shortenerApi.getLink(code);
+        const res = await shortenerApi.getLink(code, true);
         if (!isMounted) return;
 
         if (res.data?.success && res.data.link) {

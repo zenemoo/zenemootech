@@ -36,6 +36,28 @@ export const getShortenerLinks = async (req, res, next) => {
   }
 };
 
+export const recordShortenerClickTelemetry = async (req, res, next) => {
+  try {
+    const { code, visitorHash, clicks, unique_clicks } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Missing short code.' });
+    }
+    const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+    const userAgent = req.headers['user-agent'] || '';
+    const updated = await kvShortenerService.recordClick(
+      code,
+      clientIp,
+      userAgent,
+      visitorHash,
+      clicks,
+      unique_clicks
+    );
+    return res.json({ success: true, link: updated });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getShortenerLinkByCode = async (req, res, next) => {
   try {
     const { code } = req.params;
@@ -47,10 +69,11 @@ export const getShortenerLinkByCode = async (req, res, next) => {
       });
     }
 
-    // Record click telemetry when link is resolved for redirection (unless explicitly bypassed via ?track=false)
-    if (req.query.track !== 'false') {
+    // Only record click when specifically requested via ?track=true (e.g. from frontend redirect gateway)
+    if (req.query.track === 'true') {
       const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
-      kvShortenerService.recordClick(code, clientIp).catch((trackErr) => {
+      const userAgent = req.headers['user-agent'] || '';
+      kvShortenerService.recordClick(code, clientIp, userAgent).catch((trackErr) => {
         console.warn('[Shortener Controller] Telemetry error:', trackErr.message);
       });
     }

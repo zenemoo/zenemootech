@@ -1047,8 +1047,8 @@ export const shortenerApi = {
       totalPages: number;
       is_kv_live: boolean;
     }>('/shortener/links', { params }),
-  getLink: (code: string) =>
-    api.get<{ success: boolean; link: ShortenerLinkItem }>(`/shortener/links/${encodeURIComponent(code)}`),
+  getLink: (code: string, track = false) =>
+    api.get<{ success: boolean; link: ShortenerLinkItem }>(`/shortener/links/${encodeURIComponent(code)}${track ? '?track=true' : ''}`),
   createLink: (data: {
     destination_url: string;
     custom_code?: string;

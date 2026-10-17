@@ -504,25 +504,45 @@ export class KvShortenerService {
   /**
    * Records click & unique click telemetry
    */
-  async recordClick(code, clientIp = '127.0.0.1') {
-    const link = this.memoryLinks.get(code);
+  async recordClick(code, clientIp = '127.0.0.1', userAgent = '', customHash = null, explicitClicks = null, explicitUnique = null) {
+    let link = this.memoryLinks.get(code);
+    if (!link) {
+      link = await this.getLink(code);
+    }
     if (!link) return null;
 
-    const hash = crypto.createHash('sha256').update(clientIp + ':zenemoo-unique-salt').digest('hex').slice(0, 16);
-    link.clicks = (link.clicks || 0) + 1;
-    link.unique_visitors = link.unique_visitors || [];
+    const hash = customHash || crypto
+      .createHash('sha256')
+      .update(`${clientIp}:${userAgent}:zenemoo-unique-salt`)
+      .digest('hex')
+      .slice(0, 16);
+
+    link.unique_visitors = Array.isArray(link.unique_visitors) ? link.unique_visitors : [];
+
+    if (explicitClicks !== null && explicitClicks !== undefined) {
+      link.clicks = Math.max(link.clicks || 0, explicitClicks);
+    } else {
+      link.clicks = (link.clicks || 0) + 1;
+    }
 
     if (!link.unique_visitors.includes(hash)) {
-      if (link.unique_visitors.length >= 500) {
+      if (link.unique_visitors.length >= 1000) {
         link.unique_visitors.shift();
       }
       link.unique_visitors.push(hash);
-      link.unique_clicks = (link.unique_clicks || 0) + 1;
+      if (explicitUnique !== null && explicitUnique !== undefined) {
+        link.unique_clicks = Math.max(link.unique_clicks || 0, explicitUnique);
+      } else {
+        link.unique_clicks = (link.unique_clicks || 0) + 1;
+      }
+    } else if (explicitUnique !== null && explicitUnique !== undefined) {
+      link.unique_clicks = Math.max(link.unique_clicks || 0, explicitUnique);
     }
+
     link.last_clicked_at = new Date().toISOString();
 
+    this.memoryLinks.set(code, link);
     this.saveToDisk();
-    await this.syncToWorkerKv(link);
     return link;
   }
 
@@ -530,6 +550,23 @@ export class KvShortenerService {
    * Retrieves summary statistics for the admin dashboard
    */
   async getStats() {
+    // Sync with Worker KV first to get latest real-time edge clicks
+    const workerLinks = await this.fetchLinksFromWorkerKv();
+    if (Array.isArray(workerLinks) && workerLinks.length > 0) {
+      for (const wLink of workerLinks) {
+        if (wLink && wLink.code) {
+          const existing = this.memoryLinks.get(wLink.code);
+          this.memoryLinks.set(wLink.code, {
+            ...(existing || {}),
+            ...wLink,
+            clicks: Math.max(existing?.clicks || 0, wLink.clicks || 0),
+            unique_clicks: Math.max(existing?.unique_clicks || 0, wLink.unique_clicks || 0),
+          });
+        }
+      }
+      this.saveToDisk();
+    }
+
     const links = Array.from(this.memoryLinks.values());
     const now = new Date();
     const nowMs = now.getTime();
