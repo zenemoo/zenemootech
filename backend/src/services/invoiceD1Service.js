@@ -50,9 +50,6 @@ export class InvoiceD1Service {
     if (process.env.INVOICE_PERSISTENCE_MODE) {
       return process.env.INVOICE_PERSISTENCE_MODE.toLowerCase();
     }
-    if (process.env.NODE_ENV === 'production') {
-      return 'd1';
-    }
     return this.isD1Configured() ? 'd1' : 'local';
   }
 
