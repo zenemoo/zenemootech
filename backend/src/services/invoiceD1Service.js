@@ -75,7 +75,14 @@ export class InvoiceD1Service {
     };
   }
 
+  getWorkerGatewayUrl() {
+    return process.env.INVOICE_WORKER_URL || 'https://zenemoo-invoice-api.zenemootech.workers.dev';
+  }
+
   isD1Configured() {
+    if (this.getWorkerGatewayUrl()) {
+      return true;
+    }
     const accountId = this.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
     const databaseId = this.databaseId || process.env.CLOUDFLARE_D1_INVOICE_DATABASE_ID || process.env.CLOUDFLARE_D1_DATABASE_ID;
     const apiToken = this.apiToken || process.env.CLOUDFLARE_API_TOKEN;
@@ -240,8 +247,41 @@ export class InvoiceD1Service {
   }
 
   async executeD1(sql, params = []) {
-    // 1. Direct Cloudflare REST API (if CLOUDFLARE_API_TOKEN is configured)
-    if (this.isD1Configured()) {
+    // 1. Dedicated Cloudflare Worker D1 Gateway (Primary: native edge binding to D1, zero token requirement)
+    const workerGateway = this.getWorkerGatewayUrl();
+    if (workerGateway) {
+      try {
+        const secret = process.env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
+        const response = await axios.post(
+          `${workerGateway.replace(/\/+$/, '')}/api/invoices/query`,
+          { sql, params },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-zenemoo-secret': secret,
+            },
+            timeout: 10000,
+          }
+        );
+
+        if (response.data && response.data.success) {
+          return {
+            results: response.data.results || [],
+            meta: response.data.meta || {},
+            success: true,
+            executionMode: 'worker_gateway',
+          };
+        }
+      } catch (workerErr) {
+        console.warn('[InvoiceD1Service] Worker gateway query note:', workerErr.response?.data?.message || workerErr.message);
+      }
+    }
+
+    // 2. Direct Cloudflare REST API (if CLOUDFLARE_API_TOKEN is configured)
+    const accountId = this.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
+    const databaseId = this.databaseId || process.env.CLOUDFLARE_D1_INVOICE_DATABASE_ID || process.env.CLOUDFLARE_D1_DATABASE_ID;
+    const apiToken = this.apiToken || process.env.CLOUDFLARE_API_TOKEN;
+    if (accountId && databaseId && apiToken && !databaseId.includes('placeholder')) {
       try {
         const endpoint = this.getD1Endpoint();
         const headers = this.getHeaders();
@@ -265,22 +305,14 @@ export class InvoiceD1Service {
         if (data && !data.success) {
           const msg = data.errors?.map((e) => e.message).join('; ') || 'D1 query failed';
           console.warn(`[InvoiceD1Service] D1 API note: ${msg}`);
-          if (process.env.INVOICE_STRICT_D1 === 'true') {
-            throw new Error(`D1 API Execution Error: ${msg}`);
-          }
-          return null;
         }
       } catch (err) {
         const errorDetail = err.response?.data?.errors?.map((e) => e.message).join('; ') || err.message;
         console.warn(`[InvoiceD1Service] Cloudflare D1 query note: ${errorDetail}`);
-        if (process.env.INVOICE_STRICT_D1 === 'true') {
-          throw new Error(`Cloudflare D1 REST query failed: ${errorDetail}`);
-        }
-        return null;
       }
     }
 
-    // 2. Authenticated Wrangler remote execution (OAuth session in non-production environments)
+    // 3. Authenticated Wrangler remote execution (OAuth session in non-production environments)
     if (process.env.NODE_ENV !== 'production') {
       try {
         const wranglerRes = await this.executeD1ViaWrangler(sql, params);
@@ -385,12 +417,14 @@ export class InvoiceD1Service {
         INSERT INTO invoice_settings (
           id, legal_name, display_name, registered_address, city, state, postal_code, country,
           official_email, contact_number, pan_number, udyam_registration, gstin,
-          authorized_signatory_name, default_currency, default_payment_terms, default_invoice_notes,
+          authorized_signatory_name, signature_key, signature_file_name, signature_updated_at,
+          default_currency, default_payment_terms, default_invoice_notes,
           default_tax_enabled, default_tax_label, default_tax_rate, updated_at, updated_by
         ) VALUES (
           'settings_main', ?, 'Zenemoo', ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?,
+          ?, ?, ?,
           ?, ?, ?, ?, ?
         )
         ON CONFLICT(id) DO UPDATE SET
@@ -406,6 +440,9 @@ export class InvoiceD1Service {
           udyam_registration = excluded.udyam_registration,
           gstin = excluded.gstin,
           authorized_signatory_name = excluded.authorized_signatory_name,
+          signature_key = excluded.signature_key,
+          signature_file_name = excluded.signature_file_name,
+          signature_updated_at = excluded.signature_updated_at,
           default_currency = excluded.default_currency,
           default_payment_terms = excluded.default_payment_terms,
           default_invoice_notes = excluded.default_invoice_notes,
@@ -429,6 +466,9 @@ export class InvoiceD1Service {
         updated.udyam_registration,
         updated.gstin,
         updated.authorized_signatory_name,
+        updated.signature_key || '',
+        updated.signature_file_name || '',
+        updated.signature_updated_at || '',
         updated.default_currency,
         updated.default_payment_terms,
         updated.default_invoice_notes,

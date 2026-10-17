@@ -52,6 +52,40 @@ export default {
     }
 
     try {
+      // 0. Universal D1 Gateway for Node.js Backend & Edge Services
+      if ((pathname === '/api/invoices/query' || pathname === '/api/invoices/d1-query') && request.method === 'POST') {
+        const secret = request.headers.get('x-zenemoo-secret') || request.headers.get('authorization');
+        const expected = env.JWT_SECRET || 'zenemoo_super_secret_jwt_key_2026';
+        if (secret !== expected && secret !== `Bearer ${expected}`) {
+          return jsonResponse({ success: false, message: 'Unauthorized D1 Gateway call' }, 401);
+        }
+
+        const body = await request.json();
+        const sql = String(body.sql || '').trim();
+        const params = Array.isArray(body.params) ? body.params : [];
+
+        if (!sql) {
+          return jsonResponse({ success: false, message: 'Missing SQL statement' }, 400);
+        }
+
+        const stmt = env.DB.prepare(sql).bind(...params);
+        if (/^\s*(SELECT|PRAGMA)/i.test(sql)) {
+          const res = await stmt.all();
+          return jsonResponse({
+            success: true,
+            results: res.results || [],
+            meta: res.meta || {},
+          });
+        } else {
+          const res = await stmt.run();
+          return jsonResponse({
+            success: true,
+            results: res.results || [],
+            meta: res.meta || {},
+          });
+        }
+      }
+
       // 1. Metrics
       if (pathname === '/api/invoices/metrics' && request.method === 'GET') {
         const stmt = env.DB.prepare('SELECT status, total_amount, amount_paid, outstanding_balance, due_date FROM invoices');
