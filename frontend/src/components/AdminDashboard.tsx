@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2, Vote, QrCode } from 'lucide-react';
+import { Sparkles, Users, Key, Database, Cloud, Activity, CheckCircle, ShieldAlert, ArrowLeft, Save, Plus, Edit, Trash2, Upload, RefreshCw, Eye, Lock, X, Mail, MessageSquare, Phone, Building, ArrowUp, ArrowDown, Search, Filter, EyeOff, Hash, FileText, Handshake, Globe, ExternalLink, Briefcase, FileCheck, Linkedin, FileSpreadsheet, HelpCircle, CheckSquare, PlusCircle, UserCheck, UserX, LogOut, Menu, ChevronLeft, ChevronRight, Bell, User, ShieldCheck, Clock, Monitor, Smartphone, KeyRound, History, Zap, Check, AlertTriangle, Download, Send, Inbox, CheckCircle2, XCircle, AlertCircle, Info, Sliders, ArrowUpDown, ChevronDown, ChevronUp, Layers, Radio, Terminal, Image, Power, Copy, Bot, LifeBuoy, Star, Calendar, CreditCard, Link2, Vote, QrCode, IdCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamMember, getStoredTeamMembers, saveTeamMemberToApi, deleteTeamMemberFromApi, reorderTeamMemberInApi } from '../lib/teamStore';
 import { PartnerCompany, getStoredPartners, savePartnerToApi, deletePartnerFromApi, reorderPartnerInApi } from '../lib/partnerStore';
@@ -42,6 +42,7 @@ import DOMPurify from 'dompurify';
 import { AdminUrlShortenerTab } from './AdminUrlShortenerTab';
 import { AdminQrCodeStudioTab } from './AdminQrCodeStudioTab';
 import { AdminInvoicesTab } from './invoices/AdminInvoicesTab';
+import { AdminStaffIdCardGeneratorTab } from './AdminStaffIdCardGeneratorTab';
 
 export type AdminTabType =
   | 'team'
@@ -77,12 +78,14 @@ export type AdminTabType =
   | 'portfolio'
   | 'shortener'
   | 'qr-studio'
-  | 'invoices';
+  | 'invoices'
+  | 'staff-id-cards';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
   'notifications',
   'team',
   'directory',
+  'staff-id-cards',
   'rbac',
   'keys',
   'admin-hr-ai',
@@ -175,6 +178,7 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'shortener': 'URL Shortener Gateway',
   'qr-studio': 'QR Code Studio',
   'invoices': 'Invoices & Billing',
+  'staff-id-cards': 'Staff ID Cards Generator',
 };
 
 export const getAdminTabTitle = (tab: string | null | undefined): string => {
@@ -2945,6 +2949,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
       items: [
         { id: 'team', name: 'Team Roster', icon: Users, count: teamList.length },
         { id: 'directory', name: 'Team Directory', icon: UserCheck },
+        { id: 'staff-id-cards', name: 'Staff ID Cards', icon: IdCard },
         { id: 'rbac', name: 'User Access & RBAC', icon: ShieldCheck },
         { id: 'keys', name: 'Authorized Administrators', icon: Key, count: authorizedEmails.length },
         { id: 'admin-hr-ai', name: 'Admin & HR AI', icon: Sparkles },
@@ -5206,6 +5211,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
           <AdminInvoicesTab
             showToast={addToast}
             showConfirm={showConfirm}
+          />
+        )}
+
+        {/* TAB: STAFF ID CARD GENERATOR */}
+        {activeTab === 'staff-id-cards' && (
+          <AdminStaffIdCardGeneratorTab
+            onAddToast={addToast}
+            onShowConfirm={showConfirm}
           />
         )}
 

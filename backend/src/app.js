@@ -40,6 +40,7 @@ import announcementRoutes from './routes/announcementRoutes.js';
 import poolRoutes from './routes/poolRoutes.js';
 import shortenerRoutes from './routes/shortenerRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
+import staffIdCardRoutes from './routes/staffIdCardRoutes.js';
 import { kvShortenerService } from './services/kvShortenerService.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -217,6 +218,8 @@ app.use('/api/shortener', shortenerRoutes);
 app.use('/api/admin/shortener', shortenerRoutes);
 app.use('/api/admin/invoices', invoiceRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/staff-id-cards', staffIdCardRoutes);
+app.use('/api/admin/staff-id-cards', staffIdCardRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);

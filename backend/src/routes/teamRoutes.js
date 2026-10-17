@@ -11,6 +11,7 @@ import {
   getPendingProfileUpdates,
   approveProfileUpdate,
   rejectProfileUpdate,
+  getStaffMemberByStaffId,
 } from '../controllers/teamController.js';
 import {
   getMyPrivateProfile,
@@ -19,6 +20,9 @@ import {
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = Router();
+
+// Single Staff Lookup (Egress-Minimized for Staff ID Card Generator)
+router.get('/by-staff/:staffId', verifyToken, requireRole(['admin', 'hr']), getStaffMemberByStaffId);
 
 // Self-Service Private Profile System (Team Member & HR)
 router.get('/private-profile/me', verifyToken, getMyPrivateProfile);

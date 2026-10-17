@@ -1073,6 +1073,69 @@ export const shortenerApi = {
   exportCsvUrl: () => `${rawApiUrl}/shortener/export/csv`,
 };
 
+// Staff ID Card Generator APIs & Interfaces
+export interface StaffCardFieldVisibility {
+  designation?: boolean;
+  staff_id?: boolean;
+  email?: boolean;
+  phone?: boolean;
+  department?: boolean;
+  joining_year?: boolean;
+  qr_code?: boolean;
+}
+
+export interface StaffIdCardItem {
+  id?: string;
+  staff_id: string;
+  team_member_id?: string | null;
+  mode: 'manual' | 'fetched';
+  card_full_name: string;
+  card_designation?: string;
+  card_department?: string;
+  card_email?: string;
+  card_phone?: string;
+  card_photo_url?: string;
+  card_photo_public_id?: string;
+  card_photo_is_owned?: boolean;
+  card_joining_year?: string;
+  qr_destination_url?: string;
+  field_visibility?: StaffCardFieldVisibility;
+  theme_preset?: string;
+  notes?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const staffIdCardApi = {
+  lookup: (query: string) =>
+    deduplicatedGet<{ success: boolean; found: boolean; count: number; records: any[] }>(
+      `/staff-id-cards/lookup?query=${encodeURIComponent(query)}`
+    ),
+  lookupByStaffId: (staffId: string) =>
+    deduplicatedGet<{ success: boolean; found: boolean; count: number; records: any[] }>(
+      `/team/by-staff/${encodeURIComponent(staffId)}`
+    ),
+  getSavedCards: (search = '') =>
+    api.get<{ success: boolean; count: number; cards: StaffIdCardItem[] }>(
+      `/staff-id-cards${search ? `?search=${encodeURIComponent(search)}` : ''}`
+    ),
+  getCardById: (id: string) =>
+    api.get<{ success: boolean; card: StaffIdCardItem; sourceMember?: any; sourceMemberMissing?: boolean }>(
+      `/staff-id-cards/${encodeURIComponent(id)}`
+    ),
+  saveCard: (data: Partial<StaffIdCardItem>) =>
+    api.post<{ success: boolean; message: string; card: StaffIdCardItem }>('/staff-id-cards', data),
+  deleteCard: (id: string) =>
+    api.delete<{ success: boolean; message: string; deletedId: string }>(`/staff-id-cards/${encodeURIComponent(id)}`),
+  uploadPhoto: (formData: FormData) =>
+    api.post<{ success: boolean; message: string; secure_url: string; public_id: string; is_card_owned: boolean }>(
+      '/staff-id-cards/upload-photo',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
+};
+
 
 
 

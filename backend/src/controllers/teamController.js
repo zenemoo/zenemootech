@@ -985,4 +985,19 @@ export const deleteTeamMember = async (req, res, next) => {
   }
 };
 
+// GET /api/team/by-staff/:staffId - Single-Record Egress-Minimized Lookup by Staff ID or Name
+export const getStaffMemberByStaffId = async (req, res, next) => {
+  try {
+    const { staffId } = req.params;
+    const { staffIdCardService } = await import('../services/staffIdCardService.js');
+    const result = await staffIdCardService.lookupStaff(staffId);
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 
