@@ -1,9 +1,13 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
 import { cloudinaryService } from './cloudinaryService.js';
 import { generateCloudinaryPublicId } from '../utils/imageSeoHelper.js';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isValidUuid = (val) => typeof val === 'string' && UUID_REGEX.test(val);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -129,7 +133,7 @@ export class StaffIdCardService {
       try {
         let query = supabase
           .from('staff_id_cards')
-          .select('id, staff_id, team_member_id, mode, card_full_name, card_designation, card_department, card_email, card_phone, card_photo_url, card_photo_public_id, card_photo_is_owned, card_joining_year, qr_destination_url, field_visibility, theme_preset, updated_at')
+          .select('id, staff_id, team_member_id, mode, card_full_name, card_designation, card_department, card_email, card_phone, card_photo_url, card_photo_public_id, card_photo_is_owned, card_joining_year, qr_destination_url, field_visibility, theme_preset, updated_at, created_at')
           .order('updated_at', { ascending: false });
 
         if (search) {
@@ -138,7 +142,17 @@ export class StaffIdCardService {
 
         const { data, error } = await query;
         if (!error && Array.isArray(data)) {
+          // Sync local memory store with Supabase records
+          for (const card of data) {
+            if (card.id) {
+              this.memoryStore.set(card.id, card);
+            }
+          }
+          this.saveToDisk();
           return { success: true, count: data.length, cards: data };
+        }
+        if (error) {
+          console.warn('Supabase getSavedCards query returned error:', error.message);
         }
       } catch (err) {
         console.warn('Supabase getSavedCards error, using local fallback:', err.message);
@@ -159,7 +173,7 @@ export class StaffIdCardService {
   }
 
   /**
-   * Get a single saved card by ID and verify source team member
+   * Get a single saved card by ID or staff_id and verify source team member
    */
   async getCardById(id) {
     if (!id) return null;
@@ -168,18 +182,38 @@ export class StaffIdCardService {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase
-          .from('staff_id_cards')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
-        if (!error && data) card = data;
-      } catch (e) {}
+        if (isValidUuid(id)) {
+          const { data, error } = await supabase
+            .from('staff_id_cards')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+          if (!error && data) card = data;
+        } else {
+          // Fallback search by staff_id if non-UUID passed
+          const { data, error } = await supabase
+            .from('staff_id_cards')
+            .select('*')
+            .ilike('staff_id', String(id).trim())
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          if (!error && Array.isArray(data) && data.length > 0) {
+            card = data[0];
+          }
+        }
+      } catch (e) {
+        console.warn('Supabase getCardById error:', e.message);
+      }
     }
 
     if (!card) {
       this.loadFromDisk();
       card = this.memoryStore.get(id) || null;
+      if (!card) {
+        card = Array.from(this.memoryStore.values()).find(
+          (c) => (c.staff_id || '').trim().toLowerCase() === String(id).trim().toLowerCase()
+        ) || null;
+      }
     }
 
     if (!card) return null;
@@ -187,7 +221,7 @@ export class StaffIdCardService {
     // Verify if source team record still exists
     let sourceMember = null;
     let sourceMemberMissing = false;
-    if (card.team_member_id && supabase) {
+    if (card.team_member_id && supabase && isValidUuid(card.team_member_id)) {
       try {
         const { data, error } = await supabase
           .from('team')
@@ -213,6 +247,8 @@ export class StaffIdCardService {
 
   /**
    * Save or Update a card configuration
+   * Upsert rule: Staff ID is the unique employee identifier. If a card with this staff_id
+   * already exists, update it and remove any older/duplicate records so only one card exists.
    */
   async saveCard(payload, adminEmail = 'admin') {
     const {
@@ -245,48 +281,61 @@ export class StaffIdCardService {
     const cleanStaffId = staff_id.trim();
     const now = new Date().toISOString();
 
-    // Check for existing card with this staff_id or id
+    // 1. Look up existing card by Staff ID first (case-insensitive) to prevent duplicate cards
     let existingCard = null;
-    if (id) {
-      const found = await this.getCardById(id);
-      existingCard = found?.card || null;
-    }
-    if (!existingCard) {
-      // Check by staff_id
-      if (supabase) {
-        try {
-          const { data } = await supabase
-            .from('staff_id_cards')
-            .select('*')
-            .ilike('staff_id', cleanStaffId)
-            .maybeSingle();
-          if (data) existingCard = data;
-        } catch (e) {}
-      }
-      if (!existingCard) {
-        existingCard = Array.from(this.memoryStore.values()).find(
-          (c) => (c.staff_id || '').toLowerCase() === cleanStaffId.toLowerCase()
-        ) || null;
+    let duplicateCardIds = [];
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('staff_id_cards')
+          .select('*')
+          .ilike('staff_id', cleanStaffId)
+          .order('updated_at', { ascending: false });
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          existingCard = data[0];
+          if (data.length > 1) {
+            duplicateCardIds = data.slice(1).map((c) => c.id);
+          }
+        }
+      } catch (e) {
+        console.warn('Supabase staff_id lookup warning:', e.message);
       }
     }
 
-    const targetId = existingCard?.id || id || `card_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // 2. If not found by staff_id, check by passed ID if valid UUID
+    if (!existingCard && id && isValidUuid(id)) {
+      const found = await this.getCardById(id);
+      existingCard = found?.card || null;
+    }
+
+    // 3. Fallback check in memoryStore
+    if (!existingCard) {
+      this.loadFromDisk();
+      existingCard = Array.from(this.memoryStore.values()).find(
+        (c) => (c.staff_id || '').trim().toLowerCase() === cleanStaffId.toLowerCase()
+      ) || (id ? this.memoryStore.get(id) : null) || null;
+    }
+
+    // 4. Resolve UUID: always ensure valid UUID for Postgres compliance
+    const targetId = existingCard?.id || (isValidUuid(id) ? id : crypto.randomUUID());
 
     const cardRecord = {
       id: targetId,
       staff_id: cleanStaffId,
-      team_member_id: team_member_id || existingCard?.team_member_id || null,
+      team_member_id: (team_member_id && isValidUuid(team_member_id)) ? team_member_id : (existingCard?.team_member_id || null),
       mode: mode === 'fetched' ? 'fetched' : 'manual',
       card_full_name: card_full_name.trim(),
-      card_designation: card_designation.trim(),
-      card_department: card_department.trim(),
-      card_email: card_email.trim(),
-      card_phone: card_phone.trim(),
-      card_photo_url: card_photo_url.trim(),
-      card_photo_public_id: card_photo_public_id.trim(),
+      card_designation: (card_designation || '').trim(),
+      card_department: (card_department || '').trim(),
+      card_email: (card_email || '').trim(),
+      card_phone: (card_phone || '').trim(),
+      card_photo_url: (card_photo_url || '').trim(),
+      card_photo_public_id: (card_photo_public_id || '').trim(),
       card_photo_is_owned: Boolean(card_photo_is_owned),
       card_joining_year: card_joining_year ? String(card_joining_year).trim() : '',
-      qr_destination_url: qr_destination_url.trim(),
+      qr_destination_url: (qr_destination_url || '').trim(),
       field_visibility: typeof field_visibility === 'object' && field_visibility !== null ? field_visibility : {
         designation: true,
         staff_id: true,
@@ -325,14 +374,52 @@ export class StaffIdCardService {
             .eq('id', existingCard.id)
             .select()
             .maybeSingle();
-          if (!error && data) savedRecord = data;
+
+          if (!error && data) {
+            savedRecord = data;
+          } else if (error) {
+            console.error('Supabase update staff_id_cards error:', error);
+          }
         } else {
           const { data, error } = await supabase
             .from('staff_id_cards')
             .insert([cardRecord])
             .select()
             .maybeSingle();
-          if (!error && data) savedRecord = data;
+
+          if (!error && data) {
+            savedRecord = data;
+          } else if (error) {
+            // Handle unique constraint conflict on LOWER(staff_id)
+            if (error.code === '23505' || String(error.message).includes('staff_id')) {
+              const { data: updateData, error: updateErr } = await supabase
+                .from('staff_id_cards')
+                .update(cardRecord)
+                .ilike('staff_id', cleanStaffId)
+                .select()
+                .maybeSingle();
+              if (!updateErr && updateData) {
+                savedRecord = updateData;
+              }
+            } else {
+              console.error('Supabase insert staff_id_cards error:', error);
+            }
+          }
+        }
+
+        // Clean up any stale duplicate records for this staff_id in Supabase
+        const recordIdToKeep = savedRecord?.id || targetId;
+        await supabase
+          .from('staff_id_cards')
+          .delete()
+          .ilike('staff_id', cleanStaffId)
+          .neq('id', recordIdToKeep);
+
+        if (duplicateCardIds.length > 0) {
+          await supabase
+            .from('staff_id_cards')
+            .delete()
+            .in('id', duplicateCardIds);
         }
       } catch (err) {
         console.warn('Supabase saveCard warning, updating local disk store:', err.message);
@@ -341,6 +428,17 @@ export class StaffIdCardService {
 
     // Update memory and disk
     const finalRecord = savedRecord || cardRecord;
+
+    // Remove any older records with matching staff_id or targetId from memory
+    for (const [key, val] of this.memoryStore.entries()) {
+      if (
+        key === finalRecord.id ||
+        (val.staff_id && val.staff_id.trim().toLowerCase() === cleanStaffId.toLowerCase())
+      ) {
+        this.memoryStore.delete(key);
+      }
+    }
+
     this.memoryStore.set(finalRecord.id, finalRecord);
     this.saveToDisk();
 
@@ -367,13 +465,25 @@ export class StaffIdCardService {
 
     if (supabase) {
       try {
-        await supabase.from('staff_id_cards').delete().eq('id', id);
+        if (isValidUuid(id)) {
+          await supabase.from('staff_id_cards').delete().eq('id', id);
+        } else {
+          await supabase.from('staff_id_cards').delete().ilike('staff_id', id);
+        }
       } catch (err) {
         console.warn('Supabase deleteCard warning:', err.message);
       }
     }
 
     this.memoryStore.delete(id);
+    if (card.id) this.memoryStore.delete(card.id);
+    if (card.staff_id) {
+      for (const [key, val] of this.memoryStore.entries()) {
+        if ((val.staff_id || '').trim().toLowerCase() === (card.staff_id || '').trim().toLowerCase()) {
+          this.memoryStore.delete(key);
+        }
+      }
+    }
     this.saveToDisk();
 
     return { success: true, deletedId: id };

@@ -237,8 +237,11 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
     setIsLoadingSavedCards(true);
     try {
       const res = await staffIdCardApi.getSavedCards();
-      if (res.data && Array.isArray(res.data.cards)) {
-        setSavedCards(res.data.cards);
+      const payload: any = (res as any)?.data || res;
+      if (payload && Array.isArray(payload.cards)) {
+        setSavedCards(payload.cards);
+      } else if (Array.isArray(payload)) {
+        setSavedCards(payload);
       }
     } catch (e: any) {
       console.warn('Failed to load saved staff cards:', e.message);
@@ -1012,10 +1015,14 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
       };
 
       const res = await staffIdCardApi.saveCard(payload);
-      if (res.data && res.data.card) {
-        setCurrentSavedCardId(res.data.card.id || null);
+      const resPayload: any = (res as any)?.data || res;
+      if (resPayload && (resPayload.card || resPayload.success)) {
+        const savedCard = resPayload.card;
+        if (savedCard?.id) {
+          setCurrentSavedCardId(savedCard.id);
+        }
         onAddToast('Configuration Saved', `Card configuration for ${fullName} saved to Supabase`, 'success');
-        fetchSavedCards();
+        await fetchSavedCards();
       }
     } catch (err: any) {
       onAddToast('Failed to Save', err.message || 'Error persisting card configuration', 'error');
@@ -1114,7 +1121,13 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowSavedCardsDrawer(!showSavedCardsDrawer)}
+            onClick={() => {
+              const nextState = !showSavedCardsDrawer;
+              setShowSavedCardsDrawer(nextState);
+              if (nextState) {
+                fetchSavedCards();
+              }
+            }}
             className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 text-xs font-mono flex items-center gap-2 transition-all cursor-pointer shadow-md"
           >
             <Layers className="w-4 h-4 text-cyan-400" />
@@ -1632,12 +1645,22 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
                 <IdCard className="w-5 h-5 text-cyan-400" />
                 <h2 className="text-lg font-bold text-white">Saved ID Cards ({savedCards.length})</h2>
               </div>
-              <button
-                onClick={() => setShowSavedCardsDrawer(false)}
-                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fetchSavedCards()}
+                  disabled={isLoadingSavedCards}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                  title="Refresh saved cards"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingSavedCards ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={() => setShowSavedCardsDrawer(false)}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Search Box */}
@@ -1666,8 +1689,8 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
                 {savedCards
                   .filter((c) =>
                     !savedCardsSearch ||
-                    c.card_full_name.toLowerCase().includes(savedCardsSearch.toLowerCase()) ||
-                    c.staff_id.toLowerCase().includes(savedCardsSearch.toLowerCase())
+                    (c.card_full_name || '').toLowerCase().includes(savedCardsSearch.toLowerCase()) ||
+                    (c.staff_id || '').toLowerCase().includes(savedCardsSearch.toLowerCase())
                   )
                   .map((c) => (
                     <div
