@@ -42,7 +42,6 @@ import {
   StaffIdCardItem,
   StaffCardFieldVisibility,
 } from '../services/api';
-import { useActiveLogo } from '../lib/useActiveLogo';
 
 interface AdminStaffIdCardGeneratorTabProps {
   onAddToast: (title: string, message?: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -75,12 +74,13 @@ const EXPORT_HEIGHT = 2400;
 const EXPORT_WIDTH_UHD = 3200; // 600 DPI (3200 x 4800 full master Canva resolution)
 const EXPORT_HEIGHT_UHD = 4800;
 const BACKGROUND_ASSET_SRC = '/assets/Zenemoo ID card Background.png';
+const GENUINE_ZENEMOO_LOGO_SRC = '/assets/logo.png';
+const GENUINE_ZENEMOO_LOGO_REMOTE = 'https://www.zenemoo.in/assets/logo.png';
 
 export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTabProps> = ({
   onAddToast,
   onShowConfirm,
 }) => {
-  const { logoUrl } = useActiveLogo();
 
   // Mode Selection: 'fetched' | 'manual'
   const [mode, setMode] = useState<'fetched' | 'manual'>('fetched');
@@ -166,16 +166,20 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
     };
   }, []);
 
-  // Preload Zenemoo Logo with CORS support (used for center of QR code)
+  // Preload Genuine Zenemoo Brand Logo for QR code center with CORS support
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = logoUrl || '/assets/logo.png';
+    img.src = GENUINE_ZENEMOO_LOGO_SRC;
     img.onload = () => {
       cachedLogoImage.current = img;
       renderCardToCanvas(previewCanvasRef.current, PREVIEW_WIDTH, PREVIEW_HEIGHT);
     };
-  }, [logoUrl]);
+    img.onerror = () => {
+      console.warn('[Staff ID Generator] Local logo failed, falling back to remote asset:', GENUINE_ZENEMOO_LOGO_REMOTE);
+      img.src = GENUINE_ZENEMOO_LOGO_REMOTE;
+    };
+  }, []);
 
   // Preload and cache photo image
   useEffect(() => {
@@ -495,20 +499,24 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
       }
 
       // Vertical bounding range for info area (stays well above Y = 4250 blue horizontal accent)
-      const infoSectionTop = (visibility.department && department.trim() ? 3320 : 3220) * scale;
-      const infoSectionBottom = 4130 * scale;
+      const infoSectionTop = (visibility.department && department.trim() ? 3300 : 3200) * scale;
+      const infoSectionBottom = 4140 * scale;
       const availableHeight = infoSectionBottom - infoSectionTop;
 
       const itemCount = activeInfoItems.length;
       if (itemCount > 0) {
-        const rowStep = Math.min(220 * scale, availableHeight / Math.max(1, itemCount));
+        // Improved row spacing and vertical centering
+        const rowStep = Math.min(235 * scale, availableHeight / Math.max(1, itemCount));
         const totalStackHeight = (itemCount - 1) * rowStep;
         let startStackY = infoSectionTop + (availableHeight - totalStackHeight) / 2;
 
         ctx.save();
-        const stackX = 260 * scale;
-        const iconR = 46 * scale;
-        const maxFieldValW = 1680 * scale; // max width before QR plate boundary
+        const stackX = 270 * scale;
+        // Increased icon radius from 46 to 60 (30% larger for print legibility)
+        const iconR = 60 * scale;
+        // Available width for text before QR plate margin
+        const maxFieldValW = 1660 * scale;
+        const baseValFontSize = Math.round(74 * scale); // 42% larger than 52px
 
         activeInfoItems.forEach((item, idx) => {
           const ry = startStackY + idx * rowStep;
@@ -516,36 +524,37 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
           // Icon Circle Plate
           ctx.fillStyle = '#F0F9FF';
           ctx.strokeStyle = '#BAE6FD';
-          ctx.lineWidth = 2 * scale;
+          ctx.lineWidth = 3 * scale;
           ctx.beginPath();
           ctx.arc(stackX, ry, iconR, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
 
+          // Icon Character (Enlarged)
           ctx.fillStyle = '#0284C7';
-          ctx.font = `800 ${Math.round(40 * scale)}px 'Inter', sans-serif`;
+          ctx.font = `800 ${Math.round(52 * scale)}px 'Inter', sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(item.icon, stackX, ry + 1 * scale);
 
-          // Sublabel
-          const tx = stackX + iconR + 32 * scale;
+          // Sublabel (Larger, crisp uppercase with slate tone)
+          const tx = stackX + iconR + 36 * scale;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'alphabetic';
           ctx.fillStyle = '#64748B';
-          ctx.font = `700 ${Math.round(38 * scale)}px 'Inter', sans-serif`;
-          ctx.fillText(item.label, tx, ry - 14 * scale);
+          ctx.font = `700 ${Math.round(46 * scale)}px 'Inter', sans-serif`;
+          ctx.fillText(item.label, tx, ry - 18 * scale);
 
-          // Value with auto-scaling for long text
-          let valFontSize = Math.round(52 * scale);
+          // Value (Prominent, bold, high contrast, auto-scaled if long)
+          let valFontSize = baseValFontSize;
           ctx.font = `700 ${valFontSize}px 'Space Grotesk', system-ui, sans-serif`;
           let valMetrics = ctx.measureText(item.value);
           if (valMetrics.width > maxFieldValW) {
-            valFontSize = Math.max(Math.round(36 * scale), Math.floor(valFontSize * (maxFieldValW / valMetrics.width)));
+            valFontSize = Math.max(Math.round(32 * scale), Math.floor(baseValFontSize * (maxFieldValW / valMetrics.width)));
             ctx.font = `700 ${valFontSize}px 'Space Grotesk', system-ui, sans-serif`;
           }
-          ctx.fillStyle = '#0F172A';
-          ctx.fillText(item.value, tx, ry + 36 * scale);
+          ctx.fillStyle = '#0A192F';
+          ctx.fillText(item.value, tx, ry + 46 * scale);
         });
         ctx.restore();
       }
@@ -554,7 +563,7 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
       if (visibility.qr_code && cachedQrCanvas.current) {
         const qrSize = 760 * scale;
         const qrX = 2160 * scale;
-        const qrY = 3280 * scale;
+        const qrY = 3260 * scale;
 
         // White Card Plate for QR with soft drop shadow
         const platePad = 35 * scale;
@@ -577,26 +586,26 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
         // Draw QR Matrix
         ctx.drawImage(cachedQrCanvas.current, qrX, qrY, qrSize, qrSize);
 
-        // Overlay Genuine Zenemoo Logo in Center of QR with solid white backing
+        // Overlay Genuine Zenemoo Brand Logo in Center of QR with solid white circular backing
         if (cachedLogoImage.current && cachedLogoImage.current.complete) {
-          const centerBadgeSize = 170 * scale;
+          const centerBadgeSize = 180 * scale;
           const centerBadgeX = qrX + (qrSize - centerBadgeSize) / 2;
           const centerBadgeY = qrY + (qrSize - centerBadgeSize) / 2;
 
           ctx.save();
-          // White circular backing
+          // Solid white circular backing behind genuine logo
           ctx.fillStyle = '#FFFFFF';
           ctx.beginPath();
           ctx.arc(
             centerBadgeX + centerBadgeSize / 2,
             centerBadgeY + centerBadgeSize / 2,
-            centerBadgeSize / 2 + 16 * scale,
+            centerBadgeSize / 2 + 18 * scale,
             0,
             Math.PI * 2
           );
           ctx.fill();
 
-          // Clipped Zenemoo Logo
+          // Clipped Genuine Zenemoo Logo
           ctx.beginPath();
           ctx.arc(
             centerBadgeX + centerBadgeSize / 2,
@@ -610,13 +619,14 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
           ctx.restore();
         }
 
-        // "SCAN TO VERIFY" Subtext
+        // 3. Polished "SCAN TO VERIFY" Caption (Centered directly beneath QR, balanced spacing)
         ctx.save();
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = '#64748B';
-        ctx.font = `700 ${Math.round(42 * scale)}px 'Inter', sans-serif`;
-        ctx.fillText('SCAN TO VERIFY', qrX + qrSize / 2, qrY + qrSize + 55 * scale);
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#1E293B'; // Deep slate navy for crisp print legibility
+        ctx.font = `800 ${Math.round(54 * scale)}px 'Space Grotesk', system-ui, sans-serif`;
+        // Positioned at Y = 4135 * scale: provides 80px clearance from QR plate and 115px clearance from bottom blue bar
+        ctx.fillText('SCAN TO VERIFY', qrX + qrSize / 2, 4135 * scale);
         ctx.restore();
       }
     },
@@ -648,6 +658,59 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
 
     setIsExporting(true);
     try {
+      // 1. Ensure genuine Zenemoo brand logo is loaded before export begins
+      if (!cachedLogoImage.current || !cachedLogoImage.current.complete || cachedLogoImage.current.naturalWidth === 0) {
+        await new Promise<void>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = GENUINE_ZENEMOO_LOGO_SRC;
+          img.onload = () => {
+            cachedLogoImage.current = img;
+            resolve();
+          };
+          img.onerror = () => {
+            const remoteImg = new Image();
+            remoteImg.crossOrigin = 'anonymous';
+            remoteImg.src = GENUINE_ZENEMOO_LOGO_REMOTE;
+            remoteImg.onload = () => {
+              cachedLogoImage.current = remoteImg;
+              resolve();
+            };
+            remoteImg.onerror = () => {
+              reject(new Error('Genuine Zenemoo brand logo failed to load. Export aborted to prevent missing logo.'));
+            };
+          };
+        });
+      }
+
+      // 2. Ensure Canva background template is loaded before export begins
+      if (!cachedBgImage.current || !cachedBgImage.current.complete || cachedBgImage.current.naturalWidth === 0) {
+        await new Promise<void>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = BACKGROUND_ASSET_SRC;
+          img.onload = () => {
+            cachedBgImage.current = img;
+            resolve();
+          };
+          img.onerror = () => {
+            reject(new Error('Canva background template failed to load. Export aborted.'));
+          };
+        });
+      }
+
+      // 3. Ensure QR code canvas is rendered before export
+      if (visibility.qr_code && (!cachedQrCanvas.current || cachedQrCanvas.current.width === 0) && canonicalProfileUrl) {
+        const qrCanvas = document.createElement('canvas');
+        await QRCode.toCanvas(qrCanvas, canonicalProfileUrl, {
+          width: 320,
+          margin: 1,
+          errorCorrectionLevel: 'H',
+          color: { dark: '#0A192F', light: '#FFFFFF' },
+        });
+        cachedQrCanvas.current = qrCanvas;
+      }
+
       const exportW = exportResolution === '600' ? EXPORT_WIDTH_UHD : EXPORT_WIDTH;
       const exportH = exportResolution === '600' ? EXPORT_HEIGHT_UHD : EXPORT_HEIGHT;
 
