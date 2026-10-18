@@ -336,6 +336,89 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
   // --------------------------------------------------------------------------
   // 3. MASTER CANVAS RENDERING ENGINE (REFERENCE MATCHED)
   // --------------------------------------------------------------------------
+  type FieldIconType = 'id_card' | 'mail' | 'phone' | 'calendar';
+
+  const drawStaffFieldIcon = (
+    ctx: CanvasRenderingContext2D,
+    iconType: FieldIconType,
+    cx: number,
+    cy: number,
+    size: number,
+    color: string,
+    lineWidth: number
+  ) => {
+    ctx.save();
+    ctx.translate(cx, cy);
+    const s = size / 24;
+    ctx.scale(s, s);
+    ctx.translate(-12, -12); // Center 24x24 viewBox around (0,0)
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth / s;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (iconType === 'id_card') {
+      // Lucide IdCard: Outer card, portrait head, shoulders, info lines
+      ctx.beginPath();
+      ctx.roundRect(2, 5, 20, 14, 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(9, 11, 2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(9, 16.5, 3.2, Math.PI, 0, false);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(15, 10); ctx.lineTo(18.5, 10);
+      ctx.moveTo(15, 13.5); ctx.lineTo(18.5, 13.5);
+      ctx.stroke();
+    } else if (iconType === 'mail') {
+      // Lucide Mail: Envelope body and flap
+      ctx.beginPath();
+      ctx.roundRect(2, 4.5, 20, 15, 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(2, 6.5);
+      ctx.lineTo(11.1, 12.6);
+      ctx.quadraticCurveTo(12, 13.2, 12.9, 12.6);
+      ctx.lineTo(22, 6.5);
+      ctx.stroke();
+    } else if (iconType === 'phone') {
+      // Lucide Phone: Telephone receiver
+      const phonePath = new Path2D(
+        "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+      );
+      ctx.stroke(phonePath);
+    } else if (iconType === 'calendar') {
+      // Lucide Calendar: Body, binder pins, header line, checkmark
+      ctx.beginPath();
+      ctx.roundRect(3, 4, 18, 17, 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(8, 2); ctx.lineTo(8, 6);
+      ctx.moveTo(16, 2); ctx.lineTo(16, 6);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(3, 9.5); ctx.lineTo(21, 9.5);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(9, 14.5);
+      ctx.lineTo(11, 16.5);
+      ctx.lineTo(15, 12.5);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  };
+
   const renderCardToCanvas = useCallback(
     (canvas: HTMLCanvasElement | null, targetW: number, targetH: number) => {
       if (!canvas) return;
@@ -484,18 +567,18 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
       // Both positioned safely above the blue horizontal accent at Y = 4250 * scale!
 
       // Gather active info fields to avoid awkward gaps when switches are toggled
-      const activeInfoItems: { icon: string; label: string; value: string }[] = [];
+      const activeInfoItems: { iconType: FieldIconType; label: string; value: string }[] = [];
       if (visibility.staff_id && staffId.trim()) {
-        activeInfoItems.push({ icon: '#', label: 'STAFF ID', value: staffId });
+        activeInfoItems.push({ iconType: 'id_card', label: 'STAFF ID', value: staffId });
       }
       if (visibility.email && email.trim()) {
-        activeInfoItems.push({ icon: '@', label: 'EMAIL', value: email });
+        activeInfoItems.push({ iconType: 'mail', label: 'EMAIL', value: email });
       }
       if (visibility.phone && phone.trim()) {
-        activeInfoItems.push({ icon: 'P', label: 'PHONE', value: phone });
+        activeInfoItems.push({ iconType: 'phone', label: 'PHONE', value: phone });
       }
       if (visibility.joining_year && joiningYear.trim()) {
-        activeInfoItems.push({ icon: 'J', label: 'JOINED', value: joiningYear });
+        activeInfoItems.push({ iconType: 'calendar', label: 'JOINED', value: joiningYear });
       }
 
       // Vertical bounding range for info area (stays well above Y = 4250 blue horizontal accent)
@@ -506,55 +589,56 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
       const itemCount = activeInfoItems.length;
       if (itemCount > 0) {
         // Improved row spacing and vertical centering
-        const rowStep = Math.min(235 * scale, availableHeight / Math.max(1, itemCount));
+        const rowStep = Math.min(240 * scale, availableHeight / Math.max(1, itemCount));
         const totalStackHeight = (itemCount - 1) * rowStep;
         let startStackY = infoSectionTop + (availableHeight - totalStackHeight) / 2;
 
         ctx.save();
         const stackX = 270 * scale;
-        // Increased icon radius from 46 to 60 (30% larger for print legibility)
-        const iconR = 60 * scale;
+        // Balanced icon circle radius: 68px (diameter 136px)
+        const iconR = 68 * scale;
+        const iconSize = 72 * scale;
+        const iconStroke = Math.max(2, 6.5 * scale);
         // Available width for text before QR plate margin
         const maxFieldValW = 1660 * scale;
-        const baseValFontSize = Math.round(74 * scale); // 42% larger than 52px
+        // Field value increased ~27% (74px -> 94px), semibold
+        const baseValFontSize = Math.round(94 * scale);
+        // Field label increased ~18% (46px -> 54px), bold uppercase
+        const labelFontSize = Math.round(54 * scale);
 
         activeInfoItems.forEach((item, idx) => {
           const ry = startStackY + idx * rowStep;
 
-          // Icon Circle Plate
+          // Icon Circle Plate (Light blue container with cyan stroke)
           ctx.fillStyle = '#F0F9FF';
           ctx.strokeStyle = '#BAE6FD';
-          ctx.lineWidth = 3 * scale;
+          ctx.lineWidth = 3.5 * scale;
           ctx.beginPath();
           ctx.arc(stackX, ry, iconR, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
 
-          // Icon Character (Enlarged)
-          ctx.fillStyle = '#0284C7';
-          ctx.font = `800 ${Math.round(52 * scale)}px 'Inter', sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(item.icon, stackX, ry + 1 * scale);
+          // Draw Genuine Professional Vector Icon (Zenemoo blue #0284C7)
+          drawStaffFieldIcon(ctx, item.iconType, stackX, ry, iconSize, '#0284C7', iconStroke);
 
-          // Sublabel (Larger, crisp uppercase with slate tone)
-          const tx = stackX + iconR + 36 * scale;
+          // Sublabel (Larger, crisp uppercase slate #64748B)
+          const tx = stackX + iconR + 42 * scale;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'alphabetic';
           ctx.fillStyle = '#64748B';
-          ctx.font = `700 ${Math.round(46 * scale)}px 'Inter', sans-serif`;
-          ctx.fillText(item.label, tx, ry - 18 * scale);
+          ctx.font = `700 ${labelFontSize}px 'Inter', sans-serif`;
+          ctx.fillText(item.label, tx, ry - 22 * scale);
 
-          // Value (Prominent, bold, high contrast, auto-scaled if long)
+          // Value (Prominent, clean sans-serif with medium-to-semibold 600 weight, deep navy #0A192F)
           let valFontSize = baseValFontSize;
-          ctx.font = `700 ${valFontSize}px 'Space Grotesk', system-ui, sans-serif`;
+          ctx.font = `600 ${valFontSize}px 'Space Grotesk', 'Inter', system-ui, sans-serif`;
           let valMetrics = ctx.measureText(item.value);
           if (valMetrics.width > maxFieldValW) {
-            valFontSize = Math.max(Math.round(32 * scale), Math.floor(baseValFontSize * (maxFieldValW / valMetrics.width)));
-            ctx.font = `700 ${valFontSize}px 'Space Grotesk', system-ui, sans-serif`;
+            valFontSize = Math.max(Math.round(44 * scale), Math.floor(baseValFontSize * (maxFieldValW / valMetrics.width)));
+            ctx.font = `600 ${valFontSize}px 'Space Grotesk', 'Inter', system-ui, sans-serif`;
           }
           ctx.fillStyle = '#0A192F';
-          ctx.fillText(item.value, tx, ry + 46 * scale);
+          ctx.fillText(item.value, tx, ry + 54 * scale);
         });
         ctx.restore();
       }
