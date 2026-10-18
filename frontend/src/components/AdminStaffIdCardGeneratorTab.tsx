@@ -65,13 +65,16 @@ const DEFAULT_VISIBILITY: StaffCardFieldVisibility = {
   qr_code: true,
 };
 
-// Standard CR-80 card proportions (54mm x 85.6mm -> approx 1 : 1.585)
+// Final Canva Master Background Template: 3200 x 4800 (Aspect ratio: 2 : 3 = 0.6667)
+const MASTER_WIDTH = 3200;
+const MASTER_HEIGHT = 4800;
 const PREVIEW_WIDTH = 420;
-const PREVIEW_HEIGHT = 665;
-const EXPORT_WIDTH = 1200; // 300+ DPI
-const EXPORT_HEIGHT = 1900;
-const EXPORT_WIDTH_UHD = 2400; // 600 DPI
-const EXPORT_HEIGHT_UHD = 3800;
+const PREVIEW_HEIGHT = 630; // 420 * 1.5 = 630 (exact 2:3 aspect ratio matching Canva template)
+const EXPORT_WIDTH = 1600; // 300+ DPI (1600 x 2400)
+const EXPORT_HEIGHT = 2400;
+const EXPORT_WIDTH_UHD = 3200; // 600 DPI (3200 x 4800 full master Canva resolution)
+const EXPORT_HEIGHT_UHD = 4800;
+const BACKGROUND_ASSET_SRC = '/assets/Zenemoo ID card Background.png';
 
 export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTabProps> = ({
   onAddToast,
@@ -144,11 +147,26 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
   // --------------------------------------------------------------------------
   // 1. INITIALIZATION & REUSABLE ASSET CACHING
   // --------------------------------------------------------------------------
+  const cachedBgImage = useRef<HTMLImageElement | null>(null);
   const cachedLogoImage = useRef<HTMLImageElement | null>(null);
   const cachedPhotoImage = useRef<HTMLImageElement | null>(null);
   const cachedQrCanvas = useRef<HTMLCanvasElement | null>(null);
 
-  // Preload Zenemoo Logo with CORS support
+  // Preload Final Canva Master Background Template
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = BACKGROUND_ASSET_SRC;
+    img.onload = () => {
+      cachedBgImage.current = img;
+      renderCardToCanvas(previewCanvasRef.current, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    };
+    img.onerror = () => {
+      console.warn('[Staff ID Generator] Background template failed to load:', BACKGROUND_ASSET_SRC);
+    };
+  }, []);
+
+  // Preload Zenemoo Logo with CORS support (used for center of QR code)
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -322,275 +340,263 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const scale = targetW / PREVIEW_WIDTH;
+      // Master Canvas Coordinate System: 3200 x 4800 (Aspect ratio: 2 : 3)
+      const scale = targetW / 3200;
 
-      // 1. Crisp White Background
+      // 1. Crisp Solid White Backing (guarantees solid background for JPG exports)
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, targetW, targetH);
 
-      // 2. Top-Left & Top-Right Cyan/Blue/Purple Geometric Gradient Wave Ribbons
-      ctx.save();
-      // Wave 1: Cyan to Electric Blue ribbon
-      const grad1 = ctx.createLinearGradient(0, 0, targetW, targetH * 0.35);
-      grad1.addColorStop(0, '#06B6D4'); // Cyan
-      grad1.addColorStop(0.5, '#3B82F6'); // Blue
-      grad1.addColorStop(1, '#8B5CF6'); // Purple
-      ctx.fillStyle = grad1;
-
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(targetW, 0);
-      ctx.bezierCurveTo(targetW, targetH * 0.18, targetW * 0.6, targetH * 0.22, 0, targetH * 0.14);
-      ctx.closePath();
-      ctx.fill();
-
-      // Wave 2: Subtle translucent accent wave
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(targetW * 0.75, 0);
-      ctx.bezierCurveTo(targetW * 0.5, targetH * 0.12, targetW * 0.2, targetH * 0.16, 0, targetH * 0.08);
-      ctx.closePath();
-      ctx.fill();
-
-      // Bottom Right Geometric Corner Ribbon
-      const gradBottom = ctx.createLinearGradient(targetW * 0.5, targetH, targetW, targetH * 0.85);
-      gradBottom.addColorStop(0, '#3B82F6');
-      gradBottom.addColorStop(1, '#06B6D4');
-      ctx.fillStyle = gradBottom;
-      ctx.beginPath();
-      ctx.moveTo(targetW, targetH);
-      ctx.lineTo(targetW * 0.45, targetH);
-      ctx.bezierCurveTo(targetW * 0.65, targetH * 0.96, targetW * 0.85, targetH * 0.94, targetW, targetH * 0.9);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-
-      // 3. Header: Zenemoo Brand Mark & Text
-      const headerTop = 22 * scale;
-      const logoSize = 34 * scale;
-      const logoX = 24 * scale;
-      const logoY = headerTop;
-
-      if (cachedLogoImage.current) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(cachedLogoImage.current, logoX, logoY, logoSize, logoSize);
-        ctx.restore();
+      // 2. Render Canva Master Background Template (contains top logo, waves, Z watermark, bottom accent, tagline)
+      if (cachedBgImage.current && cachedBgImage.current.complete && cachedBgImage.current.naturalWidth > 0) {
+        ctx.drawImage(cachedBgImage.current, 0, 0, targetW, targetH);
       }
 
+      // 3. Circular Employee Portrait (Precisely fitted inside circular portrait frame)
+      // Master Coordinates: Center (1730, 1918), Inner Frame Radius: 742 px
+      const photoCenterX = 1730 * scale;
+      const photoCenterY = 1918 * scale;
+      const photoRadius = 742 * scale;
+
       ctx.save();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = `800 ${Math.round(15 * scale)}px 'Space Grotesk', system-ui, sans-serif`;
-      ctx.fillText('ZENEMOO', logoX + logoSize + 10 * scale, logoY + 18 * scale);
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-      ctx.font = `600 ${Math.round(8.5 * scale)}px 'Inter', system-ui, sans-serif`;
-      ctx.letterSpacing = `${1.2 * scale}px`;
-      ctx.fillText('DATA SOLUTIONS', logoX + logoSize + 10 * scale, logoY + 30 * scale);
-      ctx.restore();
-
-      // 4. Circular Employee Portrait with Concentric Cyan/Purple Accents
-      const photoCenterX = targetW / 2;
-      const photoCenterY = 135 * scale;
-      const photoRadius = 56 * scale;
-
-      // Outer Gradient Border Ring
-      ctx.save();
-      const ringGrad = ctx.createLinearGradient(
-        photoCenterX - photoRadius,
-        photoCenterY - photoRadius,
-        photoCenterX + photoRadius,
-        photoCenterY + photoRadius
-      );
-      ringGrad.addColorStop(0, '#06B6D4');
-      ringGrad.addColorStop(1, '#8B5CF6');
-      ctx.fillStyle = ringGrad;
-      ctx.beginPath();
-      ctx.arc(photoCenterX, photoCenterY, photoRadius + 4.5 * scale, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Inner White Ring
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.arc(photoCenterX, photoCenterY, photoRadius + 2 * scale, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Clipped Employee Photo
       ctx.beginPath();
       ctx.arc(photoCenterX, photoCenterY, photoRadius, 0, Math.PI * 2);
       ctx.clip();
 
-      if (cachedPhotoImage.current) {
-        ctx.drawImage(
-          cachedPhotoImage.current,
-          photoCenterX - photoRadius,
-          photoCenterY - photoRadius,
-          photoRadius * 2,
-          photoRadius * 2
-        );
+      if (cachedPhotoImage.current && cachedPhotoImage.current.complete && cachedPhotoImage.current.naturalWidth > 0) {
+        // Draw image using object-fit: cover
+        const img = cachedPhotoImage.current;
+        const imgAspect = img.naturalWidth / img.naturalHeight;
+        const diam = photoRadius * 2;
+        let drawW = diam;
+        let drawH = diam;
+        let drawX = photoCenterX - photoRadius;
+        let drawY = photoCenterY - photoRadius;
+
+        if (imgAspect > 1) {
+          drawH = diam;
+          drawW = diam * imgAspect;
+          drawX = photoCenterX - drawW / 2;
+          drawY = photoCenterY - photoRadius;
+        } else {
+          drawW = diam;
+          drawH = diam / imgAspect;
+          drawX = photoCenterX - photoRadius;
+          drawY = photoCenterY - drawH / 2;
+        }
+        ctx.drawImage(img, drawX, drawY, drawW, drawH);
       } else {
-        // Fallback Silhouette
-        ctx.fillStyle = '#E2E8F0';
+        // Elegant fallback avatar placeholder
+        ctx.fillStyle = '#EDE9FE';
         ctx.fillRect(photoCenterX - photoRadius, photoCenterY - photoRadius, photoRadius * 2, photoRadius * 2);
-        ctx.fillStyle = '#0F172A';
-        ctx.font = `700 ${Math.round(30 * scale)}px 'Space Grotesk', sans-serif`;
+        ctx.fillStyle = '#4F46E5';
+        ctx.font = `700 ${Math.round(420 * scale)}px 'Space Grotesk', system-ui, sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(fullName.charAt(0) || 'Z', photoCenterX, photoCenterY + 10 * scale);
+        ctx.textBaseline = 'middle';
+        ctx.fillText((fullName.charAt(0) || 'Z').toUpperCase(), photoCenterX, photoCenterY);
       }
       ctx.restore();
 
-      // 5. Employee Name & Designation
-      let currentY = 222 * scale;
+      // 4. Preserve Embedded Small "Z." Badge on Portrait Rim
+      // Master Coordinates: Center (2243, 2456), Radius: 205 px
+      // Re-drawing this region from cachedBgImage restores the genuine badge and stars in front of the employee photo cleanly
+      if (cachedBgImage.current && cachedBgImage.current.complete && cachedBgImage.current.naturalWidth > 0) {
+        const badgeCenterX = 2243 * scale;
+        const badgeCenterY = 2456 * scale;
+        const badgeRadius = 205 * scale;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(badgeCenterX, badgeCenterY, badgeRadius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(cachedBgImage.current, 0, 0, targetW, targetH);
+        ctx.restore();
+      }
+
+      // 5. Employee Name & Designation (Centered below portrait frame)
+      let currentY = 2890 * scale;
 
       ctx.save();
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
 
       // Measured font scaling for long names
-      let nameFontSize = Math.round(20 * scale);
+      const maxNameW = targetW * 0.82;
+      let nameFontSize = Math.round(130 * scale);
       ctx.font = `800 ${nameFontSize}px 'Space Grotesk', system-ui, sans-serif`;
-      const nameWidth = ctx.measureText(fullName).width;
-      if (nameWidth > targetW * 0.88) {
-        nameFontSize = Math.round(16 * scale);
+      let nameMetrics = ctx.measureText(fullName);
+      if (nameMetrics.width > maxNameW) {
+        nameFontSize = Math.max(Math.round(80 * scale), Math.floor(nameFontSize * (maxNameW / nameMetrics.width)));
         ctx.font = `800 ${nameFontSize}px 'Space Grotesk', system-ui, sans-serif`;
       }
 
-      ctx.fillStyle = '#0A192F'; // Deep Navy
-      ctx.fillText(fullName, targetW / 2, currentY);
+      ctx.fillStyle = '#0F172A';
+      ctx.fillText(fullName, photoCenterX, currentY);
 
       // Designation
       if (visibility.designation && designation.trim()) {
-        currentY += 19 * scale;
-        ctx.fillStyle = '#0284C7'; // Cyan/Navy accent
-        ctx.font = `700 ${Math.round(10.5 * scale)}px 'Inter', system-ui, sans-serif`;
-        ctx.fillText(designation.toUpperCase(), targetW / 2, currentY);
+        currentY += 120 * scale;
+        let desigFontSize = Math.round(64 * scale);
+        ctx.font = `700 ${desigFontSize}px 'Space Grotesk', system-ui, sans-serif`;
+        const maxDesigW = targetW * 0.80;
+        let desigMetrics = ctx.measureText(designation.toUpperCase());
+        if (desigMetrics.width > maxDesigW) {
+          desigFontSize = Math.max(Math.round(44 * scale), Math.floor(desigFontSize * (maxDesigW / desigMetrics.width)));
+          ctx.font = `700 ${desigFontSize}px 'Space Grotesk', system-ui, sans-serif`;
+        }
+        ctx.fillStyle = '#0284C7';
+        ctx.fillText(designation.toUpperCase(), photoCenterX, currentY);
       }
 
       // Department Pill Badge
       if (visibility.department && department.trim()) {
-        currentY += 20 * scale;
-        ctx.font = `600 ${Math.round(8.5 * scale)}px 'Inter', system-ui, sans-serif`;
+        currentY += 115 * scale;
+        const deptFontSize = Math.round(48 * scale);
+        ctx.font = `700 ${deptFontSize}px 'Inter', system-ui, sans-serif`;
         const depText = department.toUpperCase();
         const depMetrics = ctx.measureText(depText);
-        const pillW = depMetrics.width + 16 * scale;
-        const pillH = 17 * scale;
-        const pillX = (targetW - pillW) / 2;
-        const pillY = currentY - 12 * scale;
+        const pillPadX = 36 * scale;
+        const pillH = 76 * scale;
+        const pillW = depMetrics.width + pillPadX * 2;
+        const pillX = photoCenterX - pillW / 2;
+        const pillY = currentY - pillH / 2 - 4 * scale;
 
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.09)';
-        ctx.strokeStyle = 'rgba(6, 182, 212, 0.28)';
-        ctx.lineWidth = 1 * scale;
+        ctx.fillStyle = 'rgba(240, 249, 255, 0.95)';
+        ctx.strokeStyle = '#BAE6FD';
+        ctx.lineWidth = 2.5 * scale;
         ctx.beginPath();
         ctx.roundRect(pillX, pillY, pillW, pillH, pillH / 2);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = '#0369A1';
-        ctx.fillText(depText, targetW / 2, currentY);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(depText, photoCenterX, pillY + pillH / 2);
+        ctx.textBaseline = 'alphabetic';
       }
       ctx.restore();
 
-      // Decorative divider
-      currentY += 18 * scale;
-      ctx.strokeStyle = '#E2E8F0';
-      ctx.lineWidth = 1 * scale;
-      ctx.beginPath();
-      ctx.moveTo(34 * scale, currentY);
-      ctx.lineTo(targetW - 34 * scale, currentY);
-      ctx.stroke();
+      // 6. Dynamic Lower Section: Info Stack on Left, QR Code on Right
+      // Both positioned safely above the blue horizontal accent at Y = 4250 * scale!
 
-      // 6. Contact Data Stack & QR Code Layout
-      const contentSectionTop = currentY + 22 * scale;
-      const stackX = 34 * scale;
-      let stackY = contentSectionTop;
-
-      // Contact Info Rows
-      ctx.save();
-      const drawInfoRow = (iconLabel: string, value: string, subLabel: string) => {
-        if (!value) return;
-
-        // Micro Icon Circle
-        const iconR = 10 * scale;
-        ctx.fillStyle = '#F0F9FF';
-        ctx.beginPath();
-        ctx.arc(stackX + iconR, stackY + iconR, iconR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#0284C7';
-        ctx.font = `700 ${Math.round(8 * scale)}px 'Inter', sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(iconLabel, stackX + iconR, stackY + iconR + 3 * scale);
-
-        // Sublabel
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#64748B';
-        ctx.font = `600 ${Math.round(7.5 * scale)}px 'Inter', sans-serif`;
-        ctx.fillText(subLabel.toUpperCase(), stackX + iconR * 2 + 8 * scale, stackY + 8 * scale);
-
-        // Value
-        ctx.fillStyle = '#0F172A';
-        ctx.font = `700 ${Math.round(9.5 * scale)}px 'Space Grotesk', system-ui, sans-serif`;
-        ctx.fillText(value, stackX + iconR * 2 + 8 * scale, stackY + 20 * scale);
-
-        stackY += 34 * scale;
-      };
-
+      // Gather active info fields to avoid awkward gaps when switches are toggled
+      const activeInfoItems: { icon: string; label: string; value: string }[] = [];
       if (visibility.staff_id && staffId.trim()) {
-        drawInfoRow('#', staffId, 'Staff ID');
-      }
-      if (visibility.phone && phone.trim()) {
-        drawInfoRow('P', phone, 'Phone');
+        activeInfoItems.push({ icon: '#', label: 'STAFF ID', value: staffId });
       }
       if (visibility.email && email.trim()) {
-        drawInfoRow('@', email, 'Official Email');
+        activeInfoItems.push({ icon: '@', label: 'EMAIL', value: email });
+      }
+      if (visibility.phone && phone.trim()) {
+        activeInfoItems.push({ icon: 'P', label: 'PHONE', value: phone });
       }
       if (visibility.joining_year && joiningYear.trim()) {
-        drawInfoRow('J', joiningYear, 'Joined');
+        activeInfoItems.push({ icon: 'J', label: 'JOINED', value: joiningYear });
       }
-      ctx.restore();
 
-      // 7. QR Code Placement (Right-aligned in lower section, balanced with contact stack)
+      // Vertical bounding range for info area (stays well above Y = 4250 blue horizontal accent)
+      const infoSectionTop = (visibility.department && department.trim() ? 3320 : 3220) * scale;
+      const infoSectionBottom = 4130 * scale;
+      const availableHeight = infoSectionBottom - infoSectionTop;
+
+      const itemCount = activeInfoItems.length;
+      if (itemCount > 0) {
+        const rowStep = Math.min(220 * scale, availableHeight / Math.max(1, itemCount));
+        const totalStackHeight = (itemCount - 1) * rowStep;
+        let startStackY = infoSectionTop + (availableHeight - totalStackHeight) / 2;
+
+        ctx.save();
+        const stackX = 260 * scale;
+        const iconR = 46 * scale;
+        const maxFieldValW = 1680 * scale; // max width before QR plate boundary
+
+        activeInfoItems.forEach((item, idx) => {
+          const ry = startStackY + idx * rowStep;
+
+          // Icon Circle Plate
+          ctx.fillStyle = '#F0F9FF';
+          ctx.strokeStyle = '#BAE6FD';
+          ctx.lineWidth = 2 * scale;
+          ctx.beginPath();
+          ctx.arc(stackX, ry, iconR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#0284C7';
+          ctx.font = `800 ${Math.round(40 * scale)}px 'Inter', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(item.icon, stackX, ry + 1 * scale);
+
+          // Sublabel
+          const tx = stackX + iconR + 32 * scale;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillStyle = '#64748B';
+          ctx.font = `700 ${Math.round(38 * scale)}px 'Inter', sans-serif`;
+          ctx.fillText(item.label, tx, ry - 14 * scale);
+
+          // Value with auto-scaling for long text
+          let valFontSize = Math.round(52 * scale);
+          ctx.font = `700 ${valFontSize}px 'Space Grotesk', system-ui, sans-serif`;
+          let valMetrics = ctx.measureText(item.value);
+          if (valMetrics.width > maxFieldValW) {
+            valFontSize = Math.max(Math.round(36 * scale), Math.floor(valFontSize * (maxFieldValW / valMetrics.width)));
+            ctx.font = `700 ${valFontSize}px 'Space Grotesk', system-ui, sans-serif`;
+          }
+          ctx.fillStyle = '#0F172A';
+          ctx.fillText(item.value, tx, ry + 36 * scale);
+        });
+        ctx.restore();
+      }
+
+      // 7. QR Code Placement (Lower Right, strictly above blue bar at 4250)
       if (visibility.qr_code && cachedQrCanvas.current) {
-        const qrSize = 115 * scale;
-        const qrX = targetW - qrSize - 32 * scale;
-        const qrY = contentSectionTop + 10 * scale;
+        const qrSize = 760 * scale;
+        const qrX = 2160 * scale;
+        const qrY = 3280 * scale;
 
-        // White Plate with subtle drop shadow
+        // White Card Plate for QR with soft drop shadow
+        const platePad = 35 * scale;
+        const plateX1 = qrX - platePad;
+        const plateY1 = qrY - platePad;
+        const plateW = qrSize + platePad * 2;
+        const plateH = qrSize + platePad * 2;
+        const plateRadius = 35 * scale;
+
         ctx.save();
         ctx.fillStyle = '#FFFFFF';
-        ctx.shadowColor = 'rgba(15, 23, 42, 0.08)';
-        ctx.shadowBlur = 12 * scale;
-        ctx.shadowOffsetY = 4 * scale;
+        ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
+        ctx.shadowBlur = 24 * scale;
+        ctx.shadowOffsetY = 8 * scale;
         ctx.beginPath();
-        ctx.roundRect(qrX - 6 * scale, qrY - 6 * scale, qrSize + 12 * scale, qrSize + 12 * scale, 10 * scale);
+        ctx.roundRect(plateX1, plateY1, plateW, plateH, plateRadius);
         ctx.fill();
         ctx.restore();
 
         // Draw QR Matrix
         ctx.drawImage(cachedQrCanvas.current, qrX, qrY, qrSize, qrSize);
 
-        // Overlay Genuine Zenemoo Logo in Center of QR with solid white quiet zone
-        if (cachedLogoImage.current) {
-          const centerBadgeSize = 28 * scale;
+        // Overlay Genuine Zenemoo Logo in Center of QR with solid white backing
+        if (cachedLogoImage.current && cachedLogoImage.current.complete) {
+          const centerBadgeSize = 170 * scale;
           const centerBadgeX = qrX + (qrSize - centerBadgeSize) / 2;
           const centerBadgeY = qrY + (qrSize - centerBadgeSize) / 2;
 
           ctx.save();
-          // White circle backing
+          // White circular backing
           ctx.fillStyle = '#FFFFFF';
           ctx.beginPath();
           ctx.arc(
             centerBadgeX + centerBadgeSize / 2,
             centerBadgeY + centerBadgeSize / 2,
-            centerBadgeSize / 2 + 2.5 * scale,
+            centerBadgeSize / 2 + 16 * scale,
             0,
             Math.PI * 2
           );
           ctx.fill();
 
-          // Zenemoo Logo clipped into center
+          // Clipped Zenemoo Logo
           ctx.beginPath();
           ctx.arc(
             centerBadgeX + centerBadgeSize / 2,
@@ -604,31 +610,15 @@ export const AdminStaffIdCardGeneratorTab: React.FC<AdminStaffIdCardGeneratorTab
           ctx.restore();
         }
 
-        // Subtext under QR
+        // "SCAN TO VERIFY" Subtext
         ctx.save();
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = '#64748B';
-        ctx.font = `600 ${Math.round(7.5 * scale)}px 'Inter', sans-serif`;
-        ctx.fillText('SCAN TO VERIFY', qrX + qrSize / 2, qrY + qrSize + 16 * scale);
+        ctx.font = `700 ${Math.round(42 * scale)}px 'Inter', sans-serif`;
+        ctx.fillText('SCAN TO VERIFY', qrX + qrSize / 2, qrY + qrSize + 55 * scale);
         ctx.restore();
       }
-
-      // 8. Brand Footer: Tagline & Website
-      ctx.save();
-      const footerY = targetH - 24 * scale;
-      ctx.textAlign = 'center';
-
-      // Tagline
-      ctx.fillStyle = '#0F172A';
-      ctx.font = `700 ${Math.round(9.5 * scale)}px 'Space Grotesk', system-ui, sans-serif`;
-      ctx.fillText('A Bright Tomorrow, Together.', targetW / 2, footerY - 14 * scale);
-
-      // Official Domain
-      ctx.fillStyle = '#0284C7';
-      ctx.font = `700 ${Math.round(8.5 * scale)}px 'Inter', monospace`;
-      ctx.letterSpacing = `${1.1 * scale}px`;
-      ctx.fillText('WWW.ZENEMOO.IN', targetW / 2, footerY);
-      ctx.restore();
     },
     [
       fullName,
