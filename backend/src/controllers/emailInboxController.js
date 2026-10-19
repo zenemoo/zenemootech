@@ -1745,22 +1745,28 @@ export const sendInboxEmail = async (req, res, next) => {
       safeHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: pre-wrap; line-height: 1.6; color: #1e293b;">${escapedText}</div>`;
     }
 
-    let inReplyTo = undefined;
-    let references = undefined;
+    let inReplyTo = req.body.inReplyTo || undefined;
+    let references = req.body.references || undefined;
 
-    // Load original email if originalEmailId provided
-    if (originalEmailId) {
+    // Load original email if originalEmailId provided and threading headers not already passed
+    if ((!inReplyTo || !references) && originalEmailId) {
       let orig = inMemoryEmails.find((e) => e.id === originalEmailId || e.message_id === originalEmailId);
       if (!orig) {
         try {
-          orig = await supabaseService.selectOne('incoming_emails', 'id', originalEmailId);
+          orig = await supabaseService.selectOne('incoming_email_messages', 'id', originalEmailId);
+        } catch (_) {}
+      }
+      if (!orig) {
+        try {
+          orig = await supabaseService.selectOne('email_history', 'id', originalEmailId);
         } catch (_) {}
       }
 
-      if (orig && orig.message_id) {
-        if (mode === 'reply') {
-          inReplyTo = orig.message_id;
-          references = orig.message_id;
+      if (orig && (orig.message_id || orig.messageId)) {
+        const msgId = orig.message_id || orig.messageId;
+        if (mode === 'reply' || mode === 'replyAll') {
+          inReplyTo = inReplyTo || msgId;
+          references = references || (orig.references ? `${orig.references} ${msgId}` : msgId);
         }
       }
     }
@@ -1773,6 +1779,7 @@ export const sendInboxEmail = async (req, res, next) => {
       bcc: parsedBcc,
       subject,
       html: safeHtml,
+      text: text || req.body.text,
       attachments,
       inReplyTo,
       references,

@@ -40,6 +40,29 @@ const prepareRecordForDispatch = (raw) => {
     try { html = decrypt(html); } catch (_) {}
   }
 
+  let text = raw.body_text || raw.text || '';
+
+  // Extract threading metadata
+  let inReplyTo = raw.in_reply_to || raw.inReplyTo || undefined;
+  let references = raw.references_header || raw.references || undefined;
+  let headers = raw.headers || undefined;
+
+  const rawAttachments = Array.isArray(raw.attachments) ? raw.attachments : [];
+  const threadAtt = rawAttachments.find((a) => a && a._threading);
+  if (threadAtt && threadAtt._threading) {
+    inReplyTo = inReplyTo || threadAtt._threading.inReplyTo;
+    references = references || threadAtt._threading.references;
+    headers = headers || threadAtt._threading.headers;
+  }
+
+  if (!headers && (inReplyTo || references)) {
+    headers = {};
+    if (inReplyTo) headers['In-Reply-To'] = inReplyTo;
+    if (references) headers['References'] = references;
+  }
+
+  const cleanAttachments = rawAttachments.filter((a) => a && !a._threading);
+
   return {
     id: raw.id,
     from: raw.from_email || raw.sender || 'contact@zenemoo.in',
@@ -48,7 +71,11 @@ const prepareRecordForDispatch = (raw) => {
     bcc: Array.isArray(bcc) ? bcc : parseRecipients(bcc),
     subject,
     html,
-    attachments: raw.attachments || [],
+    text,
+    attachments: cleanAttachments,
+    inReplyTo,
+    references,
+    headers,
   };
 };
 
@@ -61,6 +88,12 @@ export const processScheduledItem = async (item, { customSendMail } = {}) => {
   // 1. Atomic claim check: ensure item status is still 'scheduled'
   if (item.status !== 'scheduled') {
     return false;
+  }
+
+  // Idempotency: verify if this item was already dispatched (e.g. if previous tick dispatched but DB crashed)
+  if (item.provider_message_id || item.sent_at) {
+    console.log(`[Scheduled Email Worker] Item ${item.id} already dispatched with provider ID: ${item.provider_message_id}. Skipping duplicate send.`);
+    return true;
   }
 
   // Set status to 'processing' atomically to lock
@@ -77,7 +110,7 @@ export const processScheduledItem = async (item, { customSendMail } = {}) => {
   // 2. Resolve HTML body & attachments from Cloudflare R2 if stored there
   const cleanId = emailR2Service.sanitizeId(item.id);
   let finalHtml = normalized.html;
-  let finalText = item.body_text || '';
+  let finalText = item.body_text || normalized.text || '';
 
   if (item.body_html_r2_key || item.body_text_r2_key || item.storage_provider === 'cloudflare_r2') {
     const htmlKey = item.body_html_r2_key || `scheduled/${cleanId}/body.html`;
@@ -100,6 +133,7 @@ export const processScheduledItem = async (item, { customSendMail } = {}) => {
   const brevoAttachments = [];
   if (Array.isArray(item.attachments)) {
     for (const att of item.attachments) {
+      if (att && att._threading) continue; // Skip internal threading metadata
       if (att.content || att.data || att.base64) {
         brevoAttachments.push(att);
       } else if (att.r2_key) {
@@ -129,47 +163,65 @@ export const processScheduledItem = async (item, { customSendMail } = {}) => {
       bcc: normalized.bcc,
       subject: normalized.subject,
       html: finalHtml,
+      text: finalText,
       attachments: brevoAttachments.length > 0 ? brevoAttachments : normalized.attachments,
+      inReplyTo: normalized.inReplyTo,
+      references: normalized.references,
+      headers: normalized.headers,
     });
 
     const sentTimestamp = new Date().toISOString();
     const providerMsgId = sendResult?.messageId || `msg_sched_${Date.now()}`;
+    item.provider_message_id = providerMsgId;
+    item.sent_at = sentTimestamp;
 
     // 4. Automatically insert into Sent History (email_history) referencing the SAME R2 objects (zero duplication)
-    const historyPayload = {
-      user_id: item.user_id || null,
-      user_email: item.user_email || normalized.from,
-      sender: normalized.from,
-      recipients: encrypt(normalized.to),
-      cc: encrypt(normalized.cc),
-      bcc: encrypt(normalized.bcc),
-      subject: encrypt(normalized.subject),
-      html: encrypt(finalHtml),
-      storage_provider: 'cloudflare_r2',
-      body_html_r2_key: item.body_html_r2_key || `scheduled/${cleanId}/body.html`,
-      body_text_r2_key: item.body_text_r2_key || `scheduled/${cleanId}/body.txt`,
-      attachments_r2_prefix: item.attachments_r2_prefix || `scheduled/${cleanId}/attachments/`,
-      attachments_meta: item.attachments || [],
-      has_attachments: Array.isArray(item.attachments) && item.attachments.length > 0,
-      status: 'sent',
-      message_id: providerMsgId,
-      created_at: sentTimestamp,
-      updated_at: sentTimestamp,
-      storage_migration_status: 'migrated',
-    };
+    // Check if history record already exists with this message_id (Idempotent transition)
+    let historyExists = false;
+    if (supabase) {
+      try {
+        const { data: existingHist } = await supabase
+          .from('email_history')
+          .select('id')
+          .eq('message_id', providerMsgId)
+          .maybeSingle();
+        if (existingHist) historyExists = true;
+      } catch (_) {}
+    }
 
-    let insertedHistory = false;
-    try {
-      await supabaseService.insert('email_history', historyPayload);
-      insertedHistory = true;
-    } catch (histErr) {
-      delete historyPayload.user_id;
-      delete historyPayload.user_email;
+    if (!historyExists) {
+      const historyPayload = {
+        user_id: item.user_id || null,
+        user_email: item.user_email || normalized.from,
+        sender: normalized.from,
+        recipients: encrypt(normalized.to),
+        cc: encrypt(normalized.cc),
+        bcc: encrypt(normalized.bcc),
+        subject: encrypt(normalized.subject),
+        html: encrypt(finalHtml),
+        storage_provider: 'cloudflare_r2',
+        body_html_r2_key: item.body_html_r2_key || `scheduled/${cleanId}/body.html`,
+        body_text_r2_key: item.body_text_r2_key || `scheduled/${cleanId}/body.txt`,
+        attachments_r2_prefix: item.attachments_r2_prefix || `scheduled/${cleanId}/attachments/`,
+        attachments_meta: normalized.attachments,
+        has_attachments: normalized.attachments.length > 0,
+        status: 'sent',
+        message_id: providerMsgId,
+        created_at: sentTimestamp,
+        updated_at: sentTimestamp,
+        storage_migration_status: 'migrated',
+      };
+
       try {
         await supabaseService.insert('email_history', historyPayload);
-        insertedHistory = true;
-      } catch (histRetryErr) {
-        console.warn('[Scheduled Email Worker Insert History Warning]:', histRetryErr.message);
+      } catch (histErr) {
+        delete historyPayload.user_id;
+        delete historyPayload.user_email;
+        try {
+          await supabaseService.insert('email_history', historyPayload);
+        } catch (histRetryErr) {
+          console.warn('[Scheduled Email Worker Insert History Warning]:', histRetryErr.message);
+        }
       }
     }
 
@@ -177,9 +229,15 @@ export const processScheduledItem = async (item, { customSendMail } = {}) => {
     // NOTE: Cloudflare R2 objects are NOT deleted because email_history references the same objects!
     if (supabase && item.id) {
       try {
-        await supabase.from('scheduled_emails').delete().eq('id', item.id);
+        const { error: delErr } = await supabase.from('scheduled_emails').delete().eq('id', item.id);
+        if (delErr) {
+          await supabase.from('scheduled_emails').update({ status: 'sent', updated_at: sentTimestamp }).eq('id', item.id);
+        }
       } catch (delErr) {
         console.warn('[Scheduled Email Worker Delete scheduled_emails Note]:', delErr.message);
+        try {
+          await supabaseService.update('scheduled_emails', item.id, { status: 'sent', updated_at: sentTimestamp });
+        } catch (_) {}
       }
     }
 

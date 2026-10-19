@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
-import { emailApi } from '../services/api';
+import { emailApi, scheduledEmailApi } from '../services/api';
 
 function formatFileSize(bytes?: number): string {
   if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 KB';
@@ -80,7 +80,7 @@ export interface EmailHistoryItem {
   cc?: string[];
   bcc?: string[];
   subject: string;
-  status: 'sent' | 'failed' | string;
+  status: 'sent' | 'failed' | 'scheduled' | string;
   messageId?: string;
   errorMessage?: string | null;
   attachments_meta?: Array<{
@@ -97,6 +97,7 @@ export interface EmailHistoryItem {
   hasAttachments?: boolean;
   attachmentsCount?: number;
   createdAt: string;
+  scheduled_at?: string;
   html?: string;
 }
 
@@ -143,7 +144,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
   // 3. Search & Filters State
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'failed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'failed' | 'scheduled'>('all');
   const [dateRangeFilter, setDateRangeFilter] = useState<'all' | 'today' | '7days' | '30days' | '90days'>('30days');
 
   // 4. Pagination State
@@ -339,6 +340,46 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
       setFetchError(null);
 
       try {
+        if (statusToFetch === 'scheduled') {
+          const res = await scheduledEmailApi.getScheduled({
+            page: pageToFetch,
+            pageSize: sizeToFetch,
+            status: 'scheduled',
+          });
+
+          if (res.data && res.data.success) {
+            const rawList = Array.isArray(res.data.data) ? res.data.data : [];
+            const mappedList: EmailHistoryItem[] = rawList.map((item: any) => ({
+              id: String(item.id),
+              sender: item.from_email || 'contact@zenemoo.in',
+              recipients: Array.isArray(item.to_emails) ? item.to_emails : [item.to_emails || ''],
+              cc: Array.isArray(item.cc_emails) ? item.cc_emails : undefined,
+              bcc: Array.isArray(item.bcc_emails) ? item.bcc_emails : undefined,
+              subject: item.subject || '(No Subject)',
+              status: 'scheduled',
+              messageId: item.id,
+              createdAt: item.scheduled_at || item.created_at,
+              scheduled_at: item.scheduled_at,
+              hasAttachments: Array.isArray(item.attachments) && item.attachments.length > 0,
+              attachmentsCount: Array.isArray(item.attachments) ? item.attachments.length : 0,
+              attachments_meta: item.attachments,
+            }));
+            setLogs(mappedList);
+            const total = typeof res.data.total === 'number' ? res.data.total : mappedList.length;
+            setFilteredTotal(total);
+            setTotalPages(Math.max(1, res.data.totalPages || Math.ceil(total / sizeToFetch)));
+            if (res.data.page && res.data.page !== pageToFetch) {
+              setCurrentPage(res.data.page);
+            }
+            setFetchError(null);
+          } else {
+            setLogs([]);
+            setFilteredTotal(0);
+            setTotalPages(1);
+          }
+          return;
+        }
+
         const res = await emailApi.getHistory(
           {
             page: pageToFetch,
@@ -459,6 +500,30 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
     setIsLoadingDetail(true);
 
     try {
+      if (initialItem?.status === 'scheduled') {
+        const res = await scheduledEmailApi.getScheduledById(id);
+        if (res.data && res.data.success && res.data.data) {
+          const d = res.data.data;
+          setSelectedDetail({
+            id: String(d.id),
+            sender: d.from_email || initialItem?.sender || 'contact@zenemoo.in',
+            recipients: Array.isArray(d.to_emails) ? d.to_emails : (d.recipients || initialItem?.recipients || []),
+            cc: d.cc_emails || d.cc || initialItem?.cc,
+            bcc: d.bcc_emails || d.bcc || initialItem?.bcc,
+            subject: d.subject || initialItem?.subject || '(No Subject)',
+            status: 'scheduled',
+            messageId: d.id,
+            createdAt: d.scheduled_at || d.created_at || initialItem?.createdAt || new Date().toISOString(),
+            scheduled_at: d.scheduled_at,
+            html: d.html || d.body_html || d.body_text || '',
+            hasAttachments: Array.isArray(d.attachments) && d.attachments.length > 0,
+            attachmentsCount: Array.isArray(d.attachments) ? d.attachments.length : 0,
+            attachments_meta: d.attachments,
+          });
+        }
+        return;
+      }
+
       const res = await emailApi.getHistoryById(id);
       if (res.data && res.data.success && res.data.data) {
         setSelectedDetail(res.data.data);
@@ -476,16 +541,24 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
     }
   };
 
-  // Delete message record
+  // Delete / Cancel message record
   const handleDeleteLog = (item: EmailHistoryItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const isScheduled = item.status === 'scheduled';
     showConfirmDialog(
-      'Delete Email Log Record',
-      `Are you sure you want to delete this email log record for "${item.subject}" from Supabase?`,
+      isScheduled ? 'Cancel Scheduled Email' : 'Delete Email Log Record',
+      isScheduled
+        ? `Are you sure you want to cancel the scheduled email "${item.subject}"?`
+        : `Are you sure you want to delete this email log record for "${item.subject}" from Supabase?`,
       async () => {
         try {
-          await emailApi.deleteHistory(item.id);
-          showToast('Email log record deleted successfully', undefined, 'success');
+          if (isScheduled) {
+            await scheduledEmailApi.cancelScheduled(item.id);
+            showToast('Scheduled email cancelled successfully', undefined, 'success');
+          } else {
+            await emailApi.deleteHistory(item.id);
+            showToast('Email log record deleted successfully', undefined, 'success');
+          }
           if (selectedMessageId === item.id) {
             setSelectedMessageId(null);
             setSelectedDetail(null);
@@ -493,10 +566,10 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
           // Reload current page
           fetchLogs(currentPage, pageSize, statusFilter, appliedSearch, dateRangeFilter);
         } catch (err: any) {
-          showToast('Failed to delete email record', err.message || 'Error occurred', 'error');
+          showToast(isScheduled ? 'Failed to cancel scheduled email' : 'Failed to delete email record', err.message || 'Error occurred', 'error');
         }
       },
-      { confirmText: 'Yes, Delete Record', intent: 'danger' }
+      { confirmText: isScheduled ? 'Yes, Cancel Email' : 'Yes, Delete Record', intent: 'danger' }
     );
   };
 
@@ -734,6 +807,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                 <option value="all" className="bg-[#0f111a] text-white">All</option>
                 <option value="sent" className="bg-[#0f111a] text-white">Sent</option>
                 <option value="failed" className="bg-[#0f111a] text-white">Failed</option>
+                <option value="scheduled" className="bg-[#0f111a] text-white">Scheduled</option>
               </select>
               <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-2.5 pointer-events-none" />
             </div>
@@ -890,6 +964,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                       ? log.recipients.join(', ')
                       : String(log.recipients || '');
                     const isSent = (log.status || 'sent').toLowerCase() === 'sent';
+                    const isScheduled = (log.status || '').toLowerCase() === 'scheduled';
                     const formattedMsgId = log.messageId
                       ? log.messageId.length > 18
                         ? `${log.messageId.slice(0, 16)}...`
@@ -911,12 +986,14 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                         <td className="py-3.5 px-4">
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider ${
-                              isSent
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                              isScheduled
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                : isSent
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                  : 'bg-red-500/20 text-red-300 border border-red-500/40'
                             }`}
                           >
-                            {isSent ? '✓ SENT' : '✕ FAILED'}
+                            {isScheduled ? '🕒 SCHEDULED' : isSent ? '✓ SENT' : '✕ FAILED'}
                           </span>
                         </td>
 
@@ -944,7 +1021,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
 
                         {/* Sent Timestamp */}
                         <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px] whitespace-nowrap">
-                          {formatDateTime(log.createdAt)}
+                          {isScheduled ? `Scheduled: ${formatDateTime(log.scheduled_at || log.createdAt)}` : formatDateTime(log.createdAt)}
                         </td>
 
                         {/* Message ID */}
@@ -989,6 +1066,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
             <div className="hidden md:block xl:hidden space-y-3">
               {logs.map((log) => {
                 const isSent = (log.status || 'sent').toLowerCase() === 'sent';
+                const isScheduled = (log.status || '').toLowerCase() === 'scheduled';
                 const recipientText = Array.isArray(log.recipients)
                   ? log.recipients.join(', ')
                   : String(log.recipients || '');
@@ -1003,10 +1081,14 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                       <div className="flex items-start gap-3 min-w-0 flex-1">
                         <div
                           className={`mt-0.5 p-1.5 rounded-full ${
-                            isSent ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                            isScheduled
+                              ? 'bg-amber-500/20 text-amber-400'
+                              : isSent
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-red-500/20 text-red-400'
                           }`}
                         >
-                          {isSent ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                          {isScheduled ? <Clock className="w-4 h-4" /> : isSent ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                         </div>
                         <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex items-center justify-between gap-2">
@@ -1014,7 +1096,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                               {log.subject || '(No Subject)'}
                             </span>
                             <span className="text-[11px] font-mono text-slate-400 shrink-0">
-                              {formatDateTime(log.createdAt)}
+                              {isScheduled ? `Scheduled: ${formatDateTime(log.scheduled_at || log.createdAt)}` : formatDateTime(log.createdAt)}
                             </span>
                           </div>
                           <div className="text-xs font-mono text-cyan-400 truncate">
@@ -1046,10 +1128,14 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                     <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px] font-mono">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          isSent ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+                          isScheduled
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : isSent
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-red-500/20 text-red-300'
                         }`}
                       >
-                        {isSent ? '✓ SENT' : '✕ FAILED'}
+                        {isScheduled ? '🕒 SCHEDULED' : isSent ? '✓ SENT' : '✕ FAILED'}
                       </span>
                       {log.hasAttachments && (
                         <span className="text-cyan-400 flex items-center gap-1 text-[10px]">
@@ -1069,6 +1155,7 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
             <div className="block md:hidden space-y-3">
               {logs.map((log) => {
                 const isSent = (log.status || 'sent').toLowerCase() === 'sent';
+                const isScheduled = (log.status || '').toLowerCase() === 'scheduled';
                 const recipientText = Array.isArray(log.recipients)
                   ? log.recipients.join(', ')
                   : String(log.recipients || '');
@@ -1083,10 +1170,14 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                       <div className="flex items-start gap-2.5 min-w-0 flex-1">
                         <div
                           className={`mt-0.5 p-1 rounded-full shrink-0 ${
-                            isSent ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                            isScheduled
+                              ? 'bg-amber-500/20 text-amber-400'
+                              : isSent
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-red-500/20 text-red-400'
                           }`}
                         >
-                          {isSent ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                          {isScheduled ? <Clock className="w-3.5 h-3.5" /> : isSent ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                         </div>
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <h4 className="font-bold text-white text-xs truncate">
@@ -1099,17 +1190,21 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                       </div>
 
                       <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                        {formatDateTime(log.createdAt).split(',')[0]}
+                        {formatDateTime(log.scheduled_at || log.createdAt).split(',')[0]}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] font-mono">
                       <span
                         className={`px-2 py-0.5 rounded font-bold uppercase ${
-                          isSent ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+                          isScheduled
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : isSent
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-red-500/20 text-red-300'
                         }`}
                       >
-                        {isSent ? '✓ SENT' : '✕ FAILED'}
+                        {isScheduled ? '🕒 SCHEDULED' : isSent ? '✓ SENT' : '✕ FAILED'}
                       </span>
 
                       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -1252,19 +1347,29 @@ export const AdminMessageHistoryTab: React.FC<AdminMessageHistoryTabProps> = ({
                     {selectedDetail?.status && (
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
-                          selectedDetail.status.toLowerCase() === 'sent'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                          selectedDetail.status.toLowerCase() === 'scheduled'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : selectedDetail.status.toLowerCase() === 'sent'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-red-500/20 text-red-300 border border-red-500/40'
                         }`}
                       >
-                        {selectedDetail.status.toLowerCase() === 'sent' ? '✓ SENT' : '✕ FAILED'}
+                        {selectedDetail.status.toLowerCase() === 'scheduled'
+                          ? '🕒 SCHEDULED'
+                          : selectedDetail.status.toLowerCase() === 'sent'
+                            ? '✓ SENT'
+                            : '✕ FAILED'}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 font-mono text-xs text-slate-400 flex-wrap">
                     <span>From: <strong className="text-cyan-300">{selectedDetail?.sender || 'contact@zenemoo.in'}</strong></span>
                     <span>•</span>
-                    <span>{formatDateTime(selectedDetail?.createdAt)}</span>
+                    <span>
+                      {selectedDetail?.status?.toLowerCase() === 'scheduled'
+                        ? `Scheduled: ${formatDateTime(selectedDetail?.scheduled_at || selectedDetail?.createdAt)}`
+                        : formatDateTime(selectedDetail?.createdAt)}
+                    </span>
                   </div>
                 </div>
 

@@ -41,6 +41,9 @@ import {
   formatForwardSubject,
   getSignatureForSender,
   SIGNATURE_PRESETS,
+  parseEmailTokens,
+  isValidEmail,
+  htmlToPlainText,
 } from '../utils/emailEncodingHelper';
 
 const VERIFIED_SENDERS = [
@@ -52,6 +55,12 @@ const VERIFIED_SENDERS = [
   { email: 'sangita@zenemoo.in', label: 'Sangita HR (sangita@zenemoo.in)' },
   { email: 'noreply@zenemoo.in', label: 'Zenemoo System (noreply@zenemoo.in)' },
 ];
+
+export function isZenemooMailbox(email: string): boolean {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return VERIFIED_SENDERS.some((s) => s.email.toLowerCase() === clean) || clean.endsWith('@zenemoo.in');
+}
 
 export interface AttachmentFileItem {
   id: string;
@@ -82,19 +91,6 @@ export interface ComposerDraft {
 
 // Module-level persistent drafts store (Survives inbox polling & component re-renders)
 const composerDraftsStore: Record<string, ComposerDraft> = {};
-
-const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-function isValidEmail(email: string): boolean {
-  return EMAIL_REGEX.test(email.trim().toLowerCase());
-}
-
-function parseEmailTokens(input: string): string[] {
-  return input
-    .split(/[,;\s\n\r]+/)
-    .map((t) => t.trim().toLowerCase().replace(/^[<"']+|[>"']+$/g, ''))
-    .filter(Boolean);
-}
 
 function escapeHtml(str: string): string {
   return (str || '')
@@ -275,6 +271,27 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
+
+  const saveSelection = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  }, []);
+
+  const restoreSelection = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      }
+    }
+  }, []);
 
   const effectiveMode = mode || (originalEmail ? 'reply' : 'new');
   const emailId = originalEmail ? originalEmail.id || originalEmail.message_id : 'new';
@@ -414,22 +431,85 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       let initCc: string[] = [];
       let showCcInit = false;
 
-      if (effectiveMode === 'reply' && originalEmail) {
-        const replyEmail = originalEmail.reply_to || originalEmail.sender_email;
-        if (replyEmail) initTo = [replyEmail.trim().toLowerCase()];
-      } else if (effectiveMode === 'replyAll' && originalEmail) {
-        const replyEmail = originalEmail.reply_to || originalEmail.sender_email;
-        const allOriginalRecipients = parseEmailTokens(originalEmail.recipient_email || '');
-        const myMailbox = (originalEmail.mailbox_email || initFrom).toLowerCase();
+      const isSent = Boolean(
+        originalEmail && (
+          originalEmail.status === 'sent' ||
+          (originalEmail.sent_at && !originalEmail.received_at) ||
+          isZenemooMailbox(originalEmail.sender_email)
+        )
+      );
 
+      if (effectiveMode === 'reply' && originalEmail) {
+        if (isSent) {
+          // Reply to original external recipient, not the Zenemoo sender mailbox
+          const externalRecipients = parseEmailTokens(originalEmail.recipient_email).filter((e) => !isZenemooMailbox(e));
+          const primary = externalRecipients.length > 0 ? externalRecipients[0] : parseEmailTokens(originalEmail.recipient_email)[0];
+          if (primary) initTo = [primary];
+        } else {
+          // Incoming email: use valid Reply-To address, falling back to actual sender address
+          const replyEmail = originalEmail.reply_to && isValidEmail(originalEmail.reply_to)
+            ? originalEmail.reply_to.trim().toLowerCase()
+            : (originalEmail.sender_email || '').trim().toLowerCase();
+          if (replyEmail && isValidEmail(replyEmail)) initTo = [replyEmail];
+        }
+        // Start CC and BCC empty
+        initCc = [];
+        showCcInit = false;
+      } else if (effectiveMode === 'replyAll' && originalEmail) {
+        const myMailbox = (originalEmail.mailbox_email || initFrom).toLowerCase();
         const toSet = new Set<string>();
-        if (replyEmail) toSet.add(replyEmail.toLowerCase());
-        allOriginalRecipients.forEach((addr) => {
-          if (addr !== myMailbox && addr !== replyEmail.toLowerCase()) {
-            toSet.add(addr);
+        const ccSet = new Set<string>();
+
+        if (isSent) {
+          // Reply All from Sent:
+          // To: Original external recipients, excluding current user mailboxes
+          const origTo = parseEmailTokens(originalEmail.recipient_email);
+          origTo.forEach((addr) => {
+            if (!isZenemooMailbox(addr) && addr !== myMailbox) {
+              toSet.add(addr);
+            }
+          });
+          if (toSet.size === 0 && origTo.length > 0) {
+            toSet.add(origTo[0]);
           }
-        });
+
+          // CC: Original CC recipients, excluding current user mailboxes and To recipients
+          const origCc = parseEmailTokens((originalEmail as any).cc || (originalEmail as any).cc_emails || '');
+          origCc.forEach((addr) => {
+            if (!isZenemooMailbox(addr) && addr !== myMailbox && !toSet.has(addr)) {
+              ccSet.add(addr);
+            }
+          });
+        } else {
+          // Reply All from Incoming email:
+          // 1. Primary sender (valid Reply-To or sender_email)
+          const replyEmail = originalEmail.reply_to && isValidEmail(originalEmail.reply_to)
+            ? originalEmail.reply_to.trim().toLowerCase()
+            : (originalEmail.sender_email || '').trim().toLowerCase();
+          if (replyEmail && !isZenemooMailbox(replyEmail) && replyEmail !== myMailbox) {
+            toSet.add(replyEmail);
+          }
+
+          // 2. Other original To recipients, excluding current user mailboxes
+          const origTo = parseEmailTokens(originalEmail.recipient_email);
+          origTo.forEach((addr) => {
+            if (!isZenemooMailbox(addr) && addr !== myMailbox && !toSet.has(addr)) {
+              toSet.add(addr);
+            }
+          });
+
+          // 3. Original CC recipients, excluding current user mailboxes and already included To
+          const origCc = parseEmailTokens((originalEmail as any).cc || (originalEmail as any).cc_emails || '');
+          origCc.forEach((addr) => {
+            if (!isZenemooMailbox(addr) && addr !== myMailbox && !toSet.has(addr)) {
+              ccSet.add(addr);
+            }
+          });
+        }
+
         initTo = Array.from(toSet);
+        initCc = Array.from(ccSet);
+        showCcInit = initCc.length > 0;
       } else if (effectiveMode === 'forward') {
         initTo = []; // Forward mode starts with empty recipient field for user entry
       }
@@ -494,16 +574,15 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     }
   }, [isOpen, draftKey]);
 
-  // Rich Text Command Handlers
+  // Rich Text Command Handlers (Restores & Preserves Selection)
   const execFormat = useCallback((command: string, value: string | undefined = undefined) => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
+    restoreSelection();
     document.execCommand(command, false, value);
+    saveSelection();
     if (editorRef.current) {
       setMessageHtml(editorRef.current.innerHTML);
     }
-  }, []);
+  }, [restoreSelection, saveSelection]);
 
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.ctrlKey || e.metaKey) {
@@ -524,6 +603,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
   };
 
   const handleOpenLinkDialog = () => {
+    saveSelection();
     const selection = window.getSelection();
     const selected = selection ? selection.toString() : '';
     setLinkText(selected);
@@ -544,9 +624,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       return;
     }
 
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
+    restoreSelection();
 
     if (linkText.trim()) {
       const linkHtml = `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color: #06b6d4; text-decoration: underline;">${escapeHtml(linkText)}</a>`;
@@ -554,6 +632,8 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     } else {
       document.execCommand('createLink', false, cleanUrl);
     }
+
+    saveSelection();
 
     if (editorRef.current) {
       setMessageHtml(editorRef.current.innerHTML);
@@ -608,25 +688,30 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
   const handleSend = async () => {
     setErrorMsg(null);
 
-    // Validate Recipients
-    if (toRecipients.length === 0) {
+    // Validate and normalize recipients (deduplicate case-insensitively across To, CC, BCC)
+    const cleanTo = parseEmailTokens(toRecipients);
+    if (cleanTo.length === 0) {
       setErrorMsg('Please specify at least one recipient email address.');
       return;
     }
 
-    const invalidTo = toRecipients.filter((e) => !isValidEmail(e));
+    const invalidTo = cleanTo.filter((e) => !isValidEmail(e));
     if (invalidTo.length > 0) {
       setErrorMsg(`Invalid recipient address: ${invalidTo.join(', ')}`);
       return;
     }
 
-    const invalidCc = ccRecipients.filter((e) => !isValidEmail(e));
+    const toLowerSet = new Set(cleanTo.map((e) => e.toLowerCase()));
+    const cleanCc = parseEmailTokens(ccRecipients).filter((e) => !toLowerSet.has(e.toLowerCase()));
+    const invalidCc = cleanCc.filter((e) => !isValidEmail(e));
     if (invalidCc.length > 0) {
       setErrorMsg(`Invalid CC address: ${invalidCc.join(', ')}`);
       return;
     }
 
-    const invalidBcc = bccRecipients.filter((e) => !isValidEmail(e));
+    const ccLowerSet = new Set(cleanCc.map((e) => e.toLowerCase()));
+    const cleanBcc = parseEmailTokens(bccRecipients).filter((e) => !toLowerSet.has(e.toLowerCase()) && !ccLowerSet.has(e.toLowerCase()));
+    const invalidBcc = cleanBcc.filter((e) => !isValidEmail(e));
     if (invalidBcc.length > 0) {
       setErrorMsg(`Invalid BCC address: ${invalidBcc.join(', ')}`);
       return;
@@ -664,21 +749,50 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
     let fullHtml = '';
     if ((effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail) {
-      const origSnippet = normalizedOriginalBody
-        ? normalizedOriginalBody.plainText || originalEmail.snippet || ''
-        : originalEmail.snippet || '';
-      const quotedBlock = `<br/><br/><div style="border-left: 3px solid #0891b2; padding-left: 14px; margin-top: 20px; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px;">
-        <div style="font-weight: 600; color: #334155; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
-        <blockquote style="margin: 0; padding: 0; color: #475569; line-height: 1.55; white-space: pre-wrap;">${escapeHtml(origSnippet)}</blockquote>
+      let quotedContentHtml = '';
+      if (normalizedOriginalBody?.isHtml && normalizedOriginalBody.sanitizedHtml) {
+        // Strip nested HTML document tags (<html>, <head>, <body>, <!DOCTYPE)
+        quotedContentHtml = normalizedOriginalBody.sanitizedHtml
+          .replace(/<!DOCTYPE[^>]*>/gi, '')
+          .replace(/<html[^>]*>|<\/html>/gi, '')
+          .replace(/<body[^>]*>|<\/body>/gi, '')
+          .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+          .trim();
+      } else if (normalizedOriginalBody?.plainText) {
+        quotedContentHtml = `<div style="white-space: pre-wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6;">${escapeHtml(normalizedOriginalBody.plainText)}</div>`;
+      } else {
+        quotedContentHtml = `<div style="white-space: pre-wrap;">${escapeHtml(originalEmail.snippet || '')}</div>`;
+      }
+
+      const quotedBlock = `<br/><br/><div class="zenemoo-quoted-section" style="border-top: 1px solid #cbd5e1; padding-top: 14px; margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #475569;">
+        <div style="font-weight: 600; color: #1e293b; margin-bottom: 6px;">On ${formattedDate}, ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt; wrote:</div>
+        <div style="margin-bottom: 8px; color: #64748b; font-size: 12px; line-height: 1.5;">
+          <div><strong>From:</strong> ${escapeHtml(decodedOriginalSenderName)} &lt;${escapeHtml(originalEmail.sender_email)}&gt;</div>
+          <div><strong>Date:</strong> ${formattedDate}</div>
+          <div><strong>Subject:</strong> ${escapeHtml(decodedOriginalSubject)}</div>
+          <div><strong>To:</strong> ${escapeHtml(originalEmail.recipient_email)}</div>
+          ${originalEmail.reply_to ? `<div><strong>Reply-To:</strong> ${escapeHtml(originalEmail.reply_to)}</div>` : ''}
+        </div>
+        <div style="border-left: 3px solid #0891b2; padding-left: 14px; margin-top: 10px; color: #334155;">
+          ${quotedContentHtml}
+        </div>
       </div>`;
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}${quotedBlock}</div>`;
     } else if (effectiveMode === 'forward' && originalEmail) {
       // Forward mode: robust sanitized HTML preservation
-      const origContentHtml = normalizedOriginalBody
-        ? normalizedOriginalBody.isHtml && normalizedOriginalBody.sanitizedHtml
-          ? normalizedOriginalBody.sanitizedHtml
-          : `<div style="white-space: pre-wrap; font-family: sans-serif; color: #1e293b;">${escapeHtml(normalizedOriginalBody.plainText || originalEmail.snippet)}</div>`
-        : `<div style="white-space: pre-wrap; color: #1e293b;">${escapeHtml(originalEmail.snippet)}</div>`;
+      let fwdContentHtml = '';
+      if (normalizedOriginalBody?.isHtml && normalizedOriginalBody.sanitizedHtml) {
+        fwdContentHtml = normalizedOriginalBody.sanitizedHtml
+          .replace(/<!DOCTYPE[^>]*>/gi, '')
+          .replace(/<html[^>]*>|<\/html>/gi, '')
+          .replace(/<body[^>]*>|<\/body>/gi, '')
+          .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+          .trim();
+      } else if (normalizedOriginalBody?.plainText) {
+        fwdContentHtml = `<div style="white-space: pre-wrap; font-family: sans-serif; color: #1e293b;">${escapeHtml(normalizedOriginalBody.plainText)}</div>`;
+      } else {
+        fwdContentHtml = `<div style="white-space: pre-wrap; color: #1e293b;">${escapeHtml(originalEmail.snippet || '')}</div>`;
+      }
 
       const fwdHeader = `<br/><br/><div style="border-top: 1px solid #cbd5e1; padding-top: 14px; margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #334155;">
         <div style="font-weight: bold; color: #0f172a; margin-bottom: 8px;">---------- Forwarded message ---------</div>
@@ -688,7 +802,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         <div style="margin-bottom: 3px;"><strong>To:</strong> ${escapeHtml(originalEmail.recipient_email)}</div>
         ${originalEmail.reply_to ? `<div style="margin-bottom: 3px;"><strong>Reply-To:</strong> ${escapeHtml(originalEmail.reply_to)}</div>` : ''}
         <br/>
-        <div style="color: #1e293b; margin-top: 8px;">${origContentHtml}</div>
+        <div style="color: #1e293b; margin-top: 8px;">${fwdContentHtml}</div>
       </div>`;
       fullHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.65; color: #1e293b; background-color: #ffffff;">${userHtml}${signatureHtml}${fwdHeader}</div>`;
     } else {
@@ -702,19 +816,23 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       return true;
     });
 
+    const readablePlainText = htmlToPlainText(fullHtml);
+
     try {
       const payload = {
         sender: fromSender,
         from: fromSender,
-        recipients: toRecipients.join(', '),
-        to: toRecipients,
-        cc: ccRecipients.length > 0 ? ccRecipients.join(', ') : undefined,
-        bcc: bccRecipients.length > 0 ? bccRecipients.join(', ') : undefined,
+        recipients: cleanTo.join(', '),
+        to: cleanTo,
+        cc: cleanCc.length > 0 ? cleanCc.join(', ') : undefined,
+        bcc: cleanBcc.length > 0 ? cleanBcc.join(', ') : undefined,
         subject,
         html: fullHtml,
-        text: userPlainText || userHtml.replace(/<[^>]+>/g, ' ').trim(),
+        text: readablePlainText,
         mode: effectiveMode,
         originalEmailId: originalEmail ? originalEmail.id || originalEmail.message_id : undefined,
+        inReplyTo: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
+        references: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
         attachmentCount: finalAttachments.length,
       };
 
@@ -743,7 +861,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           mailbox_email: fromSender,
           sender_name: 'Zenemoo',
           sender_email: fromSender,
-          recipient_email: toRecipients.join(', '),
+          recipient_email: cleanTo.join(', '),
           reply_to: fromSender,
           subject,
           body_text: userPlainText,
@@ -910,6 +1028,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           <div className="flex flex-wrap items-center gap-1 p-1.5 rounded-xl bg-white/[0.03] border border-white/10 text-slate-300">
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('bold')}
               title="Bold (Ctrl+B)"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -918,6 +1037,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('italic')}
               title="Italic (Ctrl+I)"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -926,6 +1046,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('underline')}
               title="Underline (Ctrl+U)"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -934,6 +1055,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('strikeThrough')}
               title="Strikethrough"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -945,6 +1067,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('formatBlock', '<h1>')}
               title="Heading 1"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -953,6 +1076,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('formatBlock', '<h2>')}
               title="Heading 2"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -961,6 +1085,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('formatBlock', '<h3>')}
               title="Heading 3"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -969,6 +1094,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('insertUnorderedList')}
               title="Bulleted List"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -977,6 +1103,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('insertOrderedList')}
               title="Numbered List"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -985,6 +1112,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('formatBlock', '<blockquote>')}
               title="Quote"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -996,6 +1124,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={handleOpenLinkDialog}
               title="Insert Link (Ctrl+K)"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-cyan-400 transition-colors cursor-pointer"
@@ -1004,6 +1133,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('unlink')}
               title="Remove Link"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -1012,6 +1142,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('removeFormat')}
               title="Clear Formatting"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -1023,6 +1154,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('undo')}
               title="Undo"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -1031,6 +1163,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => { e.preventDefault(); saveSelection(); }}
               onClick={() => execFormat('redo')}
               title="Redo"
               className="p-1.5 rounded-lg hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
@@ -1045,7 +1178,11 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
               ref={editorRef}
               contentEditable
               onKeyDown={handleEditorKeyDown}
+              onKeyUp={saveSelection}
+              onMouseUp={saveSelection}
+              onBlur={saveSelection}
               onInput={() => {
+                saveSelection();
                 if (editorRef.current) setMessageHtml(editorRef.current.innerHTML);
               }}
               data-placeholder={
@@ -1055,7 +1192,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
                   ? 'Type your response here...'
                   : 'Compose your email message here...'
               }
-              className="w-full min-h-[160px] max-h-[260px] p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-100 font-sans text-sm leading-relaxed overflow-y-auto focus:outline-none focus:border-cyan-400 focus:bg-white/[0.05] empty:before:content-[attr(data-placeholder)] empty:before:text-slate-500 empty:before:pointer-events-none"
+              className="email-editor-content w-full min-h-[160px] max-h-[260px] p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-slate-100 font-sans text-sm leading-relaxed overflow-y-auto focus:outline-none focus:border-cyan-400 focus:bg-white/[0.05] empty:before:content-[attr(data-placeholder)] empty:before:text-slate-500 empty:before:pointer-events-none"
             />
           </div>
 

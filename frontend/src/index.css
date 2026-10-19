@@ -260,5 +260,56 @@
   }
 }
 
+/* ==========================================================================
+   Email Rich-Text Editor Styling (Restores list bullets/numbers over Tailwind preflight)
+   ========================================================================== */
+.email-editor-content ul {
+  list-style-type: disc !important;
+  margin: 0.75rem 0 0.75rem 1.5rem !important;
+  padding-left: 0.5rem !important;
+}
 
+.email-editor-content ol {
+  list-style-type: decimal !important;
+  margin: 0.75rem 0 0.75rem 1.5rem !important;
+  padding-left: 0.5rem !important;
+}
 
+.email-editor-content li {
+  display: list-item !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.email-editor-content blockquote {
+  border-left: 3px solid #06b6d4 !important;
+  padding-left: 0.85rem !important;
+  margin: 0.75rem 0 !important;
+  color: #94a3b8 !important;
+  font-style: italic !important;
+}
+
+.email-editor-content a {
+  color: #06b6d4 !important;
+  text-decoration: underline !important;
+}
+
+.email-editor-content h1 {
+  font-size: 1.5rem !important;
+  font-weight: 700 !important;
+  margin: 1rem 0 0.5rem !important;
+  color: #f8fafc !important;
+}
+
+.email-editor-content h2 {
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  margin: 0.85rem 0 0.4rem !important;
+  color: #f8fafc !important;
+}
+
+.email-editor-content h3 {
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+  margin: 0.75rem 0 0.35rem !important;
+  color: #f8fafc !important;
+}

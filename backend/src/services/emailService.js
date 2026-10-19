@@ -127,21 +127,57 @@ export const runTcpConnectivityTest = (host, port, timeoutMs = 5000) => {
 };
 
 /**
+ * Split recipient string into address tokens without breaking display names with spaces or quoted commas
+ */
+export const splitAddressTokens = (raw) => {
+  if (!raw || typeof raw !== 'string') return [];
+  const tokens = [];
+  let current = '';
+  let inAngle = false;
+  let inQuotes = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      current += char;
+    } else if (char === '<') {
+      inAngle = true;
+      current += char;
+    } else if (char === '>') {
+      inAngle = false;
+      current += char;
+    } else if ((char === ',' || char === ';' || char === '\n' || char === '\r') && !inAngle && !inQuotes) {
+      if (current.trim()) {
+        tokens.push(current.trim());
+      }
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    tokens.push(current.trim());
+  }
+  return tokens;
+};
+
+/**
  * Parse recipient inputs into cleaned, deduplicated array of email strings
  * Supports:
  * - String or Array inputs
- * - Delimiters: commas, semicolons, spaces, tabs, newlines
- * - Extracting emails from angle bracket syntax (e.g. "John Doe <john@zenemoo.in>")
- * - Automatic deduplication
+ * - Delimiters: commas, semicolons, tabs, newlines
+ * - Extracting emails from display names (e.g. "Jane Doe <jane@zenemoo.in>", "Doe, Jane <jane@zenemoo.in>")
+ * - Automatic deduplication case-insensitively
  */
 export const parseRecipients = (input) => {
   if (input === null || input === undefined) return [];
 
-  let rawTokens = [];
+  let rawList = [];
   if (Array.isArray(input)) {
-    rawTokens = input.flatMap((item) => String(item).split(/[,\s\n\r;]+/));
+    rawList = input.flatMap((item) => splitAddressTokens(String(item)));
   } else if (typeof input === 'string') {
-    rawTokens = input.split(/[,\s\n\r;]+/);
+    rawList = splitAddressTokens(input);
   } else {
     return [];
   }
@@ -149,14 +185,28 @@ export const parseRecipients = (input) => {
   const cleanedEmails = [];
   const seen = new Set();
 
-  for (let token of rawTokens) {
-    if (!token) continue;
-    let str = token.trim();
+  for (let item of rawList) {
+    if (!item) continue;
+    let str = item.trim();
 
-    // Extract email from angle brackets if present: "Name <email@domain.com>"
+    // Extract email from angle brackets: "Jane Doe <jane@domain.com>"
     const angleMatch = str.match(/<([^>]+)>/);
     if (angleMatch) {
       str = angleMatch[1].trim();
+    } else if (str.includes(' ') && !str.includes('<')) {
+      // Space-separated list of bare emails (e.g. "a@b.com c@d.com")
+      const subTokens = str.split(/\s+/);
+      for (const st of subTokens) {
+        const cleanSt = st.replace(/^["'<\(\[]+|["'>\)\],.]+$/g, '').trim();
+        if (cleanSt && validateEmail(cleanSt)) {
+          const lower = cleanSt.toLowerCase();
+          if (!seen.has(lower)) {
+            seen.add(lower);
+            cleanedEmails.push(cleanSt);
+          }
+        }
+      }
+      continue;
     }
 
     // Clean surrounding quotes or brackets
@@ -172,6 +222,58 @@ export const parseRecipients = (input) => {
   }
 
   return cleanedEmails;
+};
+
+/**
+ * Convert HTML to clean, readable plain text for multipart email delivery
+ */
+export const htmlToPlainText = (html) => {
+  if (!html || typeof html !== 'string') return '';
+
+  let text = html
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gis, '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gis, '')
+    .replace(/<head\b[^<]*(?:(?!<\/head>)<[^<]*)*<\/head>/gis, '');
+
+  // Handle blockquote quotes
+  text = text.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gis, (_m, content) => {
+    const lines = htmlToPlainText(content).split('\n');
+    return '\n' + lines.map((line) => `> ${line}`).join('\n') + '\n';
+  });
+
+  // Handle list items
+  text = text.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gis, (_m, content) => {
+    const itemText = content.replace(/<[^>]+>/g, '').trim();
+    return `\n• ${itemText}`;
+  });
+
+  // Handle links: <a href="url">text</a> -> text (url)
+  text = text.replace(/<a\b[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gis, (_m, href, content) => {
+    const linkText = content.replace(/<[^>]+>/g, '').trim();
+    if (!href || href.startsWith('javascript:') || href === '#') return linkText;
+    if (linkText && linkText !== href) {
+      return `${linkText} (${href})`;
+    }
+    return href;
+  });
+
+  // Structural line breaks
+  text = text
+    .replace(/<br\s*[\/]?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|tr|table|ul|ol)>/gi, '\n')
+    .replace(/<[^>]+>/g, '') // Strip remaining HTML tags
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return text;
 };
 
 /**
@@ -297,7 +399,7 @@ export const normalizeAttachments = (attachments = []) => {
 /**
  * 4. Primary Delivery Method: Brevo HTTPS REST API v3
  */
-const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
+const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, subject, html, text, attachments, headers, inReplyTo, references }) => {
   console.log(`[${requestId}] 🌐 [Stage 1/2] Attempting Brevo HTTPS REST API v3 (Port 443)...`);
 
   const rawKey = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY;
@@ -328,6 +430,7 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
   }
 
   const safeHtml = sanitizeHtml(html);
+  const plainText = text || htmlToPlainText(safeHtml);
 
   let senderObject = { email: 'contact@zenemoo.in', name: 'Zenemoo AI Network' };
   if (typeof sender === 'string') {
@@ -346,6 +449,7 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
     to: parsedTo.map((email) => ({ email })),
     subject: subject || '(No Subject)',
     htmlContent: safeHtml || '<p>Zenemoo System Message</p>',
+    textContent: plainText || 'Zenemoo System Message',
   };
 
   if (parsedCc.length > 0) {
@@ -355,12 +459,11 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
     payload.bcc = parsedBcc.map((email) => ({ email }));
   }
 
-  if (headers && typeof headers === 'object') {
-    payload.headers = headers;
-  } else if (inReplyTo || references) {
-    payload.headers = {};
-    if (inReplyTo) payload.headers['In-Reply-To'] = inReplyTo;
-    if (references) payload.headers['References'] = references;
+  const mergedHeaders = headers && typeof headers === 'object' ? { ...headers } : {};
+  if (inReplyTo) mergedHeaders['In-Reply-To'] = inReplyTo;
+  if (references) mergedHeaders['References'] = references;
+  if (Object.keys(mergedHeaders).length > 0) {
+    payload.headers = mergedHeaders;
   }
 
   if (Array.isArray(attachments) && attachments.length > 0) {
@@ -429,7 +532,7 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
 /**
  * 5. Secondary Fallback Method: Nodemailer SMTP with Full Stage Handshake Tracing
  */
-const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
+const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, subject, html, text, attachments, headers, inReplyTo, references }) => {
   console.log(`[${requestId}] ⚡ [Stage 2/2] Attempting Nodemailer SMTP Fallback...`);
 
   const host = process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com';
@@ -510,7 +613,12 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
   const parsedCc = parseRecipients(cc);
   const parsedBcc = parseRecipients(bcc);
   const safeHtml = sanitizeHtml(html);
+  const plainText = text || htmlToPlainText(safeHtml);
   const normalizedAttachments = normalizeAttachments(attachments);
+
+  const mergedHeaders = headers && typeof headers === 'object' ? { ...headers } : {};
+  if (inReplyTo && !mergedHeaders['In-Reply-To']) mergedHeaders['In-Reply-To'] = inReplyTo;
+  if (references && !mergedHeaders['References']) mergedHeaders['References'] = references;
 
   const startTime = Date.now();
   try {
@@ -520,11 +628,12 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
       cc: parsedCc.length > 0 ? parsedCc : undefined,
       bcc: parsedBcc.length > 0 ? parsedBcc : undefined,
       subject: subject || '(No Subject)',
+      text: plainText,
       html: safeHtml,
       attachments: normalizedAttachments,
       inReplyTo,
       references,
-      headers,
+      headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
     });
 
     const elapsedTimeMs = Date.now() - startTime;
@@ -560,7 +669,7 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
 /**
  * Master Dispatcher with Request ID Tracking & Stage Logs
  */
-export const sendMailViaBrevo = async ({ sender, recipients, to, cc, bcc, subject, html, attachments, headers, inReplyTo, references }) => {
+export const sendMailViaBrevo = async ({ sender, recipients, to, cc, bcc, subject, html, text, attachments, headers, inReplyTo, references }) => {
   const targetRecipients = recipients || to;
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const startTime = Date.now();
@@ -573,7 +682,7 @@ export const sendMailViaBrevo = async ({ sender, recipients, to, cc, bcc, subjec
 
   // 1. Attempt Primary REST API
   try {
-    const res = await sendViaBrevoRestApi({ requestId, sender, recipients: targetRecipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
+    const res = await sendViaBrevoRestApi({ requestId, sender, recipients: targetRecipients, cc, bcc, subject, html, text, attachments, headers, inReplyTo, references });
     console.log(`🎯 [${requestId}] Execution Finished. Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (err) {
@@ -583,7 +692,7 @@ export const sendMailViaBrevo = async ({ sender, recipients, to, cc, bcc, subjec
 
   // 2. Attempt SMTP Fallback ONLY if REST API fails
   try {
-    const res = await sendViaNodemailerSmtp({ requestId, sender, recipients: targetRecipients, cc, bcc, subject, html, attachments, headers, inReplyTo, references });
+    const res = await sendViaNodemailerSmtp({ requestId, sender, recipients: targetRecipients, cc, bcc, subject, html, text, attachments, headers, inReplyTo, references });
     console.log(`🎯 [${requestId}] Execution Finished (SMTP Fallback). Total Elapsed Time: ${Date.now() - startTime}ms`);
     return res;
   } catch (smtpError) {

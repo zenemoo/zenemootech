@@ -1,5 +1,7 @@
 import {
   parseRecipients,
+  splitAddressTokens,
+  htmlToPlainText,
   validateEmail,
   sanitizeHtml,
   extractAttachmentMetadata,
@@ -9,6 +11,8 @@ import { encrypt, decrypt } from '../services/encryptionService.js';
 
 export {
   parseRecipients,
+  splitAddressTokens,
+  htmlToPlainText,
   validateEmail,
   sanitizeHtml,
   extractAttachmentMetadata,

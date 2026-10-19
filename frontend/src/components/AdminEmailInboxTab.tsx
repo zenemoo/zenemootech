@@ -55,6 +55,7 @@ import {
   normalizeEmailBody,
   extractCleanSnippet,
   NormalizedEmailBody,
+  parseEmailTokens,
 } from '../utils/emailEncodingHelper';
 
 export interface EmailMessageRecord {
@@ -1203,7 +1204,23 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
             ) : (
               emailsList.map((email) => {
                 const isSelected = selectedEmailId === email.id;
-                const senderDisplay = decodeMimeHeader(email.sender_name) || email.sender_email;
+                const isSentFolder = mailTab === 'sent';
+                let displayTitle = '';
+                let additionalRecipientsCount = 0;
+                let allRecipientsList: string[] = [];
+
+                if (isSentFolder) {
+                  allRecipientsList = parseEmailTokens(email.recipient_email);
+                  if (allRecipientsList.length > 0) {
+                    displayTitle = `To: ${allRecipientsList[0]}`;
+                    additionalRecipientsCount = allRecipientsList.length - 1;
+                  } else {
+                    displayTitle = 'To: (No recipient)';
+                  }
+                } else {
+                  displayTitle = decodeMimeHeader(email.sender_name) || email.sender_email;
+                }
+
                 const subjectDisplay = decodeMimeHeader(email.subject) || '(No Subject)';
                 const hasAtts = email.attachments && email.attachments.length > 0;
 
@@ -1218,7 +1235,10 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                     } ${!email.is_read ? 'bg-white/[0.02]' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2 text-xs mb-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div
+                        className="flex items-center gap-1.5 min-w-0"
+                        title={isSentFolder && allRecipientsList.length > 0 ? allRecipientsList.map((r) => `To: ${r}`).join('\n') : undefined}
+                      >
                         <button
                           type="button"
                           onClick={(e) => handleToggleStar(e, email)}
@@ -1231,8 +1251,16 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
                             !email.is_read ? 'font-bold text-white' : 'font-medium text-slate-300'
                           }`}
                         >
-                          {senderDisplay}
+                          {displayTitle}
                         </span>
+                        {isSentFolder && additionalRecipientsCount > 0 && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.2 rounded-md bg-cyan-500/15 text-cyan-300 font-mono font-semibold shrink-0 border border-cyan-500/30"
+                            title={allRecipientsList.join(', ')}
+                          >
+                            +{additionalRecipientsCount}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] text-slate-400 shrink-0 font-mono">
                         {new Date(email.received_at).toLocaleDateString(undefined, {

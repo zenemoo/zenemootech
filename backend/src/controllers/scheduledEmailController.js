@@ -214,6 +214,9 @@ export const createScheduledEmail = async (req, res, next) => {
       attachments = [],
       scheduled_at,
       timezone = 'Asia/Kolkata',
+      inReplyTo,
+      references,
+      headers,
     } = req.body;
 
     const fromEmail = sender || from || 'contact@zenemoo.in';
@@ -323,6 +326,18 @@ export const createScheduledEmail = async (req, res, next) => {
       }
     }
 
+    const threadingMeta = (inReplyTo || references || headers) ? {
+      inReplyTo: inReplyTo || undefined,
+      references: references || inReplyTo || undefined,
+      headers: headers || (inReplyTo ? { 'In-Reply-To': inReplyTo, 'References': references || inReplyTo } : undefined),
+    } : null;
+
+    if (threadingMeta) {
+      uploadedAttachments.push({
+        _threading: threadingMeta,
+      });
+    }
+
     const newRecord = {
       id: recordId,
       user_id: currentUserId,
@@ -342,6 +357,9 @@ export const createScheduledEmail = async (req, res, next) => {
       body_html_r2_key: r2BodyResult.htmlKey,
       body_text_r2_key: r2BodyResult.textKey,
       attachments_r2_prefix: `scheduled/${cleanId}/attachments/`,
+      inReplyTo,
+      references,
+      headers: threadingMeta ? threadingMeta.headers : undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

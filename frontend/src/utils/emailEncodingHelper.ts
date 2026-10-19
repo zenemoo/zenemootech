@@ -606,3 +606,141 @@ export function getSignatureForSender(senderEmail: string, signatureId?: string)
   const matched = SIGNATURE_PRESETS.find((s) => s.senderEmail.toLowerCase() === cleanEmail);
   return matched || SIGNATURE_PRESETS[0];
 }
+
+/**
+ * Standard RFC email address regex for syntax validation
+ */
+export const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  return EMAIL_REGEX.test(email.trim().toLowerCase());
+}
+
+/**
+ * Splits input string by commas, semicolons, or newlines while preserving display names,
+ * quotes, and angle brackets: e.g. 'Jane Doe <jane@example.com>, "Smith, Bob" <bob@example.com>; test@zenemoo.in'
+ */
+export function splitAddressTokens(raw: string): string[] {
+  if (!raw || typeof raw !== 'string') return [];
+  const tokens: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  let inAngle = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      current += ch;
+    } else if (ch === '<' && !inQuotes) {
+      inAngle = true;
+      current += ch;
+    } else if (ch === '>' && !inQuotes) {
+      inAngle = false;
+      current += ch;
+    } else if ((ch === ',' || ch === ';' || ch === '\n' || ch === '\r') && !inQuotes && !inAngle) {
+      const trimmed = current.trim();
+      if (trimmed) tokens.push(trimmed);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  const last = current.trim();
+  if (last) tokens.push(last);
+  return tokens;
+}
+
+/**
+ * Robust address parser that extracts clean, deduplicated email addresses.
+ * Correctly handles display names such as "Jane Doe <jane@example.com>" without whitespace token splitting errors.
+ */
+export function parseEmailTokens(input: string | string[] | null | undefined): string[] {
+  if (!input) return [];
+  const rawList: string[] = Array.isArray(input) ? input : [input];
+  const cleaned: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of rawList) {
+    if (!raw || typeof raw !== 'string') continue;
+    const tokens = splitAddressTokens(raw);
+    for (const token of tokens) {
+      // Check angle bracket pattern: e.g. "Jane Doe" <jane@example.com>
+      const angleMatch = token.match(/<([^>]+)>/);
+      let candidate = angleMatch ? angleMatch[1].trim() : token.trim();
+      candidate = candidate.replace(/^["'<\(\[]+|["'>\)\],.]+$/g, '').trim().toLowerCase();
+
+      // If token still contains whitespace-separated bare emails without commas:
+      if (candidate.includes(' ') && !angleMatch) {
+        const subTokens = candidate.split(/\s+/);
+        for (const sub of subTokens) {
+          const cleanSub = sub.replace(/^["'<\(\[]+|["'>\)\],.]+$/g, '').trim().toLowerCase();
+          if (isValidEmail(cleanSub) && !seen.has(cleanSub)) {
+            seen.add(cleanSub);
+            cleaned.push(cleanSub);
+          }
+        }
+      } else if (isValidEmail(candidate) && !seen.has(candidate)) {
+        seen.add(candidate);
+        cleaned.push(candidate);
+      }
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * Converts rich HTML content to a clean, readable plain-text alternative.
+ * Preserves paragraphs, line breaks, bullet points, numbered lists, blockquotes, and link URLs.
+ */
+export function htmlToPlainText(html: string): string {
+  if (!html || typeof html !== 'string') return '';
+
+  let text = html;
+
+  // 1. Remove style and script tags entirely
+  text = text.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+  text = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+
+  // 2. Format links: <a href="url">text</a> -> text (url)
+  text = text.replace(/<a\b[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, content) => {
+    const cleanContent = content.replace(/<[^>]+>/g, '').trim();
+    if (!cleanContent) return href;
+    if (cleanContent.toLowerCase() === href.toLowerCase()) return href;
+    return `${cleanContent} (${href})`;
+  });
+
+  // 3. Format list items
+  text = text.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_, content) => {
+    const cleanItem = content.replace(/<[^>]+>/g, '').trim();
+    return `\n• ${cleanItem}`;
+  });
+
+  // 4. Format blockquotes: prepend with >
+  text = text.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, content) => {
+    const lines = content.replace(/<[^>]+>/g, '').trim().split(/\r?\n/);
+    return '\n' + lines.map((l: string) => `> ${l.trim()}`).join('\n') + '\n';
+  });
+
+  // 5. Line breaks and block tags to newlines
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/(p|div|h[1-6]|tr)>/gi, '\n');
+  text = text.replace(/<(p|div|h[1-6]|tr)\b[^>]*>/gi, '');
+
+  // 6. Strip all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+
+  // 7. Unescape common HTML entities
+  text = unescapeHtmlEntities(text);
+
+  // 8. Normalize Mojibake
+  text = normalizeMojibake(text);
+
+  // 9. Clean up multiple blank lines (keep max 2 newlines)
+  text = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+
+  return text.trim();
+}
+
