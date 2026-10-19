@@ -30,8 +30,15 @@ import {
   Eye,
   Download,
   Info,
+  Clock,
+  Calendar,
 } from 'lucide-react';
-import { emailApi, emailInboxApi } from '../services/api';
+import { emailApi, emailInboxApi, scheduledEmailApi } from '../services/api';
+import {
+  getDateTimeInTimezone,
+  parseLocalDateInTimezoneToUtc,
+  formatScheduledDateInTimezone,
+} from '../utils/timezoneUtils';
 import { EmailMessageRecord } from './AdminEmailInboxTab';
 import {
   decodeMimeHeader,
@@ -100,6 +107,15 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+const readFileAsDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+};
 
 // ============================================================================
 // RECIPIENT CHIP INPUT COMPONENT (To / CC / BCC)
@@ -311,6 +327,13 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
   const [forwardOriginalAttachments, setForwardOriginalAttachmentsState] = useState<boolean>(true);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [errorMsg, setErrorMsgState] = useState<string | null>(null);
+
+  // Schedule Send / Reply State
+  const [isScheduleOpen, setIsScheduleOpen] = useState<boolean>(false);
+  const [scheduleDate, setScheduleDate] = useState<string>('');
+  const [scheduleTime, setScheduleTime] = useState<string>('');
+  const [scheduleTimezone, setScheduleTimezone] = useState<string>('Asia/Kolkata');
+  const [isScheduling, setIsScheduling] = useState<boolean>(false);
 
   // Link Dialog Modal State
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState<boolean>(false);
@@ -685,20 +708,20 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const handleSend = async () => {
+  const validateAndBuildMessage = () => {
     setErrorMsg(null);
 
     // Validate and normalize recipients (deduplicate case-insensitively across To, CC, BCC)
     const cleanTo = parseEmailTokens(toRecipients);
     if (cleanTo.length === 0) {
       setErrorMsg('Please specify at least one recipient email address.');
-      return;
+      return null;
     }
 
     const invalidTo = cleanTo.filter((e) => !isValidEmail(e));
     if (invalidTo.length > 0) {
       setErrorMsg(`Invalid recipient address: ${invalidTo.join(', ')}`);
-      return;
+      return null;
     }
 
     const toLowerSet = new Set(cleanTo.map((e) => e.toLowerCase()));
@@ -706,7 +729,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     const invalidCc = cleanCc.filter((e) => !isValidEmail(e));
     if (invalidCc.length > 0) {
       setErrorMsg(`Invalid CC address: ${invalidCc.join(', ')}`);
-      return;
+      return null;
     }
 
     const ccLowerSet = new Set(cleanCc.map((e) => e.toLowerCase()));
@@ -714,12 +737,12 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     const invalidBcc = cleanBcc.filter((e) => !isValidEmail(e));
     if (invalidBcc.length > 0) {
       setErrorMsg(`Invalid BCC address: ${invalidBcc.join(', ')}`);
-      return;
+      return null;
     }
 
     if (!subject.trim()) {
       setErrorMsg('Please enter an email subject.');
-      return;
+      return null;
     }
 
     const userHtml = editorRef.current ? editorRef.current.innerHTML.trim() : messageHtml.trim();
@@ -727,10 +750,8 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
     if (!userPlainText && (effectiveMode === 'reply' || effectiveMode === 'replyAll')) {
       setErrorMsg('Please write a message response.');
-      return;
+      return null;
     }
-
-    setIsSending(true);
 
     const decodedOriginalSenderName = originalEmail ? decodeMimeHeader(originalEmail.sender_name) : '';
     const decodedOriginalSubject = originalEmail ? decodeMimeHeader(originalEmail.subject) : '';
@@ -818,22 +839,155 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
     const readablePlainText = htmlToPlainText(fullHtml);
 
+    return {
+      cleanTo,
+      cleanCc,
+      cleanBcc,
+      userPlainText,
+      fullHtml,
+      readablePlainText,
+      finalAttachments,
+    };
+  };
+
+  const handleOpenScheduleModal = () => {
+    const prepared = validateAndBuildMessage();
+    if (!prepared) return;
+
+    if (!scheduleDate || !scheduleTime) {
+      const initialFutureUtc = new Date(Date.now() + 10 * 60 * 1000);
+      const { dateStr, timeStr } = getDateTimeInTimezone(initialFutureUtc, scheduleTimezone);
+      setScheduleDate(dateStr);
+      setScheduleTime(timeStr);
+    }
+    setIsScheduleOpen(true);
+  };
+
+  const handleTimezoneChange = (newTz: string) => {
+    if (scheduleDate && scheduleTime) {
+      const utcDate = parseLocalDateInTimezoneToUtc(scheduleDate, scheduleTime, scheduleTimezone);
+      if (!isNaN(utcDate.getTime())) {
+        const { dateStr, timeStr } = getDateTimeInTimezone(utcDate, newTz);
+        setScheduleDate(dateStr);
+        setScheduleTime(timeStr);
+      }
+    }
+    setScheduleTimezone(newTz);
+  };
+
+  const handleConfirmSchedule = async () => {
+    const prepared = validateAndBuildMessage();
+    if (!prepared) return;
+
+    if (!scheduleDate || !scheduleTime) {
+      setErrorMsg('Please select both a date and time to schedule.');
+      return;
+    }
+
+    const scheduledUtcDate = parseLocalDateInTimezoneToUtc(scheduleDate, scheduleTime, scheduleTimezone);
+    const scheduledTimestamp = scheduledUtcDate.getTime();
+    const now = Date.now();
+
+    if (isNaN(scheduledTimestamp) || scheduledTimestamp <= now - 5000) {
+      setErrorMsg('Please choose a future date and time.');
+      return;
+    }
+
+    setIsScheduling(true);
+    try {
+      const formattedAttachments: Array<{
+        name: string;
+        filename: string;
+        contentType: string;
+        size: number;
+        content?: string;
+      }> = [];
+
+      for (const att of prepared.finalAttachments) {
+        if (att.file) {
+          try {
+            const base64Content = await readFileAsDataUrl(att.file);
+            formattedAttachments.push({
+              name: att.name,
+              filename: att.name,
+              contentType: att.type,
+              size: att.size,
+              content: base64Content,
+            });
+          } catch (fileErr) {
+            console.warn('Failed reading file attachment for schedule:', fileErr);
+          }
+        } else {
+          formattedAttachments.push({
+            name: att.name,
+            filename: att.name,
+            contentType: att.type,
+            size: att.size,
+          });
+        }
+      }
+
+      const payload = {
+        sender: fromSender,
+        from: fromSender,
+        recipients: prepared.cleanTo.join(', '),
+        to: prepared.cleanTo,
+        cc: prepared.cleanCc.length > 0 ? prepared.cleanCc.join(', ') : undefined,
+        bcc: prepared.cleanBcc.length > 0 ? prepared.cleanBcc.join(', ') : undefined,
+        subject,
+        html: prepared.fullHtml,
+        text: prepared.readablePlainText,
+        scheduled_at: scheduledUtcDate.toISOString(),
+        timezone: scheduleTimezone,
+        attachments: formattedAttachments,
+        inReplyTo: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
+        references: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
+      };
+
+      const res = await scheduledEmailApi.createScheduled(payload);
+      if (res.data && res.data.success) {
+        delete composerDraftsStore[draftKey];
+        setIsScheduleOpen(false);
+        const modeLabel = effectiveMode === 'forward' ? 'forward' : effectiveMode === 'replyAll' ? 'reply all' : effectiveMode === 'reply' ? 'reply' : 'message';
+        addToast(
+          'Email Scheduled',
+          `📅 Email ${modeLabel} scheduled to be sent on ${formatScheduledDateInTimezone(scheduledUtcDate, scheduleTimezone)} (${scheduleTimezone}).`,
+          'success'
+        );
+        onClose();
+      } else {
+        setErrorMsg(res.data?.message || 'Failed to schedule email.');
+      }
+    } catch (err: any) {
+      const serverMsg = err.response?.data?.message || err.message || '✕ Network error while scheduling email.';
+      setErrorMsg(serverMsg);
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  const handleSend = async () => {
+    const prepared = validateAndBuildMessage();
+    if (!prepared) return;
+
+    setIsSending(true);
+
     try {
       const payload = {
         sender: fromSender,
         from: fromSender,
-        recipients: cleanTo.join(', '),
-        to: cleanTo,
-        cc: cleanCc.length > 0 ? cleanCc.join(', ') : undefined,
-        bcc: cleanBcc.length > 0 ? cleanBcc.join(', ') : undefined,
+        recipients: prepared.cleanTo.join(', '),
+        to: prepared.cleanTo,
+        cc: prepared.cleanCc.length > 0 ? prepared.cleanCc.join(', ') : undefined,
+        bcc: prepared.cleanBcc.length > 0 ? prepared.cleanBcc.join(', ') : undefined,
         subject,
-        html: fullHtml,
-        text: readablePlainText,
+        html: prepared.fullHtml,
+        text: prepared.readablePlainText,
         mode: effectiveMode,
         originalEmailId: originalEmail ? originalEmail.id || originalEmail.message_id : undefined,
         inReplyTo: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
         references: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
-        attachmentCount: finalAttachments.length,
+        attachmentCount: prepared.finalAttachments.length,
       };
 
       let response: any;
@@ -861,12 +1015,12 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           mailbox_email: fromSender,
           sender_name: 'Zenemoo',
           sender_email: fromSender,
-          recipient_email: cleanTo.join(', '),
+          recipient_email: prepared.cleanTo.join(', '),
           reply_to: fromSender,
           subject,
-          body_text: userPlainText,
-          body_html: fullHtml,
-          snippet: userPlainText.substring(0, 160) || 'Sent email',
+          body_text: prepared.userPlainText,
+          body_html: prepared.fullHtml,
+          snippet: prepared.userPlainText.substring(0, 160) || 'Sent email',
           category: 'general',
           is_read: true,
           is_starred: false,
@@ -875,7 +1029,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
           status: 'sent',
           sent_at: new Date().toISOString(),
           received_at: new Date().toISOString(),
-          attachments: finalAttachments.map((a) => ({
+          attachments: prepared.finalAttachments.map((a) => ({
             id: a.id,
             filename: a.name,
             contentType: a.type,
@@ -1326,7 +1480,7 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              disabled={isSending}
+              disabled={isSending || isScheduling}
               className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
             >
               Cancel
@@ -1334,8 +1488,27 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
 
             <button
               type="button"
+              onClick={handleOpenScheduleModal}
+              disabled={isSending || isScheduling}
+              title="Schedule this email or reply to be sent at a future date and time"
+              className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Clock className="w-4 h-4 text-amber-400" />
+              <span>
+                {effectiveMode === 'forward'
+                  ? 'Schedule Forward'
+                  : effectiveMode === 'replyAll'
+                  ? 'Schedule Reply All'
+                  : effectiveMode === 'reply'
+                  ? 'Schedule Reply'
+                  : 'Schedule Send'}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleSend}
-              disabled={isSending}
+              disabled={isSending || isScheduling}
               className="flex-1 sm:flex-none px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer disabled:opacity-50"
             >
               {isSending ? (
@@ -1417,6 +1590,128 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
                 className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold"
               >
                 Insert Link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SCHEDULE SEND / REPLY MODAL */}
+      {isScheduleOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-[#090d16] border border-amber-500/40 rounded-3xl p-6 space-y-5 shadow-2xl font-mono text-xs text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-amber-300 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-400" />
+                <span>
+                  {effectiveMode === 'forward'
+                    ? 'Schedule Forward'
+                    : effectiveMode === 'replyAll'
+                    ? 'Schedule Reply All'
+                    : effectiveMode === 'reply'
+                    ? 'Schedule Reply'
+                    : 'Schedule Email'}
+                </span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsScheduleOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5 uppercase text-[10px] tracking-wider">
+                  Send On Date *
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    min={getDateTimeInTimezone(new Date(), scheduleTimezone).dateStr}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-amber-300 font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
+                  />
+                  <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5 uppercase text-[10px] tracking-wider">
+                  Time *
+                </label>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-amber-300 font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5 uppercase text-[10px] tracking-wider">
+                  Timezone
+                </label>
+                <select
+                  value={scheduleTimezone}
+                  onChange={(e) => handleTimezoneChange(e.target.value)}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-200 font-bold focus:outline-none focus:border-amber-400 cursor-pointer appearance-none pr-8"
+                >
+                  <option value="Asia/Kolkata" className="bg-[#090d16]">Asia/Kolkata (IST - UTC+05:30)</option>
+                  <option value="UTC" className="bg-[#090d16]">UTC (Universal Coordinated Time)</option>
+                  <option value="America/New_York" className="bg-[#090d16]">America/New_York (EST / EDT)</option>
+                  <option value="Europe/London" className="bg-[#090d16]">Europe/London (GMT / BST)</option>
+                  <option value="Asia/Dubai" className="bg-[#090d16]">Asia/Dubai (GST)</option>
+                  <option value="Asia/Singapore" className="bg-[#090d16]">Asia/Singapore (SGT)</option>
+                </select>
+              </div>
+
+              {scheduleDate && scheduleTime && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-[11px] leading-relaxed flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    Will be sent automatically on{' '}
+                    <strong className="text-white">
+                      {formatScheduledDateInTimezone(
+                        parseLocalDateInTimezoneToUtc(scheduleDate, scheduleTime, scheduleTimezone),
+                        scheduleTimezone
+                      )}
+                    </strong>{' '}
+                    ({scheduleTimezone})
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsScheduleOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmSchedule}
+                disabled={isScheduling}
+                className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 disabled:opacity-50"
+              >
+                {isScheduling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-black" />
+                    <span>Scheduling...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-4 h-4 text-black" />
+                    <span>Confirm &amp; Schedule</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
