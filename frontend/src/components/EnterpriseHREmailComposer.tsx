@@ -43,6 +43,9 @@ import {
   Briefcase,
   AlertCircle,
   CheckCircle2,
+  Link2,
+  Unlink,
+  Palette,
 } from 'lucide-react';
 import { emailApi, scheduledEmailApi, userManagementApi } from '../services/api';
 import {
@@ -251,12 +254,25 @@ export const PRESET_SIGNATURES: HRSignature[] = [
 ];
 
 export const AUTHORIZED_SENDER_EMAILS = [
+  'prem@zenemoo.in',
   'contact@zenemoo.in',
   'support@zenemoo.in',
   'info@zenemoo.in',
   'sangita@zenemoo.in',
-  'prem@zenemoo.in',
   'noreply@zenemoo.in',
+];
+
+export const TEXT_COLORS = [
+  { label: 'White', color: '#ffffff' },
+  { label: 'Cyan', color: '#06b6d4' },
+  { label: 'Sky Blue', color: '#38bdf8' },
+  { label: 'Emerald Green', color: '#10b981' },
+  { label: 'Amber Gold', color: '#f59e0b' },
+  { label: 'Rose Red', color: '#f43f5e' },
+  { label: 'Purple', color: '#a855f7' },
+  { label: 'Slate Gray', color: '#94a3b8' },
+  { label: 'Indigo', color: '#6366f1' },
+  { label: 'Dark Navy', color: '#0f172a' },
 ];
 
 export interface AttachmentItem {
@@ -276,8 +292,8 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   userProfile,
   onEmailSentSuccess,
 }) => {
-  // 1. Sender State
-  const [selectedSender, setSelectedSender] = useState<string>('contact@zenemoo.in');
+  // 1. Sender State (Default to prem@zenemoo.in)
+  const [selectedSender, setSelectedSender] = useState<string>('prem@zenemoo.in');
 
   // 2. Recipient Chip States (To, CC, BCC)
   const [toChips, setToChips] = useState<string[]>([]);
@@ -294,6 +310,18 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const [subject, setSubject] = useState<string>('');
   const [htmlContent, setHtmlContent] = useState<string>('');
   const editorRef = useRef<HTMLDivElement>(null);
+
+  // Link Dialog Modal State
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState<boolean>(false);
+  const [linkText, setLinkText] = useState<string>('');
+  const [linkUrl, setLinkUrl] = useState<string>('https://');
+  const [isEditingExistingLink, setIsEditingExistingLink] = useState<boolean>(false);
+  const savedSelectionRangeRef = useRef<Range | null>(null);
+  const activeAnchorRef = useRef<HTMLAnchorElement | null>(null);
+
+  // Text Color Picker State
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState<boolean>(false);
+  const [selectedTextColor, setSelectedTextColor] = useState<string>('#ffffff');
 
   // 4. Attachments State
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
@@ -466,7 +494,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       return;
     }
 
-    const currentContent = editorRef.current ? editorRef.current.innerHTML : htmlContent;
+    const currentContent = formatEmailHtmlForOutbox(editorRef.current ? editorRef.current.innerHTML : htmlContent);
     const formattedAttachments = attachments
       .filter((att) => att.status === 'ready' && att.content)
       .map((att) => ({
@@ -627,11 +655,11 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     const senders = new Set<string>();
 
     if (isSuperAdmin) {
-      senders.add('noreply@zenemoo.in');
-      senders.add('info@zenemoo.in');
-      senders.add('support@zenemoo.in');
       senders.add('prem@zenemoo.in');
       senders.add('contact@zenemoo.in');
+      senders.add('support@zenemoo.in');
+      senders.add('info@zenemoo.in');
+      senders.add('noreply@zenemoo.in');
       senders.add('hr@zenemoo.in');
       senders.add('careers@zenemoo.in');
       senders.add('zenemootech@gmail.com');
@@ -678,9 +706,11 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     loadRoster();
   }, []);
 
-  // Auto-fill initial default sender
+  // Auto-fill initial default sender (always prioritize prem@zenemoo.in)
   useEffect(() => {
-    if (authorizedSenders.length > 0 && !authorizedSenders.includes(selectedSender)) {
+    if (authorizedSenders.includes('prem@zenemoo.in')) {
+      setSelectedSender('prem@zenemoo.in');
+    } else if (authorizedSenders.length > 0 && !authorizedSenders.includes(selectedSender)) {
       setSelectedSender(authorizedSenders[0]);
     }
   }, [userProfile]);
@@ -803,12 +833,149 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     handleAddChip(pastedText, chips, setChips, setInput);
   };
 
-  // Rich Text Editor Commands
+  // Selection preservation & restoration
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+      let node: Node | null = sel.anchorNode;
+      let anchorElem: HTMLAnchorElement | null = null;
+      while (node && node !== editorRef.current) {
+        if (node.nodeName === 'A') {
+          anchorElem = node as HTMLAnchorElement;
+          break;
+        }
+        node = node.parentNode;
+      }
+      activeAnchorRef.current = anchorElem;
+    }
+  };
+
+  const restoreSelection = () => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+    if (savedSelectionRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(savedSelectionRangeRef.current);
+      }
+    }
+  };
+
+  // Rich Text Editor Commands (preserves focus and triggers real-time updates)
   const execFormatCommand = (command: string, value: string = '') => {
+    restoreSelection();
     document.execCommand(command, false, value);
     if (editorRef.current) {
       setHtmlContent(editorRef.current.innerHTML);
     }
+    saveSelection();
+  };
+
+  // Hyperlink Handlers
+  const handleOpenLinkModal = () => {
+    saveSelection();
+    const sel = window.getSelection();
+    const selectedText = sel ? sel.toString().trim() : '';
+
+    if (activeAnchorRef.current) {
+      setLinkText(activeAnchorRef.current.innerText || selectedText);
+      setLinkUrl(activeAnchorRef.current.getAttribute('href') || 'https://');
+      setIsEditingExistingLink(true);
+    } else {
+      setLinkText(selectedText);
+      setLinkUrl('https://');
+      setIsEditingExistingLink(false);
+    }
+    setIsLinkModalOpen(true);
+  };
+
+  const handleApplyLink = () => {
+    let cleanUrl = linkUrl.trim();
+    if (!cleanUrl) {
+      showToast('Please enter a valid link URL.', 'error');
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(cleanUrl) && !/^mailto:/i.test(cleanUrl) && !/^tel:/i.test(cleanUrl)) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+
+    if (/^(javascript|vbscript|data):/i.test(cleanUrl)) {
+      showToast('Unsafe link URL scheme.', 'error');
+      return;
+    }
+
+    restoreSelection();
+
+    const displayText = linkText.trim() || cleanUrl;
+
+    if (activeAnchorRef.current && editorRef.current?.contains(activeAnchorRef.current)) {
+      activeAnchorRef.current.href = cleanUrl;
+      activeAnchorRef.current.innerText = displayText;
+      activeAnchorRef.current.style.color = '#38bdf8';
+      activeAnchorRef.current.style.textDecoration = 'underline';
+      activeAnchorRef.current.style.fontWeight = '500';
+    } else {
+      const escapedText = displayText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const linkHtml = `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; text-decoration: underline; font-weight: 500;">${escapedText}</a>&nbsp;`;
+      document.execCommand('insertHTML', false, linkHtml);
+    }
+
+    if (editorRef.current) {
+      setHtmlContent(editorRef.current.innerHTML);
+    }
+
+    setIsLinkModalOpen(false);
+    activeAnchorRef.current = null;
+    savedSelectionRangeRef.current = null;
+    showToast(`✓ Link applied for "${displayText}"`, 'success');
+  };
+
+  const handleRemoveLink = () => {
+    restoreSelection();
+    if (activeAnchorRef.current && editorRef.current?.contains(activeAnchorRef.current)) {
+      const textNode = document.createTextNode(activeAnchorRef.current.innerText);
+      activeAnchorRef.current.parentNode?.replaceChild(textNode, activeAnchorRef.current);
+    } else {
+      document.execCommand('unlink', false);
+    }
+    if (editorRef.current) {
+      setHtmlContent(editorRef.current.innerHTML);
+    }
+    setIsLinkModalOpen(false);
+    activeAnchorRef.current = null;
+    savedSelectionRangeRef.current = null;
+    showToast('Link removed.', 'success');
+  };
+
+  // Text Color Handler
+  const handleApplyTextColor = (color: string) => {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('foreColor', false, color);
+    setSelectedTextColor(color);
+    if (editorRef.current) {
+      setHtmlContent(editorRef.current.innerHTML);
+    }
+    saveSelection();
+    setIsColorPickerOpen(false);
+  };
+
+  // Outbox HTML formatter (ensures standard list bullets, numbers, and blue links in received emails)
+  const formatEmailHtmlForOutbox = (rawHtml: string): string => {
+    if (!rawHtml) return '';
+    let formatted = rawHtml;
+    formatted = formatted.replace(/<ul(?![^>]*style=)/gi, '<ul style="list-style-type: disc; padding-left: 24px; margin: 12px 0;"');
+    formatted = formatted.replace(/<ol(?![^>]*style=)/gi, '<ol style="list-style-type: decimal; padding-left: 24px; margin: 12px 0;"');
+    formatted = formatted.replace(/<li(?![^>]*style=)/gi, '<li style="margin: 4px 0; line-height: 1.6;"');
+    formatted = formatted.replace(/<a(?![^>]*style=)/gi, '<a style="color: #0284c7; text-decoration: underline; font-weight: 500;"');
+    return formatted;
   };
 
   // Dynamic Sender-based Signature Generator (derives signature from selected FROM email)
@@ -1113,7 +1280,7 @@ ${customPara}
       return;
     }
 
-    const currentContent = editorRef.current ? editorRef.current.innerHTML : htmlContent;
+    const currentContent = formatEmailHtmlForOutbox(editorRef.current ? editorRef.current.innerHTML : htmlContent);
     if (!currentContent || currentContent === '<br>') {
       showToast('Please enter message body content.', 'error');
       return;
@@ -1621,6 +1788,7 @@ ${customPara}
           <div className="w-full bg-[#090d16] border border-white/10 rounded-xl p-1.5 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-white/20">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('bold')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Bold (Ctrl+B)"
@@ -1629,6 +1797,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('italic')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Italic (Ctrl+I)"
@@ -1637,6 +1806,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('underline')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Underline (Ctrl+U)"
@@ -1645,15 +1815,79 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('strikeThrough')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Strikethrough"
             >
               <Strikethrough className="w-3.5 h-3.5" />
             </button>
+
+            {/* TEXT COLOR PICKER DROPDOWN */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  saveSelection();
+                }}
+                onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                title="Text Color"
+              >
+                <div className="flex flex-col items-center">
+                  <span className="font-bold text-xs leading-none">A</span>
+                  <span
+                    className="w-3.5 h-1 rounded-full mt-0.5 shadow-sm"
+                    style={{ backgroundColor: selectedTextColor }}
+                  />
+                </div>
+                <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+              </button>
+
+              {isColorPickerOpen && (
+                <div
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="absolute left-0 top-full mt-1.5 z-50 bg-[#0c121e] border border-white/15 rounded-xl p-2.5 shadow-2xl font-mono text-xs w-48 animate-fade-in"
+                >
+                  <div className="text-[10px] text-slate-400 uppercase font-bold mb-1.5 px-0.5">
+                    Text Color
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5 mb-2.5">
+                    {TEXT_COLORS.map((c) => (
+                      <button
+                        key={c.color}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleApplyTextColor(c.color)}
+                        className="w-7 h-7 rounded-lg border border-white/20 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center relative shadow-sm"
+                        style={{ backgroundColor: c.color }}
+                        title={c.label}
+                      >
+                        {selectedTextColor.toLowerCase() === c.color.toLowerCase() && (
+                          <Check className={`w-3.5 h-3.5 ${c.color === '#ffffff' ? 'text-black' : 'text-white'}`} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400">Custom:</span>
+                    <input
+                      type="color"
+                      value={selectedTextColor}
+                      onChange={(e) => handleApplyTextColor(e.target.value)}
+                      className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                      title="Custom Hex Color"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('formatBlock', '<h2>')}
               className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white text-[10px] font-bold transition-all cursor-pointer shrink-0"
               title="Heading 2"
@@ -1662,6 +1896,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('formatBlock', '<h3>')}
               className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white text-[10px] font-bold transition-all cursor-pointer shrink-0"
               title="Heading 3"
@@ -1670,6 +1905,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('formatBlock', '<p>')}
               className="px-2 py-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white text-[10px] font-bold transition-all cursor-pointer shrink-0"
               title="Paragraph"
@@ -1679,6 +1915,7 @@ ${customPara}
             <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('insertUnorderedList')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Bullet List"
@@ -1687,6 +1924,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('insertOrderedList')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Numbered List"
@@ -1696,6 +1934,7 @@ ${customPara}
             <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('justifyLeft')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Align Left"
@@ -1704,6 +1943,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('justifyCenter')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Align Center"
@@ -1712,6 +1952,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('justifyRight')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Align Right"
@@ -1721,17 +1962,19 @@ ${customPara}
             <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
             <button
               type="button"
-              onClick={() => {
-                const url = prompt('Enter Hyperlink URL:', 'https://');
-                if (url) execFormatCommand('createLink', url);
+              onMouseDown={(e) => {
+                e.preventDefault();
+                saveSelection();
               }}
+              onClick={handleOpenLinkModal}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
-              title="Insert Link"
+              title="Insert or Edit Link (Ctrl+K)"
             >
               <Link className="w-3.5 h-3.5 text-cyan-400" />
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('insertHorizontalRule')}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
               title="Horizontal Line"
@@ -1740,6 +1983,7 @@ ${customPara}
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execFormatCommand('removeFormat')}
               className="px-2 py-1 rounded-lg hover:bg-red-500/20 text-red-400 text-[10px] font-bold transition-all cursor-pointer shrink-0 ml-auto"
               title="Clear Formatting"
@@ -1748,13 +1992,43 @@ ${customPara}
             </button>
           </div>
 
-          {/* WYSIWYG Content Editable Area */}
+          {/* WYSIWYG Content Editable Area with Real-Time Typography Styles */}
           <div
             ref={editorRef}
             contentEditable
             onInput={() => {
               if (editorRef.current) {
                 setHtmlContent(editorRef.current.innerHTML);
+              }
+            }}
+            onKeyUp={saveSelection}
+            onMouseUp={saveSelection}
+            onKeyDown={(e) => {
+              if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'b' || e.key === 'B') {
+                  e.preventDefault();
+                  execFormatCommand('bold');
+                } else if (e.key === 'i' || e.key === 'I') {
+                  e.preventDefault();
+                  execFormatCommand('italic');
+                } else if (e.key === 'u' || e.key === 'U') {
+                  e.preventDefault();
+                  execFormatCommand('underline');
+                } else if (e.key === 'k' || e.key === 'K') {
+                  e.preventDefault();
+                  handleOpenLinkModal();
+                }
+              }
+            }}
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target && target.tagName === 'A') {
+                e.preventDefault();
+                activeAnchorRef.current = target as HTMLAnchorElement;
+                setLinkText(target.innerText || '');
+                setLinkUrl(target.getAttribute('href') || '');
+                setIsEditingExistingLink(true);
+                setIsLinkModalOpen(true);
               }
             }}
             onPaste={(e) => {
@@ -1772,9 +2046,10 @@ ${customPara}
               if (editorRef.current) {
                 setHtmlContent(editorRef.current.innerHTML);
               }
+              saveSelection();
             }}
-            style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}
-            className="w-full min-h-[180px] sm:min-h-[220px] max-h-[360px] overflow-y-auto p-3.5 sm:p-4 rounded-b-2xl bg-white/[0.03] border border-white/10 text-white font-sans text-xs sm:text-sm focus:outline-none focus:border-emerald-400 leading-relaxed overflow-x-hidden"
+            style={{ minHeight: '220px', lineHeight: '1.6' }}
+            className="w-full min-h-[180px] sm:min-h-[220px] max-h-[380px] overflow-y-auto p-3.5 sm:p-4 rounded-b-2xl bg-white/[0.03] border border-white/10 text-white font-sans text-xs sm:text-sm focus:outline-none focus:border-cyan-400 leading-relaxed overflow-x-hidden [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-2 [&_li]:my-1 [&_li]:leading-relaxed [&_a]:text-sky-400 [&_a]:underline [&_a]:hover:text-sky-300 [&_a]:cursor-pointer [&_a]:font-medium [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-white [&_h2]:my-2 [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-white [&_h3]:my-2 [&_p]:my-1.5 [&_blockquote]:border-l-4 [&_blockquote]:border-cyan-500 [&_blockquote]:pl-3 [&_blockquote]:text-slate-300 [&_blockquote]:my-2 [&_blockquote]:italic"
           />
         </div>
 
@@ -2281,6 +2556,123 @@ ${customPara}
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7.5 HYPERLINK INSERT / EDIT MODAL */}
+      {isLinkModalOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in font-mono">
+          <div className="w-full max-w-md bg-[#090d16] border border-cyan-500/40 rounded-3xl p-6 space-y-4 shadow-2xl text-xs text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-cyan-300 flex items-center gap-2 font-display">
+                <Link2 className="w-5 h-5 text-cyan-400" />
+                <span>{isEditingExistingLink ? 'Edit Hyperlink' : 'Insert Hyperlink'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLinkModalOpen(false);
+                  activeAnchorRef.current = null;
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5 uppercase text-[10px] tracking-wider">
+                  Text to Display (optional):
+                </label>
+                <input
+                  type="text"
+                  value={linkText}
+                  onChange={(e) => setLinkText(e.target.value)}
+                  placeholder="e.g. prem or Click Here"
+                  className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-white font-sans focus:outline-none focus:border-cyan-400"
+                  autoFocus
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  The clickable text that appears in your email message.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1.5 uppercase text-[10px] tracking-wider">
+                  Target URL (Web Address) *:
+                </label>
+                <input
+                  type="text"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="e.g. mrprem.in or https://zenemoo.in"
+                  className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-cyan-300 font-sans focus:outline-none focus:border-cyan-400"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleApplyLink();
+                    }
+                  }}
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Automatically formatted to secure https:// if not specified.
+                </span>
+              </div>
+
+              {/* Real-time Preview Pill */}
+              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-200 text-[11px] flex items-center gap-2">
+                <Eye className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="truncate">
+                  Preview in email:{' '}
+                  <span className="text-sky-400 font-bold underline">
+                    {linkText.trim() || linkUrl.trim() || 'Link Text'}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+              {isEditingExistingLink ? (
+                <button
+                  type="button"
+                  onClick={handleRemoveLink}
+                  className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Unlink className="w-3.5 h-3.5" />
+                  <span>Remove Link</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsLinkModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
+
+              <div className="flex items-center gap-2">
+                {isEditingExistingLink && (
+                  <button
+                    type="button"
+                    onClick={() => setIsLinkModalOpen(false)}
+                    className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleApplyLink}
+                  className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-display transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/20"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{isEditingExistingLink ? 'Update Link' : 'Insert Link'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
