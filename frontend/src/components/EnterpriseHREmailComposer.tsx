@@ -322,6 +322,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   // Text Color Picker State
   const [isColorPickerOpen, setIsColorPickerOpen] = useState<boolean>(false);
   const [selectedTextColor, setSelectedTextColor] = useState<string>('#ffffff');
+  const [colorPickerPosition, setColorPickerPosition] = useState<{ top: number; left: number } | null>(null);
 
   // 4. Attachments State
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
@@ -954,7 +955,31 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
     showToast('Link removed.', 'success');
   };
 
-  // Text Color Handler
+  // Text Color Handlers
+  const handleToggleColorPicker = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (isColorPickerOpen) {
+      setIsColorPickerOpen(false);
+      return;
+    }
+    saveSelection();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popoverWidth = 230;
+    const popoverHeight = 190;
+    let left = rect.left;
+    if (left + popoverWidth > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - popoverWidth - 12);
+    }
+    if (left < 12) left = 12;
+
+    let top = rect.bottom + 8;
+    // If popover would clip past bottom of viewport, position it above the toolbar button
+    if (top + popoverHeight > window.innerHeight && rect.top - popoverHeight - 8 > 0) {
+      top = rect.top - popoverHeight - 8;
+    }
+    setColorPickerPosition({ top, left });
+    setIsColorPickerOpen(true);
+  };
+
   const handleApplyTextColor = (color: string) => {
     restoreSelection();
     document.execCommand('styleWithCSS', false, 'true');
@@ -1823,7 +1848,7 @@ ${customPara}
               <Strikethrough className="w-3.5 h-3.5" />
             </button>
 
-            {/* TEXT COLOR PICKER DROPDOWN */}
+            {/* TEXT COLOR PICKER BUTTON */}
             <div className="relative shrink-0">
               <button
                 type="button"
@@ -1831,8 +1856,10 @@ ${customPara}
                   e.preventDefault();
                   saveSelection();
                 }}
-                onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                onClick={handleToggleColorPicker}
+                className={`p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                  isColorPickerOpen ? 'bg-white/15 text-white' : ''
+                }`}
                 title="Text Color"
               >
                 <div className="flex flex-col items-center">
@@ -1842,46 +1869,8 @@ ${customPara}
                     style={{ backgroundColor: selectedTextColor }}
                   />
                 </div>
-                <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                <ChevronDown className={`w-2.5 h-2.5 text-slate-400 transition-transform ${isColorPickerOpen ? 'rotate-180' : ''}`} />
               </button>
-
-              {isColorPickerOpen && (
-                <div
-                  onMouseDown={(e) => e.stopPropagation()}
-                  className="absolute left-0 top-full mt-1.5 z-50 bg-[#0c121e] border border-white/15 rounded-xl p-2.5 shadow-2xl font-mono text-xs w-48 animate-fade-in"
-                >
-                  <div className="text-[10px] text-slate-400 uppercase font-bold mb-1.5 px-0.5">
-                    Text Color
-                  </div>
-                  <div className="grid grid-cols-5 gap-1.5 mb-2.5">
-                    {TEXT_COLORS.map((c) => (
-                      <button
-                        key={c.color}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => handleApplyTextColor(c.color)}
-                        className="w-7 h-7 rounded-lg border border-white/20 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center relative shadow-sm"
-                        style={{ backgroundColor: c.color }}
-                        title={c.label}
-                      >
-                        {selectedTextColor.toLowerCase() === c.color.toLowerCase() && (
-                          <Check className={`w-3.5 h-3.5 ${c.color === '#ffffff' ? 'text-black' : 'text-white'}`} />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-slate-400">Custom:</span>
-                    <input
-                      type="color"
-                      value={selectedTextColor}
-                      onChange={(e) => handleApplyTextColor(e.target.value)}
-                      className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
-                      title="Custom Hex Color"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="w-[1px] h-4 bg-white/10 shrink-0 mx-0.5" />
@@ -2672,6 +2661,71 @@ ${customPara}
                   <Check className="w-4 h-4" />
                   <span>{isEditingExistingLink ? 'Update Link' : 'Insert Link'}</span>
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7.6 FLOATING TEXT COLOR PICKER POPOVER (Positioned outside toolbar overflow) */}
+      {isColorPickerOpen && colorPickerPosition && (
+        <div
+          className="fixed inset-0 z-[100]"
+          onClick={() => setIsColorPickerOpen(false)}
+        >
+          <div
+            style={{
+              position: 'fixed',
+              top: `${colorPickerPosition.top}px`,
+              left: `${colorPickerPosition.left}px`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="bg-[#0b101b] border border-cyan-500/40 rounded-2xl p-3 shadow-2xl font-mono text-xs w-[230px] animate-fade-in text-white backdrop-blur-md"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2.5">
+              <span className="text-[10px] text-cyan-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-cyan-400" /> Text Color
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsColorPickerOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-5 gap-2 mb-3">
+              {TEXT_COLORS.map((c) => (
+                <button
+                  key={c.color}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleApplyTextColor(c.color)}
+                  className="w-7 h-7 rounded-xl border border-white/20 hover:scale-110 hover:border-white transition-all cursor-pointer flex items-center justify-center relative shadow-md group"
+                  style={{ backgroundColor: c.color }}
+                  title={c.label}
+                >
+                  {selectedTextColor.toLowerCase() === c.color.toLowerCase() && (
+                    <Check className={`w-3.5 h-3.5 ${c.color === '#ffffff' ? 'text-black' : 'text-white'}`} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-300 font-bold">Custom:</span>
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1">
+                <input
+                  type="color"
+                  value={selectedTextColor}
+                  onChange={(e) => handleApplyTextColor(e.target.value)}
+                  className="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0"
+                  title="Choose any custom color"
+                />
+                <span className="text-[10px] text-slate-300 font-mono uppercase font-bold">{selectedTextColor}</span>
               </div>
             </div>
           </div>
