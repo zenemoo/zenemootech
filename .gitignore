@@ -38,3 +38,7 @@ cloudflare-workers/**/.wrangler/
 # Local invoice and signature storage
 storage/
 backend/storage/
+
+# Database backups
+backups/
+backend/backups/

@@ -132,25 +132,45 @@ export class EmailR2Service {
 
     const client = this.getClient();
     if (!client) {
-      const workerDir = this._getWorkerDir();
-      const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const tempFile = path.join(workerDir, tempId);
-      fs.writeFileSync(tempFile, bufferBody);
-      try {
-        execSync(`npx wrangler r2 object put "${this.bucketName}/${key}" --remote --file "${tempId}" --ct "${contentType}" -y`, {
-          cwd: workerDir,
-          shell: 'cmd.exe',
-          stdio: 'pipe',
-          maxBuffer: 50 * 1024 * 1024,
-        });
-        return {
-          key,
-          byteSize: bufferBody.length,
-          etag: 'r2-migrated',
-        };
-      } finally {
-        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      const isWindows = process.platform === 'win32';
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev && isWindows) {
+        const workerDir = this._getWorkerDir();
+        const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const tempFile = path.join(workerDir, tempId);
+        fs.writeFileSync(tempFile, bufferBody);
+        try {
+          execSync(`npx wrangler r2 object put "${this.bucketName}/${key}" --remote --file "${tempId}" --ct "${contentType}" -y`, {
+            cwd: workerDir,
+            shell: 'cmd.exe',
+            stdio: 'pipe',
+            maxBuffer: 50 * 1024 * 1024,
+          });
+          return {
+            key,
+            byteSize: bufferBody.length,
+            etag: 'r2-migrated',
+          };
+        } catch (wranglerErr) {
+          console.warn(`[EmailR2Service] Local wrangler fallback putObject failed for "${key}":`, wranglerErr.message);
+          return {
+            key: null,
+            byteSize: 0,
+            etag: '',
+            skipped: true,
+          };
+        } finally {
+          if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        }
       }
+
+      console.warn(`[EmailR2Service] Cloudflare R2 credentials not configured. Skipping putObject for "${key}".`);
+      return {
+        key: null,
+        byteSize: 0,
+        etag: '',
+        skipped: true,
+      };
     }
 
     const command = new PutObjectCommand({
@@ -177,29 +197,34 @@ export class EmailR2Service {
     if (!key) return null;
     const client = this.getClient();
     if (!client) {
-      const workerDir = this._getWorkerDir();
-      const tempId = `get_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const tempFile = path.join(workerDir, tempId);
-      try {
-        execSync(`npx wrangler r2 object get "${this.bucketName}/${key}" --remote --file "${tempId}"`, {
-          cwd: workerDir,
-          shell: 'cmd.exe',
-          stdio: 'pipe',
-          maxBuffer: 50 * 1024 * 1024,
-        });
-        if (!fs.existsSync(tempFile)) return null;
-        const buffer = fs.readFileSync(tempFile);
-        return {
-          buffer,
-          contentType: 'application/octet-stream',
-          contentLength: buffer.length,
-          etag: 'r2-fetched',
-        };
-      } catch (err) {
-        return null;
-      } finally {
-        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      const isWindows = process.platform === 'win32';
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev && isWindows) {
+        const workerDir = this._getWorkerDir();
+        const tempId = `get_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const tempFile = path.join(workerDir, tempId);
+        try {
+          execSync(`npx wrangler r2 object get "${this.bucketName}/${key}" --remote --file "${tempId}"`, {
+            cwd: workerDir,
+            shell: 'cmd.exe',
+            stdio: 'pipe',
+            maxBuffer: 50 * 1024 * 1024,
+          });
+          if (!fs.existsSync(tempFile)) return null;
+          const buffer = fs.readFileSync(tempFile);
+          return {
+            buffer,
+            contentType: 'application/octet-stream',
+            contentLength: buffer.length,
+            etag: 'r2-fetched',
+          };
+        } catch (err) {
+          return null;
+        } finally {
+          if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        }
       }
+      return null;
     }
 
     try {
@@ -292,17 +317,22 @@ export class EmailR2Service {
     if (!key || typeof key !== 'string') return true;
     const client = this.getClient();
     if (!client) {
-      try {
-        const workerDir = this._getWorkerDir();
-        execSync(`npx wrangler r2 object delete "${this.bucketName}/${key}" --remote`, {
-          cwd: workerDir,
-          shell: 'cmd.exe',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-        return true;
-      } catch (err) {
-        return false;
+      const isWindows = process.platform === 'win32';
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev && isWindows) {
+        try {
+          const workerDir = this._getWorkerDir();
+          execSync(`npx wrangler r2 object delete "${this.bucketName}/${key}" --remote`, {
+            cwd: workerDir,
+            shell: 'cmd.exe',
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          return true;
+        } catch (err) {
+          return false;
+        }
       }
+      return true;
     }
 
     try {
@@ -350,6 +380,17 @@ export class EmailR2Service {
    * @returns {Promise<{ htmlKey: string|null, textKey: string|null, rawKey: string|null, totalBytes: number }>}
    */
   async uploadEmailBody({ emailId, html, text, raw = null, type = 'incoming' }) {
+    if (!this.isConfigured()) {
+      console.warn(`[EmailR2Service] Cloudflare R2 credentials not configured. Skipping body upload for email "${emailId}". Email retained safely in database.`);
+      return {
+        htmlKey: null,
+        textKey: null,
+        rawKey: null,
+        totalBytes: 0,
+        skipped: true,
+      };
+    }
+
     const cleanId = this.sanitizeId(emailId);
     const prefix = `${type}/${cleanId}`;
     let totalBytes = 0;
@@ -364,7 +405,7 @@ export class EmailR2Service {
         body: html,
         contentType: 'text/html; charset=utf-8',
       });
-      totalBytes += res.byteSize;
+      if (res && res.byteSize) totalBytes += res.byteSize;
     }
 
     if (text && typeof text === 'string') {
@@ -374,7 +415,7 @@ export class EmailR2Service {
         body: text,
         contentType: 'text/plain; charset=utf-8',
       });
-      totalBytes += res.byteSize;
+      if (res && res.byteSize) totalBytes += res.byteSize;
     }
 
     if (raw && typeof raw === 'string') {
@@ -384,7 +425,7 @@ export class EmailR2Service {
         body: raw,
         contentType: 'message/rfc822; charset=utf-8',
       });
-      totalBytes += res.byteSize;
+      if (res && res.byteSize) totalBytes += res.byteSize;
     }
 
     return {
@@ -452,6 +493,21 @@ export class EmailR2Service {
     const safeFilename = this.sanitizeFilename(filename);
     const r2Key = `${type}/${cleanId}/attachments/${safeFilename}`;
 
+    let resolvedContentType = (contentType && contentType !== 'application/octet-stream')
+      ? contentType
+      : this.getMimeType(filename);
+
+    if (!this.isConfigured()) {
+      console.warn(`[EmailR2Service] Cloudflare R2 credentials not configured. Skipping attachment upload for "${safeFilename}". Retained in database.`);
+      return {
+        r2_key: null,
+        filename: safeFilename,
+        size: 0,
+        contentType: resolvedContentType,
+        skipped: true,
+      };
+    }
+
     let buffer;
     if (Buffer.isBuffer(content)) {
       buffer = content;
@@ -461,10 +517,6 @@ export class EmailR2Service {
     } else {
       throw new Error('[EmailR2Service] Invalid attachment content type.');
     }
-
-    let resolvedContentType = (contentType && contentType !== 'application/octet-stream')
-      ? contentType
-      : this.getMimeType(filename);
 
     if (buffer.length >= 4) {
       const header4 = buffer.subarray(0, 4).toString('ascii');
@@ -488,9 +540,9 @@ export class EmailR2Service {
     });
 
     return {
-      r2_key: r2Key,
+      r2_key: res && res.key ? res.key : r2Key,
       filename: safeFilename,
-      size: res.byteSize,
+      size: (res && res.byteSize) || 0,
       contentType: resolvedContentType,
     };
   }
