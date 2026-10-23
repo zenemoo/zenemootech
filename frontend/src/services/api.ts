@@ -927,6 +927,10 @@ export const bookingApi = {
     api.get('/bookings/admin/availability'),
   updateAdminAvailability: (data: any) =>
     api.put('/bookings/admin/availability', data),
+  applyAdminAvailabilityRule: (data: any) =>
+    api.post('/bookings/admin/availability/apply-rule', data),
+  previewAffectedDates: (data: any) =>
+    api.post('/bookings/admin/availability/preview-affected', data),
 };
 
 // ZENEMOO Google Group Management API

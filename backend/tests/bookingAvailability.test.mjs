@@ -333,6 +333,239 @@ await runAsyncTest('Test 12: Removing date overrides restores full weekly availa
   assert.strictEqual(res.availableSlots.length, 25);
 });
 
+// -----------------------------------------------------------------------------
+// 13. calculateAffectedDates handles all scopes properly
+// -----------------------------------------------------------------------------
+runTest('Test 13: calculateAffectedDates resolves scopes correctly', () => {
+  // 1. this_date
+  const aff1 = service.calculateAffectedDates({ scope: 'this_date', baseDate: '2028-10-20' });
+  assert.deepStrictEqual(aff1, ['2028-10-20']);
+
+  // 2. every_weekday
+  const aff2 = service.calculateAffectedDates({ scope: 'every_weekday', baseDate: '2028-10-20' });
+  assert.deepStrictEqual(aff2, []);
+
+  // 3. selected_dates
+  const aff3 = service.calculateAffectedDates({
+    scope: 'selected_dates',
+    targetDates: ['2028-10-25', '2028-10-21', '2028-10-25'], // Has duplicates and out of order
+  });
+  assert.deepStrictEqual(aff3, ['2028-10-21', '2028-10-25']);
+
+  // 4. next_30_days_weekday
+  // 2028-10-20 is a Friday
+  const aff4 = service.calculateAffectedDates({
+    scope: 'next_30_days_weekday',
+    baseDate: '2028-10-20',
+  });
+  // 30 days starting 2028-10-20 will have Fridays: Oct 20, Oct 27, Nov 3, Nov 10, Nov 17
+  assert.strictEqual(aff4.length, 5);
+  assert.strictEqual(aff4[0], '2028-10-20');
+  assert.strictEqual(aff4[1], '2028-10-27');
+  assert.strictEqual(aff4[2], '2028-11-03');
+  assert.strictEqual(aff4[3], '2028-11-10');
+  assert.strictEqual(aff4[4], '2028-11-17');
+
+  // 5. custom_range with weekdaysFilter
+  // 2028-10-20 (Fri) to 2028-10-29 (Sun), filter for Mondays (1) and Fridays (5)
+  const aff5 = service.calculateAffectedDates({
+    scope: 'custom_range',
+    rangeStart: '2028-10-20',
+    rangeEnd: '2028-10-29',
+    weekdaysFilter: [1, 5],
+  });
+  // Oct 20 (Fri), Oct 23 (Mon), Oct 27 (Fri)
+  assert.deepStrictEqual(aff5, ['2028-10-20', '2028-10-23', '2028-10-27']);
+});
+
+// -----------------------------------------------------------------------------
+// 14. One-date change does NOT modify recurring weekly hours
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 14: One-date change does not modify recurring weekly hours', async () => {
+  // Clean default configuration
+  await service.saveConfig({
+    weekly_hours: DEFAULT_WEEKLY_HOURS,
+    date_overrides: [],
+  }, 'test_runner');
+
+  const baseFriday = '2028-11-03'; // Friday
+  const nextFriday = '2028-11-10'; // Next Friday
+
+  // Apply custom hours ONLY on baseFriday
+  const applyRes = await service.applyRuleScope({
+    operation: 'change_hours',
+    scope: 'this_date',
+    baseDate: baseFriday,
+    ranges: [{ start: '14:00', end: '16:00' }], // 4 slots
+    reason: 'Single Friday Special Event',
+  }, 'test_runner');
+
+  assert.strictEqual(applyRes.success, true);
+  assert.deepStrictEqual(applyRes.affectedDates, [baseFriday]);
+
+  // baseFriday has 4 slots
+  const baseSlots = await service.getAvailableSlots(baseFriday, 'Asia/Kolkata');
+  assert.strictEqual(baseSlots.availableSlots.length, 4);
+
+  // nextFriday still has all 25 default slots (weekly schedule intact)
+  const nextSlots = await service.getAvailableSlots(nextFriday, 'Asia/Kolkata');
+  assert.strictEqual(nextSlots.availableSlots.length, 25);
+});
+
+// -----------------------------------------------------------------------------
+// 15. Recurring weekday change applies to all future occurrences
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 15: Recurring weekday change updates weekly schedule', async () => {
+  const baseTuesday = '2028-11-07'; // Tuesday (day 2)
+  const nextTuesday = '2028-11-14'; // Tuesday
+  const futureTuesday = '2028-12-05'; // Tuesday
+
+  // Apply change_hours with scope 'every_weekday'
+  const applyRes = await service.applyRuleScope({
+    operation: 'change_hours',
+    scope: 'every_weekday',
+    baseDate: baseTuesday,
+    ranges: [{ start: '11:00', end: '15:00' }], // 8 slots: 11:00 to 14:30
+    reason: 'Permanent Tuesday Schedule Update',
+  }, 'test_runner');
+
+  assert.strictEqual(applyRes.success, true);
+  assert.strictEqual(applyRes.affectedScope, 'every_weekday');
+
+  // Both Tuesdays should have 8 slots
+  const res1 = await service.getAvailableSlots(baseTuesday, 'Asia/Kolkata');
+  assert.strictEqual(res1.availableSlots.length, 8);
+
+  const res2 = await service.getAvailableSlots(nextTuesday, 'Asia/Kolkata');
+  assert.strictEqual(res2.availableSlots.length, 8);
+
+  const res3 = await service.getAvailableSlots(futureTuesday, 'Asia/Kolkata');
+  assert.strictEqual(res3.availableSlots.length, 8);
+});
+
+// -----------------------------------------------------------------------------
+// 16. Finite next-30-days scope creates overrides only inside range
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 16: Next 30-day scope creates overrides without altering weekly hours beyond range', async () => {
+  // Restore default weekly hours
+  await service.saveConfig({
+    weekly_hours: DEFAULT_WEEKLY_HOURS,
+    date_overrides: [],
+  }, 'test_runner');
+
+  const startWed = '2028-11-01'; // Wednesday
+  // Apply close_day with scope 'next_30_days_weekday'
+  const applyRes = await service.applyRuleScope({
+    operation: 'close_day',
+    scope: 'next_30_days_weekday',
+    baseDate: startWed,
+    reason: 'Wednesday Company Sprint Month',
+  }, 'test_runner');
+
+  assert.strictEqual(applyRes.success, true);
+  assert.ok(applyRes.affectedDates.length >= 4);
+
+  // A Wednesday inside the 30-day window is closed
+  const insideWed = applyRes.affectedDates[0];
+  const resInside = await service.getAvailableSlots(insideWed, 'Asia/Kolkata');
+  assert.strictEqual(resInside.isClosed, true);
+  assert.strictEqual(resInside.availableSlots.length, 0);
+
+  // A Wednesday beyond the 30-day window (e.g. 2028-12-13, 42 days later) remains open
+  const farWed = '2028-12-13';
+  const resFar = await service.getAvailableSlots(farWed, 'Asia/Kolkata');
+  assert.strictEqual(resFar.isClosed, false);
+  assert.strictEqual(resFar.availableSlots.length, 25);
+});
+
+// -----------------------------------------------------------------------------
+// 17. Multiple compatible partial-day blocks on the same date
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 17: Multiple compatible partial-day blocks subtract both windows', async () => {
+  const testDate = '2028-11-23'; // Thursday
+  // Clean start
+  await service.applyRuleScope({
+    operation: 'restore_weekly',
+    scope: 'this_date',
+    baseDate: testDate,
+  }, 'test_runner');
+
+  // Block #1: 11:00 to 12:00 (2 slots: 11:00, 11:30)
+  await service.applyRuleScope({
+    operation: 'block_range',
+    scope: 'this_date',
+    baseDate: testDate,
+    ranges: [{ start: '11:00', end: '12:00' }],
+    reason: 'Morning Workshop',
+  }, 'test_runner');
+
+  // Block #2: 15:00 to 17:00 (4 slots: 15:00, 15:30, 16:00, 16:30)
+  await service.applyRuleScope({
+    operation: 'block_range',
+    scope: 'this_date',
+    baseDate: testDate,
+    ranges: [{ start: '15:00', end: '17:00' }],
+    reason: 'Afternoon Architecture Review',
+  }, 'test_runner');
+
+  const res = await service.getAvailableSlots(testDate, 'Asia/Kolkata');
+  assert.strictEqual(res.success, true);
+  // Default is 25 slots. Blocked: 2 + 4 = 6 slots. Remaining: 19 slots.
+  assert.strictEqual(res.availableSlots.length, 25 - 6);
+
+  const labels = res.availableSlots.map((s) => s.label);
+  assert.ok(!labels.includes('11:00 AM'));
+  assert.ok(!labels.includes('11:30 AM'));
+  assert.ok(!labels.includes('3:00 PM'));
+  assert.ok(!labels.includes('4:30 PM'));
+  assert.ok(labels.includes('12:00 PM'));
+  assert.ok(labels.includes('2:30 PM'));
+  assert.ok(labels.includes('5:00 PM'));
+});
+
+// -----------------------------------------------------------------------------
+// 18. Rejection of conflicting rules (prevent reopening closed date)
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 18: Reject time block on fully closed date to prevent accidental reopening', async () => {
+  const closedDate = '2028-11-25'; // Saturday
+
+  // First mark as full-day closed
+  await service.applyRuleScope({
+    operation: 'close_day',
+    scope: 'this_date',
+    baseDate: closedDate,
+    reason: 'Holiday Closure',
+  }, 'test_runner');
+
+  // Now attempt to add a partial-day block on that closed date -> must reject
+  let rejected = false;
+  try {
+    await service.applyRuleScope({
+      operation: 'block_range',
+      scope: 'this_date',
+      baseDate: closedDate,
+      ranges: [{ start: '12:00', end: '14:00' }],
+      reason: 'Should Fail',
+    }, 'test_runner');
+  } catch (err) {
+    rejected = true;
+    assert.ok(err.message.includes('fully closed'));
+  }
+
+  assert.strictEqual(rejected, true, 'Must reject time block on a fully closed date');
+
+  // Verify date remains 100% closed
+  const checkSlots = await service.getAvailableSlots(closedDate, 'Asia/Kolkata');
+  assert.strictEqual(checkSlots.isClosed, true);
+  assert.strictEqual(checkSlots.availableSlots.length, 0);
+});
+
+// Final cleanup: Restore default weekly hours and clear overrides
+await service.saveConfig({
+  weekly_hours: DEFAULT_WEEKLY_HOURS,
+  date_overrides: [],
+}, 'test_cleaner');
+
 console.log('\n================================================================');
 console.log(`TEST SUMMARY: ${passedTests} / ${totalTests} PASSED (100% Success)`);
 console.log('================================================================');
@@ -340,3 +573,4 @@ console.log('================================================================');
 if (passedTests !== totalTests) {
   process.exit(1);
 }
+

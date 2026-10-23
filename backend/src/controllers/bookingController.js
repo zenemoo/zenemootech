@@ -952,3 +952,63 @@ export const updateAdminAvailability = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/bookings/admin/availability/apply-rule
+ * Apply availability rule with explicit scope (this date, every weekday, 30-day weekdays, selected dates, range)
+ */
+export const applyAdminAvailabilityRule = async (req, res, next) => {
+  try {
+    const adminUser = req.user || { email: 'admin' };
+    const result = await bookingAvailabilityService.applyRuleScope(req.body, adminUser);
+
+    if (supabase) {
+      try {
+        await supabase.from('admin_audit_logs').insert([{
+          event_type: 'BOOKING_AVAILABILITY_RULE_APPLIED',
+          email: adminUser.email || 'admin',
+          ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          details: {
+            operation: req.body.operation,
+            scope: req.body.scope,
+            affectedCount: result.affectedCount,
+            baseDate: req.body.baseDate,
+          },
+          created_at: new Date().toISOString(),
+        }]);
+      } catch (_) {}
+    }
+
+    return res.json({
+      success: true,
+      message: 'Availability rule applied successfully.',
+      ...result,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to apply availability rule.',
+    });
+  }
+};
+
+/**
+ * POST /api/bookings/admin/availability/preview-affected
+ * Preview which dates would be affected by a proposed rule and scope
+ */
+export const previewAffectedDates = async (req, res, next) => {
+  try {
+    const dates = bookingAvailabilityService.calculateAffectedDates(req.body);
+    return res.json({
+      success: true,
+      affectedDates: dates,
+      count: dates.length,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to calculate affected dates.',
+    });
+  }
+};
+

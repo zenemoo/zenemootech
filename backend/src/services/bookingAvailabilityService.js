@@ -62,6 +62,35 @@ export const minutesToTimeStr = (totalMinutes) => {
 };
 
 /**
+ * Helper: Add days to a YYYY-MM-DD date string safely using UTC
+ */
+export const addDaysToDateStr = (dateStr, days) => {
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0));
+  const year = dt.getUTCFullYear();
+  const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dt.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Helper: Generate array of YYYY-MM-DD dates in range [start, end] inclusive
+ */
+export const getDatesInRange = (startDateStr, endDateStr, maxDays = 365) => {
+  if (!startDateStr || !endDateStr || startDateStr > endDateStr) return [];
+  const dates = [];
+  let cur = startDateStr;
+  let count = 0;
+  while (cur <= endDateStr && count < maxDays) {
+    dates.push(cur);
+    cur = addDaysToDateStr(cur, 1);
+    count++;
+  }
+  return dates;
+};
+
+/**
  * Validate an array of time ranges:
  * - Must be array
  * - Each range must have valid start and end (HH:mm)
@@ -427,6 +456,305 @@ export class BookingAvailabilityService {
     const shortDay = dayFormatter.format(d).toLowerCase();
     const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
     return map[shortDay] !== undefined ? map[shortDay] : new Date(dateStr).getDay();
+  }
+
+  /**
+   * Calculate affected dates based on scope
+   * Scopes:
+   * 1. 'this_date' -> [baseDate]
+   * 2. 'every_weekday' -> [] (affects recurring weekly schedule)
+   * 3. 'selected_dates' -> [targetDates...]
+   * 4. 'next_30_days_weekday' -> all matching weekdays within 30 days of baseDate
+   * 5. 'custom_range' -> all dates in [rangeStart, rangeEnd] filtered by optional weekdaysFilter
+   */
+  calculateAffectedDates(params) {
+    const {
+      scope,
+      baseDate,
+      targetDates = [],
+      rangeStart,
+      rangeEnd,
+      weekdaysFilter = [],
+      timezone = 'Asia/Kolkata',
+    } = params || {};
+
+    if (!scope) throw new Error('Scope is required.');
+
+    switch (scope) {
+      case 'this_date': {
+        if (!baseDate || !/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
+          throw new Error('Valid baseDate (YYYY-MM-DD) is required for this_date scope.');
+        }
+        return [baseDate];
+      }
+
+      case 'every_weekday': {
+        // Recurring schedule applies to all future occurrences of that weekday
+        return [];
+      }
+
+      case 'selected_dates': {
+        if (!Array.isArray(targetDates) || targetDates.length === 0) {
+          throw new Error('At least one target date must be selected.');
+        }
+        const validDates = targetDates
+          .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+          .sort();
+        return Array.from(new Set(validDates));
+      }
+
+      case 'next_30_days_weekday': {
+        if (!baseDate || !/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
+          throw new Error('Valid baseDate (YYYY-MM-DD) is required.');
+        }
+        const targetDow = this.getDayOfWeekInTz(baseDate, timezone);
+        const dates = [];
+        for (let i = 0; i < 30; i++) {
+          const dStr = addDaysToDateStr(baseDate, i);
+          if (this.getDayOfWeekInTz(dStr, timezone) === targetDow) {
+            dates.push(dStr);
+          }
+        }
+        return dates;
+      }
+
+      case 'custom_range': {
+        if (!rangeStart || !rangeEnd) {
+          throw new Error('Both rangeStart and rangeEnd (YYYY-MM-DD) are required.');
+        }
+        if (rangeStart > rangeEnd) {
+          throw new Error('rangeStart cannot be after rangeEnd.');
+        }
+        const allDays = getDatesInRange(rangeStart, rangeEnd, 365);
+        if (Array.isArray(weekdaysFilter) && weekdaysFilter.length > 0) {
+          const filterSet = new Set(weekdaysFilter.map(Number));
+          return allDays.filter((d) => filterSet.has(this.getDayOfWeekInTz(d, timezone)));
+        }
+        return allDays;
+      }
+
+      default:
+        throw new Error(`Unsupported scope: ${scope}. Supported scopes: this_date, every_weekday, selected_dates, next_30_days_weekday, custom_range.`);
+    }
+  }
+
+  /**
+   * Helper: Determine effective availability for a calendar date
+   * Status can be: 'closed' | 'custom' | 'blocked' | 'normal' | 'inactive'
+   */
+  getDateEffectiveAvailability(dateStr, config) {
+    if (!config) return { status: 'normal', isWorking: true, ranges: [] };
+    const tz = config.timezone || 'Asia/Kolkata';
+    const overrides = (config.date_overrides || []).filter((o) => o.date === dateStr);
+    
+    // 1. Full day closure check
+    const fullClosure = overrides.find((o) => o.type === 'unavailable' || o.is_available === false);
+    if (fullClosure) {
+      return {
+        status: 'closed',
+        isWorking: false,
+        reason: fullClosure.reason || 'Closed',
+        ranges: [],
+        blockedRanges: [],
+        overrides,
+      };
+    }
+
+    // 2. Custom hours check
+    const customHours = overrides.find((o) => o.type === 'custom_hours' && Array.isArray(o.ranges));
+    const blockedOverrides = overrides.filter((o) => o.type === 'blocked_range' && Array.isArray(o.ranges));
+    const blockedRanges = [];
+    blockedOverrides.forEach((bo) => {
+      blockedRanges.push(...bo.ranges);
+    });
+
+    if (customHours) {
+      return {
+        status: blockedRanges.length > 0 ? 'blocked' : 'custom',
+        isWorking: true,
+        reason: customHours.reason || (blockedRanges.length > 0 ? blockedOverrides[0]?.reason : 'Custom Hours'),
+        ranges: customHours.ranges,
+        blockedRanges,
+        overrides,
+      };
+    }
+
+    // 3. Weekly schedule check
+    const dow = this.getDayOfWeekInTz(dateStr, tz);
+    const weeklyDay = (config.weekly_hours || {})[dow] || (config.weekly_hours || {})[String(dow)];
+    
+    if (!weeklyDay || !weeklyDay.active || !Array.isArray(weeklyDay.ranges) || weeklyDay.ranges.length === 0) {
+      return {
+        status: 'inactive',
+        isWorking: false,
+        reason: 'Weekly Non-working Day',
+        ranges: [],
+        blockedRanges: [],
+        overrides,
+      };
+    }
+
+    if (blockedRanges.length > 0) {
+      return {
+        status: 'blocked',
+        isWorking: true,
+        reason: blockedOverrides[0]?.reason || 'Partially Blocked',
+        ranges: weeklyDay.ranges,
+        blockedRanges,
+        overrides,
+      };
+    }
+
+    return {
+      status: 'normal',
+      isWorking: true,
+      reason: 'Normal Working Hours',
+      ranges: weeklyDay.ranges,
+      blockedRanges: [],
+      overrides: [],
+    };
+  }
+
+  /**
+   * Apply availability rule with explicit scope selection
+   */
+  async applyRuleScope(params, adminUser = 'admin') {
+    const {
+      operation, // 'change_hours' | 'close_day' | 'block_range' | 'restore_weekly'
+      scope,     // 'this_date' | 'every_weekday' | 'selected_dates' | 'next_30_days_weekday' | 'custom_range'
+      baseDate,  // 'YYYY-MM-DD'
+      targetDates = [],
+      rangeStart,
+      rangeEnd,
+      weekdaysFilter = [],
+      ranges = [],
+      reason = '',
+    } = params || {};
+
+    if (!operation) throw new Error('Operation is required.');
+    if (!scope) throw new Error('Scope is required.');
+
+    const currentConfig = await this.getConfig();
+    const newConfig = JSON.parse(JSON.stringify(currentConfig));
+    const tz = newConfig.timezone || 'Asia/Kolkata';
+
+    // 1. Recurring weekly update
+    if (scope === 'every_weekday') {
+      if (!baseDate || !/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
+        throw new Error('Valid baseDate is required to determine the weekday.');
+      }
+      const dow = this.getDayOfWeekInTz(baseDate, tz);
+      const dayName = (newConfig.weekly_hours[dow] && newConfig.weekly_hours[dow].day) || `Day ${dow}`;
+
+      if (operation === 'block_range') {
+        throw new Error('Partial-day blocking cannot be applied as a recurring weekly schedule. Please apply to specific dates or date ranges.');
+      }
+
+      if (operation === 'close_day') {
+        newConfig.weekly_hours[dow].active = false;
+      } else if (operation === 'change_hours') {
+        const val = validateTimeRanges(ranges);
+        if (!val.valid) throw new Error(val.error);
+        newConfig.weekly_hours[dow].active = true;
+        newConfig.weekly_hours[dow].ranges = ranges;
+      } else if (operation === 'restore_weekly') {
+        newConfig.weekly_hours[dow].active = true;
+        newConfig.weekly_hours[dow].ranges = DEFAULT_WEEKLY_HOURS[dow].ranges;
+      }
+
+      const saved = await this.saveConfig(newConfig, adminUser);
+      return {
+        success: true,
+        affectedScope: 'every_weekday',
+        dayOfWeek: dow,
+        dayName,
+        affectedDates: [],
+        affectedCount: 'all_future',
+        config: saved,
+      };
+    }
+
+    // 2. Finite date overrides scope
+    const affectedDates = this.calculateAffectedDates({
+      scope,
+      baseDate,
+      targetDates,
+      rangeStart,
+      rangeEnd,
+      weekdaysFilter,
+      timezone: tz,
+    });
+
+    if (affectedDates.length === 0) {
+      throw new Error('No valid dates found to apply this rule.');
+    }
+
+    if (operation === 'change_hours' || operation === 'block_range') {
+      const val = validateTimeRanges(ranges);
+      if (!val.valid) throw new Error(val.error);
+    }
+
+    // Apply changes across all affected dates
+    for (const d of affectedDates) {
+      if (operation === 'restore_weekly') {
+        // Remove all overrides for this date
+        newConfig.date_overrides = newConfig.date_overrides.filter((o) => o.date !== d);
+      } else if (operation === 'close_day') {
+        // Remove any existing unavailable or custom_hours
+        newConfig.date_overrides = newConfig.date_overrides.filter(
+          (o) => o.date !== d || o.type === 'blocked_range'
+        );
+        newConfig.date_overrides.push({
+          id: `ovr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          date: d,
+          type: 'unavailable',
+          is_available: false,
+          ranges: [],
+          reason: reason.trim() || 'Day Closed',
+          created_at: new Date().toISOString(),
+        });
+      } else if (operation === 'change_hours') {
+        // Remove any existing unavailable or custom_hours
+        newConfig.date_overrides = newConfig.date_overrides.filter(
+          (o) => o.date !== d || o.type === 'blocked_range'
+        );
+        newConfig.date_overrides.push({
+          id: `ovr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          date: d,
+          type: 'custom_hours',
+          is_available: true,
+          ranges,
+          reason: reason.trim() || 'Custom Hours',
+          created_at: new Date().toISOString(),
+        });
+      } else if (operation === 'block_range') {
+        // Check if date is currently fully closed
+        const isClosed = newConfig.date_overrides.some(
+          (o) => o.date === d && (o.type === 'unavailable' || o.is_available === false)
+        );
+        if (isClosed) {
+          throw new Error(`Cannot add time block on ${d} because the date is marked fully closed. Reopen the date or set custom hours instead.`);
+        }
+        newConfig.date_overrides.push({
+          id: `ovr_blk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          date: d,
+          type: 'blocked_range',
+          is_available: true,
+          ranges,
+          reason: reason.trim() || 'Blocked Time Window',
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    const saved = await this.saveConfig(newConfig, adminUser);
+    return {
+      success: true,
+      affectedScope: scope,
+      affectedDates,
+      affectedCount: affectedDates.length,
+      config: saved,
+    };
   }
 
   /**

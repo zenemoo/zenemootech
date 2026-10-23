@@ -10,6 +10,8 @@ import {
   deleteAdminBooking,
   getAdminAvailability,
   updateAdminAvailability,
+  applyAdminAvailabilityRule,
+  previewAffectedDates,
 } from '../controllers/bookingController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 import { bookingRateLimiter } from '../middleware/rateLimiter.js';
@@ -36,5 +38,7 @@ router.delete('/admin/bookings/:id', verifyToken, requireRole(['admin']), delete
 // Admin Protected Availability & Working Hours Endpoints
 router.get('/admin/availability', verifyToken, requireRole(['admin']), getAdminAvailability);
 router.put('/admin/availability', verifyToken, requireRole(['admin']), updateAdminAvailability);
+router.post('/admin/availability/apply-rule', verifyToken, requireRole(['admin']), applyAdminAvailabilityRule);
+router.post('/admin/availability/preview-affected', verifyToken, requireRole(['admin']), previewAffectedDates);
 
 export default router;
