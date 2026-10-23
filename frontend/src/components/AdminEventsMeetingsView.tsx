@@ -33,6 +33,10 @@ import {
   CalendarCheck,
   CalendarX,
   Info,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
+  Bell,
 } from 'lucide-react';
 import { bookingApi } from '../services/api';
 
@@ -68,6 +72,12 @@ export interface AdminEventRecord {
   admin_email_sent_at?: string;
   customer_email_error?: string;
   admin_email_error?: string;
+  customer_reminder_status?: 'pending' | 'claimed' | 'sent' | 'failed' | 'not_applicable';
+  admin_reminder_status?: 'pending' | 'claimed' | 'sent' | 'failed' | 'not_applicable';
+  customer_reminder_sent_at?: string;
+  admin_reminder_sent_at?: string;
+  customer_reminder_error?: string;
+  admin_reminder_error?: string;
   created_by?: string;
   created_at: string;
   updated_at?: string;
@@ -86,6 +96,18 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'internal_event' | 'client_meeting'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'upcoming'>('newest');
+
+  // Server-side Pagination State
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<10 | 20 | 30>(10);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const reqSeqRef = React.useRef(0);
+
+  // View Details Modal State (on-demand record loading)
+  const [viewEvent, setViewEvent] = useState<AdminEventRecord | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -120,31 +142,124 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
   const [conflictInfo, setConflictInfo] = useState<{ hasConflict: boolean; message?: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Fetch Events
-  const fetchEvents = useCallback(async () => {
+  // Fetch Events with server-side pagination & sequence protection
+  const fetchEvents = useCallback(async (requestedPage?: number) => {
+    const p = typeof requestedPage === 'number' ? requestedPage : page;
+    const currentSeq = ++reqSeqRef.current;
     setLoading(true);
     try {
       const res = await bookingApi.getAdminEvents({
         eventType: typeFilter !== 'all' ? typeFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: searchQuery.trim() || undefined,
+        page: p,
+        limit: pageSize,
+        sortBy,
       });
+
+      if (currentSeq !== reqSeqRef.current) return;
 
       if (res.data?.success && Array.isArray(res.data?.events)) {
         setEvents(res.data.events);
+        const total = res.data.totalCount ?? res.data.total ?? 0;
+        setTotalCount(total);
+        setTotalPages(res.data.totalPages ?? Math.ceil(total / pageSize) ?? 1);
       } else {
         setEvents([]);
+        setTotalCount(0);
+        setTotalPages(1);
       }
     } catch (err: any) {
+      if (currentSeq !== reqSeqRef.current) return;
       addToast('Failed to load events', err.response?.data?.message || err.message, 'error');
     } finally {
-      setLoading(false);
+      if (currentSeq === reqSeqRef.current) {
+        setLoading(false);
+      }
     }
-  }, [typeFilter, statusFilter, searchQuery, addToast]);
+  }, [typeFilter, statusFilter, searchQuery, pageSize, sortBy, addToast]);
 
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    setPage(1);
+    fetchEvents(1);
+  }, [typeFilter, statusFilter, searchQuery, pageSize, sortBy]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setPage(newPage);
+    fetchEvents(newPage);
+  };
+
+  // On-demand full record fetch for View Details modal
+  const handleOpenViewDetails = async (e: AdminEventRecord) => {
+    setViewEvent(e);
+    setIsViewModalOpen(true);
+    try {
+      const res = await bookingApi.getAdminEventById(e.id || e.event_id);
+      if (res.data?.success && res.data.event) {
+        setViewEvent(res.data.event);
+      }
+    } catch (_) {}
+  };
+
+  // Share action for client meetings and internal events (Sanitizes private info)
+  const handleShareEvent = async (event: AdminEventRecord) => {
+    const dateStr = new Date(event.start_time).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: event.timezone || 'Asia/Kolkata',
+    });
+    const startTimeStr = new Date(event.start_time).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: event.timezone || 'Asia/Kolkata',
+    });
+    const endTimeStr = new Date(event.end_time).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: event.timezone || 'Asia/Kolkata',
+    });
+
+    const lines = [
+      `Zenemoo Meeting Details`,
+      `Title: ${event.title}`,
+      `Date: ${dateStr}`,
+      `Time: ${startTimeStr} – ${endTimeStr} (${event.timezone || 'Asia/Kolkata'})`,
+    ];
+    if (event.google_meet_url) {
+      lines.push(`Google Meet: ${event.google_meet_url}`);
+    } else if (event.location) {
+      lines.push(`Location: ${event.location}`);
+    }
+
+    const shareText = lines.join('\n');
+    const shareTitle = `Zenemoo — ${event.title}`;
+
+    if (navigator.share && navigator.canShare && navigator.canShare({ title: shareTitle, text: shareText })) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: event.google_meet_url || undefined,
+        });
+        addToast('Event Shared', 'Event details shared successfully.', 'success');
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      addToast('Copied to Clipboard', 'Meeting details copied (excluding private notes).', 'success');
+    } catch (err) {
+      addToast('Copy Failed', 'Unable to copy to clipboard.', 'error');
+    }
+  };
 
   // Copy helper
   const handleCopy = (text: string, id: string) => {
@@ -423,21 +538,25 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
     );
   };
 
-  // Resend Client Email
-  const handleResendEmail = async (event: AdminEventRecord) => {
+  // Resend Client Confirmation or Reminder Email
+  const handleResendEmail = async (event: AdminEventRecord, emailType: 'confirmation' | 'reminder' = 'confirmation') => {
     if (!event.email) {
       addToast('No Client Email', 'This event does not have an associated client email address.', 'warning');
       return;
     }
+    const label = emailType === 'reminder' ? '1-Hour Pre-Meeting Reminder' : 'Meeting Confirmation';
     showConfirm(
-      'Resend Meeting Confirmation?',
-      `Resend branded meeting confirmation email to ${event.email}?`,
+      `Resend ${label}?`,
+      `Resend ${label} email to ${event.email}?`,
       async () => {
         try {
-          const res = await bookingApi.resendClientMeetingEmail(event.id);
+          const res = await bookingApi.resendClientMeetingEmail(event.id, emailType);
           if (res.data?.success) {
-            addToast('Email Sent', `Confirmation email delivered to ${event.email}.`, 'success');
+            addToast('Email Sent', `${label} email delivered to ${event.email}.`, 'success');
             fetchEvents();
+            if (viewEvent && viewEvent.id === event.id && res.data.event) {
+              setViewEvent(res.data.event);
+            }
           }
         } catch (err: any) {
           addToast('Resend Failed', err.response?.data?.message || err.message, 'error');
@@ -554,7 +673,7 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
 
           <button
             type="button"
-            onClick={fetchEvents}
+            onClick={() => fetchEvents()}
             disabled={loading}
             className="p-2 rounded-xl bg-white/[0.04] border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
             title="Refresh List"
@@ -749,20 +868,39 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
                         )}
                       </td>
 
-                      {/* Email Status */}
+                      {/* Separate Confirmation and Reminder Email Statuses */}
                       <td className="py-3.5 px-4 font-mono text-xs">
                         {isClient && event.email ? (
                           <div className="space-y-1">
+                            {/* Confirmation Status */}
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-flex items-center gap-1 ${
                               event.customer_email_status === 'sent'
                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                 : event.customer_email_status === 'failed'
                                 ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                                 : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                            }`}>
+                            }`} title="Confirmation Email">
                               {event.customer_email_status === 'sent' ? <CheckCircle2 className="w-2.5 h-2.5" /> : null}
-                              Client Email: {event.customer_email_status || 'pending'}
+                              Conf: {event.customer_email_status || 'pending'}
                             </span>
+
+                            {/* 1-Hour Reminder Status */}
+                            <div>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-flex items-center gap-1 ${
+                                event.customer_reminder_status === 'sent'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : event.customer_reminder_status === 'claimed'
+                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                  : event.customer_reminder_status === 'failed'
+                                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                  : event.customer_reminder_status === 'not_applicable'
+                                  ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                                  : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                              }`} title="1-Hour Advance Reminder Status">
+                                <Bell className="w-2.5 h-2.5" />
+                                Remind: {event.customer_reminder_status || 'pending'}
+                              </span>
+                            </div>
                           </div>
                         ) : (
                           <span className="text-slate-500 text-[11px]">—</span>
@@ -772,10 +910,30 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* VIEW DETAILS EYE BUTTON */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenViewDetails(event)}
+                            className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-purple-500/10 text-slate-400 hover:text-purple-400 transition-all cursor-pointer"
+                            title="View Full Details & Delivery Logs"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* SHARE BUTTON */}
+                          <button
+                            type="button"
+                            onClick={() => handleShareEvent(event)}
+                            className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 transition-all cursor-pointer"
+                            title="Share Event Details"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+
                           {isClient && event.email && (
                             <button
                               type="button"
-                              onClick={() => handleResendEmail(event)}
+                              onClick={() => handleResendEmail(event, 'confirmation')}
                               className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/10 text-slate-400 hover:text-cyan-400 transition-all cursor-pointer"
                               title="Resend Client Confirmation Email"
                             >
@@ -818,6 +976,51 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
                 })}
               </tbody>
             </table>
+
+            {/* SERVER-SIDE PAGINATION CONTROLS */}
+            <div className="p-4 sm:p-5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/[0.01] font-mono text-xs">
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400">Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value) as 10 | 20 | 30)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                >
+                  <option value={10} className="bg-[#0b0f19]">10 per page</option>
+                  <option value={20} className="bg-[#0b0f19]">20 per page</option>
+                  <option value={30} className="bg-[#0b0f19]">30 per page</option>
+                </select>
+                <span className="text-slate-400">
+                  {totalCount > 0 ? (
+                    <>Showing <strong className="text-white">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)}</strong> of <strong className="text-white">{totalCount}</strong></>
+                  ) : (
+                    '0 records'
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page <= 1 || loading}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                </button>
+                <span className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold">
+                  Page {page} of {Math.max(1, totalPages)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page >= totalPages || loading}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1210,6 +1413,304 @@ export const AdminEventsMeetingsView: React.FC<AdminEventsMeetingsViewProps> = (
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* VIEW DETAILS MODAL (TRIGGERED BY EYE ICON) */}
+      {isViewModalOpen && viewEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fade-in">
+          <div className="relative w-full max-w-2xl bg-[#0b0f19] border border-purple-500/30 rounded-3xl shadow-2xl overflow-hidden my-8 p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto text-slate-200">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setIsViewModalOpen(false)}
+              className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+              <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                <Eye className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0 pr-8">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xl font-bold font-display text-white truncate">
+                    {viewEvent.title}
+                  </h3>
+                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-white/[0.04] text-cyan-300 border border-cyan-500/20">
+                    {viewEvent.event_id}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border font-mono ${
+                    viewEvent.event_type === 'client_meeting'
+                      ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                      : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                  }`}>
+                    {viewEvent.event_type === 'client_meeting' ? 'CLIENT MEETING' : 'INTERNAL EVENT'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border font-mono ${
+                    viewEvent.status === 'scheduled'
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                      : viewEvent.status === 'draft'
+                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                  }`}>
+                    {viewEvent.status.toUpperCase()}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareEvent(viewEvent)}
+                    className="ml-auto px-3 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                    title="Share event details"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share Details</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* DETAILS GRID */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white/[0.02] p-5 rounded-2xl border border-white/5 font-mono text-xs">
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">DATE &amp; TIME</span>
+                <span className="text-white font-bold">{viewEvent.event_date}</span>
+                <div className="text-cyan-300 text-[11px] mt-0.5">
+                  {new Date(viewEvent.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: viewEvent.timezone || 'Asia/Kolkata' })} – {new Date(viewEvent.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: viewEvent.timezone || 'Asia/Kolkata' })} ({viewEvent.timezone || 'Asia/Kolkata'})
+                </div>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">DURATION</span>
+                <span className="text-white font-bold">{viewEvent.duration_minutes} Minutes</span>
+              </div>
+
+              {viewEvent.event_type === 'client_meeting' && (
+                <>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">CLIENT NAME</span>
+                    <span className="text-white font-semibold">{viewEvent.client_name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">COMPANY</span>
+                    <span className="text-white font-semibold">{viewEvent.company_name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">CLIENT EMAIL</span>
+                    <span className="text-cyan-300">{viewEvent.email || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">PHONE / WHATSAPP</span>
+                    <span className="text-slate-300">{viewEvent.phone || '—'}</span>
+                  </div>
+                  {viewEvent.project_or_service && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">PROJECT / SERVICE</span>
+                      <span className="text-slate-200">{viewEvent.project_or_service}</span>
+                    </div>
+                  )}
+                  {viewEvent.meeting_purpose && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">MEETING PURPOSE / NOTES</span>
+                      <span className="text-slate-300 italic">{viewEvent.meeting_purpose}</span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {viewEvent.event_type === 'internal_event' && (
+                <>
+                  {viewEvent.location && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">LOCATION / CUSTOM LINK</span>
+                      <span className="text-slate-200">{viewEvent.location}</span>
+                    </div>
+                  )}
+                  {viewEvent.description && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">OVERVIEW</span>
+                      <span className="text-slate-300">{viewEvent.description}</span>
+                    </div>
+                  )}
+                  {viewEvent.agenda && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">AGENDA</span>
+                      <div className="text-slate-300 whitespace-pre-line mt-1 bg-white/[0.02] p-2.5 rounded-xl border border-white/5">{viewEvent.agenda}</div>
+                    </div>
+                  )}
+                  {Array.isArray(viewEvent.attendees) && viewEvent.attendees.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold mb-1.5">ATTENDEES ({viewEvent.attendees.length})</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {viewEvent.attendees.map((att, idx) => (
+                          <span key={idx} className="px-2 py-0.5 rounded-lg bg-white/[0.04] border border-white/10 text-purple-300 text-[11px]">
+                            {att.name} &lt;{att.email}&gt;
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {viewEvent.internal_notes && (
+                <div className="sm:col-span-2 bg-amber-500/5 p-3 rounded-xl border border-amber-500/20">
+                  <span className="text-amber-400 block text-[10px] uppercase font-bold">INTERNAL ADMIN NOTES (PRIVATE)</span>
+                  <span className="text-amber-200/90 text-xs mt-0.5 block">{viewEvent.internal_notes}</span>
+                </div>
+              )}
+            </div>
+
+            {/* GOOGLE MEET CONNECTION */}
+            <div className="bg-white/[0.02] p-5 rounded-2xl border border-white/5 font-mono text-xs space-y-3">
+              <span className="text-slate-400 block text-[10px] uppercase font-bold">VIDEO CONNECTION</span>
+              {viewEvent.google_meet_url ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/30">
+                  <div className="flex items-center gap-2">
+                    <Video className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white text-xs">Google Meet Link Active</div>
+                      <a href={viewEvent.google_meet_url} target="_blank" rel="noreferrer" className="text-[11px] text-emerald-300 hover:underline break-all">
+                        {viewEvent.google_meet_url}
+                      </a>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={viewEvent.google_meet_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-bold text-xs flex items-center gap-1.5 hover:bg-emerald-400 transition-colors cursor-pointer"
+                    >
+                      <Video className="w-3.5 h-3.5" /> Join Meet
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(viewEvent.google_meet_url!, `modal-meet-${viewEvent.id}`)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300"
+                      title="Copy Link"
+                    >
+                      {copiedId === `modal-meet-${viewEvent.id}` ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-white/[0.02] border border-white/10">
+                  <span className="text-slate-400">No Google Meet link generated yet.</span>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateMeet(viewEvent)}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-xs border border-cyan-500/40 cursor-pointer"
+                  >
+                    Generate Link Now
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* SEPARATE EMAIL & REMINDER DELIVERY TRACKING */}
+            {viewEvent.event_type === 'client_meeting' && (
+              <div className="space-y-4 bg-white/[0.02] p-5 rounded-2xl border border-white/5 font-mono text-xs">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">EMAIL DELIVERY TRACKING</span>
+
+                {/* 1. Confirmation Email Status Card */}
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-bold">Client Confirmation Email</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        viewEvent.customer_email_status === 'sent'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : viewEvent.customer_email_status === 'failed'
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      }`}>
+                        {viewEvent.customer_email_status?.toUpperCase() || 'PENDING'}
+                      </span>
+                    </div>
+                    {viewEvent.customer_email_sent_at && (
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        Dispatched: {new Date(viewEvent.customer_email_sent_at).toLocaleString()}
+                      </div>
+                    )}
+                    {viewEvent.customer_email_error && (
+                      <div className="text-[11px] text-rose-400 mt-1">
+                        Error: {viewEvent.customer_email_error}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleResendEmail(viewEvent, 'confirmation')}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-cyan-500/10 text-slate-300 hover:text-cyan-300 border border-white/10 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" /> Resend Confirmation
+                  </button>
+                </div>
+
+                {/* 2. 1-Hour Pre-Meeting Reminder Status Card */}
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-bold">1-Hour Pre-Meeting Reminder</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                        viewEvent.customer_reminder_status === 'sent'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : viewEvent.customer_reminder_status === 'claimed'
+                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                          : viewEvent.customer_reminder_status === 'failed'
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                          : viewEvent.customer_reminder_status === 'not_applicable'
+                          ? 'bg-slate-500/10 text-slate-400 border-slate-500/30'
+                          : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                      }`}>
+                        {viewEvent.customer_reminder_status?.toUpperCase() || 'PENDING'}
+                      </span>
+                    </div>
+                    {viewEvent.customer_reminder_sent_at && (
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        Sent At: {new Date(viewEvent.customer_reminder_sent_at).toLocaleString()}
+                      </div>
+                    )}
+                    {viewEvent.customer_reminder_error && (
+                      <div className="text-[11px] text-rose-400 mt-1">
+                        Note: {viewEvent.customer_reminder_error}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleResendEmail(viewEvent, 'reminder')}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-purple-500/10 text-slate-300 hover:text-purple-300 border border-white/10 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                  >
+                    <Bell className="w-3.5 h-3.5" /> Resend Reminder
+                  </button>
+                </div>
+
+                {/* Provider Acceptance Note */}
+                <div className="p-2.5 rounded-xl bg-white/[0.01] border border-white/5 text-slate-400 text-[11px] flex items-center gap-2">
+                  <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>
+                    <strong>Provider Acceptance:</strong> "Sent" confirms the email provider accepted the dispatch request. Note that inbox delivery depends on recipient mail filters and network policies.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="border-t border-white/10 pt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsViewModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/10 text-slate-300 hover:text-white font-mono text-xs cursor-pointer"
+              >
+                Close Record
+              </button>
+            </div>
           </div>
         </div>
       )}

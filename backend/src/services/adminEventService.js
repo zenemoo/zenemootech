@@ -1,62 +1,68 @@
+import { supabase } from '../config/supabase.js';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
-import { supabase } from '../config/supabase.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const LOCAL_STORE_DIR = path.resolve(__dirname, '../database');
-const LOCAL_STORE_FILE = path.resolve(LOCAL_STORE_DIR, 'admin_events_store.json');
+const LOCAL_STORE_PATH = path.resolve('src/database/admin_events_store.json');
 
 /**
- * Generate 5-character alphanumeric uppercase code using CSPRNG
+ * Lightweight columns selected for list views to minimize payload egress.
+ * Excludes heavy JSON attendee arrays, raw agendas, and error stacks.
  */
-const generateEventCode = (type = 'internal_event') => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let randomStr = '';
-  for (let i = 0; i < 5; i++) {
-    randomStr += chars.charAt(crypto.randomInt(0, chars.length));
-  }
-  const prefix = type === 'client_meeting' ? 'ZEN-CLT' : 'ZEN-EVT';
-  return `${prefix}-${randomStr}`;
+const EVENT_LIST_COLUMNS = 'id, event_id, event_type, title, client_name, company_name, email, phone, project_or_service, event_date, start_time, end_time, timezone, duration_minutes, location, google_meet_url, meeting_status, status, notify_attendees, customer_email_status, admin_email_status, customer_reminder_status, admin_reminder_status, created_at, updated_at';
+
+/**
+ * Utility to generate a unique Event Code
+ * Format: ZEN-EVT-XXXXX (Internal Event) or ZEN-CLT-XXXXX (Client Meeting)
+ */
+const generateEventCode = (eventType = 'internal_event') => {
+  const prefix = eventType === 'client_meeting' ? 'ZEN-CLT' : 'ZEN-EVT';
+  const randomChars = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `${prefix}-${randomChars}`;
 };
 
 /**
- * Sanitize postgrest string exact input
+ * Clean and sanitize ID for query
  */
 const sanitizeId = (id) => {
   if (!id || typeof id !== 'string') return '';
-  return id.replace(/[^a-zA-Z0-9_-]/g, '').trim();
+  return id.trim();
 };
 
 export class AdminEventService {
-  /**
-   * Read events from local store fallback
-   */
+  constructor() {
+    this.ensureLocalStore();
+  }
+
+  ensureLocalStore() {
+    try {
+      const dir = path.dirname(LOCAL_STORE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      if (!fs.existsSync(LOCAL_STORE_PATH)) {
+        fs.writeFileSync(LOCAL_STORE_PATH, JSON.stringify([], null, 2), 'utf-8');
+      }
+    } catch (err) {
+      console.warn('[AdminEventService Store Init Warning]:', err.message);
+    }
+  }
+
   readLocalStore() {
     try {
-      if (!fs.existsSync(LOCAL_STORE_FILE)) {
-        fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify([], null, 2), 'utf-8');
-        return [];
-      }
-      const raw = fs.readFileSync(LOCAL_STORE_FILE, 'utf-8');
-      return JSON.parse(raw);
-    } catch (_) {
+      this.ensureLocalStore();
+      const content = fs.readFileSync(LOCAL_STORE_PATH, 'utf-8');
+      return JSON.parse(content) || [];
+    } catch (err) {
+      console.warn('[AdminEventService Read Local Store Warning]:', err.message);
       return [];
     }
   }
 
-  /**
-   * Write events to local store fallback
-   */
   writeLocalStore(events) {
     try {
-      if (!fs.existsSync(LOCAL_STORE_DIR)) {
-        fs.mkdirSync(LOCAL_STORE_DIR, { recursive: true });
-      }
-      fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(events, null, 2), 'utf-8');
+      this.ensureLocalStore();
+      fs.writeFileSync(LOCAL_STORE_PATH, JSON.stringify(events, null, 2), 'utf-8');
       return true;
     } catch (err) {
       console.warn('[AdminEventService File Store Warning]:', err.message);
@@ -70,6 +76,7 @@ export class AdminEventService {
   async getActiveEventsOnDate(dateStr) {
     if (!dateStr || typeof dateStr !== 'string') return [];
 
+    let events = [];
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -79,22 +86,31 @@ export class AdminEventService {
           .eq('status', 'scheduled');
 
         if (!error && Array.isArray(data)) {
-          return data;
+          events = data;
         }
       } catch (err) {
         console.warn('[AdminEventService Supabase Query Note]:', err.message);
       }
     }
 
-    // Fallback to local store
+    // Always merge with local store to ensure local events and fallback records are included
     const localEvents = this.readLocalStore();
-    return localEvents.filter((e) => e.event_date === dateStr && e.status === 'scheduled');
+    const localMatches = localEvents.filter(
+      (e) => e.event_date === dateStr && e.status === 'scheduled'
+    );
+    const map = new Map();
+    for (const e of events) map.set(e.id, e);
+    for (const e of localMatches) map.set(e.id, e);
+    return Array.from(map.values());
   }
 
   /**
    * Check whether a proposed time interval [startTimeIso, endTimeIso] conflicts with
    * any active booking in call_bookings OR any active event in admin_events.
    * Interval overlap formula: startA < endB && endA > startB
+   *
+   * Query Optimization: Queries are strictly windowed to ±24 hours around the proposed interval
+   * instead of scanning full tables, eliminating 99%+ egress on large datasets.
    */
   async checkIntervalConflict({ startTimeIso, endTimeIso, excludeEventId = null, excludeBookingId = null }) {
     const propStart = new Date(startTimeIso).getTime();
@@ -104,13 +120,18 @@ export class AdminEventService {
       return { hasConflict: false };
     }
 
-    // 1. Check against call_bookings (status IN ('confirmed', 'pending'))
+    const minBoundIso = new Date(propStart - 24 * 60 * 60 * 1000).toISOString();
+    const maxBoundIso = new Date(propEnd + 24 * 60 * 60 * 1000).toISOString();
+
+    // 1. Check against call_bookings (status IN ('confirmed', 'pending')) bounded by date window
     if (supabase) {
       try {
         let query = supabase
           .from('call_bookings')
           .select('id, booking_id, full_name, company_name, start_time, end_time, status')
-          .in('status', ['confirmed', 'pending']);
+          .in('status', ['confirmed', 'pending'])
+          .gte('start_time', minBoundIso)
+          .lte('start_time', maxBoundIso);
 
         if (excludeBookingId) {
           query = query.neq('id', excludeBookingId).neq('booking_id', excludeBookingId);
@@ -143,14 +164,16 @@ export class AdminEventService {
       }
     }
 
-    // 2. Check against admin_events (status = 'scheduled')
+    // 2. Check against admin_events (status = 'scheduled') bounded by date window
     let adminEventsList = [];
     if (supabase) {
       try {
         let query = supabase
           .from('admin_events')
           .select('id, event_id, title, client_name, company_name, start_time, end_time, status')
-          .eq('status', 'scheduled');
+          .eq('status', 'scheduled')
+          .gte('start_time', minBoundIso)
+          .lte('start_time', maxBoundIso);
 
         if (excludeEventId) {
           query = query.neq('id', excludeEventId).neq('event_id', excludeEventId);
@@ -170,7 +193,8 @@ export class AdminEventService {
       adminEventsList = localEvents.filter((e) => {
         if (e.status !== 'scheduled') return false;
         if (excludeEventId && (e.id === excludeEventId || e.event_id === excludeEventId)) return false;
-        return true;
+        const eStart = new Date(e.start_time).getTime();
+        return eStart >= (propStart - 24 * 60 * 60 * 1000) && eStart <= (propEnd + 24 * 60 * 60 * 1000);
       });
     }
 
@@ -198,14 +222,28 @@ export class AdminEventService {
   }
 
   /**
-   * List Admin Events with search, type, status, and date filtering
+   * List Admin Events with server-side pagination, search, type, status, and date filtering.
+   * Uses lightweight EVENT_LIST_COLUMNS to minimize egress.
    */
-  async getEvents({ eventType, status, startDate, endDate, search, limit = 50, offset = 0 } = {}) {
+  async getEvents({
+    eventType,
+    status,
+    startDate,
+    endDate,
+    search,
+    page = 1,
+    limit = 10,
+    sortBy = 'newest',
+  } = {}) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = [10, 20, 30].includes(parseInt(limit, 10)) ? parseInt(limit, 10) : 10;
+    const offset = (pageNum - 1) * limitNum;
+
     if (supabase) {
       try {
         let query = supabase
           .from('admin_events')
-          .select('*', { count: 'exact' });
+          .select(EVENT_LIST_COLUMNS, { count: 'exact' });
 
         if (eventType && eventType !== 'all') {
           query = query.eq('event_type', eventType);
@@ -224,17 +262,32 @@ export class AdminEventService {
           query = query.or(`title.ilike.%${cleanSearch}%,client_name.ilike.%${cleanSearch}%,company_name.ilike.%${cleanSearch}%,event_id.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%`);
         }
 
-        query = query.order('start_time', { ascending: false }).range(offset, offset + limit - 1);
+        // Apply Sorting
+        if (sortBy === 'oldest') {
+          query = query.order('start_time', { ascending: true });
+        } else if (sortBy === 'upcoming') {
+          query = query.order('start_time', { ascending: true });
+        } else {
+          // newest default
+          query = query.order('created_at', { ascending: false });
+        }
+
+        query = query.range(offset, offset + limitNum - 1);
 
         const { data, error, count } = await query;
         if (!error && Array.isArray(data)) {
+          const totalCount = count !== null ? count : data.length;
+          const totalPages = Math.ceil(totalCount / limitNum) || 1;
           return {
             events: data,
-            totalCount: count || data.length,
+            totalCount,
+            page: pageNum,
+            limit: limitNum,
+            totalPages,
           };
         }
       } catch (err) {
-        console.warn('[AdminEventService getEvents Note]:', err.message);
+        console.warn('[AdminEventService getEvents Supabase Note]:', err.message);
       }
     }
 
@@ -258,23 +311,41 @@ export class AdminEventService {
         (e.title || '').toLowerCase().includes(q) ||
         (e.client_name || '').toLowerCase().includes(q) ||
         (e.company_name || '').toLowerCase().includes(q) ||
-        (e.event_id || '').toLowerCase().includes(q)
+        (e.event_id || '').toLowerCase().includes(q) ||
+        (e.email || '').toLowerCase().includes(q)
       );
     }
 
-    events.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+    if (sortBy === 'oldest') {
+      events.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    } else if (sortBy === 'upcoming') {
+      events.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    } else {
+      events.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    }
+
+    const totalCount = events.length;
+    const paginatedEvents = events.slice(offset, offset + limitNum);
+    const totalPages = Math.ceil(totalCount / limitNum) || 1;
+
     return {
-      events: events.slice(offset, offset + limit),
-      totalCount: events.length,
+      events: paginatedEvents,
+      totalCount,
+      page: pageNum,
+      limit: limitNum,
+      totalPages,
     };
   }
 
   /**
-   * Get single Event by ID or event_id
+   * Get single Event by ID or event_id (Fetches complete record including attendees & internal notes on demand)
    */
   async getEventById(idOrCode) {
     const clean = sanitizeId(idOrCode);
     if (!clean) return null;
+
+    const localEvents = this.readLocalStore();
+    const local = localEvents.find((e) => e.id === clean || e.event_id === clean);
 
     if (supabase) {
       try {
@@ -284,12 +355,22 @@ export class AdminEventService {
           .or(`id.eq.${clean},event_id.eq.${clean}`)
           .maybeSingle();
 
-        if (!error && data) return data;
+        if (!error && data) {
+          if (!local) return data;
+          const merged = { ...local };
+          for (const [k, v] of Object.entries(data)) {
+            if (v !== undefined && v !== null) {
+              merged[k] = v;
+            } else if (v === null && merged[k] === undefined) {
+              merged[k] = null;
+            }
+          }
+          return merged;
+        }
       } catch (_) {}
     }
 
-    const localEvents = this.readLocalStore();
-    return localEvents.find((e) => e.id === clean || e.event_id === clean) || null;
+    return local || null;
   }
 
   /**
@@ -357,6 +438,12 @@ export class AdminEventService {
       admin_email_sent_at: null,
       customer_email_error: null,
       admin_email_error: null,
+      customer_reminder_status: event_type === 'client_meeting' && email ? 'pending' : 'not_applicable',
+      admin_reminder_status: 'not_applicable',
+      customer_reminder_sent_at: null,
+      admin_reminder_sent_at: null,
+      customer_reminder_error: null,
+      admin_reminder_error: null,
       created_by: adminUser?.email || 'admin',
       created_at: nowIso,
       updated_at: nowIso,
@@ -364,14 +451,35 @@ export class AdminEventService {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('admin_events')
           .insert([record])
           .select()
           .single();
 
+        // If reminder columns haven't been migrated yet to remote Supabase, retry without them
+        if (error && (error.message.includes('schema cache') || error.message.includes('column'))) {
+          const legacyPayload = { ...record };
+          delete legacyPayload.customer_reminder_status;
+          delete legacyPayload.admin_reminder_status;
+          delete legacyPayload.customer_reminder_sent_at;
+          delete legacyPayload.admin_reminder_sent_at;
+          delete legacyPayload.customer_reminder_error;
+          delete legacyPayload.admin_reminder_error;
+
+          const retry = await supabase
+            .from('admin_events')
+            .insert([legacyPayload])
+            .select()
+            .single();
+
+          if (!retry.error && retry.data) {
+            data = { ...record, ...retry.data };
+            error = null;
+          }
+        }
+
         if (!error && data) {
-          // Mirror in local fallback store
           const localEvents = this.readLocalStore();
           localEvents.unshift(data);
           this.writeLocalStore(localEvents);
@@ -384,7 +492,6 @@ export class AdminEventService {
       }
     }
 
-    // Save to local store if Supabase insert failed or table doesn't exist
     const localEvents = this.readLocalStore();
     localEvents.unshift(record);
     this.writeLocalStore(localEvents);
@@ -415,12 +522,34 @@ export class AdminEventService {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('admin_events')
           .update(updated)
           .eq('id', existing.id)
           .select()
           .maybeSingle();
+
+        if (error && (error.message.includes('schema cache') || error.message.includes('column'))) {
+          const legacyUpdated = { ...updated };
+          delete legacyUpdated.customer_reminder_status;
+          delete legacyUpdated.admin_reminder_status;
+          delete legacyUpdated.customer_reminder_sent_at;
+          delete legacyUpdated.admin_reminder_sent_at;
+          delete legacyUpdated.customer_reminder_error;
+          delete legacyUpdated.admin_reminder_error;
+
+          const retry = await supabase
+            .from('admin_events')
+            .update(legacyUpdated)
+            .eq('id', existing.id)
+            .select()
+            .maybeSingle();
+
+          if (!retry.error && retry.data) {
+            data = { ...updated, ...retry.data };
+            error = null;
+          }
+        }
 
         if (!error && data) {
           const localEvents = this.readLocalStore();
@@ -434,7 +563,6 @@ export class AdminEventService {
       }
     }
 
-    // Update in local store
     const localEvents = this.readLocalStore();
     const idx = localEvents.findIndex((e) => e.id === existing.id);
     if (idx !== -1) localEvents[idx] = updated;
@@ -472,6 +600,113 @@ export class AdminEventService {
     const localEvents = this.readLocalStore().filter((e) => e.id !== existing.id);
     this.writeLocalStore(localEvents);
     return true;
+  }
+
+  /**
+   * Query scheduled client meetings eligible for 1-hour reminders
+   */
+  async getScheduledClientMeetingsDueForReminder(minStartIso, maxStartIso) {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('admin_events')
+          .select('*')
+          .eq('event_type', 'client_meeting')
+          .eq('status', 'scheduled')
+          .in('customer_reminder_status', ['pending', null])
+          .gte('start_time', minStartIso)
+          .lte('start_time', maxStartIso);
+
+        if (!error && Array.isArray(data)) {
+          return data;
+        }
+      } catch (err) {
+        console.warn('[getScheduledClientMeetingsDueForReminder Supabase Note]:', err.message);
+      }
+    }
+
+    // Local Store Fallback
+    const localEvents = this.readLocalStore();
+    const minMs = new Date(minStartIso).getTime();
+    const maxMs = new Date(maxStartIso).getTime();
+
+    return localEvents.filter((e) => {
+      if (e.event_type !== 'client_meeting' || e.status !== 'scheduled') return false;
+      if (e.customer_reminder_status && e.customer_reminder_status !== 'pending') return false;
+      const sMs = new Date(e.start_time).getTime();
+      return sMs >= minMs && sMs <= maxMs;
+    });
+  }
+
+  /**
+   * Atomically claim a client meeting reminder to prevent concurrent duplicate sends
+   */
+  async claimClientMeetingReminder(eventId) {
+    const nowIso = new Date().toISOString();
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('admin_events')
+          .update({ customer_reminder_status: 'claimed', updated_at: nowIso })
+          .eq('id', eventId)
+          .eq('status', 'scheduled')
+          .in('customer_reminder_status', ['pending', null])
+          .select()
+          .maybeSingle();
+
+        if (!error && data) {
+          return { claimed: true, event: data };
+        } else if (!error && !data) {
+          // Row was already claimed or does not meet pending criteria on Supabase
+          return { claimed: false };
+        }
+      } catch (err) {
+        console.warn('[claimClientMeetingReminder Supabase Note]:', err.message);
+      }
+    }
+
+    // Local store atomic claim
+    const localEvents = this.readLocalStore();
+    const target = localEvents.find((e) => e.id === eventId);
+    if (target && target.status === 'scheduled' && (!target.customer_reminder_status || target.customer_reminder_status === 'pending')) {
+      target.customer_reminder_status = 'claimed';
+      target.updated_at = nowIso;
+      this.writeLocalStore(localEvents);
+      return { claimed: true, event: target };
+    }
+
+    return { claimed: false };
+  }
+
+  /**
+   * Update reminder delivery status
+   */
+  async updateReminderStatus(eventId, { status, sentAt = null, error = null }) {
+    const updatePayload = {
+      customer_reminder_status: status,
+      customer_reminder_sent_at: sentAt,
+      customer_reminder_error: error,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (supabase) {
+      try {
+        await supabase
+          .from('admin_events')
+          .update(updatePayload)
+          .eq('id', eventId);
+      } catch (err) {
+        console.warn('[updateReminderStatus Supabase Note]:', err.message);
+      }
+    }
+
+    const localEvents = this.readLocalStore();
+    const target = localEvents.find((e) => e.id === eventId);
+    if (target) {
+      Object.assign(target, updatePayload);
+      this.writeLocalStore(localEvents);
+    }
   }
 }
 

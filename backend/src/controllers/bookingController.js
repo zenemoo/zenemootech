@@ -525,7 +525,7 @@ export const getBookingById = async (req, res, next) => {
  */
 export const getAdminBookings = async (req, res, next) => {
   try {
-    const { status, meetingStatus, emailStatus, timeframe, search, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const { status, meetingStatus, emailStatus, timeframe, search, startDate, endDate, page = 1, limit = 10, sortBy = 'newest' } = req.query;
 
     if (!supabase) {
       return res.status(500).json({ success: false, message: 'Database service unavailable.' });
@@ -573,12 +573,21 @@ export const getAdminBookings = async (req, res, next) => {
       }
     }
 
-    const pageNum = parseInt(page, 10) || 1;
-    const limitNum = parseInt(limit, 10) || 50;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = [10, 20, 30].includes(parseInt(limit, 10)) ? parseInt(limit, 10) : (parseInt(limit, 10) || 10);
     const from = (pageNum - 1) * limitNum;
     const to = from + limitNum - 1;
 
-    query = query.order('start_time', { ascending: false }).range(from, to);
+    // Apply Sorting
+    if (sortBy === 'oldest') {
+      query = query.order('start_time', { ascending: true });
+    } else if (sortBy === 'upcoming') {
+      query = query.order('start_time', { ascending: true });
+    } else {
+      query = query.order('start_time', { ascending: false });
+    }
+
+    query = query.range(from, to);
 
     const { data: bookings, count, error } = await query;
 
@@ -586,6 +595,9 @@ export const getAdminBookings = async (req, res, next) => {
       console.error('[Admin Get Bookings Error]:', error);
       return res.status(500).json({ success: false, message: 'Failed to fetch bookings.' });
     }
+
+    const totalCount = count || 0;
+    const totalPages = Math.ceil(totalCount / limitNum) || 1;
 
     // 3. Compute Actionable Count for Sidebar Badge via targeted Supabase HEAD/exact count query (Zero payload egress)
     let actionableCount = 0;
@@ -622,10 +634,18 @@ export const getAdminBookings = async (req, res, next) => {
     return res.json({
       success: true,
       bookings: bookings || [],
-      total: count || 0,
+      total: totalCount,
+      totalCount,
       actionableCount,
       page: pageNum,
       limit: limitNum,
+      totalPages,
+      pagination: {
+        totalCount,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+      },
     });
   } catch (err) {
     next(err);

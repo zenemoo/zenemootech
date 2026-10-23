@@ -1,6 +1,7 @@
 /**
  * ZENEMOO Client Meeting & Admin Event HTML Email Templates
  * Production-quality, enterprise-styled HTML emails with responsive layouts
+ * Designed with compact Zenemoo logo (100–120px) and bulletproof email client styling.
  */
 
 const LOGO_URL = 'https://www.zenemoo.in/assets/logo.png';
@@ -56,6 +57,7 @@ export const formatEventTimeRange = (startTimeIso, endTimeIso, timezone = 'Asia/
 
 /**
  * Generate Branded Client Meeting Confirmation Email HTML
+ * Compact 110px logo, responsive table container, and high-contrast Google Meet CTA
  */
 export const generateClientMeetingEmailHtml = (event = {}) => {
   const {
@@ -65,6 +67,7 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
     company_name = 'Enterprise Partner',
     email = '',
     project_or_service = 'Zenemoo AI & Data Services',
+    agenda = '',
     meeting_purpose = '',
     event_date = '',
     start_time = '',
@@ -72,7 +75,6 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
     timezone = 'Asia/Kolkata',
     duration_minutes = 30,
     google_meet_url = '',
-    meeting_status = 'pending',
   } = event;
 
   const formattedDate = formatEventDate(start_time || event_date, timezone);
@@ -82,23 +84,23 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
     ? `
       <div style="background-color: #f0fdf4; border: 1.5px solid #86efac; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center;">
         <span style="font-size: 11px; font-family: monospace; color: #15803d; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">🎥 GOOGLE MEET IS READY</span>
-        <h3 style="margin: 6px 0 12px 0; font-size: 16px; color: #166534; font-weight: 700;">Join Your Scheduled Meeting</h3>
-        <p style="margin: 0 0 16px 0; font-size: 13px; color: #15803d;">Click the button below to join your meeting room directly.</p>
+        <h3 style="margin: 6px 0 10px 0; font-size: 16px; color: #166534; font-weight: 700;">Join Your Scheduled Meeting</h3>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: #15803d; line-height: 1.5;">Click below at your scheduled time to connect with the Zenemoo team.</p>
         <div>
           <a href="${google_meet_url}" target="_blank" style="display: inline-block; background-color: #16a34a; color: #ffffff; font-weight: 800; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-decoration: none; padding: 12px 28px; border-radius: 8px; box-shadow: 0 4px 12px rgba(22,163,74,0.25);">
             🎥 JOIN GOOGLE MEET
           </a>
         </div>
-        <div style="margin-top: 12px; font-size: 11px; font-family: monospace; color: #15803d;">
+        <div style="margin-top: 12px; font-size: 11px; font-family: monospace; color: #15803d; word-break: break-all;">
           Link: <a href="${google_meet_url}" target="_blank" style="color: #16a34a; text-decoration: underline;">${google_meet_url}</a>
         </div>
       </div>
     `
     : `
       <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 18px; margin: 24px 0; text-align: center;">
-        <span style="font-size: 11px; font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">🕒 MEETING LINK</span>
+        <span style="font-size: 11px; font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">🕒 CONNECTION DETAILS</span>
         <p style="margin: 6px 0 0 0; font-size: 13px; color: #475569;">
-          Meeting connection details will be provided prior to scheduled start time.
+          Meeting connection details will be provided directly before your scheduled session.
         </p>
       </div>
     `;
@@ -115,18 +117,18 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
     <tr>
       <td align="center">
         <!-- Main Card Container -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
           
-          <!-- Header Banner -->
+          <!-- Header Banner with Compact 110px Logo -->
           <tr>
-            <td style="background: linear-gradient(135deg, #090d16 0%, #0e1726 100%); padding: 32px 28px; text-align: center; border-bottom: 3px solid #06b6d4;">
-              <a href="${WEBSITE_URL}" target="_blank" style="text-decoration: none;">
-                <img src="${LOGO_URL}" alt="Zenemoo" width="160" style="display: block; margin: 0 auto; max-width: 160px; height: auto;" />
+            <td style="background: linear-gradient(135deg, #090d16 0%, #0e1726 100%); padding: 30px 24px; text-align: center; border-bottom: 3px solid #06b6d4;">
+              <a href="${WEBSITE_URL}" target="_blank" style="text-decoration: none; display: inline-block;">
+                <img src="${LOGO_URL}" alt="Zenemoo" width="110" style="display: block; margin: 0 auto; max-width: 110px; width: 100%; height: auto; border: 0;" />
               </a>
-              <div style="display: inline-block; margin-top: 18px; padding: 4px 14px; background-color: rgba(6, 182, 212, 0.15); border: 1px solid rgba(6, 182, 212, 0.35); border-radius: 9999px;">
+              <div style="display: inline-block; margin-top: 16px; padding: 4px 12px; background-color: rgba(6, 182, 212, 0.15); border: 1px solid rgba(6, 182, 212, 0.35); border-radius: 9999px;">
                 <span style="font-size: 11px; font-family: monospace; color: #38bdf8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">CLIENT MEETING CONFIRMED</span>
               </div>
-              <h1 style="margin: 12px 0 0 0; font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">
+              <h1 style="margin: 12px 0 0 0; font-size: 21px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">
                 ${title}
               </h1>
             </td>
@@ -134,19 +136,19 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
 
           <!-- Body Content -->
           <tr>
-            <td style="padding: 32px 28px;">
-              <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+            <td style="padding: 28px 24px;">
+              <p style="margin: 0 0 14px 0; font-size: 15px; line-height: 1.6; color: #334155;">
                 Hello <strong>${client_name}</strong>,
               </p>
               <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
-                Your client meeting with <strong>Zenemoo Data Solutions</strong> has been scheduled. Below are your meeting details, agenda, and video connection room:
+                Your client meeting with <strong>Zenemoo Data Solutions</strong> is confirmed. Below are your meeting details and Google Meet video room:
               </p>
 
               <!-- Meeting Details Summary Box -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 20px;">
                 <tr>
-                  <td style="padding: 20px;">
-                    <table width="100%" cellpadding="6" cellspacing="0" border="0" style="font-size: 13px;">
+                  <td style="padding: 18px;">
+                    <table width="100%" cellpadding="5" cellspacing="0" border="0" style="font-size: 13px;">
                       <tr>
                         <td width="35%" style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Meeting ID:</td>
                         <td width="65%" style="font-family: monospace; color: #0284c7; font-weight: 700;">${event_id}</td>
@@ -169,14 +171,14 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
                       </tr>
                       ${project_or_service ? `
                       <tr>
-                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Service/Project:</td>
+                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Project/Service:</td>
                         <td style="color: #0f172a;">${project_or_service}</td>
                       </tr>
                       ` : ''}
-                      ${meeting_purpose ? `
+                      ${(agenda || meeting_purpose) ? `
                       <tr>
-                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase; vertical-align: top;">Purpose/Agenda:</td>
-                        <td style="color: #334155; line-height: 1.5;">${meeting_purpose}</td>
+                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase; vertical-align: top;">Agenda:</td>
+                        <td style="color: #334155; line-height: 1.5;">${agenda || meeting_purpose}</td>
                       </tr>
                       ` : ''}
                     </table>
@@ -187,11 +189,11 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
               <!-- Google Meet Button Block -->
               ${meetSectionHtml}
 
-              <!-- Preparation & Support Information -->
-              <div style="background-color: #f1f5f9; border-left: 4px solid #0284c7; padding: 14px 16px; border-radius: 4px; margin-top: 24px;">
+              <!-- Rescheduling & Support -->
+              <div style="background-color: #f1f5f9; border-left: 4px solid #0284c7; padding: 14px 16px; border-radius: 4px; margin-top: 20px;">
                 <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #334155;">
                   <strong>Need to reschedule or have questions?</strong><br/>
-                  Please reply directly to this email or reach us at <a href="mailto:${CONTACT_EMAIL}" style="color: #0284c7; text-decoration: none; font-weight: 600;">${CONTACT_EMAIL}</a> citing your Meeting ID <strong>${event_id}</strong>.
+                  Reply directly to this email or contact us at <a href="mailto:${CONTACT_EMAIL}" style="color: #0284c7; text-decoration: none; font-weight: 600;">${CONTACT_EMAIL}</a> referencing Meeting ID <strong>${event_id}</strong>.
                 </p>
               </div>
 
@@ -200,23 +202,23 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #090d16; padding: 24px 28px; text-align: center; border-top: 1px solid rgba(255,255,255,0.08);">
-              <p style="margin: 0 0 12px 0; font-size: 12px; color: #94a3b8;">
+            <td style="background-color: #090d16; padding: 22px 24px; text-align: center; border-top: 1px solid rgba(255,255,255,0.08);">
+              <p style="margin: 0 0 10px 0; font-size: 12px; color: #94a3b8;">
                 Zenemoo Data Solutions &bull; Enterprise AI Language &amp; Data Services
               </p>
-              <table align="center" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 16px auto;">
+              <table align="center" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 14px auto;">
                 <tr>
                   <td style="padding: 0 6px;">
-                    <a href="${SOCIAL_LINKEDIN}" target="_blank"><img src="${ICON_LINKEDIN}" width="22" height="22" alt="LinkedIn" style="display:block; border:0;" /></a>
+                    <a href="${SOCIAL_LINKEDIN}" target="_blank"><img src="${ICON_LINKEDIN}" width="20" height="20" alt="LinkedIn" style="display:block; border:0;" /></a>
                   </td>
                   <td style="padding: 0 6px;">
-                    <a href="${SOCIAL_X}" target="_blank"><img src="${ICON_X}" width="22" height="22" alt="X" style="display:block; border:0;" /></a>
+                    <a href="${SOCIAL_X}" target="_blank"><img src="${ICON_X}" width="20" height="20" alt="X" style="display:block; border:0;" /></a>
                   </td>
                   <td style="padding: 0 6px;">
-                    <a href="${SOCIAL_INSTAGRAM}" target="_blank"><img src="${ICON_INSTAGRAM}" width="22" height="22" alt="Instagram" style="display:block; border:0;" /></a>
+                    <a href="${SOCIAL_INSTAGRAM}" target="_blank"><img src="${ICON_INSTAGRAM}" width="20" height="20" alt="Instagram" style="display:block; border:0;" /></a>
                   </td>
                   <td style="padding: 0 6px;">
-                    <a href="${SOCIAL_YOUTUBE}" target="_blank"><img src="${ICON_YOUTUBE}" width="22" height="22" alt="YouTube" style="display:block; border:0;" /></a>
+                    <a href="${SOCIAL_YOUTUBE}" target="_blank"><img src="${ICON_YOUTUBE}" width="20" height="20" alt="YouTube" style="display:block; border:0;" /></a>
                   </td>
                 </tr>
               </table>
@@ -224,6 +226,159 @@ export const generateClientMeetingEmailHtml = (event = {}) => {
                 &copy; ${new Date().getFullYear()} Zenemoo Data Solutions. All rights reserved. &bull; 
                 <a href="${PRIVACY_URL}" target="_blank" style="color: #64748b; text-decoration: none;">Privacy Policy</a> &bull; 
                 <a href="${TERMS_URL}" target="_blank" style="color: #64748b; text-decoration: none;">Terms of Service</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+};
+
+/**
+ * Generate Client Meeting 1-Hour Reminder Email HTML
+ * Sent ~60 minutes before meeting start time.
+ */
+export const generateClientMeetingReminderEmailHtml = (event = {}) => {
+  const {
+    event_id = 'ZEN-CLT',
+    title = 'Scheduled Client Meeting',
+    client_name = 'Valued Client',
+    company_name = 'Enterprise Partner',
+    event_date = '',
+    start_time = '',
+    end_time = '',
+    timezone = 'Asia/Kolkata',
+    duration_minutes = 30,
+    google_meet_url = '',
+    agenda = '',
+    meeting_purpose = '',
+  } = event;
+
+  const formattedDate = formatEventDate(start_time || event_date, timezone);
+  const formattedTimeRange = formatEventTimeRange(start_time, end_time, timezone);
+
+  const meetSectionHtml = google_meet_url
+    ? `
+      <div style="background-color: #f0fdf4; border: 2px solid #22c55e; border-radius: 12px; padding: 22px; margin: 24px 0; text-align: center;">
+        <span style="font-size: 11px; font-family: monospace; color: #15803d; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">⏰ STARTS IN 1 HOUR</span>
+        <h3 style="margin: 8px 0 10px 0; font-size: 17px; color: #166534; font-weight: 700;">Your Meeting Room Is Open</h3>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: #15803d; line-height: 1.5;">Click below to join your Google Meet video session directly:</p>
+        <div>
+          <a href="${google_meet_url}" target="_blank" style="display: inline-block; background-color: #16a34a; color: #ffffff; font-weight: 800; font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-decoration: none; padding: 13px 32px; border-radius: 8px; box-shadow: 0 4px 14px rgba(22,163,74,0.3);">
+            🎥 JOIN GOOGLE MEET NOW
+          </a>
+        </div>
+        <div style="margin-top: 12px; font-size: 11px; font-family: monospace; color: #15803d; word-break: break-all;">
+          ${google_meet_url}
+        </div>
+      </div>
+    `
+    : `
+      <div style="background-color: #fefce8; border: 1px solid #fef08a; border-radius: 12px; padding: 18px; margin: 24px 0; text-align: center;">
+        <span style="font-size: 11px; font-family: monospace; color: #854d0e; font-weight: bold; text-transform: uppercase;">⏰ STARTING IN 1 HOUR</span>
+        <p style="margin: 6px 0 0 0; font-size: 13px; color: #713f12;">
+          Your meeting is scheduled to begin in 1 hour. Please prepare your materials.
+        </p>
+      </div>
+    `;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reminder: Zenemoo Meeting Starts in 1 Hour — ${event_id}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0b0f19; padding: 24px 12px;">
+    <tr>
+      <td align="center">
+        <!-- Main Card Container -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
+          
+          <!-- Header Banner with Compact 110px Logo -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #090d16 0%, #172554 100%); padding: 30px 24px; text-align: center; border-bottom: 3px solid #3b82f6;">
+              <a href="${WEBSITE_URL}" target="_blank" style="text-decoration: none; display: inline-block;">
+                <img src="${LOGO_URL}" alt="Zenemoo" width="110" style="display: block; margin: 0 auto; max-width: 110px; width: 100%; height: auto; border: 0;" />
+              </a>
+              <div style="display: inline-block; margin-top: 16px; padding: 4px 12px; background-color: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 9999px;">
+                <span style="font-size: 11px; font-family: monospace; color: #60a5fa; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">1-HOUR MEETING REMINDER</span>
+              </div>
+              <h1 style="margin: 12px 0 0 0; font-size: 21px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px;">
+                ${title}
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 28px 24px;">
+              <p style="margin: 0 0 14px 0; font-size: 15px; line-height: 1.6; color: #334155;">
+                Hello <strong>${client_name}</strong>,
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                This is a quick reminder that your meeting with <strong>Zenemoo Data Solutions</strong> starts in <strong>approximately 60 minutes</strong>.
+              </p>
+
+              <!-- Quick Time Card -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 20px;">
+                <tr>
+                  <td style="padding: 18px;">
+                    <table width="100%" cellpadding="5" cellspacing="0" border="0" style="font-size: 13px;">
+                      <tr>
+                        <td width="35%" style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Meeting ID:</td>
+                        <td width="65%" style="font-family: monospace; color: #2563eb; font-weight: 700;">${event_id}</td>
+                      </tr>
+                      <tr>
+                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Date:</td>
+                        <td style="color: #0f172a; font-weight: 600;">${formattedDate}</td>
+                      </tr>
+                      <tr>
+                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Time:</td>
+                        <td style="color: #0f172a; font-weight: 600;">${formattedTimeRange} (${timezone})</td>
+                      </tr>
+                      <tr>
+                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase;">Duration:</td>
+                        <td style="color: #0f172a;">${duration_minutes} Minutes</td>
+                      </tr>
+                      ${(agenda || meeting_purpose) ? `
+                      <tr>
+                        <td style="font-family: monospace; color: #64748b; font-weight: bold; text-transform: uppercase; vertical-align: top;">Agenda:</td>
+                        <td style="color: #334155; line-height: 1.5;">${agenda || meeting_purpose}</td>
+                      </tr>
+                      ` : ''}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Google Meet Button Block -->
+              ${meetSectionHtml}
+
+              <!-- Immediate Assistance Note -->
+              <div style="background-color: #f1f5f9; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-top: 20px;">
+                <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #334155;">
+                  Running late or having connectivity issues? Reach our team right away at <a href="mailto:${CONTACT_EMAIL}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${CONTACT_EMAIL}</a>.
+                </p>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #090d16; padding: 22px 24px; text-align: center; border-top: 1px solid rgba(255,255,255,0.08);">
+              <p style="margin: 0 0 10px 0; font-size: 12px; color: #94a3b8;">
+                Zenemoo Data Solutions &bull; Enterprise AI Language &amp; Data Services
+              </p>
+              <p style="margin: 0; font-size: 11px; color: #64748b;">
+                &copy; ${new Date().getFullYear()} Zenemoo Data Solutions. All rights reserved. &bull; 
+                <a href="${PRIVACY_URL}" target="_blank" style="color: #64748b; text-decoration: none;">Privacy Policy</a>
               </p>
             </td>
           </tr>
@@ -252,7 +407,6 @@ export const generateInternalEventEmailHtml = (event = {}) => {
     duration_minutes = 60,
     location = '',
     google_meet_url = '',
-    project_or_company = 'Zenemoo Internal',
   } = event;
 
   const formattedDate = formatEventDate(start_time || event_date, timezone);
@@ -286,10 +440,10 @@ export const generateInternalEventEmailHtml = (event = {}) => {
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0b0f19; padding: 24px 12px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
           <tr>
             <td style="background: linear-gradient(135deg, #090d16 0%, #1e1b4b 100%); padding: 28px; text-align: center; border-bottom: 3px solid #8b5cf6;">
-              <img src="${LOGO_URL}" alt="Zenemoo" width="150" style="display: block; margin: 0 auto;" />
+              <img src="${LOGO_URL}" alt="Zenemoo" width="110" style="display: block; margin: 0 auto; max-width: 110px; width: 100%; height: auto; border: 0;" />
               <div style="display: inline-block; margin-top: 14px; padding: 4px 12px; background-color: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 9999px;">
                 <span style="font-size: 11px; font-family: monospace; color: #c4b5fd; font-weight: bold; text-transform: uppercase;">INTERNAL EVENT / TRAINING</span>
               </div>
@@ -297,7 +451,7 @@ export const generateInternalEventEmailHtml = (event = {}) => {
             </td>
           </tr>
           <tr>
-            <td style="padding: 28px;">
+            <td style="padding: 26px 24px;">
               <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">
                 You have been invited to attend <strong>${title}</strong> (${event_id}).
               </p>

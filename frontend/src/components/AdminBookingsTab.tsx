@@ -32,6 +32,9 @@ import {
   Info,
   Hash,
   Send,
+  Share2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { bookingApi } from '../services/api';
 import { AdminBookingAvailabilityView } from './AdminBookingAvailabilityView';
@@ -96,6 +99,13 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
   const [timeframeFilter, setTimeframeFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'upcoming'>('newest');
 
+  // Server-side Pagination State
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<10 | 20 | 30>(10);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const reqSeqRef = React.useRef(0);
+
   // Mobile Filter Drawer Toggle
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -112,60 +122,125 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
   const [generatingMeetId, setGeneratingMeetId] = useState<string | null>(null);
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
 
-  const fetchBookings = async () => {
+  const fetchBookings = async (requestedPage?: number) => {
+    const p = typeof requestedPage === 'number' ? requestedPage : page;
+    const currentSeq = ++reqSeqRef.current;
     setLoading(true);
     try {
       const res = await bookingApi.getAdminBookings({
-        search: searchQuery,
+        search: searchQuery.trim() || undefined,
         status: statusFilter,
         meetingStatus: meetingStatusFilter,
         emailStatus: emailStatusFilter,
         timeframe: timeframeFilter,
+        page: p,
+        limit: pageSize,
+        sortBy,
       });
+
+      if (currentSeq !== reqSeqRef.current) return;
+
       if (res.data?.success) {
         setBookings(res.data.bookings || []);
+        const total = res.data.totalCount ?? res.data.total ?? 0;
+        setTotalCount(total);
+        setTotalPages(res.data.totalPages ?? Math.ceil(total / pageSize) ?? 1);
         if (res.data.actionableCount !== undefined && onActionableCountChange) {
           onActionableCountChange(res.data.actionableCount);
         }
       }
     } catch (err: any) {
+      if (currentSeq !== reqSeqRef.current) return;
       console.error('Fetch bookings error:', err);
       addToast('Error Loading Bookings', err.response?.data?.message || 'Failed to load call bookings.', 'error');
     } finally {
-      setLoading(false);
+      if (currentSeq === reqSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchBookings();
-  }, [statusFilter, meetingStatusFilter, emailStatusFilter, timeframeFilter]);
+    setPage(1);
+    fetchBookings(1);
+  }, [searchQuery, statusFilter, meetingStatusFilter, emailStatusFilter, timeframeFilter, pageSize, sortBy]);
 
-  // Filter & Sort
-  const filteredBookings = useMemo(() => {
-    let result = [...bookings];
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setPage(newPage);
+    fetchBookings(newPage);
+  };
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (b) =>
-          b.booking_id?.toLowerCase().includes(q) ||
-          b.full_name?.toLowerCase().includes(q) ||
-          b.email?.toLowerCase().includes(q) ||
-          b.company_name?.toLowerCase().includes(q) ||
-          b.phone?.toLowerCase().includes(q)
-      );
+  // On-demand full record fetch for View Details modal
+  const handleOpenViewDetails = async (b: CallBookingRecord) => {
+    setViewDetailBooking(b);
+    setIsViewDetailModalOpen(true);
+    try {
+      const res = await bookingApi.getBookingById(b.id || b.booking_id);
+      if (res.data?.success && res.data.booking) {
+        setViewDetailBooking(res.data.booking);
+      }
+    } catch (_) {}
+  };
+
+  // Share action for public bookings (Sanitizes out internal notes and private contact details)
+  const handleShareBooking = async (b: CallBookingRecord) => {
+    const dateStr = new Date(b.start_time).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: b.timezone || 'Asia/Kolkata',
+    });
+    const startTimeStr = new Date(b.start_time).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: b.timezone || 'Asia/Kolkata',
+    });
+    const endTimeStr = new Date(b.end_time).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: b.timezone || 'Asia/Kolkata',
+    });
+
+    const lines = [
+      `Zenemoo Meeting Details`,
+      `Meeting: ${b.meeting_type || 'Discovery Call with Zenemoo'}`,
+      `Date: ${dateStr}`,
+      `Time: ${startTimeStr} – ${endTimeStr} (${b.timezone || 'Asia/Kolkata'})`,
+    ];
+    if (b.google_meet_url) {
+      lines.push(`Google Meet: ${b.google_meet_url}`);
     }
 
-    if (sortBy === 'newest') {
-      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    } else if (sortBy === 'oldest') {
-      result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    } else if (sortBy === 'upcoming') {
-      result.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    const shareText = lines.join('\n');
+    const shareTitle = `Zenemoo Meeting — ${b.booking_id}`;
+
+    if (navigator.share && navigator.canShare && navigator.canShare({ title: shareTitle, text: shareText })) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: b.google_meet_url || undefined,
+        });
+        addToast('Meeting Shared', 'Meeting details shared successfully.', 'success');
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
     }
 
-    return result;
-  }, [bookings, searchQuery, sortBy]);
+    try {
+      await navigator.clipboard.writeText(shareText);
+      addToast('Copied to Clipboard', 'Meeting details copied (excluding private notes & contacts).', 'success');
+    } catch (err) {
+      addToast('Copy Failed', 'Unable to copy to clipboard.', 'error');
+    }
+  };
+
+  const filteredBookings = bookings;
 
   // Handle Manual Google Meet Generation
   const handleGenerateMeet = async (booking: CallBookingRecord) => {
@@ -436,7 +511,7 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
 
         {activeView === 'bookings' && (
           <button
-            onClick={fetchBookings}
+            onClick={() => fetchBookings()}
             disabled={loading}
             aria-label="Refresh Data"
             className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/10 text-slate-300 font-mono text-xs font-semibold transition-all flex items-center gap-2 shrink-0 cursor-pointer self-start sm:self-auto"
@@ -699,15 +774,21 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
                         <td className="py-4 px-6 text-right space-x-1.5 shrink-0">
                           {/* PRIMARY VIEW DETAILS EYE ICON BUTTON */}
                           <button
-                            onClick={() => {
-                              setViewDetailBooking(b);
-                              setIsViewDetailModalOpen(true);
-                            }}
+                            onClick={() => handleOpenViewDetails(b)}
                             aria-label={`View full details for booking ${b.booking_id}`}
                             className="p-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 transition-colors cursor-pointer"
                             title="View Full Details & Email Status"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+                          {/* SHARE BUTTON */}
+                          <button
+                            onClick={() => handleShareBooking(b)}
+                            aria-label={`Share booking ${b.booking_id}`}
+                            className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-colors cursor-pointer"
+                            title="Share Meeting Details"
+                          >
+                            <Share2 className="w-4 h-4" />
                           </button>
                           {/* EDIT BUTTON */}
                           <button
@@ -842,6 +923,15 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleShareBooking(b)}
+                          aria-label={`Share booking ${b.booking_id}`}
+                          className="p-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-colors cursor-pointer"
+                          title="Share Meeting Details"
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </button>
+
                         {!b.google_meet_url && (
                           <button
                             onClick={() => handleGenerateMeet(b)}
@@ -866,6 +956,51 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
                   </div>
                 );
               })}
+            </div>
+
+            {/* SERVER-SIDE PAGINATION CONTROLS */}
+            <div className="p-4 sm:p-5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/[0.01] font-mono text-xs">
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400">Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value) as 10 | 20 | 30)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-cyan-400 cursor-pointer"
+                >
+                  <option value={10} className="bg-[#0b0f19]">10 per page</option>
+                  <option value={20} className="bg-[#0b0f19]">20 per page</option>
+                  <option value={30} className="bg-[#0b0f19]">30 per page</option>
+                </select>
+                <span className="text-slate-400">
+                  {totalCount > 0 ? (
+                    <>Showing <strong className="text-white">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)}</strong> of <strong className="text-white">{totalCount}</strong></>
+                  ) : (
+                    '0 records'
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page <= 1 || loading}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                </button>
+                <span className="px-3 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold">
+                  Page {page} of {Math.max(1, totalPages)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page >= totalPages || loading}
+                  className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -892,12 +1027,21 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
                 <Eye className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-xl font-bold font-display text-white">
                     {viewDetailBooking.booking_id}
                   </h3>
                   {renderStatusBadge(viewDetailBooking)}
                   {renderMeetingStatusBadge(viewDetailBooking.meeting_status)}
+
+                  <button
+                    onClick={() => handleShareBooking(viewDetailBooking)}
+                    className="ml-auto px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                    title="Share meeting details"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share Details</span>
+                  </button>
                 </div>
                 <p className="text-xs font-mono text-slate-400 mt-0.5">
                   Complete Booking Record &amp; Email Delivery Tracking

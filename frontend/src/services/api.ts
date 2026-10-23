@@ -915,7 +915,7 @@ export const bookingApi = {
   }) => api.post('/bookings', data),
   getBookingById: (bookingId: string) =>
     api.get(`/bookings/${encodeURIComponent(bookingId)}`),
-  getAdminBookings: (params?: { search?: string; status?: string; meetingStatus?: string; emailStatus?: string; timeframe?: string; date?: string }) =>
+  getAdminBookings: (params?: { search?: string; status?: string; meetingStatus?: string; emailStatus?: string; timeframe?: string; date?: string; page?: number; limit?: number; sortBy?: string }) =>
     deduplicatedGet('/bookings/admin/list', { params }),
   generateMeetingLink: (id: string) =>
     api.post(`/bookings/admin/${encodeURIComponent(id)}/generate-meeting`),
@@ -935,7 +935,7 @@ export const bookingApi = {
     api.post('/bookings/admin/availability/preview-affected', data),
 
   // Admin Events & Client Meetings Endpoints
-  getAdminEvents: (params?: { eventType?: string; status?: string; startDate?: string; endDate?: string; search?: string; limit?: number; offset?: number }) =>
+  getAdminEvents: (params?: { eventType?: string; status?: string; startDate?: string; endDate?: string; search?: string; page?: number; limit?: number; sortBy?: string }) =>
     api.get('/bookings/admin/events', { params }),
   createAdminEvent: (data: any) =>
     api.post('/bookings/admin/events', data),
@@ -947,8 +947,8 @@ export const bookingApi = {
     api.put(`/bookings/admin/events/${encodeURIComponent(id)}`, data),
   deleteAdminEvent: (id: string) =>
     api.delete(`/bookings/admin/events/${encodeURIComponent(id)}`),
-  resendClientMeetingEmail: (id: string) =>
-    api.post(`/bookings/admin/events/${encodeURIComponent(id)}/resend-email`),
+  resendClientMeetingEmail: (id: string, emailType: 'confirmation' | 'reminder' = 'confirmation') =>
+    api.post(`/bookings/admin/events/${encodeURIComponent(id)}/resend-email`, { emailType }),
   generateMeetingForAdminEvent: (id: string) =>
     api.post(`/bookings/admin/events/${encodeURIComponent(id)}/generate-meeting`),
 };

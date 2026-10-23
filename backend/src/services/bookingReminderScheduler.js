@@ -5,9 +5,11 @@ import {
   generateAdminReminderEmailHtml,
 } from './bookingEmailTemplate.js';
 import { sendBookingReminderNotification } from './telegramNotificationService.js';
-import { createGoogleMeetForBooking, processPendingMeetingGenerations } from './googleMeetService.js';
+import { createGoogleMeetForBooking, processPendingMeetingGenerations, createGoogleMeetForAdminEvent } from './googleMeetService.js';
 import { processAutomaticBookingCompletion } from '../controllers/bookingController.js';
 import { sendZenemooNotification } from './pushNotificationEngine.js';
+import { adminEventService } from './adminEventService.js';
+import { generateClientMeetingReminderEmailHtml } from './clientMeetingEmailTemplate.js';
 
 const ADMIN_EMAIL = 'zenemoo-admin-email@googlegroups.com';
 
@@ -188,14 +190,136 @@ export const processBookingReminders = async () => {
 };
 
 /**
+ * Check and process 1-hour pre-meeting reminders for Admin-created Client Meetings
+ * Includes atomic lock claiming to prevent concurrent duplicate sends,
+ * support for near-term creations, and graceful handling of meetings starting <15m.
+ */
+export const processClientMeetingReminders = async () => {
+  try {
+    const nowMs = Date.now();
+    const minStart = new Date(nowMs + 50 * 60 * 1000).toISOString();
+    const maxStart = new Date(nowMs + 70 * 60 * 1000).toISOString();
+
+    // 1. Fetch eligible scheduled client meetings in standard 50-70m window
+    const dueEvents = await adminEventService.getScheduledClientMeetingsDueForReminder(minStart, maxStart);
+
+    // 2. Fetch meetings created recently (< 20 mins ago) that start in 15-50 mins (near-term creations)
+    const nearTermMin = new Date(nowMs + 15 * 60 * 1000).toISOString();
+    const nearTermMax = minStart;
+    const nearTermEvents = await adminEventService.getScheduledClientMeetingsDueForReminder(nearTermMin, nearTermMax);
+    const validNearTerm = nearTermEvents.filter((e) => {
+      if (!e.created_at) return false;
+      const createdMs = new Date(e.created_at).getTime();
+      return (nowMs - createdMs) <= 20 * 60 * 1000;
+    });
+
+    // 3. Mark meetings starting in < 15 mins as not_applicable if still pending
+    const imminentEvents = await adminEventService.getScheduledClientMeetingsDueForReminder(new Date(nowMs - 5 * 60 * 1000).toISOString(), nearTermMin);
+    for (const imm of imminentEvents) {
+      if (imm.customer_reminder_status === 'pending') {
+        await adminEventService.updateReminderStatus(imm.id, {
+          status: 'not_applicable',
+          error: 'Meeting start time was within 15 minutes of reminder check; 1-hour advance reminder skipped.',
+        });
+      }
+    }
+
+    const allDue = [...dueEvents, ...validNearTerm];
+    if (allDue.length === 0) return;
+
+    console.log(`⏰ [Client Meeting Reminder Engine] Found ${allDue.length} client meeting(s) due for reminder.`);
+
+    const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <contact@zenemoo.in>';
+
+    for (let event of allDue) {
+      try {
+        // Atomic claim to avoid concurrent worker duplicates
+        const claimResult = await adminEventService.claimClientMeetingReminder(event.id);
+        if (!claimResult.claimed) {
+          console.log(`[Reminder Skip] Event ${event.event_id} was already claimed by another worker.`);
+          continue;
+        }
+
+        const claimedEvent = claimResult.event || event;
+
+        // Verify or generate Google Meet URL if missing
+        if (!claimedEvent.google_meet_url) {
+          try {
+            const meetRes = await createGoogleMeetForAdminEvent(claimedEvent);
+            if (meetRes.success && meetRes.meetUrl) {
+              claimedEvent.google_meet_url = meetRes.meetUrl;
+              await adminEventService.updateEvent(claimedEvent.id, {
+                google_meet_url: meetRes.meetUrl,
+                google_calendar_event_id: meetRes.eventId,
+                meeting_status: 'generated',
+              });
+            }
+          } catch (_) {}
+        }
+
+        // Send 1-Hour Reminder Email
+        if (claimedEvent.email) {
+          try {
+            await sendMailViaBrevo({
+              sender,
+              recipients: claimedEvent.email,
+              subject: `Reminder: Your Zenemoo Client Meeting Starts in 1 Hour — ${claimedEvent.event_id}`,
+              html: generateClientMeetingReminderEmailHtml(claimedEvent),
+            });
+
+            console.log(`✅ [Reminder Sent] Client meeting reminder sent for ${claimedEvent.event_id} to ${claimedEvent.email}`);
+            await adminEventService.updateReminderStatus(claimedEvent.id, {
+              status: 'sent',
+              sentAt: new Date().toISOString(),
+              error: null,
+            });
+
+            sendZenemooNotification({
+              title: 'Client Meeting Reminder Sent',
+              message: `1-hour reminder sent to ${claimedEvent.client_name || 'Client'} (${claimedEvent.company_name || 'Client'}) for ${claimedEvent.title}.`,
+              notification_type: 'meeting_reminder',
+              target_type: 'admin',
+              url: '/portal/9KqvA2Nz8#call-bookings',
+              metadata: {
+                event_id: claimedEvent.event_id,
+                client: claimedEvent.client_name,
+                start_time: claimedEvent.start_time,
+                meet_url: claimedEvent.google_meet_url,
+              },
+            }).catch(() => {});
+          } catch (sendErr) {
+            console.error(`❌ [Reminder Failed] Client meeting ${claimedEvent.event_id}:`, sendErr.message);
+            await adminEventService.updateReminderStatus(claimedEvent.id, {
+              status: 'failed',
+              error: sendErr.message,
+            });
+          }
+        } else {
+          await adminEventService.updateReminderStatus(claimedEvent.id, {
+            status: 'not_applicable',
+            error: 'No valid recipient email address configured.',
+          });
+        }
+      } catch (evtErr) {
+        console.error(`[Client Reminder Exception] Event ${event.event_id}:`, evtErr.message);
+      }
+    }
+  } catch (err) {
+    console.error('[processClientMeetingReminders Global Error]:', err.message);
+  }
+};
+
+/**
  * Start background timer for processing reminders every 5 minutes
  */
 export const startBookingReminderScheduler = () => {
   console.log('⏰ [Booking Reminder Scheduler] Initialized with Google Meet check & auto-completion (Interval: 5 minutes)');
   // Run once immediately on server start
   processBookingReminders();
+  processClientMeetingReminders();
   // Schedule recurring execution
   setInterval(() => {
     processBookingReminders();
+    processClientMeetingReminders();
   }, 5 * 60 * 1000);
 };

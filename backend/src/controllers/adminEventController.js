@@ -2,6 +2,7 @@ import { adminEventService } from '../services/adminEventService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import {
   generateClientMeetingEmailHtml,
+  generateClientMeetingReminderEmailHtml,
   generateInternalEventEmailHtml,
 } from '../services/clientMeetingEmailTemplate.js';
 import { createGoogleMeetForAdminEvent } from '../services/googleMeetService.js';
@@ -16,21 +17,31 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups
  */
 export const getAdminEvents = async (req, res, next) => {
   try {
-    const { eventType, status, startDate, endDate, search, limit = 50, offset = 0 } = req.query;
+    const { eventType, status, startDate, endDate, search, page = 1, limit = 10, sortBy = 'newest' } = req.query;
     const result = await adminEventService.getEvents({
       eventType,
       status,
       startDate,
       endDate,
       search,
-      limit: parseInt(limit, 10) || 50,
-      offset: parseInt(offset, 10) || 0,
+      page: parseInt(page, 10) || 1,
+      limit: parseInt(limit, 10) || 10,
+      sortBy,
     });
 
     return res.json({
       success: true,
       events: result.events,
       totalCount: result.totalCount,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+      pagination: {
+        totalCount: result.totalCount,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      },
     });
   } catch (err) {
     next(err);
@@ -392,6 +403,7 @@ export const deleteAdminEvent = async (req, res, next) => {
 export const resendClientMeetingEmail = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const emailType = req.body?.emailType || req.query?.type || 'confirmation';
     const event = await adminEventService.getEventById(id);
     if (!event) {
       return res.status(404).json({ success: false, message: 'Event record not found.' });
@@ -403,39 +415,77 @@ export const resendClientMeetingEmail = async (req, res, next) => {
 
     const sender = process.env.EMAIL_FROM || 'Zenemoo Meetings <contact@zenemoo.in>';
 
-    try {
-      await sendMailViaBrevo({
-        sender,
-        recipients: event.email,
-        subject: `Zenemoo Meeting Confirmed — ${event.title} (${event.event_id})`,
-        html: generateClientMeetingEmailHtml(event),
-      });
+    if (emailType === 'reminder') {
+      try {
+        await sendMailViaBrevo({
+          sender,
+          recipients: event.email,
+          subject: `Reminder: Your Zenemoo Client Meeting Starts in 1 Hour — ${event.event_id}`,
+          html: generateClientMeetingReminderEmailHtml(event),
+        });
 
-      const updated = await adminEventService.updateEvent(event.id, {
-        customer_email_status: 'sent',
-        customer_email_sent_at: new Date().toISOString(),
-        customer_email_error: null,
-      });
+        const updated = await adminEventService.updateEvent(event.id, {
+          customer_reminder_status: 'sent',
+          customer_reminder_sent_at: new Date().toISOString(),
+          customer_reminder_error: null,
+        });
 
-      return res.json({
-        success: true,
-        message: `Meeting confirmation email successfully resent to ${event.email}.`,
-        event: updated,
-      });
-    } catch (sendErr) {
-      console.error(`[Resend Client Meeting Email Error - ${event.event_id}]:`, sendErr.message);
-      const errMsg = (sendErr.message || 'Mail server error.').substring(0, 500);
+        return res.json({
+          success: true,
+          message: `1-hour pre-meeting reminder email successfully resent to ${event.email}.`,
+          event: updated,
+        });
+      } catch (sendErr) {
+        console.error(`[Resend Client Reminder Email Error - ${event.event_id}]:`, sendErr.message);
+        const errMsg = (sendErr.message || 'Mail server error.').substring(0, 500);
 
-      const updated = await adminEventService.updateEvent(event.id, {
-        customer_email_status: 'failed',
-        customer_email_error: errMsg,
-      });
+        const updated = await adminEventService.updateEvent(event.id, {
+          customer_reminder_status: 'failed',
+          customer_reminder_error: errMsg,
+        });
 
-      return res.status(500).json({
-        success: false,
-        message: `Failed to deliver email: ${errMsg}`,
-        event: updated,
-      });
+        return res.status(500).json({
+          success: false,
+          message: `Failed to deliver reminder email: ${errMsg}`,
+          event: updated,
+        });
+      }
+    } else {
+      // Default: confirmation email
+      try {
+        await sendMailViaBrevo({
+          sender,
+          recipients: event.email,
+          subject: `Zenemoo Meeting Confirmed — ${event.title} (${event.event_id})`,
+          html: generateClientMeetingEmailHtml(event),
+        });
+
+        const updated = await adminEventService.updateEvent(event.id, {
+          customer_email_status: 'sent',
+          customer_email_sent_at: new Date().toISOString(),
+          customer_email_error: null,
+        });
+
+        return res.json({
+          success: true,
+          message: `Meeting confirmation email successfully resent to ${event.email}.`,
+          event: updated,
+        });
+      } catch (sendErr) {
+        console.error(`[Resend Client Meeting Email Error - ${event.event_id}]:`, sendErr.message);
+        const errMsg = (sendErr.message || 'Mail server error.').substring(0, 500);
+
+        const updated = await adminEventService.updateEvent(event.id, {
+          customer_email_status: 'failed',
+          customer_email_error: errMsg,
+        });
+
+        return res.status(500).json({
+          success: false,
+          message: `Failed to deliver confirmation email: ${errMsg}`,
+          event: updated,
+        });
+      }
     }
   } catch (err) {
     next(err);
