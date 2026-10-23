@@ -410,7 +410,8 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
 
     try {
       const res = await privateDocumentApi.previewBlob(doc.id, versionNum);
-      const mime = res.headers['content-type'] || 'application/pdf';
+      const rawContentType = res.headers['content-type'];
+      const mime = typeof rawContentType === 'string' ? rawContentType : 'application/pdf';
       const blob = new Blob([res.data], { type: mime });
       const url = window.URL.createObjectURL(blob);
       setPreviewBlobUrl(url);
@@ -442,7 +443,8 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
         'info'
       );
       const res = await privateDocumentApi.downloadBlob(doc.id, versionNum);
-      const mime = res.headers['content-type'] || 'application/octet-stream';
+      const rawContentType = res.headers['content-type'];
+      const mime = typeof rawContentType === 'string' ? rawContentType : 'application/octet-stream';
       const blob = new Blob([res.data], { type: mime });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
