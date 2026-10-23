@@ -902,6 +902,8 @@ export const datasetApi = {
 export const bookingApi = {
   getAvailability: (date: string, timezone?: string) =>
     api.get('/bookings/availability', { params: { date, timezone } }),
+  getMonthAvailability: (month: string, timezone?: string) =>
+    api.get('/bookings/availability', { params: { month, timezone } }),
   createBooking: (data: {
     fullName: string;
     email: string;

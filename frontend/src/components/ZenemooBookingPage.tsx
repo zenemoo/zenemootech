@@ -512,6 +512,38 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [slotFetchError, setSlotFetchError] = useState<string>('');
   const [dateClosureReason, setDateClosureReason] = useState<string>('');
+  const [monthDaysStatus, setMonthDaysStatus] = useState<Record<string, {
+    dateStr?: string;
+    isPast?: boolean;
+    isClosed?: boolean;
+    closureReason?: string | null;
+    hasCustomHours?: boolean;
+    hasBlockedRanges?: boolean;
+  }>>({});
+  const [holidayNotice, setHolidayNotice] = useState<{ date: string; reason: string } | null>(null);
+
+  // Fetch month availability status to visually flag full-day closures, holiday reasons, and disabled dates
+  useEffect(() => {
+    let isCancelled = false;
+    const year = currentMonthDate.getFullYear();
+    const month = String(currentMonthDate.getMonth() + 1).padStart(2, '0');
+    const monthKey = `${year}-${month}`;
+
+    bookingApi
+      .getMonthAvailability(monthKey, timezone)
+      .then((res) => {
+        if (!isCancelled && res.data?.success && res.data?.days) {
+          setMonthDaysStatus(res.data.days);
+        }
+      })
+      .catch((err) => {
+        console.warn('[BOOKING] Failed to fetch month status:', err);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentMonthDate, timezone]);
 
   // Filter available slots to genuinely bookable slots only (available, not past, and not within 2-hour buffer)
   const bookableSlots = useMemo(() => {
@@ -734,10 +766,18 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
     const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sun
     const totalDays = new Date(year, month + 1, 0).getDate();
 
-    const days: Array<{ dayNum: number; dateStr: string; isPast: boolean; isToday: boolean; isSelected: boolean }> = [];
+    const days: Array<{
+      dayNum: number;
+      dateStr: string;
+      isPast: boolean;
+      isToday: boolean;
+      isSelected: boolean;
+      isClosed: boolean;
+      closureReason?: string;
+    }> = [];
 
     for (let i = 0; i < firstDayIndex; i++) {
-      days.push({ dayNum: 0, dateStr: '', isPast: true, isToday: false, isSelected: false });
+      days.push({ dayNum: 0, dateStr: '', isPast: true, isToday: false, isSelected: false, isClosed: false });
     }
 
     for (let d = 1; d <= totalDays; d++) {
@@ -748,12 +788,15 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
       const isPast = dateStr < todayStr;
       const isToday = dateStr === todayStr;
       const isSelected = dateStr === selectedDate;
+      const dayStatus = monthDaysStatus[dateStr];
+      const isClosed = !isPast && Boolean(dayStatus?.isClosed);
+      const closureReason = isClosed ? (dayStatus?.closureReason || 'Unavailable') : undefined;
 
-      days.push({ dayNum: d, dateStr, isPast, isToday, isSelected });
+      days.push({ dayNum: d, dateStr, isPast, isToday, isSelected, isClosed, closureReason });
     }
 
     return days;
-  }, [currentMonthDate, todayStr, selectedDate]);
+  }, [currentMonthDate, todayStr, selectedDate, monthDaysStatus]);
 
   // Form Submit handler -> Opens Turnstile Verification Modal
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -1137,19 +1180,44 @@ END:VCALENDAR`;
                             return <div key={`empty_${idx}`} className="h-9 sm:h-10" />;
                           }
 
+                          const isCellDisabled = cell.isPast || cell.isClosed;
+                          const cellTooltip = cell.isPast
+                            ? 'Past date'
+                            : cell.isClosed
+                            ? (cell.closureReason || 'Unavailable')
+                            : undefined;
+
                           return (
                             <button
                               key={cell.dateStr}
                               disabled={cell.isPast}
+                              aria-disabled={isCellDisabled ? 'true' : undefined}
+                              title={cellTooltip}
+                              aria-label={
+                                cell.isPast
+                                  ? `${cell.dateStr} (Past date)`
+                                  : cell.isClosed
+                                  ? `${cell.dateStr} (${cell.closureReason || 'Unavailable'}, closed)`
+                                  : cell.dateStr
+                              }
                               onClick={() => {
-                                if (!cell.isPast) {
-                                  setSelectedDate(cell.dateStr);
-                                  setAutoDateNotice('');
+                                if (cell.isPast) return;
+                                if (cell.isClosed) {
+                                  setHolidayNotice({
+                                    date: cell.dateStr,
+                                    reason: cell.closureReason || 'Unavailable',
+                                  });
+                                  return;
                                 }
+                                setHolidayNotice(null);
+                                setSelectedDate(cell.dateStr);
+                                setAutoDateNotice('');
                               }}
                               className={`h-9 sm:h-10 rounded-xl font-mono text-xs font-bold transition-all relative flex flex-col items-center justify-center ${
                                 cell.isPast
                                   ? 'text-slate-700 bg-white/[0.01] cursor-not-allowed line-through opacity-40 select-none'
+                                  : cell.isClosed
+                                  ? 'text-slate-500 bg-white/[0.02] border border-white/5 cursor-not-allowed opacity-50 select-none hover:border-rose-500/30 line-through'
                                   : cell.isSelected
                                   ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/25 scale-105 z-10 cursor-pointer'
                                   : cell.isToday
@@ -1158,13 +1226,36 @@ END:VCALENDAR`;
                               }`}
                             >
                               <span>{cell.dayNum}</span>
-                              {cell.isToday && !cell.isSelected && (
+                              {cell.isClosed && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500/80 absolute bottom-1" />
+                              )}
+                              {cell.isToday && !cell.isSelected && !cell.isClosed && (
                                 <span className="w-1 h-1 rounded-full bg-cyan-400 absolute bottom-1" />
                               )}
                             </button>
                           );
                         })}
                       </div>
+
+                      {/* Holiday / Closed Date Accessible Notice (Desktop / Mobile Tap Details) */}
+                      {holidayNotice && (
+                        <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 font-mono text-xs flex items-center justify-between gap-2 animate-fade-in">
+                          <div className="flex items-center gap-2">
+                            <CalendarOff className="w-4 h-4 text-rose-400 shrink-0" />
+                            <span>
+                              <strong className="text-white">{holidayNotice.date}:</strong> {holidayNotice.reason}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setHolidayNotice(null)}
+                            className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded cursor-pointer"
+                            aria-label="Dismiss notice"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      )}
 
                       {/* Timezone Selector & Live Current Time */}
                       <div className="pt-3 border-t border-white/5 space-y-2.5">

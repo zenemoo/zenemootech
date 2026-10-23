@@ -39,17 +39,35 @@ let memoryCacheExpiry = 0;
 const CACHE_TTL_MS = 60 * 1000;
 
 /**
- * Helper: Parse "HH:mm" string into total minutes from midnight
+ * Helper: Parse "HH:mm", "H:mm", or "h:mm AM/PM" string into total minutes from midnight
  */
 export const timeToMinutes = (timeStr) => {
   if (!timeStr || typeof timeStr !== 'string') return -1;
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return -1;
-  const h = parseInt(match[1], 10);
-  const m = parseInt(match[2], 10);
-  if (h < 0 || h > 24 || m < 0 || m > 59) return -1;
-  if (h === 24 && m > 0) return -1;
-  return h * 60 + m;
+  const clean = timeStr.trim();
+
+  // 12-hour format: e.g. "3:00 PM", "07:30 PM", "12:00 AM", "12:00 PM"
+  const match12 = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/i);
+  if (match12) {
+    let h = parseInt(match12[1], 10);
+    const m = parseInt(match12[2], 10);
+    const period = match12[3].toUpperCase();
+    if (h < 1 || h > 12 || m < 0 || m > 59) return -1;
+    if (period === 'PM' && h < 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  }
+
+  // 24-hour format: "HH:mm" or "H:mm" (00:00 to 24:00)
+  const match24 = clean.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    const h = parseInt(match24[1], 10);
+    const m = parseInt(match24[2], 10);
+    if (h < 0 || h > 24 || m < 0 || m > 59) return -1;
+    if (h === 24 && m > 0) return -1;
+    return h * 60 + m;
+  }
+
+  return -1;
 };
 
 /**
@@ -59,6 +77,35 @@ export const minutesToTimeStr = (totalMinutes) => {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+/**
+ * Helper: Normalize any valid time string to canonical "HH:mm"
+ */
+export const normalizeTimeStr = (timeStr) => {
+  const mins = timeToMinutes(timeStr);
+  if (mins < 0) return timeStr;
+  return minutesToTimeStr(mins);
+};
+
+/**
+ * Helper: Sort time ranges by start time ascending and normalize to "HH:mm"
+ */
+export const sortAndNormalizeRanges = (ranges) => {
+  if (!Array.isArray(ranges)) return [];
+  return [...ranges]
+    .map((r) => ({
+      start: normalizeTimeStr(r.start),
+      end: normalizeTimeStr(r.end),
+    }))
+    .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+};
+
+/**
+ * Helper: Get current date in target timezone as YYYY-MM-DD
+ */
+export const getTodayInTz = (tz = 'Asia/Kolkata') => {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 };
 
 /**
@@ -93,18 +140,25 @@ export const getDatesInRange = (startDateStr, endDateStr, maxDays = 365) => {
 /**
  * Validate an array of time ranges:
  * - Must be array
- * - Each range must have valid start and end (HH:mm)
- * - start < end
+ * - Each range must have valid start and end (HH:mm or h:mm A)
+ * - start < end (strictly positive duration)
  * - duration >= 30 mins
- * - non-overlapping and sorted
+ * - aligned to 30-minute intervals
+ * - Sort ranges by start time before overlap validation
+ * - Two ranges overlap ONLY when next.start < previous.end
+ * - Adjacent ranges (next.start >= previous.end) are allowed
  */
 export const validateTimeRanges = (ranges) => {
   if (!Array.isArray(ranges)) {
     return { valid: false, error: 'Ranges must be an array.' };
   }
 
+  const parsed = [];
   for (let i = 0; i < ranges.length; i++) {
     const r = ranges[i];
+    if (!r || typeof r !== 'object') {
+      return { valid: false, error: `Invalid range format at index ${i + 1}.` };
+    }
     const startMins = timeToMinutes(r.start);
     const endMins = timeToMinutes(r.end);
 
@@ -125,12 +179,29 @@ export const validateTimeRanges = (ranges) => {
       return { valid: false, error: `Time range [${r.start} - ${r.end}] must align with 30-minute intervals (e.g. :00 or :30).` };
     }
 
-    // Check overlap with previous ranges
-    if (i > 0) {
-      const prevEndMins = timeToMinutes(ranges[i - 1].end);
-      if (startMins < prevEndMins) {
-        return { valid: false, error: `Time ranges [${ranges[i - 1].start}-${ranges[i - 1].end}] and [${r.start}-${r.end}] overlap.` };
-      }
+    parsed.push({
+      startMins,
+      endMins,
+      normStart: minutesToTimeStr(startMins),
+      normEnd: minutesToTimeStr(endMins),
+      origStart: r.start,
+      origEnd: r.end,
+    });
+  }
+
+  // Sort ranges by start time ascending before overlap validation
+  const sorted = [...parsed].sort((a, b) => a.startMins - b.startMins);
+
+  // Two ranges overlap only when next.start < previous.end
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+
+    if (curr.startMins < prev.endMins) {
+      return {
+        valid: false,
+        error: `Time ranges [${prev.normStart}-${prev.normEnd}] and [${curr.normStart}-${curr.normEnd}] overlap.`,
+      };
     }
   }
 
@@ -343,13 +414,52 @@ export class BookingAvailabilityService {
       throw new Error(overrideVal.error);
     }
 
+    // Past-date protection: prevent adding or modifying overrides on past dates
+    const tz = timezone.trim() || 'Asia/Kolkata';
+    const todayInTz = getTodayInTz(tz);
+    const existingConfig = await this.getConfig();
+    const existingMap = new Map((existingConfig.date_overrides || []).map((o) => [o.id || o.date, o]));
+
+    for (const ovr of (date_overrides || [])) {
+      if (ovr.date < todayInTz) {
+        const existingOvr = existingMap.get(ovr.id) || existingConfig.date_overrides?.find((o) => o.date === ovr.date);
+        if (!existingOvr) {
+          throw new Error(`Cannot create date override for past date (${ovr.date}). Past dates before ${todayInTz} in ${tz} are read-only.`);
+        }
+        if (
+          JSON.stringify(sortAndNormalizeRanges(existingOvr.ranges)) !== JSON.stringify(sortAndNormalizeRanges(ovr.ranges)) ||
+          existingOvr.type !== ovr.type ||
+          existingOvr.is_available !== ovr.is_available
+        ) {
+          throw new Error(`Cannot modify date override on past date (${ovr.date}). Historical records are read-only.`);
+        }
+      }
+    }
+
+    // Canonical sorting and normalization for weekly hours and overrides
+    const cleanWeeklyHours = {};
+    for (let day = 0; day <= 6; day++) {
+      const dayConfig = weekly_hours[day] || weekly_hours[String(day)];
+      if (dayConfig) {
+        cleanWeeklyHours[day] = {
+          ...dayConfig,
+          ranges: dayConfig.active ? sortAndNormalizeRanges(dayConfig.ranges) : [],
+        };
+      }
+    }
+
+    const cleanOverrides = (date_overrides || []).map((ovr) => ({
+      ...ovr,
+      ranges: sortAndNormalizeRanges(ovr.ranges || []),
+    }));
+
     const cleanConfig = {
       schedule_name: schedule_name.trim() || 'Default Working Hours',
-      timezone: timezone.trim() || 'Asia/Kolkata',
+      timezone: tz,
       slot_duration: parseInt(slot_duration, 10) || 30,
       lead_buffer_minutes: parseInt(lead_buffer_minutes, 10) || 120,
-      weekly_hours,
-      date_overrides: date_overrides || [],
+      weekly_hours: cleanWeeklyHours,
+      date_overrides: cleanOverrides,
       is_active: true,
       updated_at: new Date().toISOString(),
       updated_by: typeof adminUser === 'string' ? adminUser : adminUser?.email || 'admin',
@@ -480,10 +590,15 @@ export class BookingAvailabilityService {
 
     if (!scope) throw new Error('Scope is required.');
 
+    const todayInTz = getTodayInTz(timezone);
+
     switch (scope) {
       case 'this_date': {
         if (!baseDate || !/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
           throw new Error('Valid baseDate (YYYY-MM-DD) is required for this_date scope.');
+        }
+        if (baseDate < todayInTz) {
+          throw new Error(`Cannot edit availability for past date (${baseDate}). Dates before ${todayInTz} in ${timezone} are read-only.`);
         }
         return [baseDate];
       }
@@ -500,7 +615,11 @@ export class BookingAvailabilityService {
         const validDates = targetDates
           .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
           .sort();
-        return Array.from(new Set(validDates));
+        const futureDates = validDates.filter((d) => d >= todayInTz);
+        if (futureDates.length === 0) {
+          throw new Error(`All selected dates are in the past (before ${todayInTz}). No future dates to update.`);
+        }
+        return Array.from(new Set(futureDates));
       }
 
       case 'next_30_days_weekday': {
@@ -509,9 +628,10 @@ export class BookingAvailabilityService {
         }
         const targetDow = this.getDayOfWeekInTz(baseDate, timezone);
         const dates = [];
+        const startDate = baseDate < todayInTz ? todayInTz : baseDate;
         for (let i = 0; i < 30; i++) {
-          const dStr = addDaysToDateStr(baseDate, i);
-          if (this.getDayOfWeekInTz(dStr, timezone) === targetDow) {
+          const dStr = addDaysToDateStr(startDate, i);
+          if (dStr >= todayInTz && this.getDayOfWeekInTz(dStr, timezone) === targetDow) {
             dates.push(dStr);
           }
         }
@@ -525,7 +645,11 @@ export class BookingAvailabilityService {
         if (rangeStart > rangeEnd) {
           throw new Error('rangeStart cannot be after rangeEnd.');
         }
-        const allDays = getDatesInRange(rangeStart, rangeEnd, 365);
+        if (rangeEnd < todayInTz) {
+          throw new Error(`Date range ${rangeStart} to ${rangeEnd} is completely in the past (before ${todayInTz}). No future dates to update.`);
+        }
+        const effectiveStart = rangeStart < todayInTz ? todayInTz : rangeStart;
+        const allDays = getDatesInRange(effectiveStart, rangeEnd, 365);
         if (Array.isArray(weekdaysFilter) && weekdaysFilter.length > 0) {
           const filterSet = new Set(weekdaysFilter.map(Number));
           return allDays.filter((d) => filterSet.has(this.getDayOfWeekInTz(d, timezone)));
@@ -536,6 +660,14 @@ export class BookingAvailabilityService {
       default:
         throw new Error(`Unsupported scope: ${scope}. Supported scopes: this_date, every_weekday, selected_dates, next_30_days_weekday, custom_range.`);
     }
+  }
+
+  /**
+   * Determine effective schedule for a date using authoritative configuration
+   */
+  async getEffectiveScheduleForDate(dateStr, tz = 'Asia/Kolkata') {
+    const config = await this.getConfig();
+    return this.getDateEffectiveAvailability(dateStr, config);
   }
 
   /**
@@ -637,6 +769,7 @@ export class BookingAvailabilityService {
     const currentConfig = await this.getConfig();
     const newConfig = JSON.parse(JSON.stringify(currentConfig));
     const tz = newConfig.timezone || 'Asia/Kolkata';
+    const todayInTz = getTodayInTz(tz);
 
     // 1. Recurring weekly update
     if (scope === 'every_weekday') {
@@ -656,7 +789,7 @@ export class BookingAvailabilityService {
         const val = validateTimeRanges(ranges);
         if (!val.valid) throw new Error(val.error);
         newConfig.weekly_hours[dow].active = true;
-        newConfig.weekly_hours[dow].ranges = ranges;
+        newConfig.weekly_hours[dow].ranges = sortAndNormalizeRanges(ranges);
       } else if (operation === 'restore_weekly') {
         newConfig.weekly_hours[dow].active = true;
         newConfig.weekly_hours[dow].ranges = DEFAULT_WEEKLY_HOURS[dow].ranges;
@@ -670,6 +803,7 @@ export class BookingAvailabilityService {
         dayName,
         affectedDates: [],
         affectedCount: 'all_future',
+        skippedPastCount: 0,
         config: saved,
       };
     }
@@ -686,13 +820,30 @@ export class BookingAvailabilityService {
     });
 
     if (affectedDates.length === 0) {
-      throw new Error('No valid dates found to apply this rule.');
+      throw new Error('No valid future dates found to apply this rule.');
+    }
+
+    // Compute how many past dates were requested and skipped
+    let skippedPastCount = 0;
+    if (scope === 'selected_dates' && Array.isArray(targetDates)) {
+      skippedPastCount = targetDates.filter((d) => typeof d === 'string' && d < todayInTz).length;
+    } else if (scope === 'custom_range' && rangeStart < todayInTz) {
+      const allRawDays = getDatesInRange(rangeStart, rangeEnd, 365);
+      const pastDays = allRawDays.filter((d) => d < todayInTz);
+      if (Array.isArray(weekdaysFilter) && weekdaysFilter.length > 0) {
+        const filterSet = new Set(weekdaysFilter.map(Number));
+        skippedPastCount = pastDays.filter((d) => filterSet.has(this.getDayOfWeekInTz(d, tz))).length;
+      } else {
+        skippedPastCount = pastDays.length;
+      }
     }
 
     if (operation === 'change_hours' || operation === 'block_range') {
       const val = validateTimeRanges(ranges);
       if (!val.valid) throw new Error(val.error);
     }
+
+    const cleanRanges = sortAndNormalizeRanges(ranges);
 
     // Apply changes across all affected dates
     for (const d of affectedDates) {
@@ -710,7 +861,7 @@ export class BookingAvailabilityService {
           type: 'unavailable',
           is_available: false,
           ranges: [],
-          reason: reason.trim() || 'Day Closed',
+          reason: reason.trim() || 'Holiday — Office Closed',
           created_at: new Date().toISOString(),
         });
       } else if (operation === 'change_hours') {
@@ -723,7 +874,7 @@ export class BookingAvailabilityService {
           date: d,
           type: 'custom_hours',
           is_available: true,
-          ranges,
+          ranges: cleanRanges,
           reason: reason.trim() || 'Custom Hours',
           created_at: new Date().toISOString(),
         });
@@ -740,7 +891,7 @@ export class BookingAvailabilityService {
           date: d,
           type: 'blocked_range',
           is_available: true,
-          ranges,
+          ranges: cleanRanges,
           reason: reason.trim() || 'Blocked Time Window',
           created_at: new Date().toISOString(),
         });
@@ -753,6 +904,7 @@ export class BookingAvailabilityService {
       affectedScope: scope,
       affectedDates,
       affectedCount: affectedDates.length,
+      skippedPastCount,
       config: saved,
     };
   }
@@ -785,7 +937,7 @@ export class BookingAvailabilityService {
         timezone: clientTimezone,
         availableSlots: [],
         isClosed: true,
-        closureReason: fullDayClosure.reason || 'Closed / Date Unavailable',
+        closureReason: fullDayClosure.reason?.trim() || 'Unavailable',
       };
     }
 
@@ -839,7 +991,7 @@ export class BookingAvailabilityService {
         const min = cur % 60;
 
         // Check if slot falls in any blocked interval
-        const isBlocked = blockedIntervals.some((b) => cur >= b.startM && cur < b.endM);
+        const isBlocked = blockedIntervals.some((b) => cur < b.endM && cur + 30 > b.startM);
         if (isBlocked) {
           continue; // Slot excluded by partial-day blocking
         }
@@ -902,6 +1054,66 @@ export class BookingAvailabilityService {
       timezone: clientTimezone,
       availableSlots,
       isClosed: false,
+    };
+  }
+
+  /**
+   * Month Availability Status
+   * Returns a calendar month map for public booking UI (disabled dates, holiday reasons)
+   */
+  async getMonthAvailability(monthStr, clientTimezone = 'Asia/Kolkata') {
+    if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
+      throw new Error('Valid month (YYYY-MM) is required.');
+    }
+
+    const config = await this.getConfig();
+    const availabilityTz = config.timezone || 'Asia/Kolkata';
+    const todayInTz = getTodayInTz(availabilityTz);
+
+    const [year, month] = monthStr.split('-').map(Number);
+    // Number of days in the requested month
+    const totalDays = new Date(year, month, 0).getDate();
+
+    const days = {};
+    for (let d = 1; d <= totalDays; d++) {
+      const dayStr = String(d).padStart(2, '0');
+      const dateStr = `${monthStr}-${dayStr}`;
+      const isPast = dateStr < todayInTz;
+
+      const overrides = (config.date_overrides || []).filter((o) => o.date === dateStr);
+      const fullDayClosure = overrides.find((o) => o.type === 'unavailable' || o.is_available === false);
+      const customHoursOverride = overrides.find((o) => o.type === 'custom_hours' && Array.isArray(o.ranges) && o.ranges.length > 0);
+      const blockedOverrides = overrides.filter((o) => o.type === 'blocked_range' && Array.isArray(o.ranges) && o.ranges.length > 0);
+
+      const dow = this.getDayOfWeekInTz(dateStr, availabilityTz);
+      const weeklyDay = (config.weekly_hours || {})[dow] || (config.weekly_hours || {})[String(dow)];
+
+      let isClosed = false;
+      let closureReason = '';
+
+      if (fullDayClosure) {
+        isClosed = true;
+        closureReason = fullDayClosure.reason?.trim() || 'Unavailable';
+      } else if (!customHoursOverride && (!weeklyDay || !weeklyDay.active || !Array.isArray(weeklyDay.ranges) || weeklyDay.ranges.length === 0)) {
+        isClosed = true;
+        closureReason = 'Unavailable';
+      }
+
+      days[dateStr] = {
+        dateStr,
+        isPast,
+        isClosed,
+        closureReason: isClosed ? closureReason : undefined,
+        hasCustomHours: Boolean(customHoursOverride),
+        hasBlockedRanges: blockedOverrides.length > 0,
+      };
+    }
+
+    return {
+      success: true,
+      month: monthStr,
+      timezone: clientTimezone,
+      days,
     };
   }
 
@@ -980,7 +1192,7 @@ export class BookingAvailabilityService {
       for (const r of bo.ranges) {
         const startM = timeToMinutes(r.start);
         const endM = timeToMinutes(r.end);
-        if (slotMins >= startM && slotMins < endM) {
+        if (slotMins < endM && slotMins + 30 > startM) {
           return { allowed: false, reason: `Requested time slot is blocked (${bo.reason || 'Blocked by admin'}).` };
         }
       }

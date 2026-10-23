@@ -88,11 +88,22 @@ export const getUtcIsoStringFromLocalTime = (dateStr, hour, min, tz = 'Asia/Kolk
 /**
  * GET /api/bookings/availability
  * Returns available 30-min slots based on admin weekly schedule, date overrides, and existing bookings
+ * Also supports month status query (?month=YYYY-MM) for public calendar disabled/holiday views
  */
 export const getAvailability = async (req, res, next) => {
   try {
-    const { date: reqDate, timezone = 'Asia/Kolkata' } = req.query;
+    const { date: reqDate, month: reqMonth, timezone = 'Asia/Kolkata' } = req.query;
 
+    // Monthly Calendar Summary Request
+    if (reqMonth && !reqDate) {
+      if (!/^\d{4}-\d{2}$/.test(reqMonth)) {
+        return res.status(400).json({ success: false, message: 'Valid month (YYYY-MM) is required.' });
+      }
+      const monthResult = await bookingAvailabilityService.getMonthAvailability(reqMonth, timezone);
+      return res.json(monthResult);
+    }
+
+    // Specific Date Slot Request
     if (!reqDate || !/^\d{4}-\d{2}-\d{2}$/.test(reqDate)) {
       return res.status(400).json({ success: false, message: 'Valid date (YYYY-MM-DD) is required.' });
     }
@@ -972,6 +983,7 @@ export const applyAdminAvailabilityRule = async (req, res, next) => {
             operation: req.body.operation,
             scope: req.body.scope,
             affectedCount: result.affectedCount,
+            skippedPastCount: result.skippedPastCount,
             baseDate: req.body.baseDate,
           },
           created_at: new Date().toISOString(),
@@ -979,9 +991,14 @@ export const applyAdminAvailabilityRule = async (req, res, next) => {
       } catch (_) {}
     }
 
+    let message = 'Availability rule applied successfully.';
+    if (result.skippedPastCount > 0) {
+      message += ` (${result.skippedPastCount} past date(s) skipped — historical dates are read-only).`;
+    }
+
     return res.json({
       success: true,
-      message: 'Availability rule applied successfully.',
+      message,
       ...result,
     });
   } catch (err) {
@@ -998,11 +1015,23 @@ export const applyAdminAvailabilityRule = async (req, res, next) => {
  */
 export const previewAffectedDates = async (req, res, next) => {
   try {
+    const tz = req.body?.timezone || 'Asia/Kolkata';
+    const todayInTz = getTodayInTz(tz);
     const dates = bookingAvailabilityService.calculateAffectedDates(req.body);
+
+    let skippedPastCount = 0;
+    if (req.body.scope === 'selected_dates' && Array.isArray(req.body.targetDates)) {
+      skippedPastCount = req.body.targetDates.filter((d) => typeof d === 'string' && d < todayInTz).length;
+    } else if (req.body.scope === 'custom_range' && req.body.rangeStart < todayInTz) {
+      const allRawDays = getDatesInRange(req.body.rangeStart, req.body.rangeEnd, 365);
+      skippedPastCount = allRawDays.filter((d) => d < todayInTz).length;
+    }
+
     return res.json({
       success: true,
       affectedDates: dates,
       count: dates.length,
+      skippedPastCount,
     });
   } catch (err) {
     return res.status(400).json({

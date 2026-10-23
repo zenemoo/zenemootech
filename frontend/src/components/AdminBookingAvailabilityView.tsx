@@ -112,6 +112,44 @@ const formatTime12H = (time24: string): string => {
   return `${displayHour}:${m} ${period}`;
 };
 
+export const parseTimeToMinutes = (timeStr: string): number => {
+  if (!timeStr || typeof timeStr !== 'string') return -1;
+  const clean = timeStr.trim();
+
+  // 12-hour format: e.g. "3:00 PM", "07:30 PM", "12:00 AM", "12:00 PM"
+  const match12 = clean.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$/i);
+  if (match12) {
+    let h = parseInt(match12[1], 10);
+    const m = parseInt(match12[2], 10);
+    const period = match12[3].toUpperCase();
+    if (h < 1 || h > 12 || m < 0 || m > 59) return -1;
+    if (period === 'PM' && h < 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  }
+
+  // 24-hour format: "HH:mm" or "H:mm" (00:00 to 24:00)
+  const match24 = clean.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    const h = parseInt(match24[1], 10);
+    const m = parseInt(match24[2], 10);
+    if (h < 0 || h > 24 || m < 0 || m > 59) return -1;
+    if (h === 24 && m > 0) return -1;
+    return h * 60 + m;
+  }
+
+  return -1;
+};
+
+export const getTodayInKolkata = (): string => {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+};
+
+export const sortTimeRanges = (ranges: TimeRange[]): TimeRange[] => {
+  if (!Array.isArray(ranges)) return [];
+  return [...ranges].sort((a, b) => parseTimeToMinutes(a.start) - parseTimeToMinutes(b.start));
+};
+
 const addDays = (dateStr: string, days: number): string => {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0));
@@ -322,14 +360,46 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
   // Range validation helper
   const getDayRangeError = (ranges: TimeRange[]): string | null => {
     if (!ranges || ranges.length === 0) return 'At least one working range is required for an active day.';
+
+    const parsed: Array<{ startMins: number; endMins: number; origStart: string; origEnd: string; index: number }> = [];
+
     for (let i = 0; i < ranges.length; i++) {
       const r = ranges[i];
-      if (r.start >= r.end) return `Range #${i + 1}: End time must be after start time.`;
-      if (i > 0) {
-        const prev = ranges[i - 1];
-        if (r.start < prev.end) return `Range #${i + 1} overlaps with Range #${i}.`;
+      const startMins = parseTimeToMinutes(r.start);
+      const endMins = parseTimeToMinutes(r.end);
+
+      if (startMins < 0 || endMins < 0) {
+        return `Range #${i + 1}: Invalid time format. Use HH:mm format.`;
+      }
+
+      if (startMins >= endMins) {
+        return `Range #${i + 1}: End time (${formatTime12H(r.end)}) must be after start time (${formatTime12H(r.start)}).`;
+      }
+
+      if (endMins - startMins < 30) {
+        return `Range #${i + 1}: Time range must be at least 30 minutes.`;
+      }
+
+      if (startMins % 30 !== 0 || endMins % 30 !== 0) {
+        return `Range #${i + 1}: Time range must align with 30-minute intervals.`;
+      }
+
+      parsed.push({ startMins, endMins, origStart: r.start, origEnd: r.end, index: i + 1 });
+    }
+
+    // Sort ranges by start time ascending before checking overlaps
+    const sorted = [...parsed].sort((a, b) => a.startMins - b.startMins);
+
+    // Two ranges overlap only when next.start < previous.end
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+
+      if (curr.startMins < prev.endMins) {
+        return `Time range [${formatTime12H(prev.origStart)}–${formatTime12H(prev.origEnd)}] overlaps with [${formatTime12H(curr.origStart)}–${formatTime12H(curr.origEnd)}].`;
       }
     }
+
     return null;
   };
 
@@ -447,12 +517,30 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
       }
     }
 
+    // Canonical sorting of ranges for all active days
+    const cleanWeekly: Record<string | number, DaySchedule> = {};
+    for (const d of DAYS_OF_WEEK) {
+      const daySched = config.weekly_hours[d.index] || { day: d.name, active: false, ranges: [] };
+      cleanWeekly[d.index] = {
+        ...daySched,
+        ranges: daySched.active ? sortTimeRanges(daySched.ranges) : [],
+      };
+    }
+
+    const payload = {
+      ...config,
+      weekly_hours: cleanWeekly,
+      date_overrides: (config.date_overrides || []).map((o) => ({
+        ...o,
+        ranges: sortTimeRanges(o.ranges || []),
+      })),
+    };
+
     setSaving(true);
     try {
-      const res = await bookingApi.updateAdminAvailability(config);
+      const res = await bookingApi.updateAdminAvailability(payload);
       if (res.data?.success && res.data?.config) {
-        setConfig(res.data.config);
-        setOriginalConfigJson(JSON.stringify(res.data.config));
+        await fetchConfig(); // Reload authoritative saved configuration from backend!
         addToast('Settings Saved', 'Availability schedule and overrides updated successfully.', 'success');
       } else {
         addToast('Save Failed', res.data?.message || 'Unable to save availability settings.', 'error');
@@ -467,7 +555,12 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
 
   // Date Override Modal Handlers (Classic modal)
   const handleOpenAddOverride = (existingOverride?: DateOverride) => {
+    const todayStr = getTodayInKolkata();
     if (existingOverride) {
+      if (existingOverride.date < todayStr) {
+        addToast('Historical Date Read-Only', `Override on past date (${existingOverride.date}) is read-only.`, 'warning');
+        return;
+      }
       setEditingOverrideId(existingOverride.id);
       setOverrideDate(existingOverride.date);
       setOverrideType(existingOverride.type);
@@ -475,7 +568,7 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
       setOverrideReason(existingOverride.reason || '');
     } else {
       setEditingOverrideId(null);
-      setOverrideDate(new Date().toISOString().slice(0, 10));
+      setOverrideDate(todayStr);
       setOverrideType('unavailable');
       setOverrideRanges([{ start: '10:00', end: '18:00' }]);
       setOverrideReason('');
@@ -484,8 +577,14 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
   };
 
   const handleSaveOverrideModal = () => {
+    const todayStr = getTodayInKolkata();
     if (!overrideDate || !/^\d{4}-\d{2}-\d{2}$/.test(overrideDate)) {
       addToast('Invalid Date', 'Please choose a valid calendar date (YYYY-MM-DD).', 'error');
+      return;
+    }
+
+    if (overrideDate < todayStr) {
+      addToast('Past Date Protected', `Cannot create or edit overrides for past date ${overrideDate}. Historical dates are read-only.`, 'error');
       return;
     }
 
@@ -505,7 +604,7 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
         date: overrideDate,
         type: overrideType,
         is_available: overrideType !== 'unavailable',
-        ranges: overrideType === 'unavailable' ? [] : overrideRanges,
+        ranges: overrideType === 'unavailable' ? [] : sortTimeRanges(overrideRanges),
         reason: overrideReason.trim() || undefined,
         created_at: new Date().toISOString(),
       };
@@ -643,6 +742,9 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
     };
   }, [config]);
 
+  // Track skipped past dates in the current rule preview
+  const [skippedPastDatesCount, setSkippedPastDatesCount] = useState<number>(0);
+
   // Calendar Grid Cells Generation
   const calendarGridDays = useMemo(() => {
     const year = calendarMonth.getFullYear();
@@ -662,7 +764,7 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
       isNext30Days: boolean;
     }> = [];
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getTodayInKolkata();
     const next30EndStr = addDays(todayStr, 29);
 
     // Trailing days from previous month
@@ -713,6 +815,12 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
 
   // Open Date Editor / Apply-To Rules Drawer for a date
   const handleOpenDateEditor = (dateStr: string) => {
+    const todayStr = getTodayInKolkata();
+    if (dateStr < todayStr) {
+      addToast('Historical Date Read-Only', `Date ${dateStr} is in the past and cannot be edited. Historical bookings and past availability are preserved in read-only mode.`, 'info');
+      return;
+    }
+
     setSelectedDate(dateStr);
     setEditingDate(dateStr);
     const eff = getDateEffectiveInfo(dateStr);
@@ -741,6 +849,11 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
   // Toggle multi-selection for a date
   const handleToggleDateSelection = (dateStr: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const todayStr = getTodayInKolkata();
+    if (dateStr < todayStr) {
+      addToast('Past Date Protected', 'Past dates cannot be included in multi-date actions.', 'warning');
+      return;
+    }
     setMultiSelectedDates((prev) => {
       if (prev.includes(dateStr)) {
         return prev.filter((d) => d !== dateStr);
@@ -751,8 +864,13 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
 
   // Open Rule Editor for Batch Selected Dates
   const handleOpenBatchEditor = () => {
-    if (multiSelectedDates.length === 0) return;
-    const baseDate = multiSelectedDates[0];
+    const todayStr = getTodayInKolkata();
+    const futureSelected = multiSelectedDates.filter((d) => d >= todayStr);
+    if (futureSelected.length === 0) {
+      addToast('Past Dates Skipped', 'Selected dates are in the past. Historical dates cannot be modified.', 'warning');
+      return;
+    }
+    const baseDate = futureSelected[0];
     setEditingDate(baseDate);
     setSelectedDate(baseDate);
     setRuleOperation('change_hours');
@@ -764,33 +882,37 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
 
   // Compute live list of affected dates based on scope
   const affectedDatesList = useMemo(() => {
-    if (!editingDate) return [];
+    if (!editingDate) {
+      setSkippedPastDatesCount(0);
+      return [];
+    }
+
+    const todayStr = getTodayInKolkata();
+    let rawList: string[] = [];
 
     if (ruleScope === 'this_date') {
-      return [editingDate];
-    }
-    if (ruleScope === 'every_weekday') {
+      rawList = [editingDate];
+    } else if (ruleScope === 'every_weekday') {
+      setSkippedPastDatesCount(0);
       return []; // Recurring weekly schedule affects all future occurrences of that weekday
-    }
-    if (ruleScope === 'selected_dates') {
-      if (multiSelectedDates.length > 0) {
-        return [...multiSelectedDates].sort();
-      }
-      return [editingDate];
-    }
-    if (ruleScope === 'next_30_days_weekday') {
+    } else if (ruleScope === 'selected_dates') {
+      rawList = multiSelectedDates.length > 0 ? [...multiSelectedDates].sort() : [editingDate];
+    } else if (ruleScope === 'next_30_days_weekday') {
       const targetDow = getDayOfWeek(editingDate);
       const list: string[] = [];
+      const startDate = editingDate < todayStr ? todayStr : editingDate;
       for (let i = 0; i < 30; i++) {
-        const dStr = addDays(editingDate, i);
+        const dStr = addDays(startDate, i);
         if (getDayOfWeek(dStr) === targetDow) {
           list.push(dStr);
         }
       }
-      return list;
-    }
-    if (ruleScope === 'custom_range') {
-      if (!ruleRangeStart || !ruleRangeEnd || ruleRangeStart > ruleRangeEnd) return [];
+      rawList = list;
+    } else if (ruleScope === 'custom_range') {
+      if (!ruleRangeStart || !ruleRangeEnd || ruleRangeStart > ruleRangeEnd) {
+        setSkippedPastDatesCount(0);
+        return [];
+      }
       const list: string[] = [];
       let cur = ruleRangeStart;
       let count = 0;
@@ -801,9 +923,14 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
         cur = addDays(cur, 1);
         count++;
       }
-      return list;
+      rawList = list;
+    } else {
+      rawList = [editingDate];
     }
-    return [editingDate];
+
+    const futureOnly = rawList.filter((d) => d >= todayStr);
+    setSkippedPastDatesCount(rawList.length - futureOnly.length);
+    return futureOnly;
   }, [editingDate, ruleScope, multiSelectedDates, ruleRangeStart, ruleRangeEnd, ruleWeekdaysFilter]);
 
   // Existing confirmed bookings on affected dates warning check
@@ -823,9 +950,22 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
     );
   }, [existingBookings, ruleScope, editingDate, affectedDatesList]);
 
+  // Existing date overrides affected by proposed rule
+  const affectedExistingOverrides = useMemo(() => {
+    if (!config?.date_overrides || ruleScope === 'every_weekday') return [];
+    const dateSet = new Set(affectedDatesList);
+    return (config.date_overrides || []).filter((o) => dateSet.has(o.date));
+  }, [config, ruleScope, affectedDatesList]);
+
   // Apply Rule Execution
   const handleApplyRule = async () => {
     if (!config || !editingDate) return;
+    const todayStr = getTodayInKolkata();
+
+    if (editingDate < todayStr && ruleScope === 'this_date') {
+      addToast('Past Date Protected', 'Cannot edit availability on past dates. Historical dates are read-only.', 'error');
+      return;
+    }
 
     if (ruleOperation === 'change_hours' || ruleOperation === 'block_range') {
       const err = getDayRangeError(ruleRanges);
@@ -835,28 +975,34 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
       }
     }
 
+    const futureDates = affectedDatesList.filter((d) => d >= todayStr);
+    if (ruleScope !== 'every_weekday' && futureDates.length === 0) {
+      addToast('No Future Dates', 'All targeted dates are in the past. Historical dates cannot be modified.', 'warning');
+      return;
+    }
+
     setRuleApplying(true);
     try {
       const res = await bookingApi.applyAdminAvailabilityRule({
         operation: ruleOperation,
         scope: ruleScope,
         baseDate: editingDate,
-        targetDates: affectedDatesList,
+        targetDates: futureDates,
         rangeStart: ruleRangeStart,
         rangeEnd: ruleRangeEnd,
         weekdaysFilter: ruleWeekdaysFilter,
-        ranges: ruleRanges,
+        ranges: sortTimeRanges(ruleRanges),
         reason: ruleReason,
       });
 
       if (res.data?.success && res.data?.config) {
-        setConfig(res.data.config);
-        setOriginalConfigJson(JSON.stringify(res.data.config));
-        addToast(
-          'Availability Rule Applied',
-          `Successfully applied ${ruleOperation.replace('_', ' ')} (${res.data.affectedCount || 1} date(s) updated).`,
-          'success'
-        );
+        await fetchConfig(); // Reload authoritative saved configuration from backend!
+        let msg = `Successfully applied ${ruleOperation.replace('_', ' ')} (${res.data.affectedCount || futureDates.length} date(s) updated).`;
+        if (res.data.skippedPastCount > 0 || skippedPastDatesCount > 0) {
+          const count = res.data.skippedPastCount || skippedPastDatesCount;
+          msg += ` (${count} past date(s) skipped — historical dates are read-only).`;
+        }
+        addToast('Availability Rule Applied', msg, 'success');
         setIsRuleEditorOpen(false);
         setMultiSelectedDates([]);
         setMultiSelectMode(false);
@@ -1140,6 +1286,12 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
                   <div
                     key={cell.dateStr}
                     onClick={() => {
+                      if (cell.isPast) {
+                        if (cellBookings.length > 0) {
+                          addToast('Historical Date', `Date ${formatDatePretty(cell.dateStr)} had ${cellBookings.length} booking(s). Historical dates are read-only.`, 'info');
+                        }
+                        return;
+                      }
                       if (multiSelectMode) {
                         setMultiSelectedDates((prev) =>
                           prev.includes(cell.dateStr) ? prev.filter((d) => d !== cell.dateStr) : [...prev, cell.dateStr].sort()
@@ -1148,16 +1300,18 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
                         handleOpenDateEditor(cell.dateStr);
                       }
                     }}
-                    className={`min-h-[78px] sm:min-h-[96px] p-1.5 sm:p-2.5 rounded-2xl border transition-all relative flex flex-col justify-between cursor-pointer select-none group ${
-                      !cell.isCurrentMonth
-                        ? 'opacity-30 bg-transparent border-white/5'
+                    className={`min-h-[78px] sm:min-h-[96px] p-1.5 sm:p-2.5 rounded-2xl border transition-all relative flex flex-col justify-between select-none group ${
+                      cell.isPast
+                        ? 'opacity-40 bg-black/40 border-white/5 cursor-not-allowed text-slate-500'
+                        : !cell.isCurrentMonth
+                        ? 'opacity-30 bg-transparent border-white/5 cursor-pointer'
                         : isSelected
-                        ? 'border-cyan-400 ring-2 ring-cyan-400/30 bg-cyan-500/10'
+                        ? 'border-cyan-400 ring-2 ring-cyan-400/30 bg-cyan-500/10 cursor-pointer'
                         : isMultiSelected
-                        ? 'border-purple-400 ring-2 ring-purple-400/30 bg-purple-500/10'
+                        ? 'border-purple-400 ring-2 ring-purple-400/30 bg-purple-500/10 cursor-pointer'
                         : cell.isNext30Days && highlightNext30Days
-                        ? `${eff.colorClass} ring-1 ring-cyan-400/40`
-                        : `${eff.colorClass} hover:border-white/30`
+                        ? `${eff.colorClass} ring-1 ring-cyan-400/40 cursor-pointer`
+                        : `${eff.colorClass} hover:border-white/30 cursor-pointer`
                     }`}
                   >
                     {/* Top Row: Date Number & Multi-select indicator / Today Badge */}
@@ -1167,15 +1321,17 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
                           cell.isToday
                             ? 'w-6 h-6 rounded-full bg-cyan-400 text-black flex items-center justify-center font-extrabold shadow-md shadow-cyan-400/30'
                             : cell.isCurrentMonth
-                            ? 'text-white'
-                            : 'text-slate-500'
+                            ? cell.isPast
+                              ? 'text-slate-500'
+                              : 'text-white'
+                            : 'text-slate-600'
                         }`}
                       >
                         {cell.dayNumber}
                       </span>
 
                       <div className="flex items-center gap-1">
-                        {multiSelectMode && cell.isCurrentMonth && (
+                        {multiSelectMode && cell.isCurrentMonth && !cell.isPast && (
                           <button
                             type="button"
                             onClick={(e) => handleToggleDateSelection(cell.dateStr, e)}
@@ -1212,8 +1368,12 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
 
                     {/* Operating hours snippet on desktop */}
                     <div className="hidden sm:block text-[9px] font-mono text-slate-400 truncate mt-0.5">
-                      {eff.isWorking && eff.ranges.length > 0 ? (
-                        <span>{formatTime12H(eff.ranges[0].start)} – {formatTime12H(eff.ranges[eff.ranges.length - 1].end)}</span>
+                      {cell.isPast ? (
+                        <span className="italic text-slate-500">Read-only history</span>
+                      ) : eff.isWorking && eff.ranges.length > 0 ? (
+                        <span title={eff.ranges.map((r) => `${formatTime12H(r.start)} – ${formatTime12H(r.end)}`).join(', ')}>
+                          {eff.ranges.map((r) => `${formatTime12H(r.start)}–${formatTime12H(r.end)}`).join(', ')}
+                        </span>
                       ) : (
                         <span className="italic">{eff.reason}</span>
                       )}
@@ -1921,6 +2081,36 @@ export const AdminBookingAvailabilityView: React.FC<AdminBookingAvailabilityView
                       + {affectedDatesList.length - 30} more dates...
                     </span>
                   )}
+                </div>
+              )}
+
+              {/* SKIPPED PAST DATES NOTICE */}
+              {skippedPastDatesCount > 0 && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-mono flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{skippedPastDatesCount} past date(s) skipped — historical dates before today in Asia/Kolkata cannot be modified.</span>
+                </div>
+              )}
+
+              {/* EXISTING DATE OVERRIDES PREVIEW NOTICE */}
+              {affectedExistingOverrides.length > 0 && (
+                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-200 text-xs font-mono space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-purple-300">
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>Existing Date Overrides Notice ({affectedExistingOverrides.length} date(s))</span>
+                  </div>
+                  <p className="text-[11px] text-purple-200/80 leading-relaxed">
+                    {ruleOperation === 'restore_weekly'
+                      ? 'These specific date overrides will be cleared to restore the recurring weekly schedule.'
+                      : 'This operation will update the overrides on these dates.'}
+                  </p>
+                  <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pt-1">
+                    {affectedExistingOverrides.map((o) => (
+                      <span key={o.id} className="px-2 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-[10px] text-purple-200">
+                        {o.date} ({o.type.replace('_', ' ')})
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

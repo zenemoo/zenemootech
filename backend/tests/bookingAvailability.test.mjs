@@ -560,6 +560,285 @@ await runAsyncTest('Test 18: Reject time block on fully closed date to prevent a
   assert.strictEqual(checkSlots.availableSlots.length, 0);
 });
 
+// -----------------------------------------------------------------------------
+// 19. Advanced Time-range overlap validation and sorting
+// -----------------------------------------------------------------------------
+runTest('Test 19: Advanced Time-range overlap validation and sorting', () => {
+  // 3:00 PM–5:30 PM (15:00–17:30) and 7:30 PM–10:30 PM (19:30–22:30) -> VALID
+  const val1 = validateTimeRanges([
+    { start: '15:00', end: '17:30' },
+    { start: '19:30', end: '22:30' },
+  ]);
+  assert.strictEqual(val1.valid, true, '15:00-17:30 and 19:30-22:30 must be valid');
+
+  // Input out of chronological order: 19:30-22:30 first, 15:00-17:30 second -> VALID after sort
+  const valOrder = validateTimeRanges([
+    { start: '19:30', end: '22:30' },
+    { start: '15:00', end: '17:30' },
+  ]);
+  assert.strictEqual(valOrder.valid, true, 'Out of order non-overlapping ranges must be valid');
+
+  // 12H format: 3:00 PM–5:30 PM and 7:30 PM–10:30 PM -> VALID
+  const val12H = validateTimeRanges([
+    { start: '3:00 PM', end: '5:30 PM' },
+    { start: '7:30 PM', end: '10:30 PM' },
+  ]);
+  assert.strictEqual(val12H.valid, true, '12H format ranges must parse and validate');
+
+  // 10:00 AM–12:00 PM plus 2:00 PM–4:00 PM -> VALID
+  const val2 = validateTimeRanges([
+    { start: '10:00', end: '12:00' },
+    { start: '14:00', end: '16:00' },
+  ]);
+  assert.strictEqual(val2.valid, true);
+
+  // 10:00 AM–1:00 PM plus 12:30 PM–3:00 PM -> INVALID (overlaps by 30 mins)
+  const val3 = validateTimeRanges([
+    { start: '10:00', end: '13:00' },
+    { start: '12:30', end: '15:00' },
+  ]);
+  assert.strictEqual(val3.valid, false, 'Overlapping ranges must be rejected');
+
+  // Zero-length range (10:00 - 10:00) -> INVALID
+  const valZero = validateTimeRanges([{ start: '10:00', end: '10:00' }]);
+  assert.strictEqual(valZero.valid, false, 'Zero-length range must be rejected');
+
+  // Reversed range (18:00 - 10:00) -> INVALID
+  const valRev = validateTimeRanges([{ start: '18:00', end: '10:00' }]);
+  assert.strictEqual(valRev.valid, false, 'Reversed range must be rejected');
+
+  // Adjacent ranges (10:00 - 12:00 and 12:00 - 14:00) -> VALID
+  const valAdj = validateTimeRanges([
+    { start: '10:00', end: '12:00' },
+    { start: '12:00', end: '14:00' },
+  ]);
+  assert.strictEqual(valAdj.valid, true, 'Adjacent ranges touching at boundaries must be valid');
+});
+
+// -----------------------------------------------------------------------------
+// 20. Past-date protection on single-date edit and bulk operations
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 20: Past-date protection prevents mutations on historical dates', async () => {
+  const pastDate = '2020-01-15';
+
+  // 1. Single date edit on past date must reject in calculateAffectedDates
+  let rejectedSingle = false;
+  try {
+    service.calculateAffectedDates({
+      scope: 'this_date',
+      baseDate: pastDate,
+      timezone: 'Asia/Kolkata',
+    });
+  } catch (err) {
+    rejectedSingle = true;
+    assert.ok(err.message.includes('Cannot edit availability for past date'));
+  }
+  assert.strictEqual(rejectedSingle, true, 'calculateAffectedDates must reject past this_date');
+
+  // 2. Bulk operations (selected_dates) must filter out past dates and return skippedPastCount
+  const futureDate1 = '2028-12-01';
+  const futureDate2 = '2028-12-02';
+  const affected = service.calculateAffectedDates({
+    scope: 'selected_dates',
+    targetDates: [pastDate, '2021-05-10', futureDate1, futureDate2],
+    timezone: 'Asia/Kolkata',
+  });
+  assert.deepStrictEqual(affected, [futureDate1, futureDate2], 'Must only return future dates');
+
+  // 3. Applying rule on selected_dates reports skippedPastCount
+  const res = await service.applyRuleScope({
+    operation: 'close_day',
+    scope: 'selected_dates',
+    targetDates: [pastDate, futureDate1],
+    reason: 'Winter Retreat',
+  }, 'test_runner');
+  assert.strictEqual(res.skippedPastCount, 1, 'Must report 1 skipped past date');
+  assert.strictEqual(res.affectedCount, 1, 'Only 1 future date affected');
+
+  // 4. Direct saveConfig rejecting new override on past date
+  let rejectedSave = false;
+  try {
+    await service.saveConfig({
+      weekly_hours: DEFAULT_WEEKLY_HOURS,
+      date_overrides: [
+        { id: 'past_ovr', date: pastDate, type: 'unavailable', is_available: false, ranges: [] },
+      ],
+      timezone: 'Asia/Kolkata',
+    }, 'test_runner');
+  } catch (err) {
+    rejectedSave = true;
+    assert.ok(err.message.includes('Cannot create date override for past date'));
+  }
+  assert.strictEqual(rejectedSave, true, 'saveConfig must reject past date overrides');
+});
+
+// -----------------------------------------------------------------------------
+// 21. Weekly Friday schedule changes update recurring baseline & future Fridays
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 21: Weekly Friday schedule changes update future baseline and preserve overrides', async () => {
+  const newFridayRanges = [
+    { start: '15:00', end: '17:30' },
+    { start: '19:30', end: '22:30' },
+  ];
+
+  const futureFriday1 = '2028-07-07'; // Friday inheriting weekly
+  const futureFriday2 = '2028-07-14'; // Friday with specific custom override
+  const customFridayRanges = [{ start: '11:00', end: '13:00' }];
+
+  // 1. Create specific override on futureFriday2
+  await service.applyRuleScope({
+    operation: 'change_hours',
+    scope: 'this_date',
+    baseDate: futureFriday2,
+    ranges: customFridayRanges,
+    reason: 'Short Friday Shift',
+  }, 'test_runner');
+
+  // 2. Change recurring Friday weekly hours via applyRuleScope(every_weekday)
+  await service.applyRuleScope({
+    operation: 'change_hours',
+    scope: 'every_weekday',
+    baseDate: futureFriday1,
+    ranges: newFridayRanges,
+  }, 'test_runner');
+
+  // 3. futureFriday1 must inherit the new weekly Friday ranges (15:00-17:30 and 19:30-22:30)
+  const slots1 = await service.getAvailableSlots(futureFriday1, 'Asia/Kolkata');
+  assert.strictEqual(slots1.isClosed, false);
+  const labels1 = slots1.availableSlots.map((s) => s.label);
+  assert.ok(labels1.includes('3:00 PM'));
+  assert.ok(labels1.includes('5:00 PM'));
+  assert.ok(labels1.includes('7:30 PM'));
+  assert.ok(labels1.includes('10:00 PM'));
+  assert.ok(!labels1.includes('10:00 AM')); // Morning was removed from baseline
+
+  // 4. futureFriday2 must PRESERVE its specific override (11:00 AM - 1:00 PM: 4 slots)
+  const slots2 = await service.getAvailableSlots(futureFriday2, 'Asia/Kolkata');
+  assert.strictEqual(slots2.isClosed, false);
+  const labels2 = slots2.availableSlots.map((s) => s.label);
+  assert.deepStrictEqual(labels2, ['11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM']);
+});
+
+// -----------------------------------------------------------------------------
+// 22. Effective schedule precedence and getMonthAvailability public status
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 22: Effective schedule precedence and getMonthAvailability public status', async () => {
+  const closedDate = '2028-08-01'; // Tuesday
+  const customDate = '2028-08-02'; // Wednesday
+  const blockedDate = '2028-08-03'; // Thursday
+
+  await service.applyRuleScope({
+    operation: 'close_day',
+    scope: 'this_date',
+    baseDate: closedDate,
+    reason: 'Annual Company Offsite',
+  }, 'test_runner');
+
+  await service.applyRuleScope({
+    operation: 'change_hours',
+    scope: 'this_date',
+    baseDate: customDate,
+    ranges: [{ start: '14:00', end: '16:00' }],
+    reason: 'Afternoon Office Hours',
+  }, 'test_runner');
+
+  await service.applyRuleScope({
+    operation: 'block_range',
+    scope: 'this_date',
+    baseDate: blockedDate,
+    ranges: [{ start: '13:00', end: '15:00' }],
+    reason: 'Server Maintenance Window',
+  }, 'test_runner');
+
+  // Verify getEffectiveScheduleForDate
+  const effClosed = await service.getEffectiveScheduleForDate(closedDate, 'Asia/Kolkata');
+  assert.strictEqual(effClosed.status, 'closed');
+  assert.strictEqual(effClosed.isWorking, false);
+  assert.strictEqual(effClosed.reason, 'Annual Company Offsite');
+
+  const effCustom = await service.getEffectiveScheduleForDate(customDate, 'Asia/Kolkata');
+  assert.strictEqual(effCustom.status, 'custom');
+  assert.strictEqual(effCustom.isWorking, true);
+  assert.deepStrictEqual(effCustom.ranges, [{ start: '14:00', end: '16:00' }]);
+
+  const effBlocked = await service.getEffectiveScheduleForDate(blockedDate, 'Asia/Kolkata');
+  assert.strictEqual(effBlocked.status, 'blocked');
+  assert.strictEqual(effBlocked.blockedRanges.length, 1);
+
+  // Verify getMonthAvailability
+  const monthRes = await service.getMonthAvailability('2028-08', 'Asia/Kolkata');
+  const monthData = monthRes.days || monthRes;
+  assert.ok(monthData[closedDate], 'closedDate must be present in month map');
+  assert.strictEqual(monthData[closedDate].isClosed, true);
+  assert.strictEqual(monthData[closedDate].closureReason, 'Annual Company Offsite');
+
+  assert.ok(monthData[customDate], 'customDate must be present in month map');
+  assert.strictEqual(monthData[customDate].isClosed, false);
+  assert.strictEqual(monthData[customDate].hasCustomHours, true);
+
+  assert.ok(monthData[blockedDate], 'blockedDate must be present in month map');
+  assert.strictEqual(monthData[blockedDate].isClosed, false, 'Partial block date must remain bookable');
+  assert.strictEqual(monthData[blockedDate].hasBlockedRanges, true);
+});
+
+// -----------------------------------------------------------------------------
+// 23. isSlotAvailable rejects direct submission for blocked & closed slots
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 23: isSlotAvailable rejects direct submission for blocked, closed, and out-of-bounds slots', async () => {
+  const blockDate = '2028-09-10'; // Sunday
+  // Open Sunday first with 10:00 to 18:00
+  await service.applyRuleScope({
+    operation: 'change_hours',
+    scope: 'this_date',
+    baseDate: blockDate,
+    ranges: [{ start: '10:00', end: '18:00' }],
+  }, 'test_runner');
+
+  // Block 13:00 to 15:00
+  await service.applyRuleScope({
+    operation: 'block_range',
+    scope: 'this_date',
+    baseDate: blockDate,
+    ranges: [{ start: '13:00', end: '15:00' }],
+    reason: 'Executive Lunch',
+  }, 'test_runner');
+
+  // 11:00 AM UTC ISO (local 11:00 AM) -> AVAILABLE
+  const validIso = service.getUtcIsoFromLocal(blockDate, 11, 0, 'Asia/Kolkata');
+  const checkValid = await service.isSlotAvailable(validIso, 'Asia/Kolkata');
+  assert.strictEqual(checkValid.allowed, true);
+
+  // 1:30 PM (13:30) UTC ISO -> REJECTED (blocked)
+  const blockedIso = service.getUtcIsoFromLocal(blockDate, 13, 30, 'Asia/Kolkata');
+  const checkBlocked = await service.isSlotAvailable(blockedIso, 'Asia/Kolkata');
+  assert.strictEqual(checkBlocked.allowed, false);
+  assert.ok(checkBlocked.reason.includes('blocked'));
+
+  // 9:00 AM UTC ISO -> REJECTED (outside operating hours)
+  const outsideIso = service.getUtcIsoFromLocal(blockDate, 9, 0, 'Asia/Kolkata');
+  const checkOutside = await service.isSlotAvailable(outsideIso, 'Asia/Kolkata');
+  assert.strictEqual(checkOutside.allowed, false);
+});
+
+// -----------------------------------------------------------------------------
+// 24. Cache invalidation on save and memoryConfigCache freshness
+// -----------------------------------------------------------------------------
+await runAsyncTest('Test 24: Cache invalidation guarantees fresh config across updates', async () => {
+  const initialConfig = await service.getConfig();
+  assert.ok(initialConfig, 'Initial config loaded');
+
+  // Save new configuration
+  await service.saveConfig({
+    weekly_hours: DEFAULT_WEEKLY_HOURS,
+    date_overrides: [],
+    schedule_name: 'Cache Invalidation Verification',
+  }, 'test_runner');
+
+  // Calling getConfig must immediately return the updated schedule_name
+  const freshConfig = await service.getConfig();
+  assert.strictEqual(freshConfig.schedule_name, 'Cache Invalidation Verification');
+});
+
 // Final cleanup: Restore default weekly hours and clear overrides
 await service.saveConfig({
   weekly_hours: DEFAULT_WEEKLY_HOURS,
