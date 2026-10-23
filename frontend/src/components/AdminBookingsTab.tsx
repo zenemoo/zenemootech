@@ -34,6 +34,7 @@ import {
   Send,
 } from 'lucide-react';
 import { bookingApi } from '../services/api';
+import { AdminBookingAvailabilityView } from './AdminBookingAvailabilityView';
 
 interface CallBookingRecord {
   id: string;
@@ -84,6 +85,7 @@ interface AdminBookingsTabProps {
 }
 
 export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, showConfirm, onActionableCountChange }) => {
+  const [activeView, setActiveView] = useState<'bookings' | 'availability'>('bookings');
   const [bookings, setBookings] = useState<CallBookingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -378,31 +380,74 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
 
   return (
     <div className="space-y-6 font-sans">
-      {/* SECTION HEADER */}
+      {/* SECTION HEADER & VIEW SWITCHER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#0b0f19] p-5 sm:p-6 rounded-3xl border border-white/10 shadow-xl">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold mb-2">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold">
             <Calendar className="w-3.5 h-3.5" /> CALL BOOKINGS MODULE
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold font-display text-white">30 Minute Call Bookings</h2>
-          <p className="text-xs font-mono text-slate-400 mt-1">
-            Manage public discovery calls, view Google Meet links, track email delivery, and update status.
-          </p>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold font-display text-white">30 Minute Call Bookings</h2>
+            <p className="text-xs font-mono text-slate-400 mt-1">
+              Manage public discovery calls, configure availability hours, view Google Meet links, and track delivery.
+            </p>
+          </div>
+
+          {/* VIEW SWITCHER SEGMENTED CONTROL */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setActiveView('bookings')}
+              className={`px-4 py-2 rounded-xl font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeView === 'bookings'
+                  ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
+                  : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] border border-white/10'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Bookings List ({bookings.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveView('availability')}
+              className={`px-4 py-2 rounded-xl font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeView === 'availability'
+                  ? 'bg-gradient-to-r from-cyan-500 to-purple-600 text-black shadow-lg shadow-cyan-500/20'
+                  : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] border border-white/10'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-cyan-400" /> Availability &amp; Working Hours
+            </button>
+          </div>
         </div>
 
-        <button
-          onClick={fetchBookings}
-          disabled={loading}
-          aria-label="Refresh Data"
-          className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/10 text-slate-300 font-mono text-xs font-semibold transition-all flex items-center gap-2 shrink-0 cursor-pointer self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Data</span>
-        </button>
+        {activeView === 'bookings' && (
+          <button
+            onClick={fetchBookings}
+            disabled={loading}
+            aria-label="Refresh Data"
+            className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/10 text-slate-300 font-mono text-xs font-semibold transition-all flex items-center gap-2 shrink-0 cursor-pointer self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Data</span>
+          </button>
+        )}
       </div>
 
-      {/* FILTER & SEARCH BAR */}
-      <div className="bg-[#0b0f19] p-4 rounded-2xl border border-white/10 space-y-3">
+      {/* VIEW 1: AVAILABILITY & WORKING HOURS */}
+      {activeView === 'availability' && (
+        <AdminBookingAvailabilityView
+          addToast={addToast}
+          showConfirm={showConfirm}
+          existingBookings={bookings}
+        />
+      )}
+
+      {/* VIEW 2: BOOKINGS LIST */}
+      {activeView === 'bookings' && (
+        <>
+          {/* FILTER & SEARCH BAR */}
+          <div className="bg-[#0b0f19] p-4 rounded-2xl border border-white/10 space-y-3">
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           {/* Search Input */}
           <div className="relative flex-1">
@@ -804,6 +849,8 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
           </>
         )}
       </div>
+    </>
+  )}
 
       {/* 1. COMPLETE VIEW DETAILS MODAL / DRAWER (Triggered by Eye Icon 👁) */}
       {isViewDetailModalOpen && viewDetailBooking && (

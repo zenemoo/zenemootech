@@ -1,0 +1,82 @@
+{
+  "schedule_name": "Default Working Hours",
+  "timezone": "Asia/Kolkata",
+  "slot_duration": 30,
+  "lead_buffer_minutes": 120,
+  "weekly_hours": {
+    "0": {
+      "day": "Sunday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    },
+    "1": {
+      "day": "Monday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    },
+    "2": {
+      "day": "Tuesday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    },
+    "3": {
+      "day": "Wednesday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    },
+    "4": {
+      "day": "Thursday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    },
+    "5": {
+      "day": "Friday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    },
+    "6": {
+      "day": "Saturday",
+      "active": true,
+      "ranges": [
+        {
+          "start": "10:00",
+          "end": "22:30"
+        }
+      ]
+    }
+  },
+  "date_overrides": [],
+  "is_active": true,
+  "updated_at": "2026-10-23T03:54:06.553Z",
+  "updated_by": "test_cleaner"
+}

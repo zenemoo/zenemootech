@@ -8,6 +8,8 @@ import {
   resendBookingEmail,
   updateAdminBooking,
   deleteAdminBooking,
+  getAdminAvailability,
+  updateAdminAvailability,
 } from '../controllers/bookingController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 import { bookingRateLimiter } from '../middleware/rateLimiter.js';
@@ -30,5 +32,9 @@ router.patch('/admin/:id', verifyToken, requireRole(['admin']), updateAdminBooki
 router.patch('/admin/bookings/:id', verifyToken, requireRole(['admin']), updateAdminBooking);
 router.delete('/admin/:id', verifyToken, requireRole(['admin']), deleteAdminBooking);
 router.delete('/admin/bookings/:id', verifyToken, requireRole(['admin']), deleteAdminBooking);
+
+// Admin Protected Availability & Working Hours Endpoints
+router.get('/admin/availability', verifyToken, requireRole(['admin']), getAdminAvailability);
+router.put('/admin/availability', verifyToken, requireRole(['admin']), updateAdminAvailability);
 
 export default router;

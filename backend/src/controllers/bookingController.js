@@ -16,6 +16,7 @@ import {
   generateCustomerReminderEmailHtml,
   generateAdminReminderEmailHtml,
 } from '../services/bookingEmailTemplate.js';
+import { bookingAvailabilityService } from '../services/bookingAvailabilityService.js';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups.com';
 const TURNSTILE_SECRET = (process.env.TURNSTILE_SECRET_KEY || '').trim();
@@ -86,7 +87,7 @@ export const getUtcIsoStringFromLocalTime = (dateStr, hour, min, tz = 'Asia/Kolk
 
 /**
  * GET /api/bookings/availability
- * Returns available 30-min slots between 10:00 AM and 10:00 PM for a specific date
+ * Returns available 30-min slots based on admin weekly schedule, date overrides, and existing bookings
  */
 export const getAvailability = async (req, res, next) => {
   try {
@@ -107,78 +108,9 @@ export const getAvailability = async (req, res, next) => {
       });
     }
 
-    // Generate 30-min interval slots between 10:00 AM and 10:00 PM in selected timezone
-    const slots = [];
+    const availabilityResult = await bookingAvailabilityService.getAvailableSlots(selectedDate, timezone);
 
-    for (let hour = 10; hour <= 21; hour++) {
-      for (const min of [0, 30]) {
-        const isoString = getUtcIsoStringFromLocalTime(selectedDate, hour, min, timezone);
-
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-        const displayMin = min === 0 ? '00' : '30';
-        const label = `${displayHour}:${displayMin} ${period}`;
-
-        slots.push({
-          iso: isoString,
-          label,
-          hour,
-          min,
-        });
-      }
-    }
-
-    // Include 10:00 PM slot (starts at 22:00 local time)
-    const iso22 = getUtcIsoStringFromLocalTime(selectedDate, 22, 0, timezone);
-    slots.push({
-      iso: iso22,
-      label: '10:00 PM',
-      hour: 22,
-      min: 0,
-    });
-
-    // Fetch existing active bookings for this date from Supabase
-    let bookedTimesSet = new Set();
-    if (supabase) {
-      const { data: existingBookings, error } = await supabase
-        .from('call_bookings')
-        .select('start_time')
-        .eq('booking_date', selectedDate)
-        .in('status', ['confirmed', 'pending']);
-
-      if (!error && Array.isArray(existingBookings)) {
-        existingBookings.forEach((b) => {
-          if (b.start_time) {
-            bookedTimesSet.add(new Date(b.start_time).toISOString());
-          }
-        });
-      }
-    }
-
-    // Filter out booked slots and past slots for today
-    const nowMs = Date.now();
-    const availableSlots = slots.map((slot) => {
-      const slotMs = new Date(slot.iso).getTime();
-
-      // Rule 1: Cannot book a slot in the past (tolerance: now - 5 mins)
-      if (slotMs < nowMs - 5 * 60 * 1000) {
-        return { ...slot, available: false, reason: 'Past time slot' };
-      }
-
-      // Rule 2: Cannot book an already booked time slot
-      if (bookedTimesSet.has(slot.iso)) {
-        return { ...slot, available: false, reason: 'Already booked' };
-      }
-
-      return { ...slot, available: true };
-    });
-
-    return res.json({
-      success: true,
-      date: selectedDate,
-      timezone,
-      availableSlots,
-    });
+    return res.json(availabilityResult);
   } catch (err) {
     next(err);
   }
@@ -251,6 +183,15 @@ export const createBooking = async (req, res, next) => {
 
     if (!supabase) {
       return res.status(500).json({ success: false, message: 'Database service is currently unavailable.' });
+    }
+
+    // 2.5 Server-side Availability Rules Enforcement
+    const slotCheck = await bookingAvailabilityService.isSlotAvailable(startTimeIso, 'Asia/Kolkata');
+    if (!slotCheck.allowed) {
+      return res.status(422).json({
+        success: false,
+        message: slotCheck.reason || 'This time slot is outside configured working hours or blocked by admin.',
+      });
     }
 
     // 3. Double-Booking Pre-Check
@@ -953,3 +894,61 @@ export const deleteAdminBooking = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * GET /api/bookings/admin/availability
+ * Admin endpoint to fetch active availability schedule and date overrides
+ */
+export const getAdminAvailability = async (req, res, next) => {
+  try {
+    const config = await bookingAvailabilityService.getConfig();
+    return res.json({
+      success: true,
+      config,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PUT /api/bookings/admin/availability
+ * Admin endpoint to update and save weekly hours and date overrides
+ */
+export const updateAdminAvailability = async (req, res, next) => {
+  try {
+    const adminUser = req.user || { email: 'admin' };
+    const savedConfig = await bookingAvailabilityService.saveConfig(req.body, adminUser);
+
+    // Write audit log if Supabase is connected
+    if (supabase) {
+      try {
+        await supabase.from('admin_audit_logs').insert([{
+          event_type: 'BOOKING_AVAILABILITY_UPDATED',
+          email: adminUser.email || 'admin',
+          ip_address: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          details: {
+            schedule_name: savedConfig.schedule_name,
+            timezone: savedConfig.timezone,
+            weekly_days_count: Object.keys(savedConfig.weekly_hours || {}).length,
+            date_overrides_count: (savedConfig.date_overrides || []).length,
+          },
+          created_at: new Date().toISOString(),
+        }]);
+      } catch (_) {}
+    }
+
+    return res.json({
+      success: true,
+      message: 'Availability schedule saved successfully.',
+      config: savedConfig,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to update availability schedule.',
+    });
+  }
+};
+

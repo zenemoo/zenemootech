@@ -1,0 +1,666 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { supabase } from '../config/supabase.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const LOCAL_STORE_DIR = path.resolve(__dirname, '../database');
+const LOCAL_STORE_FILE = path.resolve(LOCAL_STORE_DIR, 'booking_availability_store.json');
+
+/**
+ * Standard Default Configuration: 10:00 AM – 10:00 PM, 7 days a week in Asia/Kolkata
+ * Preserves 100% backward compatibility if no custom rules exist yet.
+ */
+export const DEFAULT_WEEKLY_HOURS = {
+  0: { day: 'Sunday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+  1: { day: 'Monday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+  2: { day: 'Tuesday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+  3: { day: 'Wednesday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+  4: { day: 'Thursday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+  5: { day: 'Friday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+  6: { day: 'Saturday', active: true, ranges: [{ start: '10:00', end: '22:30' }] },
+};
+
+export const DEFAULT_AVAILABILITY_CONFIG = {
+  schedule_name: 'Default Working Hours',
+  timezone: 'Asia/Kolkata',
+  slot_duration: 30,
+  lead_buffer_minutes: 120,
+  weekly_hours: DEFAULT_WEEKLY_HOURS,
+  date_overrides: [],
+  is_active: true,
+};
+
+// In-Memory Cache (Short 60s TTL or purged immediately upon admin save)
+let memoryConfigCache = null;
+let memoryCacheExpiry = 0;
+const CACHE_TTL_MS = 60 * 1000;
+
+/**
+ * Helper: Parse "HH:mm" string into total minutes from midnight
+ */
+export const timeToMinutes = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return -1;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return -1;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (h < 0 || h > 24 || m < 0 || m > 59) return -1;
+  if (h === 24 && m > 0) return -1;
+  return h * 60 + m;
+};
+
+/**
+ * Helper: Convert total minutes into normalized "HH:mm" string
+ */
+export const minutesToTimeStr = (totalMinutes) => {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+/**
+ * Validate an array of time ranges:
+ * - Must be array
+ * - Each range must have valid start and end (HH:mm)
+ * - start < end
+ * - duration >= 30 mins
+ * - non-overlapping and sorted
+ */
+export const validateTimeRanges = (ranges) => {
+  if (!Array.isArray(ranges)) {
+    return { valid: false, error: 'Ranges must be an array.' };
+  }
+
+  for (let i = 0; i < ranges.length; i++) {
+    const r = ranges[i];
+    const startMins = timeToMinutes(r.start);
+    const endMins = timeToMinutes(r.end);
+
+    if (startMins < 0 || endMins < 0) {
+      return { valid: false, error: `Invalid time format in range [${r.start || ''} - ${r.end || ''}]. Use HH:mm format.` };
+    }
+
+    if (startMins >= endMins) {
+      return { valid: false, error: `End time (${r.end}) must be after start time (${r.start}).` };
+    }
+
+    if (endMins - startMins < 30) {
+      return { valid: false, error: `Time range [${r.start} - ${r.end}] must be at least 30 minutes.` };
+    }
+
+    // Check alignment to 30-minute intervals
+    if (startMins % 30 !== 0 || endMins % 30 !== 0) {
+      return { valid: false, error: `Time range [${r.start} - ${r.end}] must align with 30-minute intervals (e.g. :00 or :30).` };
+    }
+
+    // Check overlap with previous ranges
+    if (i > 0) {
+      const prevEndMins = timeToMinutes(ranges[i - 1].end);
+      if (startMins < prevEndMins) {
+        return { valid: false, error: `Time ranges [${ranges[i - 1].start}-${ranges[i - 1].end}] and [${r.start}-${r.end}] overlap.` };
+      }
+    }
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Validate weekly hours payload (Sunday 0 to Saturday 6)
+ */
+export const validateWeeklyHours = (weeklyHours) => {
+  if (!weeklyHours || typeof weeklyHours !== 'object') {
+    return { valid: false, error: 'weekly_hours must be an object with days 0 through 6.' };
+  }
+
+  for (let day = 0; day <= 6; day++) {
+    const dayConfig = weeklyHours[day] || weeklyHours[String(day)];
+    if (!dayConfig || typeof dayConfig !== 'object') {
+      return { valid: false, error: `Missing configuration for day ${day}.` };
+    }
+
+    if (dayConfig.active) {
+      if (!Array.isArray(dayConfig.ranges) || dayConfig.ranges.length === 0) {
+        return { valid: false, error: `Active day ${dayConfig.day || day} must have at least one time range.` };
+      }
+
+      const rangeValidation = validateTimeRanges(dayConfig.ranges);
+      if (!rangeValidation.valid) {
+        return { valid: false, error: `${dayConfig.day || `Day ${day}`}: ${rangeValidation.error}` };
+      }
+    }
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Validate date overrides payload
+ */
+export const validateDateOverrides = (overrides) => {
+  if (!Array.isArray(overrides)) {
+    return { valid: false, error: 'date_overrides must be an array.' };
+  }
+
+  const seenDates = new Set();
+
+  for (let i = 0; i < overrides.length; i++) {
+    const ovr = overrides[i];
+    if (!ovr || typeof ovr !== 'object') {
+      return { valid: false, error: `Override at index ${i} is invalid.` };
+    }
+
+    if (!ovr.date || !/^\d{4}-\d{2}-\d{2}$/.test(ovr.date)) {
+      return { valid: false, error: `Override at index ${i} has invalid date format. Expected YYYY-MM-DD.` };
+    }
+
+    const type = ovr.type || (ovr.is_available === false ? 'unavailable' : 'custom_hours');
+    if (!['unavailable', 'custom_hours', 'blocked_range'].includes(type)) {
+      return { valid: false, error: `Override type must be 'unavailable', 'custom_hours', or 'blocked_range'.` };
+    }
+
+    if (type === 'custom_hours' || type === 'blocked_range') {
+      if (!Array.isArray(ovr.ranges) || ovr.ranges.length === 0) {
+        return { valid: false, error: `Override on ${ovr.date} (${type}) requires at least one time range.` };
+      }
+      const rangeVal = validateTimeRanges(ovr.ranges);
+      if (!rangeVal.valid) {
+        return { valid: false, error: `Override on ${ovr.date}: ${rangeVal.error}` };
+      }
+    }
+
+    // Only allow one full-day closure or custom-hours per date
+    if (type === 'unavailable' || type === 'custom_hours') {
+      if (seenDates.has(ovr.date)) {
+        return { valid: false, error: `Multiple overrides found for date ${ovr.date}. Combine them or use a single override per date.` };
+      }
+      seenDates.add(ovr.date);
+    }
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Ensure local backup directory and store file exist
+ */
+const ensureLocalStorage = () => {
+  try {
+    if (!fs.existsSync(LOCAL_STORE_DIR)) {
+      fs.mkdirSync(LOCAL_STORE_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(LOCAL_STORE_FILE)) {
+      fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(DEFAULT_AVAILABILITY_CONFIG, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.warn('[Availability Store] Local storage init note:', e.message);
+  }
+};
+
+/**
+ * Read backup config from local JSON file
+ */
+const loadFromLocalStore = () => {
+  try {
+    if (fs.existsSync(LOCAL_STORE_FILE)) {
+      const raw = fs.readFileSync(LOCAL_STORE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.weekly_hours) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('[Availability Store] Local store read note:', e.message);
+  }
+  return DEFAULT_AVAILABILITY_CONFIG;
+};
+
+/**
+ * Write backup config to local JSON file
+ */
+const saveToLocalStore = (config) => {
+  try {
+    ensureLocalStorage();
+    fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(config, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[Availability Store] Local store write note:', e.message);
+  }
+};
+
+export class BookingAvailabilityService {
+  constructor() {
+    ensureLocalStorage();
+  }
+
+  /**
+   * Clear in-memory cache immediately upon admin updates
+   */
+  invalidateCache() {
+    memoryConfigCache = null;
+    memoryCacheExpiry = 0;
+  }
+
+  /**
+   * Load active availability configuration:
+   * 1. In-memory cache (if valid)
+   * 2. Supabase `booking_availability_settings` table
+   * 3. Local disk fallback (`booking_availability_store.json`)
+   * 4. Hardcoded default 10:00 AM - 10:00 PM 7-day schedule
+   */
+  async getConfig() {
+    const now = Date.now();
+    if (memoryConfigCache && now < memoryCacheExpiry) {
+      return memoryConfigCache;
+    }
+
+    // Try Supabase first
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('booking_availability_settings')
+          .select('*')
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data && data.weekly_hours) {
+          const config = {
+            id: data.id,
+            schedule_name: data.schedule_name || 'Default Working Hours',
+            timezone: data.timezone || 'Asia/Kolkata',
+            slot_duration: data.slot_duration || 30,
+            lead_buffer_minutes: data.lead_buffer_minutes || 120,
+            weekly_hours: data.weekly_hours,
+            date_overrides: Array.isArray(data.date_overrides) ? data.date_overrides : [],
+            updated_at: data.updated_at,
+            updated_by: data.updated_by,
+          };
+
+          memoryConfigCache = config;
+          memoryCacheExpiry = now + CACHE_TTL_MS;
+          // Synchronize local store for offline resilience
+          saveToLocalStore(config);
+          return config;
+        }
+      } catch (err) {
+        console.warn('[Booking Availability Service] Supabase read fallback note:', err.message);
+      }
+    }
+
+    // Fallback to local store or default
+    const local = loadFromLocalStore();
+    memoryConfigCache = local;
+    memoryCacheExpiry = now + CACHE_TTL_MS;
+    return local;
+  }
+
+  /**
+   * Save availability configuration (Admin protected)
+   */
+  async saveConfig(payload, adminUser = 'admin') {
+    const { weekly_hours, date_overrides, timezone = 'Asia/Kolkata', slot_duration = 30, lead_buffer_minutes = 120, schedule_name = 'Default Working Hours' } = payload;
+
+    const weeklyVal = validateWeeklyHours(weekly_hours);
+    if (!weeklyVal.valid) {
+      throw new Error(weeklyVal.error);
+    }
+
+    const overrideVal = validateDateOverrides(date_overrides || []);
+    if (!overrideVal.valid) {
+      throw new Error(overrideVal.error);
+    }
+
+    const cleanConfig = {
+      schedule_name: schedule_name.trim() || 'Default Working Hours',
+      timezone: timezone.trim() || 'Asia/Kolkata',
+      slot_duration: parseInt(slot_duration, 10) || 30,
+      lead_buffer_minutes: parseInt(lead_buffer_minutes, 10) || 120,
+      weekly_hours,
+      date_overrides: date_overrides || [],
+      is_active: true,
+      updated_at: new Date().toISOString(),
+      updated_by: typeof adminUser === 'string' ? adminUser : adminUser?.email || 'admin',
+    };
+
+    // Save to Supabase if available
+    let savedRow = null;
+    if (supabase) {
+      try {
+        const { data: existing } = await supabase
+          .from('booking_availability_settings')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const { data, error } = await supabase
+            .from('booking_availability_settings')
+            .update(cleanConfig)
+            .eq('id', existing.id)
+            .select()
+            .single();
+
+          if (!error && data) savedRow = data;
+        } else {
+          const { data, error } = await supabase
+            .from('booking_availability_settings')
+            .insert([cleanConfig])
+            .select()
+            .single();
+
+          if (!error && data) savedRow = data;
+        }
+      } catch (err) {
+        console.warn('[Booking Availability Service] Supabase save note:', err.message);
+      }
+    }
+
+    // Always persist to local store and invalidate cache
+    saveToLocalStore(cleanConfig);
+    this.invalidateCache();
+
+    return savedRow || cleanConfig;
+  }
+
+  /**
+   * Helper: Convert local date and time into UTC ISO string based on timezone
+   */
+  getUtcIsoFromLocal(dateStr, hour, min, tz = 'Asia/Kolkata') {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const targetTimeMs = Date.UTC(year, month - 1, day, hour, min, 0, 0);
+
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(new Date(targetTimeMs));
+    const p = {};
+    parts.forEach(({ type, value }) => { p[type] = value; });
+
+    const tzHour = parseInt(p.hour, 10) % 24;
+    const tzMin = parseInt(p.minute, 10);
+    const tzDay = parseInt(p.day, 10);
+
+    let dayDiff = tzDay - day;
+    if (dayDiff > 1) dayDiff = -1;
+    if (dayDiff < -1) dayDiff = 1;
+
+    const tzMinutesTotal = (dayDiff * 24 + tzHour) * 60 + tzMin;
+    const utcMinutesTotal = hour * 60 + min;
+    const offsetMinutes = tzMinutesTotal - utcMinutesTotal;
+
+    const realUtcMs = targetTimeMs - (offsetMinutes * 60 * 1000);
+    return new Date(realUtcMs).toISOString();
+  }
+
+  /**
+   * Helper: Format local HH:mm into user-friendly 12H display string (e.g. 10:00 AM)
+   */
+  formatTimeLabel(hour, min) {
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+    const displayMin = String(min).padStart(2, '0');
+    return `${displayHour}:${displayMin} ${period}`;
+  }
+
+  /**
+   * Resolve day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+   * for a given YYYY-MM-DD date string in the target timezone
+   */
+  getDayOfWeekInTz(dateStr, tz = 'Asia/Kolkata') {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    // Create UTC midday timestamp to avoid edge-of-day offsets
+    const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' });
+    const shortDay = dayFormatter.format(d).toLowerCase();
+    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+    return map[shortDay] !== undefined ? map[shortDay] : new Date(dateStr).getDay();
+  }
+
+  /**
+   * Public Availability Calculator
+   * Generates permitted 30-minute slots filtered by:
+   * 1. Date overrides (full-day unavailable / custom hours / blocked intervals)
+   * 2. Weekly working hours
+   * 3. Current time (past slots)
+   * 4. Already booked slots in call_bookings (confirmed or pending)
+   */
+  async getAvailableSlots(selectedDate, clientTimezone = 'Asia/Kolkata') {
+    if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+      throw new Error('Valid date (YYYY-MM-DD) is required.');
+    }
+
+    const config = await this.getConfig();
+    const availabilityTz = config.timezone || 'Asia/Kolkata';
+
+    // 1. Check Date Overrides for selectedDate
+    const overrides = (config.date_overrides || []).filter((o) => o.date === selectedDate);
+    
+    // Check if full day is marked unavailable
+    const fullDayClosure = overrides.find((o) => o.type === 'unavailable' || o.is_available === false);
+    if (fullDayClosure) {
+      return {
+        success: true,
+        date: selectedDate,
+        timezone: clientTimezone,
+        availableSlots: [],
+        isClosed: true,
+        closureReason: fullDayClosure.reason || 'Closed / Date Unavailable',
+      };
+    }
+
+    // 2. Determine base working ranges for this date
+    let baseRanges = [];
+    const customHoursOverride = overrides.find((o) => o.type === 'custom_hours' && Array.isArray(o.ranges) && o.ranges.length > 0);
+
+    if (customHoursOverride) {
+      baseRanges = customHoursOverride.ranges;
+    } else {
+      // Determine day of week in availability timezone
+      const dayOfWeek = this.getDayOfWeekInTz(selectedDate, availabilityTz);
+      const weeklyDay = (config.weekly_hours || {})[dayOfWeek] || (config.weekly_hours || {})[String(dayOfWeek)];
+
+      if (!weeklyDay || !weeklyDay.active || !Array.isArray(weeklyDay.ranges) || weeklyDay.ranges.length === 0) {
+        return {
+          success: true,
+          date: selectedDate,
+          timezone: clientTimezone,
+          availableSlots: [],
+          isClosed: true,
+          closureReason: 'Non-working day',
+        };
+      }
+
+      baseRanges = weeklyDay.ranges;
+    }
+
+    // 3. Extract any blocked intervals for this date
+    const blockedOverrides = overrides.filter((o) => o.type === 'blocked_range' && Array.isArray(o.ranges));
+    const blockedIntervals = [];
+    blockedOverrides.forEach((bo) => {
+      bo.ranges.forEach((r) => {
+        const startM = timeToMinutes(r.start);
+        const endM = timeToMinutes(r.end);
+        if (startM >= 0 && endM > startM) {
+          blockedIntervals.push({ startM, endM, reason: bo.reason || 'Blocked time range' });
+        }
+      });
+    });
+
+    // 4. Generate 30-minute slots within permitted ranges
+    const rawSlots = [];
+    for (const range of baseRanges) {
+      const startMins = timeToMinutes(range.start);
+      const endMins = timeToMinutes(range.end);
+      if (startMins < 0 || endMins <= startMins) continue;
+
+      for (let cur = startMins; cur + 30 <= endMins; cur += 30) {
+        const hour = Math.floor(cur / 60);
+        const min = cur % 60;
+
+        // Check if slot falls in any blocked interval
+        const isBlocked = blockedIntervals.some((b) => cur >= b.startM && cur < b.endM);
+        if (isBlocked) {
+          continue; // Slot excluded by partial-day blocking
+        }
+
+        const isoString = this.getUtcIsoFromLocal(selectedDate, hour, min, clientTimezone);
+        const label = this.formatTimeLabel(hour, min);
+
+        rawSlots.push({
+          iso: isoString,
+          label,
+          hour,
+          min,
+        });
+      }
+    }
+
+    // 5. Query Supabase for existing confirmed or pending bookings on this date
+    const bookedTimesSet = new Set();
+    if (supabase) {
+      try {
+        const { data: existingBookings, error } = await supabase
+          .from('call_bookings')
+          .select('start_time')
+          .eq('booking_date', selectedDate)
+          .in('status', ['confirmed', 'pending']);
+
+        if (!error && Array.isArray(existingBookings)) {
+          existingBookings.forEach((b) => {
+            if (b.start_time) {
+              bookedTimesSet.add(new Date(b.start_time).toISOString());
+            }
+          });
+        }
+      } catch (dbErr) {
+        console.warn('[Availability Calculator DB Note]:', dbErr.message);
+      }
+    }
+
+    // 6. Map slots and apply past filter and double-booking filter
+    const nowMs = Date.now();
+    const availableSlots = rawSlots.map((slot) => {
+      const slotMs = new Date(slot.iso).getTime();
+
+      // Rule 1: Cannot book a slot in the past (tolerance: now - 5 mins)
+      if (slotMs < nowMs - 5 * 60 * 1000) {
+        return { ...slot, available: false, reason: 'Past time slot' };
+      }
+
+      // Rule 2: Cannot book an already booked time slot
+      if (bookedTimesSet.has(slot.iso)) {
+        return { ...slot, available: false, reason: 'Already booked' };
+      }
+
+      return { ...slot, available: true };
+    });
+
+    return {
+      success: true,
+      date: selectedDate,
+      timezone: clientTimezone,
+      availableSlots,
+      isClosed: false,
+    };
+  }
+
+  /**
+   * Pre-Booking Slot Verification (Server-side defense before database insert)
+   * Validates that requested slot is within currently configured availability rules.
+   */
+  async isSlotAvailable(slotIso, clientTimezone = 'Asia/Kolkata') {
+    const slotDate = new Date(slotIso);
+    if (isNaN(slotDate.getTime())) {
+      return { allowed: false, reason: 'Invalid slot timestamp format.' };
+    }
+
+    if (slotDate.getTime() < Date.now() - 5 * 60 * 1000) {
+      return { allowed: false, reason: 'Cannot book a slot in the past.' };
+    }
+
+    const config = await this.getConfig();
+    const availabilityTz = config.timezone || 'Asia/Kolkata';
+
+    // Format local date and time in availability timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: availabilityTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+
+    const parts = formatter.formatToParts(slotDate);
+    const p = {};
+    parts.forEach(({ type, value }) => { p[type] = value; });
+
+    const localDateStr = `${p.year}-${p.month}-${p.day}`;
+    const localHour = parseInt(p.hour, 10) % 24;
+    const localMin = parseInt(p.minute, 10);
+    const slotMins = localHour * 60 + localMin;
+
+    // Check date overrides
+    const overrides = (config.date_overrides || []).filter((o) => o.date === localDateStr);
+    const fullDayClosure = overrides.find((o) => o.type === 'unavailable' || o.is_available === false);
+    if (fullDayClosure) {
+      return { allowed: false, reason: `Date ${localDateStr} is marked unavailable (${fullDayClosure.reason || 'Closed'}).` };
+    }
+
+    // Determine allowed ranges
+    let allowedRanges = [];
+    const customHours = overrides.find((o) => o.type === 'custom_hours' && Array.isArray(o.ranges) && o.ranges.length > 0);
+    if (customHours) {
+      allowedRanges = customHours.ranges;
+    } else {
+      const dayOfWeek = this.getDayOfWeekInTz(localDateStr, availabilityTz);
+      const weeklyDay = (config.weekly_hours || {})[dayOfWeek] || (config.weekly_hours || {})[String(dayOfWeek)];
+      if (!weeklyDay || !weeklyDay.active || !Array.isArray(weeklyDay.ranges) || weeklyDay.ranges.length === 0) {
+        return { allowed: false, reason: `Bookings are not accepted on ${weeklyDay?.day || 'this day'}.` };
+      }
+      allowedRanges = weeklyDay.ranges;
+    }
+
+    // Check if slot starts within one of the allowed ranges
+    const isWithinRange = allowedRanges.some((r) => {
+      const startM = timeToMinutes(r.start);
+      const endM = timeToMinutes(r.end);
+      return slotMins >= startM && slotMins + 30 <= endM;
+    });
+
+    if (!isWithinRange) {
+      return { allowed: false, reason: `Requested slot (${localHour}:${String(localMin).padStart(2, '0')}) is outside allowed working hours.` };
+    }
+
+    // Check if slot falls in any blocked range
+    const blockedOverrides = overrides.filter((o) => o.type === 'blocked_range' && Array.isArray(o.ranges));
+    for (const bo of blockedOverrides) {
+      for (const r of bo.ranges) {
+        const startM = timeToMinutes(r.start);
+        const endM = timeToMinutes(r.end);
+        if (slotMins >= startM && slotMins < endM) {
+          return { allowed: false, reason: `Requested time slot is blocked (${bo.reason || 'Blocked by admin'}).` };
+        }
+      }
+    }
+
+    return { allowed: true };
+  }
+}
+
+export const bookingAvailabilityService = new BookingAvailabilityService();
+export default bookingAvailabilityService;

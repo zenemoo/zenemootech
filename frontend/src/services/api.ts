@@ -923,6 +923,10 @@ export const bookingApi = {
     api.patch(`/bookings/admin/${encodeURIComponent(id)}`, data),
   deleteAdminBooking: (id: string) =>
     api.delete(`/bookings/admin/${encodeURIComponent(id)}`),
+  getAdminAvailability: () =>
+    api.get('/bookings/admin/availability'),
+  updateAdminAvailability: (data: any) =>
+    api.put('/bookings/admin/availability', data),
 };
 
 // ZENEMOO Google Group Management API

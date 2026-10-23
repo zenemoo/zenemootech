@@ -21,6 +21,7 @@ import {
   Check,
   RefreshCw,
   Info,
+  CalendarOff,
 } from 'lucide-react';
 import { SeoImage } from '../seo/components/SeoImage';
 import { TurnstileWidget } from './TurnstileWidget';
@@ -510,6 +511,7 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [slotFetchError, setSlotFetchError] = useState<string>('');
+  const [dateClosureReason, setDateClosureReason] = useState<string>('');
 
   // Filter available slots to genuinely bookable slots only (available, not past, and not within 2-hour buffer)
   const bookableSlots = useMemo(() => {
@@ -654,6 +656,7 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
 
     setLoadingSlots(true);
     setSlotFetchError('');
+    setDateClosureReason('');
 
     console.log('[BOOKING] Availability request initiated for date:', date, 'timezone:', tz);
 
@@ -663,6 +666,7 @@ export const ZenemooBookingPage: React.FC<ZenemooBookingPageProps> = ({ onBackTo
         if (res.data?.success) {
           const slots: AvailableSlot[] = res.data.availableSlots || [];
           setAvailableSlots(slots);
+          setDateClosureReason(res.data.closureReason || '');
 
           // Check if today has zero valid bookable slots (resource available + 2h lead buffer)
           if (date === currentToday) {
@@ -1282,8 +1286,14 @@ END:VCALENDAR`;
                           </button>
                         </div>
                       ) : bookableSlots.length === 0 ? (
-                        <div className="p-6 text-center text-slate-400 font-mono text-xs">
-                          No available slots on this date.
+                        <div className="p-6 text-center text-slate-400 font-mono text-xs space-y-2 rounded-2xl bg-white/[0.02] border border-white/5">
+                          <div className="text-amber-400 font-bold flex items-center justify-center gap-1.5">
+                            <CalendarOff className="w-4 h-4 shrink-0" />
+                            <span>{dateClosureReason ? `Date Closed: ${dateClosureReason}` : 'No available slots on this date.'}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">
+                            Please pick another active date on the calendar.
+                          </p>
                         </div>
                       ) : (
                         <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
