@@ -43,6 +43,7 @@ import { AdminUrlShortenerTab } from './AdminUrlShortenerTab';
 import { AdminQrCodeStudioTab } from './AdminQrCodeStudioTab';
 import { AdminInvoicesTab } from './invoices/AdminInvoicesTab';
 import { AdminStaffIdCardGeneratorTab } from './AdminStaffIdCardGeneratorTab';
+import { AdminPrivateDocumentsVault } from './AdminPrivateDocumentsVault';
 
 export type AdminTabType =
   | 'team'
@@ -79,7 +80,8 @@ export type AdminTabType =
   | 'shortener'
   | 'qr-studio'
   | 'invoices'
-  | 'staff-id-cards';
+  | 'staff-id-cards'
+  | 'private-documents';
 
 export const VALID_ADMIN_TABS: AdminTabType[] = [
   'notifications',
@@ -117,6 +119,7 @@ export const VALID_ADMIN_TABS: AdminTabType[] = [
   'shortener',
   'qr-studio',
   'invoices',
+  'private-documents',
 ];
 
 const OAUTH_KEYWORDS = [
@@ -179,6 +182,7 @@ export const ADMIN_TAB_TITLES: Record<string, string> = {
   'qr-studio': 'QR Code Studio',
   'invoices': 'Invoices & Billing',
   'staff-id-cards': 'Staff ID Cards Generator',
+  'private-documents': 'Private Documents & NDA Vault',
 };
 
 export const getAdminTabTitle = (tab: string | null | undefined): string => {
@@ -2986,6 +2990,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         { id: 'shortener', name: 'URL Shortener', icon: Link2 },
         { id: 'qr-studio', name: 'QR Code Studio', icon: QrCode },
         { id: 'invoices', name: 'Invoices & Billing', icon: FileText },
+        { id: 'private-documents', name: 'Private Documents & NDA Vault', icon: Lock },
       ],
     },
     {
@@ -5210,6 +5215,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
         {activeTab === 'invoices' && (
           <AdminInvoicesTab
             showToast={addToast}
+            showConfirm={showConfirm}
+          />
+        )}
+
+        {/* TAB: PRIVATE DOCUMENTS & NDA VAULT */}
+        {activeTab === 'private-documents' && (
+          <AdminPrivateDocumentsVault
+            addToast={addToast}
             showConfirm={showConfirm}
           />
         )}

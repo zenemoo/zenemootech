@@ -41,6 +41,7 @@ import poolRoutes from './routes/poolRoutes.js';
 import shortenerRoutes from './routes/shortenerRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
 import staffIdCardRoutes from './routes/staffIdCardRoutes.js';
+import privateDocumentRoutes from './routes/privateDocumentRoutes.js';
 import { kvShortenerService } from './services/kvShortenerService.js';
 import { handleCashfreeWebhook } from './controllers/supportPaymentController.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -124,7 +125,24 @@ app.use(
     },
   })
 );
-app.use(DATASET_UPLOAD_ROUTES, express.urlencoded({ limit: '15mb', extended: true }));
+// Dedicated Body Size Protection for Private Documents Vault Upload Endpoints (25MB limit)
+const PRIVATE_DOCUMENT_UPLOAD_ROUTES = [
+  '/api/private-documents',
+  '/api/private-documents/:id/versions',
+  '/private-documents',
+  '/private-documents/:id/versions',
+];
+
+app.use(
+  PRIVATE_DOCUMENT_UPLOAD_ROUTES,
+  express.json({
+    limit: '25mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
+app.use(PRIVATE_DOCUMENT_UPLOAD_ROUTES, express.urlencoded({ limit: '25mb', extended: true }));
 
 // Standard Secure Body Limit for all general API endpoints (max 2MB)
 app.use(
@@ -220,6 +238,7 @@ app.use('/api/admin/invoices', invoiceRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/staff-id-cards', staffIdCardRoutes);
 app.use('/api/admin/staff-id-cards', staffIdCardRoutes);
+app.use('/api/private-documents', privateDocumentRoutes);
 
 // Dedicated Cashfree Webhook Handler
 app.post(['/api/payments/cashfree/webhook', '/api/payments/webhook'], handleCashfreeWebhook);
@@ -242,6 +261,7 @@ app.get('/l/:code', async (req, res) => {
 
 // Root Fallback Aliases
 app.use('/datasets', datasetRoutes);
+app.use('/private-documents', privateDocumentRoutes);
 app.use('/bookings', bookingRoutes);
 app.use('/30min', bookingRoutes);
 app.use('/public/team-invite', publicTeamInviteRoutes);

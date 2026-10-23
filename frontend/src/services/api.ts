@@ -898,6 +898,75 @@ export const datasetApi = {
     `${api.defaults.baseURL || '/api'}/datasets/files/${fileId}/download`,
 };
 
+// ZENEMOO Private Documents & NDA Vault API
+export const privateDocumentApi = {
+  getStats: () =>
+    api.get('/private-documents/stats'),
+  getDocuments: (
+    params?: {
+      search?: string;
+      document_type?: string;
+      document_status?: string;
+      access_classification?: string;
+      signing_status?: string;
+      expiring_soon?: boolean | string;
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    },
+    signal?: AbortSignal
+  ) => api.get('/private-documents', { params, signal }),
+  getDocumentById: (id: string) =>
+    api.get(`/private-documents/${id}`),
+  createDocument: (data: {
+    title: string;
+    company_name: string;
+    document_type: string;
+    access_classification?: string;
+    nda_type?: string;
+    signing_status?: string;
+    project_name?: string;
+    company_ref_number?: string;
+    contact_person?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    effective_date?: string;
+    expiry_date?: string;
+    signed_date?: string;
+    renewal_date?: string;
+    tags?: string[];
+    internal_notes?: string;
+    external_reference_url?: string;
+    pdf_base64: string;
+    original_filename: string;
+  }) => api.post('/private-documents', data, { timeout: 180000 }),
+  updateDocument: (id: string, data: any) =>
+    api.patch(`/private-documents/${id}`, data),
+  uploadVersion: (id: string, data: { pdf_base64: string; original_filename?: string; change_note?: string }) =>
+    api.post(`/private-documents/${id}/versions`, data, { timeout: 180000 }),
+  archiveDocument: (id: string, unarchive: boolean = false) =>
+    api.patch(`/private-documents/${id}/archive`, { unarchive }),
+  deleteDocument: (id: string) =>
+    api.delete(`/private-documents/${id}`),
+  previewBlob: (id: string, version?: number) =>
+    api.get(`/private-documents/${id}/preview`, {
+      params: version ? { version } : undefined,
+      responseType: 'blob',
+    }),
+  downloadBlob: (id: string, version?: number) =>
+    api.get(`/private-documents/${id}/download`, {
+      params: version ? { version } : undefined,
+      responseType: 'blob',
+    }),
+  exportMetadata: (format: 'csv' | 'json' = 'csv') =>
+    api.get('/private-documents/export', {
+      params: { format },
+      responseType: 'blob',
+    }),
+};
+
+
 // ZENEMOO Book a Call System API
 export const bookingApi = {
   getAvailability: (date: string, timezone?: string) =>

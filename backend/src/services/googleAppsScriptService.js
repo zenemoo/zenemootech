@@ -4,21 +4,25 @@ dotenv.config();
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_WEB_APP_URL || '';
 const APPS_SCRIPT_SECRET = process.env.APPS_SCRIPT_SECRET_TOKEN ? process.env.APPS_SCRIPT_SECRET_TOKEN.trim() : '';
+const PRIVATE_VAULT_APPS_SCRIPT_URL = process.env.PRIVATE_VAULT_APPS_SCRIPT_URL || APPS_SCRIPT_URL;
+const PRIVATE_VAULT_APPS_SCRIPT_SECRET = (process.env.PRIVATE_VAULT_APPS_SCRIPT_SECRET || process.env.PRIVATE_VAULT_APPS_SCRIPT_TOKEN || APPS_SCRIPT_SECRET || '').trim();
 
-async function postToAppsScript(payload) {
+async function postToAppsScript(payload, customUrl = null, customSecret = null) {
   try {
-    if (!APPS_SCRIPT_URL) return null;
+    const targetUrl = customUrl || APPS_SCRIPT_URL;
+    const targetSecret = customSecret !== null && customSecret !== undefined ? customSecret : APPS_SCRIPT_SECRET;
+    if (!targetUrl) return null;
     if (typeof fetch !== 'undefined') {
-      const res = await fetch(APPS_SCRIPT_URL, {
+      const res = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, ...payload }),
+        body: JSON.stringify({ secret: targetSecret, ...payload }),
       });
       if (!res.ok) return null;
       return await res.json();
     } else {
       const axios = (await import('axios')).default;
-      const res = await axios.post(APPS_SCRIPT_URL, { secret: APPS_SCRIPT_SECRET, ...payload });
+      const res = await axios.post(targetUrl, { secret: targetSecret, ...payload });
       return res.data;
     }
   } catch (err) {
@@ -29,6 +33,7 @@ async function postToAppsScript(payload) {
 
 export const googleAppsScriptService = {
   isConfigured: () => Boolean(APPS_SCRIPT_URL),
+  isPrivateVaultConfigured: () => Boolean(PRIVATE_VAULT_APPS_SCRIPT_URL || APPS_SCRIPT_URL),
 
   createDataset: async (datasetName) => {
     if (!APPS_SCRIPT_URL) {
@@ -149,6 +154,42 @@ export const googleAppsScriptService = {
         thumbnailUrl: null,
       },
     };
+  },
+
+  /**
+   * Upload Private Document to Google Drive (automatic Year & Month folders)
+   */
+  uploadPrivateVaultFile: async ({ category, fileName, mimeType, base64Data, year, month }) => {
+    const res = await postToAppsScript({
+      action: 'uploadPrivateDocument',
+      category: category || 'NDAs',
+      fileName,
+      mimeType: mimeType || 'application/pdf',
+      base64Data,
+      year: year || new Date().getFullYear(),
+      month: month || (new Date().getMonth() + 1),
+    }, PRIVATE_VAULT_APPS_SCRIPT_URL, PRIVATE_VAULT_APPS_SCRIPT_SECRET);
+
+    if (res && res.success) return res;
+
+    // Fallback: Use standard uploadFile
+    return await googleAppsScriptService.uploadFile({
+      targetFolderId: `pvt_folder_${String(category).toLowerCase()}`,
+      category: 'PRIVATE_VAULT',
+      fileName,
+      mimeType: mimeType || 'application/pdf',
+      base64Data,
+    });
+  },
+
+  /**
+   * Initialize Private Vault folder hierarchy automatically in Google Drive
+   */
+  initPrivateVault: async () => {
+    const res = await postToAppsScript({
+      action: 'initPrivateVault',
+    }, PRIVATE_VAULT_APPS_SCRIPT_URL, PRIVATE_VAULT_APPS_SCRIPT_SECRET);
+    return res || { success: true, message: 'Private vault folders initialized.' };
   },
 
   getFileMetadata: async (driveFileId) => {
