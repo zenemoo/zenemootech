@@ -17,6 +17,7 @@ import {
   generateAdminReminderEmailHtml,
 } from '../services/bookingEmailTemplate.js';
 import { bookingAvailabilityService } from '../services/bookingAvailabilityService.js';
+import { adminEventService } from '../services/adminEventService.js';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'zenemoo-admin-email@googlegroups.com';
 const TURNSTILE_SECRET = (process.env.TURNSTILE_SECRET_KEY || '').trim();
@@ -217,6 +218,18 @@ export const createBooking = async (req, res, next) => {
       return res.status(409).json({
         success: false,
         message: 'This time slot has just been booked. Please select another time.',
+      });
+    }
+
+    // 3.5 Check conflict against scheduled admin events / client meetings
+    const eventConflictCheck = await adminEventService.checkIntervalConflict({
+      startTimeIso,
+      endTimeIso,
+    });
+    if (eventConflictCheck.hasConflict) {
+      return res.status(409).json({
+        success: false,
+        message: 'This time slot is no longer available. Please select another time.',
       });
     }
 

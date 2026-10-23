@@ -933,6 +933,24 @@ export const bookingApi = {
     api.post('/bookings/admin/availability/apply-rule', data),
   previewAffectedDates: (data: any) =>
     api.post('/bookings/admin/availability/preview-affected', data),
+
+  // Admin Events & Client Meetings Endpoints
+  getAdminEvents: (params?: { eventType?: string; status?: string; startDate?: string; endDate?: string; search?: string; limit?: number; offset?: number }) =>
+    api.get('/bookings/admin/events', { params }),
+  createAdminEvent: (data: any) =>
+    api.post('/bookings/admin/events', data),
+  checkEventConflict: (data: { startTimeIso: string; endTimeIso: string; excludeEventId?: string }) =>
+    api.post('/bookings/admin/events/check-conflict', data),
+  getAdminEventById: (id: string) =>
+    api.get(`/bookings/admin/events/${encodeURIComponent(id)}`),
+  updateAdminEvent: (id: string, data: any) =>
+    api.put(`/bookings/admin/events/${encodeURIComponent(id)}`, data),
+  deleteAdminEvent: (id: string) =>
+    api.delete(`/bookings/admin/events/${encodeURIComponent(id)}`),
+  resendClientMeetingEmail: (id: string) =>
+    api.post(`/bookings/admin/events/${encodeURIComponent(id)}/resend-email`),
+  generateMeetingForAdminEvent: (id: string) =>
+    api.post(`/bookings/admin/events/${encodeURIComponent(id)}/generate-meeting`),
 };
 
 // ZENEMOO Google Group Management API

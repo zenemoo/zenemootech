@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { bookingApi } from '../services/api';
 import { AdminBookingAvailabilityView } from './AdminBookingAvailabilityView';
+import { AdminEventsMeetingsView } from './AdminEventsMeetingsView';
 
 interface CallBookingRecord {
   id: string;
@@ -85,7 +86,7 @@ interface AdminBookingsTabProps {
 }
 
 export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, showConfirm, onActionableCountChange }) => {
-  const [activeView, setActiveView] = useState<'bookings' | 'availability'>('bookings');
+  const [activeView, setActiveView] = useState<'bookings' | 'availability' | 'events-meetings'>('bookings');
   const [bookings, setBookings] = useState<CallBookingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -418,6 +419,18 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
             >
               <Clock className="w-3.5 h-3.5 text-cyan-400" /> Availability &amp; Working Hours
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveView('events-meetings')}
+              className={`px-4 py-2 rounded-xl font-mono text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeView === 'events-meetings'
+                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25'
+                  : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] border border-white/10'
+              }`}
+            >
+              <Video className="w-3.5 h-3.5 text-purple-400" /> Events &amp; Meetings
+            </button>
           </div>
         </div>
 
@@ -440,6 +453,14 @@ export const AdminBookingsTab: React.FC<AdminBookingsTabProps> = ({ addToast, sh
           addToast={addToast}
           showConfirm={showConfirm}
           existingBookings={bookings}
+        />
+      )}
+
+      {/* VIEW 2: EVENTS & CLIENT MEETINGS SCHEDULER */}
+      {activeView === 'events-meetings' && (
+        <AdminEventsMeetingsView
+          addToast={addToast}
+          showConfirm={showConfirm}
         />
       )}
 

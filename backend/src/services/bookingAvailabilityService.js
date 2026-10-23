@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { supabase } from '../config/supabase.js';
+import { adminEventService } from './adminEventService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1008,20 +1009,24 @@ export class BookingAvailabilityService {
       }
     }
 
-    // 5. Query Supabase for existing confirmed or pending bookings on this date
-    const bookedTimesSet = new Set();
+    // 5. Query active reservations on this date (Both Call Bookings & Admin Events)
+    const activeIntervals = [];
+
+    // A. Query Supabase for existing confirmed or pending call_bookings
     if (supabase) {
       try {
         const { data: existingBookings, error } = await supabase
           .from('call_bookings')
-          .select('start_time')
+          .select('start_time, end_time')
           .eq('booking_date', selectedDate)
           .in('status', ['confirmed', 'pending']);
 
         if (!error && Array.isArray(existingBookings)) {
           existingBookings.forEach((b) => {
             if (b.start_time) {
-              bookedTimesSet.add(new Date(b.start_time).toISOString());
+              const startMs = new Date(b.start_time).getTime();
+              const endMs = b.end_time ? new Date(b.end_time).getTime() : startMs + 30 * 60 * 1000;
+              activeIntervals.push({ startMs, endMs, reason: 'Already booked' });
             }
           });
         }
@@ -1030,19 +1035,41 @@ export class BookingAvailabilityService {
       }
     }
 
-    // 6. Map slots and apply past filter and double-booking filter
+    // B. Query Admin Events / Client Meetings (status = 'scheduled') on this date
+    try {
+      const activeAdminEvents = await adminEventService.getActiveEventsOnDate(selectedDate);
+      if (Array.isArray(activeAdminEvents)) {
+        activeAdminEvents.forEach((e) => {
+          if (e.start_time && e.end_time) {
+            const startMs = new Date(e.start_time).getTime();
+            const endMs = new Date(e.end_time).getTime();
+            activeIntervals.push({
+              startMs,
+              endMs,
+              reason: e.event_type === 'client_meeting' ? 'Reserved (Client Meeting)' : 'Reserved (Internal Event)',
+            });
+          }
+        });
+      }
+    } catch (eventErr) {
+      console.warn('[Availability Calculator Admin Events Note]:', eventErr.message);
+    }
+
+    // 6. Map slots and apply past filter and shared interval overlap filter
     const nowMs = Date.now();
     const availableSlots = rawSlots.map((slot) => {
       const slotMs = new Date(slot.iso).getTime();
+      const slotEndMs = slotMs + 30 * 60 * 1000;
 
       // Rule 1: Cannot book a slot in the past (tolerance: now - 5 mins)
       if (slotMs < nowMs - 5 * 60 * 1000) {
         return { ...slot, available: false, reason: 'Past time slot' };
       }
 
-      // Rule 2: Cannot book an already booked time slot
-      if (bookedTimesSet.has(slot.iso)) {
-        return { ...slot, available: false, reason: 'Already booked' };
+      // Rule 2: Cannot book an overlapping time slot (Formula: slotStart < resEnd && slotEnd > resStart)
+      const conflict = activeIntervals.find((res) => slotMs < res.endMs && slotEndMs > res.startMs);
+      if (conflict) {
+        return { ...slot, available: false, reason: conflict.reason || 'Already booked' };
       }
 
       return { ...slot, available: true };
@@ -1197,6 +1224,25 @@ export class BookingAvailabilityService {
         }
       }
     }
+
+    // Check if slot overlaps with any active admin event on this date
+    try {
+      const activeAdminEvents = await adminEventService.getActiveEventsOnDate(localDateStr);
+      const slotStartMs = slotDate.getTime();
+      const slotEndMs = slotStartMs + 30 * 60 * 1000;
+      const eventConflict = (activeAdminEvents || []).find((e) => {
+        const eStart = new Date(e.start_time).getTime();
+        const eEnd = new Date(e.end_time).getTime();
+        return slotStartMs < eEnd && slotEndMs > eStart;
+      });
+
+      if (eventConflict) {
+        return {
+          allowed: false,
+          reason: `Requested time slot overlaps with a scheduled event (${eventConflict.title || 'Reserved by admin'}).`,
+        };
+      }
+    } catch (_) {}
 
     return { allowed: true };
   }

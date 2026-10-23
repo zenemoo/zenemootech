@@ -332,3 +332,86 @@ export const checkGoogleMeetConfiguration = () => {
   return status;
 };
 
+/**
+ * Create Google Calendar Event & Meet Link for an Admin Event or Client Meeting
+ */
+export const createGoogleMeetForAdminEvent = async (event) => {
+  const calendar = getGoogleCalendarClient();
+  if (!calendar) {
+    return { success: false, error: 'Google Calendar API credentials missing or invalid.' };
+  }
+
+  const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+  const attendeesList = [];
+  if (event.email) {
+    attendeesList.push({ email: event.email, displayName: event.client_name || event.title });
+  }
+  if (Array.isArray(event.attendees)) {
+    event.attendees.forEach((att) => {
+      const attEmail = typeof att === 'string' ? att : att.email;
+      const attName = typeof att === 'object' ? att.name : undefined;
+      if (attEmail && !attendeesList.some((a) => a.email.toLowerCase() === attEmail.toLowerCase())) {
+        attendeesList.push({ email: attEmail, displayName: attName });
+      }
+    });
+  }
+
+  const eventPayload = {
+    summary: `Zenemoo — ${event.title}`,
+    description: event.description || event.meeting_purpose || `Zenemoo Scheduled ${event.event_type === 'client_meeting' ? 'Client Meeting' : 'Event'}\nID: ${event.event_id}`,
+    start: {
+      dateTime: event.start_time,
+      timeZone: event.timezone || 'Asia/Kolkata',
+    },
+    end: {
+      dateTime: event.end_time,
+      timeZone: event.timezone || 'Asia/Kolkata',
+    },
+    attendees: attendeesList.length > 0 ? attendeesList : undefined,
+    conferenceData: {
+      createRequest: {
+        requestId: `${event.event_id || 'evt'}-${Date.now()}`,
+        conferenceSolutionKey: {
+          type: 'hangoutsMeet',
+        },
+      },
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 60 },
+        { method: 'popup', minutes: 15 },
+      ],
+    },
+  };
+
+  try {
+    const response = await calendar.events.insert({
+      calendarId,
+      requestBody: eventPayload,
+      conferenceDataVersion: 1,
+    });
+
+    const eventData = response.data;
+    const eventId = eventData.id;
+    let meetUrl = eventData.hangoutLink || null;
+    if (!meetUrl && eventData.conferenceData?.entryPoints) {
+      const ep = eventData.conferenceData.entryPoints.find((e) => e.entryPointType === 'video');
+      if (ep?.uri) meetUrl = ep.uri;
+    }
+    if (!meetUrl && eventData.htmlLink) meetUrl = eventData.htmlLink;
+
+    return {
+      success: true,
+      eventId,
+      meetUrl,
+    };
+  } catch (err) {
+    console.error(`[Google Meet Admin Event Error - ${event.event_id}]:`, err.message);
+    return {
+      success: false,
+      error: err.message,
+    };
+  }
+};
+

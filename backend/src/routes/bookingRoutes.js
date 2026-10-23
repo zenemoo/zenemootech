@@ -13,6 +13,16 @@ import {
   applyAdminAvailabilityRule,
   previewAffectedDates,
 } from '../controllers/bookingController.js';
+import {
+  getAdminEvents,
+  getAdminEventById,
+  checkEventConflictEndpoint,
+  createAdminEvent,
+  updateAdminEvent,
+  deleteAdminEvent,
+  resendClientMeetingEmail,
+  generateMeetingForAdminEvent,
+} from '../controllers/adminEventController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 import { bookingRateLimiter } from '../middleware/rateLimiter.js';
 
@@ -40,5 +50,15 @@ router.get('/admin/availability', verifyToken, requireRole(['admin']), getAdminA
 router.put('/admin/availability', verifyToken, requireRole(['admin']), updateAdminAvailability);
 router.post('/admin/availability/apply-rule', verifyToken, requireRole(['admin']), applyAdminAvailabilityRule);
 router.post('/admin/availability/preview-affected', verifyToken, requireRole(['admin']), previewAffectedDates);
+
+// Admin Protected Events & Client Meetings Endpoints
+router.get('/admin/events', verifyToken, requireRole(['admin']), getAdminEvents);
+router.post('/admin/events', verifyToken, requireRole(['admin']), createAdminEvent);
+router.post('/admin/events/check-conflict', verifyToken, requireRole(['admin']), checkEventConflictEndpoint);
+router.get('/admin/events/:id', verifyToken, requireRole(['admin']), getAdminEventById);
+router.put('/admin/events/:id', verifyToken, requireRole(['admin']), updateAdminEvent);
+router.delete('/admin/events/:id', verifyToken, requireRole(['admin']), deleteAdminEvent);
+router.post('/admin/events/:id/resend-email', verifyToken, requireRole(['admin']), resendClientMeetingEmail);
+router.post('/admin/events/:id/generate-meeting', verifyToken, requireRole(['admin']), generateMeetingForAdminEvent);
 
 export default router;
