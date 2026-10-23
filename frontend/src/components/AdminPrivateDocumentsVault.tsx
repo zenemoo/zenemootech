@@ -1207,10 +1207,10 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       {/* 5. UPLOAD DOCUMENT MODAL (Phase 3) */}
       {/* ========================================================================= */}
       {isUploadModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-3xl my-8 rounded-2xl bg-[#0a0d16] border border-cyan-500/30 p-6 md:p-8 shadow-2xl text-slate-200">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-3xl max-h-[92vh] flex flex-col rounded-2xl bg-[#0a0d16] border border-cyan-500/30 shadow-2xl text-slate-200 overflow-hidden">
+            {/* Modal Header - Pinned at top */}
+            <div className="flex items-center justify-between px-6 py-4.5 bg-[#070a12] border-b border-white/10 shrink-0 z-10">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
                   <ShieldAlert className="w-5 h-5" />
@@ -1225,15 +1225,18 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsUploadModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition"
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUploadSubmit} className="space-y-6 mt-6">
-              {/* Mandatory Section */}
+            <form onSubmit={handleUploadSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+                {/* Mandatory Section */}
               <div className="space-y-4">
                 <h4 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Mandatory Document Information
@@ -1540,13 +1543,14 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                   </div>
                 </div>
               </div>
+              </div>
 
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+              {/* Modal Footer - Pinned at bottom */}
+              <div className="flex items-center justify-end gap-3 px-6 py-4 bg-[#070a12] border-t border-white/10 shrink-0 z-10">
                 <button
                   type="button"
                   onClick={() => setIsUploadModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-300 font-mono transition"
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-300 font-mono transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1575,65 +1579,66 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       {/* 6. DOCUMENT DETAIL & VERSION HISTORY MODAL */}
       {/* ========================================================================= */}
       {isDetailModalOpen && selectedDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-4xl my-8 rounded-2xl bg-[#0a0d16] border border-white/15 p-6 md:p-8 shadow-2xl text-slate-200">
-            {/* Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-white/10">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-bold text-cyan-400">
-                    {selectedDoc.document_reference}
-                  </span>
-                  {renderClassificationBadge(selectedDoc.access_classification)}
-                  {renderStatusBadge(selectedDoc.document_status)}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl bg-[#0a0d16] border border-white/15 shadow-2xl text-slate-200 overflow-hidden">
+            {/* Header & Tabs - Pinned at top */}
+            <div className="px-6 py-4.5 bg-[#070a12] border-b border-white/10 shrink-0 z-10">
+              <div className="flex items-start justify-between pb-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-bold text-cyan-400">
+                      {selectedDoc.document_reference}
+                    </span>
+                    {renderClassificationBadge(selectedDoc.access_classification)}
+                    {renderStatusBadge(selectedDoc.document_status)}
+                  </div>
+                  <h3 className="text-lg font-bold text-white font-display">{selectedDoc.title}</h3>
+                  <p className="text-xs text-slate-400">Counterparty: {selectedDoc.company_name}</p>
                 </div>
-                <h3 className="text-lg font-bold text-white font-display">{selectedDoc.title}</h3>
-                <p className="text-xs text-slate-400">Counterparty: {selectedDoc.company_name}</p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleOpenPreview(selectedDoc)}
+                    className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> Preview PDF
+                  </button>
+                  <button
+                    onClick={() => handleDownload(selectedDoc)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </button>
+                  <button
+                    onClick={() => setIsDetailModalOpen(false)}
+                    className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Navigation Tabs */}
+              <div className="flex items-center gap-3 pt-2 text-xs font-mono">
                 <button
-                  onClick={() => handleOpenPreview(selectedDoc)}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                  onClick={() => setActiveDetailTab('info')}
+                  className={`py-2 px-3 border-b-2 font-semibold transition cursor-pointer ${
+                    activeDetailTab === 'info'
+                      ? 'border-cyan-400 text-cyan-300'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
                 >
-                  <Eye className="w-3.5 h-3.5" /> Preview PDF
+                  Metadata Details
                 </button>
                 <button
-                  onClick={() => handleDownload(selectedDoc)}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                  onClick={() => setActiveDetailTab('versions')}
+                  className={`py-2 px-3 border-b-2 font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                    activeDetailTab === 'versions'
+                      ? 'border-cyan-400 text-cyan-300'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5" /> Download
-                </button>
-                <button
-                  onClick={() => setIsDetailModalOpen(false)}
-                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Navigation Tabs */}
-            <div className="flex items-center gap-3 border-b border-white/10 mt-4 text-xs font-mono">
-              <button
-                onClick={() => setActiveDetailTab('info')}
-                className={`py-2 px-3 border-b-2 font-semibold transition cursor-pointer ${
-                  activeDetailTab === 'info'
-                    ? 'border-cyan-400 text-cyan-300'
-                    : 'border-transparent text-slate-400 hover:text-white'
-                }`}
-              >
-                Metadata Details
-              </button>
-              <button
-                onClick={() => setActiveDetailTab('versions')}
-                className={`py-2 px-3 border-b-2 font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  activeDetailTab === 'versions'
-                    ? 'border-cyan-400 text-cyan-300'
-                    : 'border-transparent text-slate-400 hover:text-white'
-                }`}
-              >
-                Version History{' '}
+                  Version History{' '}
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/10">
                   {selectedDocVersions.length || selectedDoc.current_version}
                 </span>
@@ -1649,9 +1654,12 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 Audit Activity Log
               </button>
             </div>
+            </div>
 
-            {/* Tab 1: Info */}
-            {activeDetailTab === 'info' && (
+            {/* Scrollable Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+              {/* Tab 1: Info */}
+              {activeDetailTab === 'info' && (
               <div className="space-y-6 mt-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5 text-xs">
                   <div>
@@ -1851,6 +1859,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       )}
@@ -1925,9 +1934,9 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       {/* 8. UPLOAD NEW VERSION MODAL (Phase 9) */}
       {/* ========================================================================= */}
       {isVersionModalOpen && selectedDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-lg rounded-2xl bg-[#0a0d16] border border-purple-500/30 p-6 shadow-2xl text-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl bg-[#0a0d16] border border-purple-500/30 shadow-2xl text-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-[#070a12] border-b border-white/10 shrink-0">
               <div className="flex items-center gap-2.5">
                 <Layers className="w-5 h-5 text-purple-400" />
                 <div>
@@ -1940,55 +1949,59 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsVersionModalOpen(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+                aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleVersionSubmit} className="space-y-4 mt-5">
-              <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-800/30 text-[11px] text-purple-300">
-                Notice: Previous versions are permanently retained in history and will not be overwritten.
+            <form onSubmit={handleVersionSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+                <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-800/30 text-[11px] text-purple-300">
+                  Notice: Previous versions are permanently retained in history and will not be overwritten.
+                </div>
+
+                {/* Version File Picker */}
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300 font-medium">New PDF File (.pdf)</label>
+                  <input
+                    ref={versionFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    required
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f && f.name.toLowerCase().endsWith('.pdf')) {
+                        setVersionFile(f);
+                      } else {
+                        addToast('Error', 'Only PDF files are allowed.', 'error');
+                      }
+                    }}
+                    className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-mono file:bg-purple-500/20 file:text-purple-300 hover:file:bg-purple-500/30 cursor-pointer"
+                  />
+                </div>
+
+                {/* Change Note */}
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300 font-medium">Change Note (Optional)</label>
+                  <textarea
+                    placeholder="e.g. Countersigned version returned by client counsel."
+                    rows={2}
+                    value={versionChangeNote}
+                    onChange={(e) => setVersionChangeNote(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-[#0d121f] border border-white/10 text-xs text-white"
+                  />
+                </div>
               </div>
 
-              {/* Version File Picker */}
-              <div className="space-y-1">
-                <label className="text-xs text-slate-300 font-medium">New PDF File (.pdf)</label>
-                <input
-                  ref={versionFileInputRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  required
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f && f.name.toLowerCase().endsWith('.pdf')) {
-                      setVersionFile(f);
-                    } else {
-                      addToast('Error', 'Only PDF files are allowed.', 'error');
-                    }
-                  }}
-                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-mono file:bg-purple-500/20 file:text-purple-300 hover:file:bg-purple-500/30 cursor-pointer"
-                />
-              </div>
-
-              {/* Change Note */}
-              <div className="space-y-1">
-                <label className="text-xs text-slate-300 font-medium">Change Note (Optional)</label>
-                <textarea
-                  placeholder="e.g. Countersigned version returned by client counsel."
-                  rows={2}
-                  value={versionChangeNote}
-                  onChange={(e) => setVersionChangeNote(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#0d121f] border border-white/10 text-xs text-white"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-end gap-2 px-6 py-3.5 bg-[#070a12] border-t border-white/10 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsVersionModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-400"
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2009,9 +2022,10 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       {/* 9. EDIT METADATA MODAL */}
       {/* ========================================================================= */}
       {isEditModalOpen && selectedDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-2xl rounded-2xl bg-[#0a0d16] border border-white/15 p-6 shadow-2xl text-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl bg-[#0a0d16] border border-white/15 shadow-2xl text-slate-200 overflow-hidden">
+            {/* Header - Pinned at top */}
+            <div className="flex items-center justify-between px-6 py-4 bg-[#070a12] border-b border-white/10 shrink-0 z-10">
               <div className="flex items-center gap-2">
                 <Edit className="w-4 h-4 text-cyan-400" />
                 <h3 className="text-sm font-bold text-white font-display">
@@ -2019,15 +2033,18 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsEditModalOpen(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
+                aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="space-y-4 mt-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <form onSubmit={handleSaveEdit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 <div className="space-y-1">
                   <label className="text-xs text-slate-400">Document Title</label>
                   <input
@@ -2142,19 +2159,21 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                   className="w-full px-3 py-2 rounded-xl bg-[#0d121f] border border-white/10 text-xs text-white"
                 />
               </div>
+              </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+              {/* Edit Modal Footer - Pinned at bottom */}
+              <div className="flex items-center justify-end gap-2 px-6 py-3.5 bg-[#070a12] border-t border-white/10 shrink-0 z-10">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-400"
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingEdit}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold font-mono"
+                  className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold font-mono shadow-lg shadow-cyan-500/20 transition cursor-pointer"
                 >
                   {isSubmittingEdit ? 'Saving...' : 'Save Metadata Changes'}
                 </button>

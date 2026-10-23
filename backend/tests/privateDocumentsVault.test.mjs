@@ -19,6 +19,9 @@ import {
   deletePrivateDocument,
   exportMetadata,
 } from '../src/controllers/privateDocumentController.js';
+import fs from 'fs';
+import path from 'path';
+import { supabase } from '../src/config/supabase.js';
 import { requireRole } from '../src/middleware/rbacMiddleware.js';
 import { getDatasetFileContent, downloadDatasetFile } from '../src/controllers/datasetController.js';
 
@@ -62,6 +65,7 @@ const SAMPLE_VALID_PDF_BASE64 = SAMPLE_VALID_PDF_BUFFER.toString('base64');
 async function runTests() {
   let passed = 0;
   let total = 0;
+  const createdTestDocIds = [];
 
   try {
     // -------------------------------------------------------------------------
@@ -156,6 +160,7 @@ async function runTests() {
 
     const createdDocId = createRes.data.document.id;
     const createdDocRef = createRes.data.document.document_reference;
+    createdTestDocIds.push(createdDocId);
 
     console.log(`✅ Test 3 Passed: Document created with ref: ${createdDocRef}`);
     passed++;
@@ -218,6 +223,7 @@ async function runTests() {
     assert.strictEqual(minimalRes.data.document.effective_date, null);
     assert.strictEqual(minimalRes.data.document.expiry_date, null);
     assert.ok(minimalRes.data.document.document_reference.startsWith('ZEN-DOC-'));
+    if (minimalRes.data?.document?.id) createdTestDocIds.push(minimalRes.data.document.id);
 
     console.log('✅ Test 5 Passed: Minimal document created without optional fields.');
     passed++;
@@ -255,6 +261,9 @@ async function runTests() {
     const resB = createMockRes();
 
     await Promise.all([createPrivateDocument(reqA, resA), createPrivateDocument(reqB, resB)]);
+
+    if (resA.data?.document?.id) createdTestDocIds.push(resA.data.document.id);
+    if (resB.data?.document?.id) createdTestDocIds.push(resB.data.document.id);
 
     const refA = resA.data.document.document_reference;
     const refB = resB.data.document.document_reference;
@@ -601,6 +610,33 @@ async function runTests() {
   } catch (err) {
     console.error('\n❌ TEST FAILED:', err);
     process.exit(1);
+  } finally {
+    console.log('\n🧹 Cleaning up test artifacts from database...');
+    for (const docId of createdTestDocIds) {
+      try {
+        const delReq = { params: { id: docId }, user: { role: 'admin' }, headers: {} };
+        const delRes = createMockRes();
+        await deletePrivateDocument(delReq, delRes);
+      } catch (_) {}
+    }
+
+    try {
+      const { data: remaining } = await supabase.from('private_documents').select('id');
+      if (!remaining || remaining.length === 0) {
+        await supabase.from('private_document_counters').delete().neq('year', 0);
+        await supabase.from('private_document_audit_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      }
+    } catch (_) {}
+
+    try {
+      const vaultDir = path.resolve('storage', 'private_vault');
+      if (fs.existsSync(vaultDir)) {
+        for (const f of fs.readdirSync(vaultDir)) {
+          if (f.endsWith('.pdf')) fs.unlinkSync(path.join(vaultDir, f));
+        }
+      }
+    } catch (_) {}
+    console.log('✨ Cleanup complete.');
   }
 }
 
