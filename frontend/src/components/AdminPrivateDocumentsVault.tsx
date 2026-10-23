@@ -196,6 +196,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
 
   // Preview state
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewMime, setPreviewMime] = useState<string>('application/pdf');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewVersion, setPreviewVersion] = useState<number | undefined>(undefined);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
@@ -410,13 +411,26 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
 
     try {
       const res = await privateDocumentApi.previewBlob(doc.id, versionNum);
-      const rawContentType = res.headers['content-type'];
-      const mime = typeof rawContentType === 'string' ? rawContentType : 'application/pdf';
+      const headerType = res.headers ? (res.headers['content-type'] || res.headers['Content-Type']) : '';
+      const mime = typeof headerType === 'string' && headerType.length > 0
+        ? headerType.split(';')[0].trim().toLowerCase()
+        : 'application/pdf';
+      setPreviewMime(mime);
       const blob = new Blob([res.data], { type: mime });
       const url = window.URL.createObjectURL(blob);
       setPreviewBlobUrl(url);
     } catch (err: any) {
-      addToast('Preview Error', 'Could not stream document preview.', 'error');
+      let errorMsg = 'Could not stream document preview.';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const txt = await err.response.data.text();
+          const parsed = JSON.parse(txt);
+          if (parsed?.message) errorMsg = parsed.message;
+        } catch (_) {}
+      } else if (err?.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      addToast('Preview Error', errorMsg, 'error');
       setIsPreviewModalOpen(false);
     } finally {
       setIsLoadingPreview(false);
@@ -443,20 +457,66 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
         'info'
       );
       const res = await privateDocumentApi.downloadBlob(doc.id, versionNum);
-      const rawContentType = res.headers['content-type'];
-      const mime = typeof rawContentType === 'string' ? rawContentType : 'application/octet-stream';
+      const headerType = res.headers ? (res.headers['content-type'] || res.headers['Content-Type']) : '';
+      const mime = typeof headerType === 'string' && headerType.length > 0
+        ? headerType.split(';')[0].trim().toLowerCase()
+        : 'application/octet-stream';
+
+      // Parse filename from Content-Disposition header if available
+      let resolvedFilename = doc.stored_filename || doc.original_filename || '';
+      const contentDisposition = res.headers ? (res.headers['content-disposition'] || res.headers['Content-Disposition']) : '';
+      if (contentDisposition && typeof contentDisposition === 'string') {
+        const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match && utf8Match[1]) {
+          try {
+            resolvedFilename = decodeURIComponent(utf8Match[1].replace(/["']/g, ''));
+          } catch (_) {
+            resolvedFilename = utf8Match[1].replace(/["']/g, '');
+          }
+        } else {
+          const standardMatch = contentDisposition.match(/filename=["']?([^"';]+)["']?/i);
+          if (standardMatch && standardMatch[1]) {
+            resolvedFilename = standardMatch[1];
+          }
+        }
+      }
+
+      if (!resolvedFilename) {
+        const cat = getVaultFileTypeCategory(doc.original_filename || doc.stored_filename);
+        const ext = cat === 'word' ? '.docx' : cat === 'sheet' ? '.xlsx' : cat === 'image' ? '.png' : '.pdf';
+        resolvedFilename = `${doc.document_reference || 'zenemoo-vault-document'}${ext}`;
+      }
+
       const blob = new Blob([res.data], { type: mime });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
-      a.download = doc.stored_filename || `${doc.document_reference}.pdf`;
+      a.setAttribute('download', resolvedFilename);
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      addToast('Download Complete', `${a.download} successfully saved to device.`, 'success');
+
+      // Keep blob URL active for 1.5 seconds so browser download manager finishes stream handover
+      setTimeout(() => {
+        if (document.body.contains(a)) {
+          document.body.removeChild(a);
+        }
+        window.URL.revokeObjectURL(url);
+      }, 1500);
+
+      addToast('Download Complete', `${resolvedFilename} successfully saved to device.`, 'success');
     } catch (err: any) {
-      addToast('Download Error', 'Could not stream document for download.', 'error');
+      let errorMsg = 'Could not stream document for download.';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const txt = await err.response.data.text();
+          const parsed = JSON.parse(txt);
+          if (parsed?.message) errorMsg = parsed.message;
+        } catch (_) {}
+      } else if (err?.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      addToast('Download Error', errorMsg, 'error');
     } finally {
       setDownloadingDocId(null);
     }
@@ -2011,23 +2071,35 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       {/* 7. AUTHENTICATED PREVIEW MODAL (Phase 9) */}
       {/* ========================================================================= */}
       {isPreviewModalOpen && selectedDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/90 backdrop-blur-md">
-          <div className="relative w-full max-w-5xl h-[92vh] rounded-2xl bg-[#0a0d16] border border-cyan-500/30 flex flex-col shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-md">
+          <div className="relative w-full max-w-6xl h-[94vh] rounded-2xl bg-[#0a0d16] border border-cyan-500/30 flex flex-col shadow-2xl overflow-hidden">
             {/* Header */}
-            <div className="h-14 px-5 border-b border-white/10 flex items-center justify-between bg-[#06080e] shrink-0">
-              <div className="flex items-center gap-3 truncate">
+            <div className="h-14 px-4 sm:px-6 border-b border-white/10 flex items-center justify-between bg-[#06080e] shrink-0">
+              <div className="flex items-center gap-3 min-w-0 mr-3">
                 <FileText className="w-5 h-5 text-cyan-400 shrink-0" />
-                <div className="truncate">
-                  <h4 className="text-xs md:text-sm font-bold text-white font-mono truncate">
+                <div className="min-w-0">
+                  <h4 className="text-xs sm:text-sm font-bold text-white font-mono truncate">
                     {selectedDoc.document_reference} — {selectedDoc.title}
                   </h4>
                   <p className="text-[10px] font-mono text-slate-400 truncate">
-                    {previewVersion ? `Viewing Version ${previewVersion}` : `Version ${selectedDoc.current_version}`} • Verified In-Memory Streaming Preview
+                    {previewVersion ? `Viewing Version ${previewVersion}` : `Version ${selectedDoc.current_version}`} • Verified In-Memory Secure Stream
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {previewBlobUrl && (
+                  <a
+                    href={previewBlobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                    title="Open document in a new browser tab"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Open in Tab</span>
+                  </a>
+                )}
                 <button
                   onClick={() => handleDownload(selectedDoc, previewVersion)}
                   disabled={
@@ -2035,12 +2107,13 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                     (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id)
                   }
                   className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60"
+                  title="Download genuine file to your device"
                 >
                   {downloadingDocId ===
                   (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id) ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                      <span>Preparing...</span>
+                      <span>Downloading...</span>
                     </>
                   ) : (
                     <>
@@ -2052,6 +2125,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 <button
                   onClick={handleClosePreview}
                   className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
+                  title="Close preview"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2059,97 +2133,58 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
             </div>
 
             {/* Viewer Body */}
-            <div className="flex-1 bg-black/80 flex items-center justify-center relative overflow-auto p-4">
+            <div className="flex-1 bg-black/90 flex items-center justify-center relative overflow-hidden">
               {isLoadingPreview ? (
-                <div className="text-center space-y-3">
-                  <RefreshCw className="w-9 h-9 animate-spin text-cyan-400 mx-auto" />
-                  <p className="text-xs font-mono text-slate-300">Decrypting & Streaming securely from vault...</p>
-                  <p className="text-[10px] font-mono text-slate-500">Checking cryptographic integrity...</p>
+                <div className="text-center space-y-4 p-8">
+                  <RefreshCw className="w-10 h-10 animate-spin text-cyan-400 mx-auto" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold font-mono text-cyan-300">
+                      Decrypting & Streaming securely from vault...
+                    </p>
+                    <p className="text-xs font-mono text-slate-400">
+                      Generating verified in-browser document preview
+                    </p>
+                  </div>
                 </div>
               ) : previewBlobUrl ? (
                 (() => {
                   const cat = getVaultFileTypeCategory(
                     selectedDoc.stored_filename || selectedDoc.original_filename
                   );
-                  if (cat === 'image') {
+                  const isImage = previewMime.startsWith('image/') || cat === 'image';
+                  if (isImage) {
                     return (
-                      <div className="max-h-full max-w-full flex items-center justify-center p-2">
+                      <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
                         <img
                           src={previewBlobUrl}
                           alt={selectedDoc.title}
-                          className="max-h-[78vh] max-w-full object-contain rounded-xl border border-white/10 shadow-2xl"
+                          className="max-h-[82vh] max-w-full object-contain rounded-xl border border-white/10 shadow-2xl"
                         />
                       </div>
                     );
                   }
-                  if (cat === 'pdf') {
-                    return (
-                      <iframe
-                        src={`${previewBlobUrl}#toolbar=0`}
-                        title="Document Preview"
-                        className="w-full h-full border-0 rounded-b-xl"
-                      />
-                    );
-                  }
-                  // Word / Excel / CSV / Other office documents
                   return (
-                    <div className="max-w-md w-full p-6 rounded-2xl bg-[#0f1422] border border-cyan-500/20 shadow-2xl text-center space-y-4">
-                      <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
-                        {cat === 'sheet' ? (
-                          <FileSpreadsheet className="w-8 h-8 text-emerald-400" />
-                        ) : (
-                          <FileText className="w-8 h-8 text-blue-400" />
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-bold text-white font-mono break-all">
-                          {selectedDoc.stored_filename || selectedDoc.title}
-                        </h4>
-                        <p className="text-xs text-slate-400 font-mono">
-                          Format: {cat.toUpperCase()} • Size: {formatBytes(selectedDoc.file_size)}
-                        </p>
-                      </div>
-                      <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 text-[11px] text-slate-400 text-left space-y-1">
-                        <p className="font-semibold text-cyan-300 flex items-center gap-1.5">
-                          <Lock className="w-3.5 h-3.5" /> Zero-Trust Document Security
-                        </p>
-                        <p className="text-[10px] text-slate-400 leading-relaxed">
-                          To protect confidential business documents, Office spreadsheets and Word agreements are never sent to third-party public cloud converters.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleDownload(selectedDoc, previewVersion)}
-                        disabled={
-                          downloadingDocId ===
-                          (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id)
-                        }
-                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-60 transition cursor-pointer"
-                      >
-                        {downloadingDocId ===
-                        (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id) ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                            <span>Preparing Document Download...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4" />
-                            <span>Download & Open Genuine File</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                    <iframe
+                      src={previewBlobUrl}
+                      title={`${selectedDoc.document_reference} Preview`}
+                      className="w-full h-full border-0 bg-white"
+                    />
                   );
                 })()
               ) : (
-                <div className="text-center p-6 space-y-3 text-slate-400">
-                  <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
-                  <p className="text-xs">Document preview could not be streamed from the vault.</p>
+                <div className="text-center p-8 space-y-4 text-slate-400 max-w-md">
+                  <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
+                  <div>
+                    <h4 className="text-sm font-bold text-white font-mono">Document Preview Stream Unavailable</h4>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Could not stream document preview directly into viewer. You can download the genuine original file directly.
+                    </p>
+                  </div>
                   <button
                     onClick={() => handleDownload(selectedDoc, previewVersion)}
-                    className="px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-mono"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 mx-auto shadow-lg shadow-cyan-500/20 transition cursor-pointer"
                   >
-                    Download to View
+                    <Download className="w-4 h-4" /> Download Original File
                   </button>
                 </div>
               )}

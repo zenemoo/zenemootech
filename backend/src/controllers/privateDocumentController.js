@@ -132,7 +132,7 @@ async function recordAuditLog({
 
 // Columns selected for low-egress listing
 const LISTING_COLUMNS =
-  'id, document_reference, title, document_type, access_classification, company_name, project_name, effective_date, expiry_date, signed_date, nda_type, signing_status, document_status, current_version, file_size, uploader_email, created_at, updated_at';
+  'id, document_reference, title, document_type, access_classification, company_name, project_name, effective_date, expiry_date, signed_date, nda_type, signing_status, document_status, current_version, file_size, stored_filename, original_filename, mime_type, uploader_email, created_at, updated_at';
 
 /**
  * GET /api/private-documents/stats
@@ -886,9 +886,111 @@ export const uploadNewVersion = async (req, res) => {
   }
 };
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function wrapInDocumentHtml(title, innerHtml, fileType = 'Document') {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title || 'Zenemoo Vault Preview')}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.65;
+      color: #1e293b;
+      background: #0b0f19;
+      padding: 30px 16px;
+      margin: 0;
+      min-height: 100vh;
+    }
+    .doc-container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 50px 45px;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      border: 1px solid #334155;
+    }
+    @media (max-width: 640px) {
+      .doc-container { padding: 25px 20px; }
+      body { padding: 10px 8px; }
+    }
+    .doc-watermark {
+      font-size: 11px;
+      font-family: monospace;
+      color: #0284c7;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 8px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      color: #0f172a;
+      font-weight: 700;
+      margin-top: 1.4em;
+      margin-bottom: 0.5em;
+      line-height: 1.3;
+    }
+    h1 { font-size: 1.5rem; color: #0369a1; }
+    h2 { font-size: 1.25rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+    h3 { font-size: 1.1rem; }
+    p { margin: 0.8em 0; font-size: 0.95rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5em 0;
+      font-size: 0.88rem;
+    }
+    table, th, td {
+      border: 1px solid #cbd5e1;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    tr:nth-child(even) td { background: #fafafa; }
+    ul, ol { padding-left: 24px; margin: 0.8em 0; font-size: 0.95rem; }
+    li { margin-bottom: 4px; }
+    strong { color: #0f172a; }
+  </style>
+</head>
+<body>
+  <div class="doc-container">
+    <div class="doc-watermark">
+      <span>ZENEMOO PRIVATE VAULT • SECURE PREVIEW</span>
+      <span>${escapeHtml(fileType.toUpperCase())}</span>
+    </div>
+    ${innerHtml}
+  </div>
+</body>
+</html>`;
+}
+
 /**
  * GET /api/private-documents/:id/preview
- * Authenticated inline PDF preview stream with strict security headers
+ * Authenticated inline document preview stream (PDF, HTML-rendered Word/Excel/CSV, Image)
  */
 export const previewPrivateDocument = async (req, res) => {
   try {
@@ -933,7 +1035,7 @@ export const previewPrivateDocument = async (req, res) => {
 
     const buffer = await privateStorageService.getPrivatePdfBuffer(driveFileId, filename);
     if (!buffer) {
-      return res.status(404).json({ success: false, message: 'PDF document content is currently unavailable.' });
+      return res.status(404).json({ success: false, message: 'Document content is currently unavailable.' });
     }
 
     await recordAuditLog({
@@ -946,10 +1048,84 @@ export const previewPrivateDocument = async (req, res) => {
       details: { version: targetVersion?.version_number || doc.current_version },
     });
 
+    const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+
+    // 1. Rich In-Browser Word Document Preview (.docx / .doc)
+    if (ext === '.docx' || ext === '.doc') {
+      try {
+        const mammothModule = await import('mammoth');
+        const mammoth = mammothModule.default || mammothModule;
+        const { value: docHtml } = await mammoth.convertToHtml({ buffer });
+        const styledHtml = wrapInDocumentHtml(doc.title || filename, docHtml, 'Word Agreement');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline'");
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
+        return res.send(styledHtml);
+      } catch (convErr) {
+        console.warn('Word conversion fallback:', convErr.message);
+      }
+    }
+
+    // 2. Rich In-Browser Excel Spreadsheet Preview (.xlsx / .xls)
+    if (ext === '.xlsx' || ext === '.xls') {
+      try {
+        const ExcelJSModule = await import('exceljs');
+        const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        let sheetsHtml = '';
+        workbook.eachSheet((worksheet) => {
+          sheetsHtml += `<h2>${escapeHtml(worksheet.name)}</h2><div style="overflow-x:auto;"><table>`;
+          worksheet.eachRow((row, rowNumber) => {
+            sheetsHtml += '<tr>';
+            row.eachCell((cell) => {
+              const tag = rowNumber === 1 ? 'th' : 'td';
+              const textVal = cell.text || (cell.value !== undefined && cell.value !== null ? String(cell.value) : '');
+              sheetsHtml += `<${tag}>${escapeHtml(textVal)}</${tag}>`;
+            });
+            sheetsHtml += '</tr>';
+          });
+          sheetsHtml += '</table></div>';
+        });
+        const styledHtml = wrapInDocumentHtml(doc.title || filename, sheetsHtml, 'Spreadsheet');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline'");
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
+        return res.send(styledHtml);
+      } catch (convErr) {
+        console.warn('Excel conversion fallback:', convErr.message);
+      }
+    }
+
+    // 3. Rich In-Browser CSV Dataset Preview (.csv)
+    if (ext === '.csv') {
+      try {
+        const text = buffer.toString('utf-8');
+        const lines = text.split(/\r?\n/).filter(Boolean);
+        let tableHtml = '<div style="overflow-x:auto;"><table>';
+        lines.forEach((line, idx) => {
+          const cells = line.split(',');
+          const tag = idx === 0 ? 'th' : 'td';
+          tableHtml += '<tr>' + cells.map((c) => `<${tag}>${escapeHtml(c.trim())}</${tag}>`).join('') + '</tr>';
+        });
+        tableHtml += '</table></div>';
+        const styledHtml = wrapInDocumentHtml(doc.title || filename, tableHtml, 'CSV Dataset');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline'");
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
+        return res.send(styledHtml);
+      } catch (convErr) {
+        console.warn('CSV conversion fallback:', convErr.message);
+      }
+    }
+
+    // 4. Standard Binary Stream (PDF, Image)
     const targetMime = targetVersion?.mime_type || doc.mime_type || getMimeType(filename, 'application/pdf');
     const checksum = targetVersion?.checksum_sha256 || doc.checksum_sha256;
 
-    // Zero-egress HTTP 304 Not Modified validation
     if (checksum) {
       res.setHeader('ETag', `"${checksum}"`);
       if (req.headers['if-none-match'] === `"${checksum}"`) {
@@ -971,7 +1147,7 @@ export const previewPrivateDocument = async (req, res) => {
 
 /**
  * GET /api/private-documents/:id/download
- * Authenticated attachment download
+ * Authenticated attachment download (Guaranteed full binary retrieval with no-cache)
  */
 export const downloadPrivateDocument = async (req, res) => {
   try {
@@ -1030,15 +1206,6 @@ export const downloadPrivateDocument = async (req, res) => {
     });
 
     const targetMime = targetVersion?.mime_type || doc.mime_type || getMimeType(filename, 'application/octet-stream');
-    const checksum = targetVersion?.checksum_sha256 || doc.checksum_sha256;
-
-    // Zero-egress HTTP 304 Not Modified validation
-    if (checksum) {
-      res.setHeader('ETag', `"${checksum}"`);
-      if (req.headers['if-none-match'] === `"${checksum}"`) {
-        return res.status(304).end();
-      }
-    }
 
     res.setHeader('Content-Type', targetMime);
     res.setHeader(
@@ -1046,7 +1213,9 @@ export const downloadPrivateDocument = async (req, res) => {
       `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
     );
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   } catch (err) {
