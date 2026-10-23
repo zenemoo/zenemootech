@@ -77,6 +77,11 @@ export interface AttachmentFileItem {
   type: string;
   url?: string;
   isOriginal?: boolean;
+  content?: string;
+  progress?: number;
+  status?: 'uploading' | 'ready' | 'error';
+  errorMsg?: string;
+  r2_key?: string;
 }
 
 export interface ComposerDraft {
@@ -549,12 +554,15 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
       // Prepare original attachments in forward mode
       let initAttachments: AttachmentFileItem[] = [];
       if (effectiveMode === 'forward' && originalEmail && Array.isArray(originalEmail.attachments) && originalEmail.attachments.length > 0) {
-        initAttachments = originalEmail.attachments.map((att, idx) => ({
+        initAttachments = originalEmail.attachments.map((att: any, idx: number) => ({
           id: att.id || `orig_att_${idx}`,
           name: att.filename,
           size: att.size,
           type: att.contentType,
+          r2_key: att.r2_key,
           isOriginal: true,
+          status: 'ready' as const,
+          progress: 100,
         }));
       }
 
@@ -685,16 +693,87 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     if (!e.target.files || e.target.files.length === 0) return;
     const selectedFiles = Array.from(e.target.files);
 
-    const newAttachments: AttachmentFileItem[] = selectedFiles.map((file) => ({
-      id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      file,
-      name: file.name,
-      size: file.size,
-      type: file.type || 'application/octet-stream',
-      isOriginal: false,
-    }));
+    let currentTotalSize = attachments.reduce((sum, item) => sum + item.size, 0);
+    const addedItems: AttachmentFileItem[] = [];
 
-    setAttachments([...attachments, ...newAttachments]);
+    for (const file of selectedFiles) {
+      // Rule 1: Max 10 MB per individual file (matching Email History composer)
+      if (file.size > 10 * 1024 * 1024) {
+        addToast(
+          'File Too Large',
+          `File "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds the maximum 10 MB limit.`,
+          'error'
+        );
+        continue;
+      }
+
+      // Rule 2: Max 25 MB total across all attachments
+      if (currentTotalSize + file.size > 25 * 1024 * 1024) {
+        addToast(
+          'Attachment Limit Exceeded',
+          `Adding "${file.name}" exceeds the maximum 25 MB total email attachment limit.`,
+          'error'
+        );
+        break;
+      }
+
+      currentTotalSize += file.size;
+      const fileId = `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      const newItem: AttachmentFileItem = {
+        id: fileId,
+        file,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'application/octet-stream',
+        isOriginal: false,
+        content: '',
+        progress: 0,
+        status: 'uploading',
+      };
+
+      addedItems.push(newItem);
+
+      // Read file immediately into base64 content
+      const reader = new FileReader();
+      reader.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const pct = Math.round((evt.loaded / evt.total) * 100);
+          setAttachmentsState((prev) =>
+            prev.map((item) => (item.id === fileId ? { ...item, progress: pct } : item))
+          );
+        }
+      };
+      reader.onload = () => {
+        const result = reader.result as string;
+        setAttachmentsState((prev) => {
+          const updated = prev.map((item) =>
+            item.id === fileId
+              ? { ...item, content: result, progress: 100, status: 'ready' as const }
+              : item
+          );
+          updateDraft({ attachments: updated });
+          return updated;
+        });
+      };
+      reader.onerror = () => {
+        setAttachmentsState((prev) => {
+          const updated = prev.map((item) =>
+            item.id === fileId
+              ? { ...item, status: 'error' as const, errorMsg: 'Failed to read file.' }
+              : item
+          );
+          updateDraft({ attachments: updated });
+          return updated;
+        });
+        addToast('Attachment Error', `Failed to load file "${file.name}".`, 'error');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    if (addedItems.length > 0) {
+      setAttachments([...attachments, ...addedItems]);
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -973,6 +1052,71 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
     setIsSending(true);
 
     try {
+      // Build formatted attachments with base64 content
+      const formattedAttachments: Array<{
+        name: string;
+        filename: string;
+        contentType: string;
+        size: number;
+        content?: string;
+        isOriginal?: boolean;
+        id?: string;
+        r2_key?: string;
+      }> = [];
+
+      for (const att of prepared.finalAttachments) {
+        if (att.content && att.content.trim() !== '') {
+          formattedAttachments.push({
+            id: att.id,
+            name: att.name,
+            filename: att.name,
+            contentType: att.type,
+            size: att.size,
+            content: att.content,
+            isOriginal: att.isOriginal,
+            r2_key: att.r2_key,
+          });
+        } else if (att.file) {
+          try {
+            const base64Content = await readFileAsDataUrl(att.file);
+            formattedAttachments.push({
+              id: att.id,
+              name: att.name,
+              filename: att.name,
+              contentType: att.type,
+              size: att.size,
+              content: base64Content,
+              isOriginal: false,
+            });
+          } catch (fileErr) {
+            console.warn('Failed reading file attachment for send:', fileErr);
+          }
+        } else if (att.isOriginal) {
+          // If original forwarded attachment has no content yet, try downloading or let backend resolve from R2
+          let origContent: string | undefined = undefined;
+          if (originalEmail?.id && att.id) {
+            try {
+              const dl = await emailInboxApi.downloadAttachmentBlob(originalEmail.id, att.id);
+              if (dl.blob) {
+                origContent = await readFileAsDataUrl(new File([dl.blob], att.name, { type: att.type }));
+              }
+            } catch (dlErr) {
+              console.warn('[Forward Original Attachment Client Download Failed, relying on R2 backend]:', dlErr);
+            }
+          }
+          formattedAttachments.push({
+            id: att.id,
+            name: att.name,
+            filename: att.name,
+            contentType: att.type,
+            size: att.size,
+            content: origContent,
+            isOriginal: true,
+            r2_key: att.r2_key,
+          });
+        }
+      }
+
       const payload = {
         sender: fromSender,
         from: fromSender,
@@ -987,15 +1131,16 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         originalEmailId: originalEmail ? originalEmail.id || originalEmail.message_id : undefined,
         inReplyTo: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
         references: (effectiveMode === 'reply' || effectiveMode === 'replyAll') && originalEmail ? (originalEmail.message_id || originalEmail.id) : undefined,
-        attachmentCount: prepared.finalAttachments.length,
+        attachments: formattedAttachments,
+        attachmentCount: formattedAttachments.length,
       };
 
       let response: any;
       try {
-        response = await emailApi.send(payload);
+        response = await emailInboxApi.sendEmail(payload);
       } catch (e: any) {
         if (e.response && (e.response.status === 404 || e.response.status === 405)) {
-          response = await emailInboxApi.sendEmail(payload);
+          response = await emailApi.send(payload);
         } else {
           throw e;
         }
@@ -1445,11 +1590,19 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <FileText className={`w-4 h-4 shrink-0 ${att.isOriginal ? 'text-purple-400' : 'text-cyan-400'}`} />
+                      {att.status === 'uploading' ? (
+                        <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
+                      ) : att.status === 'error' ? (
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                      ) : (
+                        <FileText className={`w-4 h-4 shrink-0 ${att.isOriginal ? 'text-purple-400' : 'text-cyan-400'}`} />
+                      )}
                       <div className="min-w-0">
                         <p className="text-white truncate font-medium">{att.name}</p>
                         <p className="text-[10px] text-slate-400">
                           {formatFileSize(att.size)} {att.isOriginal ? '• Original Attachment' : '• Added Attachment'}
+                          {att.status === 'uploading' && ' (Reading...)'}
+                          {att.status === 'error' && ' (Error reading file)'}
                         </p>
                       </div>
                     </div>

@@ -4,7 +4,7 @@ dotenv.config();
 import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { encrypt, decrypt } from '../services/encryptionService.js';
-import { sendMailViaBrevo, parseRecipients, validateEmail, sanitizeHtml } from '../services/emailService.js';
+import { sendMailViaBrevo, parseRecipients, validateEmail, sanitizeHtml, extractAttachmentMetadata } from '../services/emailService.js';
 import { sendZenemooNotification } from '../services/pushNotificationEngine.js';
 import { sanitizePostgrestFilter, sanitizePostgrestExact } from '../utils/postgrestSanitizer.js';
 import { emailR2Service } from '../services/emailR2Service.js';
@@ -1771,6 +1771,48 @@ export const sendInboxEmail = async (req, res, next) => {
       }
     }
 
+    // Resolve attachments: if any attachment lacks content (e.g. forward with original attachments),
+    // resolve the binary buffer from Cloudflare R2 or database storage
+    let finalAttachments = Array.isArray(attachments) ? [...attachments] : [];
+    if (finalAttachments.length > 0 && originalEmailId) {
+      finalAttachments = await Promise.all(
+        finalAttachments.map(async (att) => {
+          if (!att) return att;
+          if (att.content || att.data || att.base64) {
+            return att;
+          }
+          try {
+            const cleanOrigId = emailR2Service.sanitizeId(originalEmailId);
+            const filename = att.filename || att.name;
+            const safeFilename = emailR2Service.sanitizeFilename(filename);
+            const candidateKeys = [
+              att.r2_key,
+              `incoming/${cleanOrigId}/attachments/${safeFilename}`,
+              `sent/${cleanOrigId}/attachments/${safeFilename}`,
+              `incoming/${cleanOrigId}/attachments/${filename}`,
+              `sent/${cleanOrigId}/attachments/${filename}`,
+            ].filter(Boolean);
+
+            for (const key of candidateKeys) {
+              const r2Obj = await emailR2Service.getObjectBuffer(key);
+              if (r2Obj && r2Obj.buffer) {
+                return {
+                  ...att,
+                  filename,
+                  name: filename,
+                  content: r2Obj.buffer.toString('base64'),
+                  contentType: att.contentType || att.type || r2Obj.contentType || 'application/octet-stream',
+                };
+              }
+            }
+          } catch (r2Err) {
+            console.warn('[Forward Original Attachment Resolution Warning]:', r2Err.message);
+          }
+          return att;
+        })
+      );
+    }
+
     // Dispatch via Brevo Service
     const sendResult = await sendMailViaBrevo({
       sender: fromSender,
@@ -1780,7 +1822,7 @@ export const sendInboxEmail = async (req, res, next) => {
       subject,
       html: safeHtml,
       text: text || req.body.text,
-      attachments,
+      attachments: finalAttachments,
       inReplyTo,
       references,
       headers: inReplyTo ? { 'In-Reply-To': inReplyTo, 'References': references } : undefined,
@@ -1799,6 +1841,8 @@ export const sendInboxEmail = async (req, res, next) => {
       bcc: encrypt(parsedBcc),
       subject: encrypt(subject),
       html: encrypt(safeHtml),
+      attachments_meta: extractAttachmentMetadata(finalAttachments),
+      has_attachments: finalAttachments.length > 0,
       status: 'sent',
       message_id: sendResult.messageId || `msg_sent_${Date.now()}`,
       created_at: new Date().toISOString(),
@@ -1829,8 +1873,8 @@ export const sendInboxEmail = async (req, res, next) => {
         });
 
         const sentAttachmentsMeta = [];
-        if (Array.isArray(attachments) && attachments.length > 0) {
-          for (const a of attachments) {
+        if (Array.isArray(finalAttachments) && finalAttachments.length > 0) {
+          for (const a of finalAttachments) {
             if (a.content || a.data || a.base64) {
               try {
                 const up = await emailR2Service.uploadAttachment({
@@ -1894,7 +1938,14 @@ export const sendInboxEmail = async (req, res, next) => {
       status: 'sent',
       sent_at: new Date().toISOString(),
       received_at: new Date().toISOString(),
-      attachments: Array.isArray(sendResult.attachmentsMeta) ? sendResult.attachmentsMeta : [],
+      attachments: (Array.isArray(sendResult.attachmentsMeta) && sendResult.attachmentsMeta.length > 0)
+        ? sendResult.attachmentsMeta
+        : finalAttachments.map((a, idx) => ({
+            id: a.id || `att_${Date.now()}_${idx}`,
+            filename: a.filename || a.name || 'attachment',
+            contentType: a.contentType || a.type || 'application/octet-stream',
+            size: a.size || (a.content ? Math.round(a.content.length * 0.75) : 0),
+          })),
     };
 
     return res.json({
