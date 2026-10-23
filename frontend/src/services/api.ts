@@ -938,12 +938,13 @@ export const privateDocumentApi = {
     tags?: string[];
     internal_notes?: string;
     external_reference_url?: string;
-    pdf_base64: string;
+    file_base64?: string;
+    pdf_base64?: string;
     original_filename: string;
   }) => api.post('/private-documents', data, { timeout: 180000 }),
   updateDocument: (id: string, data: any) =>
     api.patch(`/private-documents/${id}`, data),
-  uploadVersion: (id: string, data: { pdf_base64: string; original_filename?: string; change_note?: string }) =>
+  uploadVersion: (id: string, data: { file_base64?: string; pdf_base64?: string; original_filename?: string; change_note?: string }) =>
     api.post(`/private-documents/${id}/versions`, data, { timeout: 180000 }),
   archiveDocument: (id: string, unarchive: boolean = false) =>
     api.patch(`/private-documents/${id}/archive`, { unarchive }),

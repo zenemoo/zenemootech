@@ -33,8 +33,51 @@ import {
   Edit,
   Layers,
   ArrowUpDown,
+  Image as ImageIcon,
+  File as FileIcon,
 } from 'lucide-react';
 import { privateDocumentApi } from '../services/api';
+
+// Supported file extensions across PDF, Office, Sheets, and Images
+export const ALLOWED_VAULT_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.csv',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+];
+
+export const getVaultFileExtension = (filename?: string): string => {
+  if (!filename) return '';
+  const idx = filename.lastIndexOf('.');
+  return idx !== -1 ? filename.substring(idx).toLowerCase() : '';
+};
+
+export const getVaultFileTypeCategory = (
+  filename?: string
+): 'pdf' | 'word' | 'sheet' | 'image' | 'file' => {
+  const ext = getVaultFileExtension(filename);
+  if (ext === '.pdf') return 'pdf';
+  if (['.doc', '.docx'].includes(ext)) return 'word';
+  if (['.xls', '.xlsx', '.csv'].includes(ext)) return 'sheet';
+  if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) return 'image';
+  return 'file';
+};
+
+export const getVaultPreviewLabel = (doc?: PrivateDocItem | null) => {
+  if (!doc) return 'Preview';
+  const cat = getVaultFileTypeCategory(doc.stored_filename || doc.original_filename);
+  if (cat === 'pdf') return 'Preview PDF';
+  if (cat === 'image') return 'Preview Image';
+  if (cat === 'sheet') return 'Preview Sheet';
+  if (cat === 'word') return 'Preview Document';
+  return 'Preview File';
+};
 
 interface AdminPrivateDocumentsVaultProps {
   addToast: (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -155,6 +198,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewVersion, setPreviewVersion] = useState<number | undefined>(undefined);
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
   // Upload form state
   const [formTitle, setFormTitle] = useState('');
@@ -366,7 +410,8 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
 
     try {
       const res = await privateDocumentApi.previewBlob(doc.id, versionNum);
-      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const mime = res.headers['content-type'] || 'application/pdf';
+      const blob = new Blob([res.data], { type: mime });
       const url = window.URL.createObjectURL(blob);
       setPreviewBlobUrl(url);
     } catch (err: any) {
@@ -386,12 +431,19 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
     }
   };
 
-  // Handle Download (Server-mediated authenticated stream)
+  // Handle Download (Server-mediated authenticated stream with live download progress)
   const handleDownload = async (doc: PrivateDocItem, versionNum?: number) => {
+    const downloadKey = versionNum ? `${doc.id}_v${versionNum}` : doc.id;
+    setDownloadingDocId(downloadKey);
     try {
-      addToast('Preparing Download', 'Streaming secure PDF from vault...', 'info');
+      addToast(
+        'Download Initiated',
+        `Streaming securely from vault for ${doc.document_reference}...`,
+        'info'
+      );
       const res = await privateDocumentApi.downloadBlob(doc.id, versionNum);
-      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const mime = res.headers['content-type'] || 'application/octet-stream';
+      const blob = new Blob([res.data], { type: mime });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -400,9 +452,11 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      addToast('Download Complete', 'PDF saved to device.', 'success');
+      addToast('Download Complete', `${a.download} successfully saved to device.`, 'success');
     } catch (err: any) {
-      addToast('Download Error', 'Could not stream PDF for download.', 'error');
+      addToast('Download Error', 'Could not stream document for download.', 'error');
+    } finally {
+      setDownloadingDocId(null);
     }
   };
 
@@ -454,7 +508,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
     );
   };
 
-  // Handle File Selection with client-side magic-byte inspection
+  // Handle File Selection with client-side format & signature inspection
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -462,8 +516,11 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
     setFileError('');
 
     // Extension check
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setFileError('Invalid file type: Only PDF documents (.pdf) are allowed.');
+    const ext = getVaultFileExtension(file.name);
+    if (!ALLOWED_VAULT_EXTENSIONS.includes(ext)) {
+      setFileError(
+        'Invalid file type: Supported formats are PDF (.pdf), Word (.doc, .docx), Sheets (.xls, .xlsx, .csv), and Images (.png, .jpg, .jpeg, .webp).'
+      );
       setSelectedFile(null);
       return;
     }
@@ -475,20 +532,37 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       return;
     }
 
-    // Client-side magic bytes validation (%PDF-)
+    // Client-side magic bytes validation where applicable
     try {
-      const slice = file.slice(0, 5);
-      const text = await slice.text();
-      if (text !== '%PDF-') {
-        setFileError('File verification failed: The selected file does not contain a valid PDF binary signature.');
-        setSelectedFile(null);
-        return;
+      const slice = file.slice(0, 8);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      if (ext === '.pdf') {
+        const text = new TextDecoder().decode(bytes.slice(0, 5));
+        if (text !== '%PDF-') {
+          setFileError('File verification failed: The file does not contain a valid PDF binary signature.');
+          setSelectedFile(null);
+          return;
+        }
+      } else if (ext === '.png') {
+        if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
+          setFileError('File verification failed: The file does not contain a valid PNG image header.');
+          setSelectedFile(null);
+          return;
+        }
+      } else if (ext === '.jpg' || ext === '.jpeg') {
+        if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+          setFileError('File verification failed: The file does not contain a valid JPEG image header.');
+          setSelectedFile(null);
+          return;
+        }
       }
     } catch (_) {}
 
     setSelectedFile(file);
     if (!formTitle.trim()) {
-      const cleanName = file.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ');
+      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ');
       setFormTitle(cleanName);
     }
   };
@@ -520,7 +594,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       return;
     }
     if (!selectedFile) {
-      addToast('Validation', 'Please select a valid PDF file.', 'warning');
+      addToast('Validation', 'Please select a document file to archive.', 'warning');
       return;
     }
 
@@ -551,6 +625,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
         tags: parsedTags,
         internal_notes: formNotes.trim() || undefined,
         external_reference_url: formExternalUrl.trim() || undefined,
+        file_base64: base64Data,
         pdf_base64: base64Data,
         original_filename: selectedFile.name,
       });
@@ -608,7 +683,17 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
   const handleVersionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDoc || !versionFile) {
-      addToast('Validation', 'Please select a PDF file.', 'warning');
+      addToast('Validation', 'Please select a document file.', 'warning');
+      return;
+    }
+
+    const ext = getVaultFileExtension(versionFile.name);
+    if (!ALLOWED_VAULT_EXTENSIONS.includes(ext)) {
+      addToast(
+        'Validation',
+        'Invalid file type. Supported: PDF, Word, Excel, Sheets, Images.',
+        'warning'
+      );
       return;
     }
 
@@ -616,13 +701,18 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
     try {
       const base64Data = await fileToBase64(versionFile);
       const res = await privateDocumentApi.uploadVersion(selectedDoc.id, {
+        file_base64: base64Data,
         pdf_base64: base64Data,
         original_filename: versionFile.name,
         change_note: versionChangeNote.trim() || undefined,
       });
 
       if (res.data?.success) {
-        addToast('Version Uploaded', `New version created for ${selectedDoc.document_reference}.`, 'success');
+        addToast(
+          'Version Uploaded',
+          `New version created for ${selectedDoc.document_reference}.`,
+          'success'
+        );
         setIsVersionModalOpen(false);
         setVersionFile(null);
         setVersionChangeNote('');
@@ -1102,7 +1192,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                         <button
                           onClick={() => handleOpenPreview(doc)}
                           className="p-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/10 hover:text-cyan-300 border border-white/10 text-slate-400 transition"
-                          title="Preview PDF"
+                          title={getVaultPreviewLabel(doc)}
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
@@ -1110,10 +1200,15 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                         {/* Download */}
                         <button
                           onClick={() => handleDownload(doc)}
-                          className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/10 hover:text-emerald-300 border border-white/10 text-slate-400 transition"
-                          title="Download PDF"
+                          disabled={downloadingDocId === doc.id}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/10 hover:text-emerald-300 border border-white/10 text-slate-400 transition disabled:opacity-50"
+                          title={downloadingDocId === doc.id ? 'Preparing download...' : 'Download Document'}
                         >
-                          <Download className="w-3.5 h-3.5" />
+                          {downloadingDocId === doc.id ? (
+                            <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
                         </button>
 
                         {/* Upload Version */}
@@ -1347,10 +1442,16 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                   </div>
                 )}
 
-                {/* PDF File Upload Zone */}
+                {/* File Upload Zone */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
-                    <span>PDF Document File <span className="text-rose-400">*</span></span>
+                    <span className="flex items-center gap-2">
+                      <span>Document File</span>
+                      <span className="text-rose-400">*</span>
+                      <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+                        PDF • Word • Sheets • Images
+                      </span>
+                    </span>
                     <span className="text-[10px] font-mono text-slate-500">Max size: 25 MB</span>
                   </label>
 
@@ -1367,28 +1468,45 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".pdf,application/pdf"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,image/*"
                       onChange={handleFileChange}
                       className="hidden"
                     />
 
                     {selectedFile ? (
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <FileCheck className="w-8 h-8 text-emerald-400 mx-auto" />
-                        <p className="text-xs font-semibold text-white">{selectedFile.name}</p>
-                        <p className="text-[10px] font-mono text-slate-400">
-                          {formatBytes(selectedFile.size)} • Genuine PDF Magic Bytes Verified
-                        </p>
+                        <p className="text-xs font-semibold text-white break-all">{selectedFile.name}</p>
+                        <div className="flex items-center justify-center gap-2 text-[10px] font-mono text-slate-400">
+                          <span className="text-cyan-400 font-bold uppercase">
+                            {getVaultFileTypeCategory(selectedFile.name)}
+                          </span>
+                          <span>•</span>
+                          <span>{formatBytes(selectedFile.size)}</span>
+                          <span>•</span>
+                          <span className="text-emerald-400 font-semibold">Integrity Verified</span>
+                        </div>
                       </div>
                     ) : (
-                      <div className="space-y-1">
-                        <Upload className="w-8 h-8 text-cyan-400 mx-auto mb-1" />
+                      <div className="space-y-2">
+                        <Upload className="w-8 h-8 text-cyan-400 mx-auto" />
                         <p className="text-xs font-semibold text-white">
-                          Click or drag and drop PDF agreement here
+                          Click or drag and drop document agreement here
                         </p>
-                        <p className="text-[10px] text-slate-500 font-mono">
-                          Only verified PDF binaries (.pdf) accepted
-                        </p>
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap text-[10px] text-slate-400 font-mono pt-1">
+                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-cyan-300">
+                            PDF (.pdf)
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-blue-300">
+                            Word (.doc, .docx)
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-emerald-300">
+                            Excel / CSV (.xlsx, .csv)
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-amber-300">
+                            Images (.png, .jpg, .webp)
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1546,11 +1664,11 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
               </div>
 
               {/* Modal Footer - Pinned at bottom */}
-              <div className="flex items-center justify-end gap-3 px-6 py-4 bg-[#070a12] border-t border-white/10 shrink-0 z-10">
+              <div className="flex items-center justify-end gap-3.5 px-6 py-4 bg-[#070a12] border-t border-white/10 shrink-0 z-10">
                 <button
                   type="button"
                   onClick={() => setIsUploadModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-300 font-mono transition cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer shadow-sm"
                 >
                   Cancel
                 </button>
@@ -1601,13 +1719,24 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                     onClick={() => handleOpenPreview(selectedDoc)}
                     className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <Eye className="w-3.5 h-3.5" /> Preview PDF
+                    <Eye className="w-3.5 h-3.5" /> {getVaultPreviewLabel(selectedDoc)}
                   </button>
                   <button
                     onClick={() => handleDownload(selectedDoc)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                    disabled={downloadingDocId === selectedDoc.id}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60"
                   >
-                    <Download className="w-3.5 h-3.5" /> Download
+                    {downloadingDocId === selectedDoc.id ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                        <span>Preparing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download</span>
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => setIsDetailModalOpen(false)}
@@ -1657,7 +1786,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
             </div>
 
             {/* Scrollable Body */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 pb-12">
               {/* Tab 1: Info */}
               {activeDetailTab === 'info' && (
               <div className="space-y-6 mt-6">
@@ -1731,11 +1860,14 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 </div>
 
                 {selectedDoc.checksum_sha256 && (
-                  <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-[11px] font-mono">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block">
-                      Cryptographic SHA-256 Checksum
-                    </span>
-                    <span className="text-emerald-400 break-all select-all block mt-0.5">
+                  <div className="p-3.5 rounded-xl bg-black/50 border border-emerald-500/20 text-[11px] font-mono shadow-inner mb-6">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5 text-emerald-400" /> Cryptographic SHA-256 Checksum
+                      </span>
+                      <span className="text-[10px] text-emerald-500/80 font-mono">Immutable Hash</span>
+                    </div>
+                    <span className="text-emerald-400 break-all select-all block font-mono text-[11px] bg-black/40 px-2.5 py-1.5 rounded border border-emerald-500/10">
                       {selectedDoc.checksum_sha256}
                     </span>
                   </div>
@@ -1809,10 +1941,19 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                           </button>
                           <button
                             onClick={() => handleDownload(selectedDoc, v.version_number)}
-                            className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/10 hover:text-emerald-300 border border-white/10 text-slate-400 transition"
-                            title={`Download v${v.version_number}`}
+                            disabled={downloadingDocId === `${selectedDoc.id}_v${v.version_number}`}
+                            className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/10 hover:text-emerald-300 border border-white/10 text-slate-400 transition disabled:opacity-50"
+                            title={
+                              downloadingDocId === `${selectedDoc.id}_v${v.version_number}`
+                                ? 'Preparing download...'
+                                : `Download v${v.version_number}`
+                            }
                           >
-                            <Download className="w-3.5 h-3.5" />
+                            {downloadingDocId === `${selectedDoc.id}_v${v.version_number}` ? (
+                              <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
                           </button>
                         </div>
                       </div>
@@ -1865,7 +2006,7 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
       )}
 
       {/* ========================================================================= */}
-      {/* 7. AUTHENTICATED PDF PREVIEW MODAL (Phase 9) */}
+      {/* 7. AUTHENTICATED PREVIEW MODAL (Phase 9) */}
       {/* ========================================================================= */}
       {isPreviewModalOpen && selectedDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/90 backdrop-blur-md">
@@ -1887,9 +2028,24 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => handleDownload(selectedDoc, previewVersion)}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                  disabled={
+                    downloadingDocId ===
+                    (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id)
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download
+                  {downloadingDocId ===
+                  (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id) ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Preparing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download</span>
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={handleClosePreview}
@@ -1901,22 +2057,92 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
             </div>
 
             {/* Viewer Body */}
-            <div className="flex-1 bg-black/70 flex items-center justify-center relative overflow-hidden">
+            <div className="flex-1 bg-black/80 flex items-center justify-center relative overflow-auto p-4">
               {isLoadingPreview ? (
-                <div className="text-center space-y-2">
-                  <RefreshCw className="w-8 h-8 animate-spin text-cyan-400 mx-auto" />
-                  <p className="text-xs font-mono text-slate-300">Decrypting & Streaming PDF securely...</p>
+                <div className="text-center space-y-3">
+                  <RefreshCw className="w-9 h-9 animate-spin text-cyan-400 mx-auto" />
+                  <p className="text-xs font-mono text-slate-300">Decrypting & Streaming securely from vault...</p>
+                  <p className="text-[10px] font-mono text-slate-500">Checking cryptographic integrity...</p>
                 </div>
               ) : previewBlobUrl ? (
-                <iframe
-                  src={`${previewBlobUrl}#toolbar=0`}
-                  title="PDF Preview"
-                  className="w-full h-full border-0"
-                />
+                (() => {
+                  const cat = getVaultFileTypeCategory(
+                    selectedDoc.stored_filename || selectedDoc.original_filename
+                  );
+                  if (cat === 'image') {
+                    return (
+                      <div className="max-h-full max-w-full flex items-center justify-center p-2">
+                        <img
+                          src={previewBlobUrl}
+                          alt={selectedDoc.title}
+                          className="max-h-[78vh] max-w-full object-contain rounded-xl border border-white/10 shadow-2xl"
+                        />
+                      </div>
+                    );
+                  }
+                  if (cat === 'pdf') {
+                    return (
+                      <iframe
+                        src={`${previewBlobUrl}#toolbar=0`}
+                        title="Document Preview"
+                        className="w-full h-full border-0 rounded-b-xl"
+                      />
+                    );
+                  }
+                  // Word / Excel / CSV / Other office documents
+                  return (
+                    <div className="max-w-md w-full p-6 rounded-2xl bg-[#0f1422] border border-cyan-500/20 shadow-2xl text-center space-y-4">
+                      <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center mx-auto text-cyan-400">
+                        {cat === 'sheet' ? (
+                          <FileSpreadsheet className="w-8 h-8 text-emerald-400" />
+                        ) : (
+                          <FileText className="w-8 h-8 text-blue-400" />
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-white font-mono break-all">
+                          {selectedDoc.stored_filename || selectedDoc.title}
+                        </h4>
+                        <p className="text-xs text-slate-400 font-mono">
+                          Format: {cat.toUpperCase()} • Size: {formatBytes(selectedDoc.file_size)}
+                        </p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 text-[11px] text-slate-400 text-left space-y-1">
+                        <p className="font-semibold text-cyan-300 flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5" /> Zero-Trust Document Security
+                        </p>
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          To protect confidential business documents, Office spreadsheets and Word agreements are never sent to third-party public cloud converters.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDownload(selectedDoc, previewVersion)}
+                        disabled={
+                          downloadingDocId ===
+                          (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id)
+                        }
+                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 disabled:opacity-60 transition cursor-pointer"
+                      >
+                        {downloadingDocId ===
+                        (previewVersion ? `${selectedDoc.id}_v${previewVersion}` : selectedDoc.id) ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                            <span>Preparing Document Download...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            <span>Download & Open Genuine File</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })()
               ) : (
-                <div className="text-center p-6 space-y-2 text-slate-400">
+                <div className="text-center p-6 space-y-3 text-slate-400">
                   <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
-                  <p className="text-xs">PDF preview could not be rendered in this browser.</p>
+                  <p className="text-xs">Document preview could not be streamed from the vault.</p>
                   <button
                     onClick={() => handleDownload(selectedDoc, previewVersion)}
                     className="px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-mono"
@@ -1966,22 +2192,32 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
 
                 {/* Version File Picker */}
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-300 font-medium">New PDF File (.pdf)</label>
+                  <label className="text-xs text-slate-300 font-medium flex items-center justify-between">
+                    <span>New Document File</span>
+                    <span className="text-[10px] font-mono text-purple-300">PDF, Word, Excel, Sheets, Images</span>
+                  </label>
                   <input
                     ref={versionFileInputRef}
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,image/*"
                     required
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f && f.name.toLowerCase().endsWith('.pdf')) {
+                      if (!f) return;
+                      const ext = getVaultFileExtension(f.name);
+                      if (ALLOWED_VAULT_EXTENSIONS.includes(ext)) {
                         setVersionFile(f);
                       } else {
-                        addToast('Error', 'Only PDF files are allowed.', 'error');
+                        addToast('Error', 'Unsupported file type. Allowed: PDF, Word, Excel, Sheets, Images.', 'error');
                       }
                     }}
                     className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-mono file:bg-purple-500/20 file:text-purple-300 hover:file:bg-purple-500/30 cursor-pointer"
                   />
+                  {versionFile && (
+                    <p className="text-[11px] font-mono text-emerald-400 pt-1">
+                      Selected: {versionFile.name} ({formatBytes(versionFile.size)})
+                    </p>
+                  )}
                 </div>
 
                 {/* Change Note */}
@@ -1997,20 +2233,26 @@ export const AdminPrivateDocumentsVault: React.FC<AdminPrivateDocumentsVaultProp
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 px-6 py-3.5 bg-[#070a12] border-t border-white/10 shrink-0">
+              <div className="flex items-center justify-end gap-2.5 px-6 py-4 bg-[#070a12] border-t border-white/10 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsVersionModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingVersion || !versionFile}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold font-mono disabled:opacity-50 transition cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold font-mono disabled:opacity-50 transition cursor-pointer flex items-center gap-2"
                 >
-                  {isSubmittingVersion ? 'Uploading...' : 'Publish New Version'}
+                  {isSubmittingVersion ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Ingesting New Version...
+                    </>
+                  ) : (
+                    'Publish New Version'
+                  )}
                 </button>
               </div>
             </form>

@@ -3,8 +3,10 @@ import { supabase } from '../config/supabase.js';
 import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 import {
   validatePdfBuffer,
+  validateVaultFileBuffer,
   computeSha256,
   generatePrivateDocumentFilename,
+  getMimeType,
   privateStorageService,
 } from '../services/privateStorageService.js';
 
@@ -435,9 +437,13 @@ export const createPrivateDocument = async (req, res) => {
       tags = [],
       internal_notes,
       external_reference_url,
+      file_base64,
       pdf_base64,
       original_filename = 'document.pdf',
     } = req.body;
+
+    const rawBase64 = file_base64 || pdf_base64;
+    const cleanOriginalFilename = String(original_filename || 'document.pdf').trim();
 
     // 1. Mandatory Fields Validation
     if (!title || !title.trim()) {
@@ -449,35 +455,38 @@ export const createPrivateDocument = async (req, res) => {
     if (!document_type || !document_type.trim()) {
       return res.status(400).json({ success: false, message: 'Document type is required.' });
     }
-    if (!pdf_base64) {
-      return res.status(400).json({ success: false, message: 'PDF file is required.' });
+    if (!rawBase64) {
+      return res.status(400).json({ success: false, message: 'Document file is required.' });
     }
 
     const uploaderId = req.user?.id || req.user?.team_member_id || 'admin';
     const uploaderEmail = req.user?.email || 'admin@zenemoo.in';
 
-    // 2. Decode and Validate PDF Buffer
+    // 2. Decode and Validate File Buffer (PDF, Word, Excel/Sheets, Images)
     let buffer;
     try {
-      buffer = Buffer.from(pdf_base64, 'base64');
+      buffer = Buffer.from(rawBase64, 'base64');
     } catch (e) {
       return res.status(400).json({ success: false, message: 'Invalid Base64 file encoding.' });
     }
 
-    const validation = validatePdfBuffer(buffer);
+    const validation = validateVaultFileBuffer(buffer, cleanOriginalFilename);
     if (!validation.isValid) {
       return res.status(400).json({ success: false, message: validation.error });
     }
+
+    const detectedMime = validation.detectedMime || getMimeType(cleanOriginalFilename, 'application/octet-stream');
 
     // 3. Concurrency-Safe Document Reference Number Generation
     const year = new Date().getFullYear();
     const documentReference = await getNextDocumentReference(document_type, year);
 
-    // 4. Generate Standardized Filename
+    // 4. Generate Standardized Filename with Preserved Extension
     const storedFilename = generatePrivateDocumentFilename({
       documentReference,
       companyName: company_name.trim(),
       version: 1,
+      originalFilename: cleanOriginalFilename,
     });
 
     // 5. Store File in Dedicated Private Storage
@@ -487,6 +496,7 @@ export const createPrivateDocument = async (req, res) => {
       documentType: document_type,
       documentReference,
       year,
+      mimeType: detectedMime,
     });
 
     const docId = crypto.randomUUID();
@@ -514,9 +524,9 @@ export const createPrivateDocument = async (req, res) => {
       contact_person: contact_person ? contact_person.trim() : null,
       contact_email: contact_email ? contact_email.trim() : null,
       contact_phone: contact_phone ? contact_phone.trim() : null,
-      original_filename: original_filename.trim(),
+      original_filename: cleanOriginalFilename,
       stored_filename: storedFilename,
-      mime_type: 'application/pdf',
+      mime_type: detectedMime,
       file_size: uploadedFileDetails.fileSize,
       checksum_sha256: checksum,
       drive_file_id: uploadedFileDetails.driveFileId,
@@ -731,10 +741,12 @@ export const uploadNewVersion = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { pdf_base64, original_filename = 'document_v2.pdf', change_note } = req.body;
+    const { file_base64, pdf_base64, original_filename = 'document_v2.pdf', change_note } = req.body;
+    const rawBase64 = file_base64 || pdf_base64;
+    const cleanOriginalFilename = String(original_filename || 'document_v2.pdf').trim();
 
-    if (!pdf_base64) {
-      return res.status(400).json({ success: false, message: 'PDF file is required.' });
+    if (!rawBase64) {
+      return res.status(400).json({ success: false, message: 'Document file is required.' });
     }
 
     // 1. Fetch current document
@@ -752,19 +764,20 @@ export const uploadNewVersion = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Document not found' });
     }
 
-    // 2. Validate PDF Buffer
+    // 2. Decode and Validate File Buffer (PDF, Word, Excel/Sheets, Images)
     let buffer;
     try {
-      buffer = Buffer.from(pdf_base64, 'base64');
+      buffer = Buffer.from(rawBase64, 'base64');
     } catch (_) {
       return res.status(400).json({ success: false, message: 'Invalid Base64 file encoding.' });
     }
 
-    const validation = validatePdfBuffer(buffer);
+    const validation = validateVaultFileBuffer(buffer, cleanOriginalFilename);
     if (!validation.isValid) {
       return res.status(400).json({ success: false, message: validation.error });
     }
 
+    const detectedMime = validation.detectedMime || getMimeType(cleanOriginalFilename, 'application/octet-stream');
     const nextVerNum = (doc.current_version || 1) + 1;
     const uploaderId = req.user?.id || req.user?.team_member_id || 'admin';
     const uploaderEmail = req.user?.email || 'admin@zenemoo.in';
@@ -774,6 +787,7 @@ export const uploadNewVersion = async (req, res) => {
       documentReference: doc.document_reference,
       companyName: doc.company_name,
       version: nextVerNum,
+      originalFilename: cleanOriginalFilename,
     });
 
     // 4. Upload New Version to Private Storage
@@ -783,6 +797,7 @@ export const uploadNewVersion = async (req, res) => {
       documentType: doc.document_type,
       documentReference: doc.document_reference,
       year: new Date().getFullYear(),
+      mimeType: detectedMime,
     });
 
     const versionRecord = {
@@ -790,7 +805,7 @@ export const uploadNewVersion = async (req, res) => {
       document_id: doc.id,
       version_number: nextVerNum,
       stored_filename: storedFilename,
-      original_filename: original_filename.trim(),
+      original_filename: cleanOriginalFilename,
       file_size: uploadedFileDetails.fileSize,
       checksum_sha256: uploadedFileDetails.checksumSha256,
       drive_file_id: uploadedFileDetails.driveFileId,
@@ -805,7 +820,8 @@ export const uploadNewVersion = async (req, res) => {
     const docUpdates = {
       current_version: nextVerNum,
       stored_filename: storedFilename,
-      original_filename: original_filename.trim(),
+      original_filename: cleanOriginalFilename,
+      mime_type: detectedMime,
       file_size: uploadedFileDetails.fileSize,
       checksum_sha256: uploadedFileDetails.checksumSha256,
       drive_file_id: uploadedFileDetails.driveFileId,
@@ -930,10 +946,21 @@ export const previewPrivateDocument = async (req, res) => {
       details: { version: targetVersion?.version_number || doc.current_version },
     });
 
-    res.setHeader('Content-Type', 'application/pdf');
+    const targetMime = targetVersion?.mime_type || doc.mime_type || getMimeType(filename, 'application/pdf');
+    const checksum = targetVersion?.checksum_sha256 || doc.checksum_sha256;
+
+    // Zero-egress HTTP 304 Not Modified validation
+    if (checksum) {
+      res.setHeader('ETag', `"${checksum}"`);
+      if (req.headers['if-none-match'] === `"${checksum}"`) {
+        return res.status(304).end();
+      }
+    }
+
+    res.setHeader('Content-Type', targetMime);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   } catch (err) {
@@ -989,7 +1016,7 @@ export const downloadPrivateDocument = async (req, res) => {
 
     const buffer = await privateStorageService.getPrivatePdfBuffer(driveFileId, filename);
     if (!buffer) {
-      return res.status(404).json({ success: false, message: 'PDF document content is currently unavailable.' });
+      return res.status(404).json({ success: false, message: 'Document content is currently unavailable.' });
     }
 
     await recordAuditLog({
@@ -1002,12 +1029,24 @@ export const downloadPrivateDocument = async (req, res) => {
       details: { version: targetVersion?.version_number || doc.current_version },
     });
 
-    res.setHeader('Content-Type', 'application/pdf');
+    const targetMime = targetVersion?.mime_type || doc.mime_type || getMimeType(filename, 'application/octet-stream');
+    const checksum = targetVersion?.checksum_sha256 || doc.checksum_sha256;
+
+    // Zero-egress HTTP 304 Not Modified validation
+    if (checksum) {
+      res.setHeader('ETag', `"${checksum}"`);
+      if (req.headers['if-none-match'] === `"${checksum}"`) {
+        return res.status(304).end();
+      }
+    }
+
+    res.setHeader('Content-Type', targetMime);
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
     );
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   } catch (err) {

@@ -632,7 +632,10 @@ async function runTests() {
       const vaultDir = path.resolve('storage', 'private_vault');
       if (fs.existsSync(vaultDir)) {
         for (const f of fs.readdirSync(vaultDir)) {
-          if (f.endsWith('.pdf')) fs.unlinkSync(path.join(vaultDir, f));
+          // Only remove files belonging to this test execution
+          if (createdTestDocIds.some((id) => f.includes(id))) {
+            fs.unlinkSync(path.join(vaultDir, f));
+          }
         }
       }
     } catch (_) {}
