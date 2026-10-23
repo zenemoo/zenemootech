@@ -415,6 +415,17 @@ const sendViaBrevoRestApi = async ({ requestId, sender, recipients, cc, bcc, sub
     };
   }
 
+  // Brevo REST API v3 requires an API key (xkeysib-). If key has SMTP prefix (xsmtpsib-), fast-fallback to SMTP Relay
+  if (apiKey.startsWith('xsmtpsib-')) {
+    throw {
+      requestId,
+      stage: 'REST API Format Guard',
+      code: 'ESMTPKEY_NOT_REST',
+      message: 'Configured Brevo key uses SMTP prefix (xsmtpsib-). Bypassing REST API to invoke SMTP Relay directly.',
+      suggestion: 'Provide an xkeysib- API key for Brevo REST v3, or use SMTP Relay.',
+    };
+  }
+
   const parsedTo = parseRecipients(recipients);
   const parsedCc = parseRecipients(cc);
   const parsedBcc = parseRecipients(bcc);
@@ -539,12 +550,14 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
   const user = process.env.BREVO_SMTP_LOGIN || 'b39046001@smtp-brevo.com';
   const pass = getNormalizedApiKey(process.env.BREVO_SMTP_KEY || process.env.BREVO_API_KEY);
 
-  const portsToTest = [465, 587, 2525];
+  const configuredPort = parseInt(process.env.BREVO_SMTP_PORT, 10) || 587;
+  const fallbackPorts = [587, 465, 2525];
+  const portsToTest = [configuredPort, ...fallbackPorts.filter((p) => p !== configuredPort)];
   let workingPort = null;
   const tcpLog = [];
 
   for (const port of portsToTest) {
-    const res = await runTcpConnectivityTest(host, port, 5000);
+    const res = await runTcpConnectivityTest(host, port, 3000);
     tcpLog.push(res);
     if (res.status === 'Connected') {
       workingPort = port;
@@ -553,12 +566,12 @@ const sendViaNodemailerSmtp = async ({ requestId, sender, recipients, cc, bcc, s
   }
 
   if (!workingPort) {
-    console.error(`[${requestId}] ❌ TCP Connection Failed on all ports (465, 587, 2525):`, tcpLog);
+    console.error(`[${requestId}] ❌ TCP Connection Failed on all ports (${portsToTest.join(', ')}):`, tcpLog);
     throw {
       requestId,
       stage: 'TCP Socket Connection',
       code: 'ETIMEDOUT',
-      message: `Outbound TCP connection to ${host} timed out on all ports (465, 587, 2525).`,
+      message: `Outbound TCP connection to ${host} timed out on all tested ports (${portsToTest.join(', ')}).`,
       tcpLog,
       suggestion: 'Cloud host outbound firewall (Render) blocks TCP SMTP ports. Ensure Brevo REST API mode is used.',
     };

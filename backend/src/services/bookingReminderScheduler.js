@@ -71,7 +71,7 @@ export const processBookingReminders = async () => {
           }
         }
 
-        const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <noreply@zenemoo.in>';
+        const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <contact@zenemoo.in>';
 
         // 1. Send Customer 1-Hour Reminder Email
         if (booking.email) {

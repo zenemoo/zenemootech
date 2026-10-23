@@ -279,17 +279,35 @@ export const createBooking = async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'Failed to record booking. Please try again.' });
     }
 
-    // 6. Asynchronous Notification & Email Dispatches
-    const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <noreply@zenemoo.in>';
+    // 6. Generate Google Meet & Google Calendar Event (Awaited so Meet Link is included in emails)
+    let bookingWithMeet = newBooking;
+    try {
+      const meetResult = await createGoogleMeetForBooking(newBooking, 'automatic');
+      if (meetResult?.success && meetResult?.booking) {
+        bookingWithMeet = meetResult.booking;
+      } else if (meetResult?.meetUrl) {
+        bookingWithMeet = {
+          ...newBooking,
+          google_meet_url: meetResult.meetUrl,
+          google_calendar_event_id: meetResult.eventId,
+          meeting_status: 'generated',
+        };
+      }
+    } catch (meetErr) {
+      console.error('[Async Google Meet Generation Note]:', meetErr.message || meetErr);
+    }
 
-    // A. Customer Confirmation Email
-    (async () => {
+    // 7. Notification & Email Dispatches
+    const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <contact@zenemoo.in>';
+
+    // A. Customer Confirmation Email Task
+    const sendCustomerEmailTask = async () => {
       try {
         await sendMailViaBrevo({
           sender,
           recipients: cleanEmail,
-          subject: `Zenemoo Call Booking Confirmed — ${newBooking.booking_id}`,
-          html: generateCustomerBookingEmailHtml(newBooking),
+          subject: `Zenemoo Call Booking Confirmed — ${bookingWithMeet.booking_id}`,
+          html: generateCustomerBookingEmailHtml(bookingWithMeet),
         });
 
         const { error: dbErr } = await supabase
@@ -299,35 +317,37 @@ export const createBooking = async (req, res, next) => {
             customer_email_sent_at: new Date().toISOString(),
             customer_email_error: null,
           })
-          .eq('id', newBooking.id);
+          .eq('id', bookingWithMeet.id);
 
         if (dbErr) {
           console.error('[Customer Email DB Status Update Error]:', dbErr.message);
         } else {
-          console.log(`✅ [DB Status Updated] customer_email_status = 'sent' for ${newBooking.booking_id}`);
+          console.log(`✅ [DB Status Updated] customer_email_status = 'sent' for ${bookingWithMeet.booking_id}`);
         }
       } catch (e) {
         console.error('[Customer Email Send Error]:', e.message || e);
         const errMsg = (e.message || String(e)).substring(0, 500);
-        await supabase
+        const { error: failErr } = await supabase
           .from('call_bookings')
           .update({
             customer_email_status: 'failed',
             customer_email_error: errMsg,
           })
-          .eq('id', newBooking.id)
-          .catch(() => {});
+          .eq('id', bookingWithMeet.id);
+        if (failErr) {
+          console.error('[Customer Email DB Status Fail Update Error]:', failErr.message);
+        }
       }
-    })();
+    };
 
-    // B. Admin Notification Email
-    (async () => {
+    // B. Admin Notification Email Task
+    const sendAdminEmailTask = async () => {
       try {
         await sendMailViaBrevo({
           sender,
           recipients: ADMIN_EMAIL,
-          subject: `New Zenemoo Call Booking — ${newBooking.booking_id}`,
-          html: generateAdminBookingEmailHtml(newBooking),
+          subject: `New Zenemoo Call Booking — ${bookingWithMeet.booking_id}`,
+          html: generateAdminBookingEmailHtml(bookingWithMeet),
         });
 
         const { error: dbErr } = await supabase
@@ -337,26 +357,28 @@ export const createBooking = async (req, res, next) => {
             admin_email_sent_at: new Date().toISOString(),
             admin_email_error: null,
           })
-          .eq('id', newBooking.id);
+          .eq('id', bookingWithMeet.id);
 
         if (dbErr) {
           console.error('[Admin Email DB Status Update Error]:', dbErr.message);
         } else {
-          console.log(`✅ [DB Status Updated] admin_email_status = 'sent' for ${newBooking.booking_id}`);
+          console.log(`✅ [DB Status Updated] admin_email_status = 'sent' for ${bookingWithMeet.booking_id}`);
         }
       } catch (e) {
         console.error('[Admin Email Send Error]:', e.message || e);
         const errMsg = (e.message || String(e)).substring(0, 500);
-        await supabase
+        const { error: failErr } = await supabase
           .from('call_bookings')
           .update({
             admin_email_status: 'failed',
             admin_email_error: errMsg,
           })
-          .eq('id', newBooking.id)
-          .catch(() => {});
+          .eq('id', bookingWithMeet.id);
+        if (failErr) {
+          console.error('[Admin Email DB Status Fail Update Error]:', failErr.message);
+        }
       }
-    })();
+    };
 
     // C. Dispatch Admin Notification Bell Alert (ADMIN ONLY)
     sendZenemooNotification({
@@ -366,29 +388,32 @@ export const createBooking = async (req, res, next) => {
       target_type: 'admin',
       url: '/portal/9KqvA2Nz8#call-bookings',
       metadata: {
-        booking_id: newBooking.booking_id,
+        booking_id: bookingWithMeet.booking_id,
         client: cleanName,
         company: cleanCompany,
-        meeting_type: newBooking.meeting_type || 'Discovery Call',
-        start_time: newBooking.start_time,
-        end_time: newBooking.end_time,
+        meeting_type: bookingWithMeet.meeting_type || 'Discovery Call',
+        start_time: bookingWithMeet.start_time,
+        end_time: bookingWithMeet.end_time,
       },
     }).catch((e) => console.error('[Notification Bell Warning]:', e.message));
 
     // D. Dispatch Telegram Alert
-    sendBookingNotification(newBooking).catch((e) => console.error('[Telegram Booking Warning]:', e.message));
+    sendBookingNotification(bookingWithMeet).catch((e) => console.error('[Telegram Booking Warning]:', e.message));
 
-    // 7. Trigger Non-Blocking Async Background Google Calendar & Google Meet Creation
-    setImmediate(() => {
-      createGoogleMeetForBooking(newBooking, 'automatic').catch((err) => {
-        console.error('[Async Google Meet Error]:', err.message);
-      });
-    });
+    // Await email dispatches with Promise.allSettled so status is recorded before response
+    await Promise.allSettled([sendCustomerEmailTask(), sendAdminEmailTask()]);
+
+    // Fetch refreshed row with final email statuses
+    const { data: finalBooking } = await supabase
+      .from('call_bookings')
+      .select('*')
+      .eq('id', bookingWithMeet.id)
+      .maybeSingle();
 
     return res.status(201).json({
       success: true,
       message: 'Booking confirmed successfully.',
-      booking: newBooking,
+      booking: finalBooking || bookingWithMeet,
     });
   } catch (err) {
     next(err);
@@ -718,7 +743,7 @@ export const resendBookingEmail = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Booking record not found.' });
     }
 
-    const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <noreply@zenemoo.in>';
+    const sender = process.env.EMAIL_FROM || 'Zenemoo Bookings <contact@zenemoo.in>';
     let emailSubject = '';
     let emailHtml = '';
     let statusField = '';
