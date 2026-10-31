@@ -649,6 +649,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
         applicant_phone: app.applicant_phone,
         opportunity_title: app.opportunity_title,
         status: app.status.toUpperCase(),
+        referral_name: app.referral_code ? (app.referrer_name ? `Ref: ${app.referral_code} (${app.referrer_name})` : `Ref: ${app.referral_code}`) : 'Direct',
         sync_status: app.sync_status || 'synced',
         created_at: app.created_at || new Date().toISOString(),
       };
@@ -670,6 +671,7 @@ export const CandidateApplicationsModal: React.FC<CandidateApplicationsModalProp
         applicant_phone: app.applicant_phone,
         opportunity_title: app.opportunity_title,
         status: app.status.toUpperCase(),
+        referral_name: app.referral_code ? (app.referrer_name ? `Ref: ${app.referral_code} (${app.referrer_name})` : `Ref: ${app.referral_code}`) : 'Direct',
         sync_status: app.sync_status || 'synced',
         created_at: app.created_at || new Date().toISOString(),
       };

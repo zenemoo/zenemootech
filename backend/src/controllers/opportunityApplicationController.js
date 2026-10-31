@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
-import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js';
+import { syncApplicationToGoogleSheet, syncOpportunityApplicationsBulkToGoogleSheet } from '../services/googleSheetsService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { generateApplicationConfirmationHtml } from '../services/applicationEmailTemplate.js';
 import { generateApplicationAcceptanceHtml } from '../services/applicationAcceptanceEmailTemplate.js';
@@ -787,7 +787,25 @@ export const resyncApplication = async (req, res) => {
 export const resyncOpportunityApplications = async (req, res) => {
   try {
     const { opportunity_id } = req.params;
-    let query = supabase.from('opportunity_applications').select('*');
+
+    // Fast, rate-limit safe atomic bulk sync (guarantees created_at/ID chronological ordering & referral attribution)
+    const bulkResult = await syncOpportunityApplicationsBulkToGoogleSheet(opportunity_id);
+
+    if (bulkResult && bulkResult.success) {
+      return res.json({
+        status: 'success',
+        total: bulkResult.total || 0,
+        synced: bulkResult.synced || 0,
+        failed: 0,
+        message: bulkResult.message || `Synchronized ${bulkResult.synced} applications to Google Sheets with referral attribution.`,
+        data: bulkResult,
+      });
+    }
+
+    console.warn('[Bulk Resync Notice] Falling back to sequential chronological sync:', bulkResult?.message);
+
+    // Graceful fallback to sequential sync ordered chronologically by created_at ASC
+    let query = supabase.from('opportunity_applications').select('*').order('created_at', { ascending: true });
     if (opportunity_id && opportunity_id !== 'all') {
       query = query.eq('opportunity_id', opportunity_id);
     }
@@ -808,7 +826,7 @@ export const resyncOpportunityApplications = async (req, res) => {
     }
 
     return res.json({
-      status: 'success',
+      status: syncedCount > 0 ? 'success' : 'failed',
       total: records.length,
       synced: syncedCount,
       failed: failedCount,
