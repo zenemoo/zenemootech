@@ -46,7 +46,7 @@ export const generateApplicationAcceptanceHtml = (appData = {}) => {
   const email = escapeHtml(appData.applicant_email || '');
   const phone = escapeHtml(appData.applicant_phone || '');
   const opportunityTitle = escapeHtml(appData.opportunity_title || 'Program Opportunity');
-  const companyName = escapeHtml(appData.company_name || appData.partner_name || 'DesiCrew');
+  const companyName = escapeHtml(appData.company_name || appData.partner_name || 'Zenemoo');
   const acceptedDateFormatted = formatIstDateTime(appData.acceptance_email_sent_at || appData.updated_at || new Date().toISOString());
 
   const answersObj = appData.answers || {};

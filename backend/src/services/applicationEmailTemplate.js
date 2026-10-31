@@ -46,7 +46,7 @@ export const generateApplicationConfirmationHtml = (appData = {}) => {
   const email = escapeHtml(appData.applicant_email || '');
   const phone = escapeHtml(appData.applicant_phone || '');
   const opportunityTitle = escapeHtml(appData.opportunity_title || 'Program Opportunity');
-  const companyName = escapeHtml(appData.company_name || appData.partner_name || 'Zenemoo / DesiCrew Solutions');
+  const companyName = escapeHtml(appData.company_name || appData.partner_name || 'Zenemoo');
   const status = (appData.status || 'pending').toUpperCase();
   const dateFormatted = formatIstDateTime(appData.created_at);
 
@@ -68,11 +68,11 @@ export const generateApplicationConfirmationHtml = (appData = {}) => {
       return { label: escapeHtml(label), value: escapeHtml(String(value)) };
     });
 
-  // Common extracted fields if present in answersObj
-  const experience = answersObj.experience || answersObj.years_of_experience || answersObj['How many years of Odia audio transcription experience do you have?'] || '';
-  const availability = answersObj.availability || answersObj.daily_hours || answersObj['How many hours daily can you dedicate to transcription work?'] || '';
+  // Common extracted fields if present in answersObj (hidden if not provided)
+  const experience = answersObj.experience || answersObj.years_of_experience || '';
+  const availability = answersObj.availability || answersObj.daily_hours || '';
   const expectedRate = answersObj.expected_rate || answersObj.rate || answersObj['Expected Rate'] || '';
-  const languageSkills = appData.languages || answersObj.languages || answersObj.language || 'Odia / English / Hindi';
+  const languageSkills = appData.languages || answersObj.languages || answersObj.language || answersObj['Language'] || answersObj['Languages'] || '';
 
   return `<!DOCTYPE html>
 <html lang="en">

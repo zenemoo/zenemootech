@@ -12,7 +12,24 @@ import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
  * Asynchronously sends confirmation email to applicant upon successful Opportunity Application submission
  */
 export const sendApplicationConfirmationEmail = async (appData) => {
-  const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
+  let enrichedAppData = { ...appData };
+  if (!enrichedAppData.partner_name && !enrichedAppData.company_name && enrichedAppData.opportunity_id && supabase) {
+    try {
+      const { data: opp } = await supabase
+        .from('opportunities')
+        .select('partner_name')
+        .eq('id', enrichedAppData.opportunity_id)
+        .maybeSingle();
+      if (opp && opp.partner_name) {
+        enrichedAppData.partner_name = opp.partner_name;
+      }
+    } catch (_) {}
+  }
+  if (!enrichedAppData.partner_name) {
+    enrichedAppData.partner_name = 'Zenemoo';
+  }
+
+  const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = enrichedAppData;
 
   const sender = process.env.EMAIL_FROM || 'Zenemoo <noreply@zenemoo.in>';
   const ccRecipient = process.env.EMAIL_CC || null;
@@ -27,7 +44,7 @@ export const sendApplicationConfirmationEmail = async (appData) => {
   console.log(`[APPLICATION EMAIL] Application ID: ${applicant_id || id}`);
   console.log(`====================================================`);
 
-  const htmlContent = generateApplicationConfirmationHtml(appData);
+  const htmlContent = generateApplicationConfirmationHtml(enrichedAppData);
 
   try {
     const result = await sendMailViaBrevo({
@@ -66,7 +83,24 @@ export const sendApplicationConfirmationEmail = async (appData) => {
  * Gracefully handles Supabase schema capabilities while maintaining atomic claim protection.
  */
 export const sendApplicationAcceptanceEmail = async (appData, isForceResend = false) => {
-  const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = appData;
+  let enrichedAppData = { ...appData };
+  if (!enrichedAppData.partner_name && !enrichedAppData.company_name && enrichedAppData.opportunity_id && supabase) {
+    try {
+      const { data: opp } = await supabase
+        .from('opportunities')
+        .select('partner_name')
+        .eq('id', enrichedAppData.opportunity_id)
+        .maybeSingle();
+      if (opp && opp.partner_name) {
+        enrichedAppData.partner_name = opp.partner_name;
+      }
+    } catch (_) {}
+  }
+  if (!enrichedAppData.partner_name) {
+    enrichedAppData.partner_name = 'Zenemoo';
+  }
+
+  const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = enrichedAppData;
 
   // 1. In-Memory Idempotency Safeguard
   if (!isForceResend && (appData.acceptance_email_status === 'sent' || appData.acceptance_email_status === 'sending')) {
@@ -111,7 +145,7 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
 
   const sentAtIso = new Date().toISOString();
   const htmlContent = generateApplicationAcceptanceHtml({
-    ...appData,
+    ...enrichedAppData,
     acceptance_email_sent_at: sentAtIso,
   });
 
@@ -564,7 +598,10 @@ export const submitApplication = async (req, res) => {
     }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
 
     // Asynchronously dispatch Confirmation Email to applicant (non-blocking / fail-safe)
-    sendApplicationConfirmationEmail(savedRecord).catch((err) => {
+    sendApplicationConfirmationEmail({
+      ...savedRecord,
+      partner_name: oppRecord?.partner_name || 'Zenemoo',
+    }).catch((err) => {
       console.warn('[Application Confirmation Email Dispatch Note]:', err.message);
     });
 

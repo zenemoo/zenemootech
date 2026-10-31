@@ -611,7 +611,10 @@ export const submitTalentOpportunityApplication = async (req, res) => {
 
     // 7. Asynchronously trigger background notifications (non-blocking)
     try {
-      sendApplicationConfirmationEmail(savedApp).catch((err) => {
+      sendApplicationConfirmationEmail({
+        ...savedApp,
+        partner_name: oppRecord?.partner_name || 'Zenemoo',
+      }).catch((err) => {
         console.warn('[TalentHub Email Confirmation Note]:', err.message);
       });
       syncApplicationToGoogleSheet(savedApp, oppRecord).catch((err) => {
