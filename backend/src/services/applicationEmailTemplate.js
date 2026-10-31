@@ -49,6 +49,7 @@ export const generateApplicationConfirmationHtml = (appData = {}) => {
   const companyName = escapeHtml(appData.company_name || appData.partner_name || 'Zenemoo');
   const status = (appData.status || 'pending').toUpperCase();
   const dateFormatted = formatIstDateTime(appData.created_at);
+  const whatsappGroupUrl = (appData.whatsapp_group_url || '').trim();
 
   const answersObj = appData.answers || {};
 
@@ -287,6 +288,42 @@ export const generateApplicationConfirmationHtml = (appData = {}) => {
               </table>
             </td>
           </tr>
+
+          <!-- 5B. OFFICIAL PROJECT WHATSAPP COMMUNITY CARD (CONDITIONAL) -->
+          ${whatsappGroupUrl ? `
+          <tr>
+            <td class="content-padding" style="padding: 0 32px 24px 32px;">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f0fdf4; border:1.5px solid #86efac; border-radius:14px; padding:20px;">
+                <tr>
+                  <td>
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="42" valign="top" style="padding-right:14px;">
+                          <img src="https://img.icons8.com/color/48/000000/whatsapp--v1.png" width="40" height="40" alt="WhatsApp" style="display:block; width:40px; height:40px; border-radius:10px;">
+                        </td>
+                        <td valign="top">
+                          <div style="font-size:11px; font-family:monospace; font-weight:bold; color:#15803d; text-transform:uppercase; letter-spacing:0.5px;">
+                            OFFICIAL PROJECT COMMUNITY
+                          </div>
+                          <div style="font-size:15px; font-weight:800; color:#166534; margin:3px 0 4px 0;">
+                            Join Official Project WhatsApp Group
+                          </div>
+                          <div style="font-size:12.5px; color:#166534; line-height:1.5; margin-bottom:14px;">
+                            Stay connected with coordinators for immediate task alerts, guidelines, batch updates, and project queries.
+                          </div>
+                          <div>
+                            <a href="${escapeHtml(whatsappGroupUrl)}" target="_blank" style="background-color:#22c55e; color:#ffffff; font-size:13px; font-weight:800; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-decoration:none; padding:10px 20px; border-radius:8px; display:inline-block; border:1px solid #16a34a; box-shadow:0 2px 4px rgba(34,197,94,0.25);">
+                              👉 Join WhatsApp Group
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>` : ''}
 
           <!-- 6. WHAT HAPPENS NEXT & NEED HELP CARDS -->
           <tr>

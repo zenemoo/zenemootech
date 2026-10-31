@@ -9,6 +9,73 @@ import { invalidateTalentOpportunitiesCache } from './talentHubController.js';
 import { sanitizePostgrestFilter } from '../utils/postgrestSanitizer.js';
 
 /**
+ * Helper to resolve Authoritative WhatsApp Group URL for an applicant
+ * 1. Honors explicit whatsapp_group_url if already provided on appRecord
+ * 2. If applicant was referred (referred_by_id), queries referrer's custom group in `talent_opportunity_whatsapp_groups`
+ * 3. Falls back to the opportunity's official default `whatsapp_group_url` from `opportunities`
+ * 4. Strictly scoped by opportunity_id to guarantee zero cross-opportunity conflicts
+ */
+export const resolveWhatsappGroupForApplication = async (appRecord) => {
+  if (!appRecord) return '';
+
+  let directUrl = (appRecord.whatsapp_group_url || '').trim();
+  if (directUrl) return directUrl;
+
+  let opportunityId = appRecord.opportunity_id;
+  let referredById = appRecord.referred_by_id;
+
+  // If missing opportunity_id or referred_by_id but we have app record ID, query application record from Supabase
+  if ((!opportunityId || referredById === undefined) && appRecord.id && supabase) {
+    try {
+      const { data: dbApp } = await supabase
+        .from('opportunity_applications')
+        .select('opportunity_id, referred_by_id')
+        .eq('id', appRecord.id)
+        .maybeSingle();
+
+      if (dbApp) {
+        if (!opportunityId) opportunityId = dbApp.opportunity_id;
+        if (referredById === undefined) referredById = dbApp.referred_by_id;
+      }
+    } catch (_) {}
+  }
+
+  if (!opportunityId || !supabase) return '';
+
+  try {
+    // 1. If candidate was referred, look up referrer's custom group for this specific opportunity
+    if (referredById) {
+      const { data: customGroup, error: customErr } = await supabase
+        .from('talent_opportunity_whatsapp_groups')
+        .select('whatsapp_group_url')
+        .eq('talent_registration_id', referredById)
+        .eq('opportunity_id', opportunityId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!customErr && customGroup?.whatsapp_group_url && customGroup.whatsapp_group_url.trim()) {
+        return customGroup.whatsapp_group_url.trim();
+      }
+    }
+
+    // 2. Default to the Opportunity's official WhatsApp group link
+    const { data: oppRecord, error: oppErr } = await supabase
+      .from('opportunities')
+      .select('whatsapp_group_url')
+      .eq('id', opportunityId)
+      .maybeSingle();
+
+    if (!oppErr && oppRecord?.whatsapp_group_url && oppRecord.whatsapp_group_url.trim()) {
+      return oppRecord.whatsapp_group_url.trim();
+    }
+  } catch (waErr) {
+    console.warn('[resolveWhatsappGroupForApplication Note]:', waErr.message);
+  }
+
+  return '';
+};
+
+/**
  * Asynchronously sends confirmation email to applicant upon successful Opportunity Application submission
  */
 export const sendApplicationConfirmationEmail = async (appData) => {
@@ -27,6 +94,11 @@ export const sendApplicationConfirmationEmail = async (appData) => {
   }
   if (!enrichedAppData.partner_name) {
     enrichedAppData.partner_name = 'Zenemoo';
+  }
+
+  // Resolve Authoritative WhatsApp Group URL (Custom Referrer Group vs Admin Opportunity Default)
+  if (!enrichedAppData.whatsapp_group_url) {
+    enrichedAppData.whatsapp_group_url = await resolveWhatsappGroupForApplication(enrichedAppData);
   }
 
   const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = enrichedAppData;
@@ -98,6 +170,11 @@ export const sendApplicationAcceptanceEmail = async (appData, isForceResend = fa
   }
   if (!enrichedAppData.partner_name) {
     enrichedAppData.partner_name = 'Zenemoo';
+  }
+
+  // Resolve Authoritative WhatsApp Group URL (Custom Referrer Group vs Admin Opportunity Default)
+  if (!enrichedAppData.whatsapp_group_url) {
+    enrichedAppData.whatsapp_group_url = await resolveWhatsappGroupForApplication(enrichedAppData);
   }
 
   const { id, applicant_id, opportunity_title, applicant_name, applicant_email } = enrichedAppData;
@@ -597,37 +674,34 @@ export const submitApplication = async (req, res) => {
       referrer_name: savedRecord.referrer_name,
     }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
 
-    // Asynchronously dispatch Confirmation Email to applicant (non-blocking / fail-safe)
-    sendApplicationConfirmationEmail({
-      ...savedRecord,
-      partner_name: oppRecord?.partner_name || 'Zenemoo',
-    }).catch((err) => {
-      console.warn('[Application Confirmation Email Dispatch Note]:', err.message);
-    });
-
     // Invalidate cached opportunity applicant counts
     invalidateTalentOpportunitiesCache();
 
     // Resolve Authoritative WhatsApp Group URL (Custom Vendor Group vs Admin Opportunity Default)
-    let resolvedWhatsappGroupUrl = (oppRecord?.whatsapp_group_url || '').trim();
+    const resolvedWhatsappGroupUrl = await resolveWhatsappGroupForApplication({
+      ...savedRecord,
+      opportunity_id,
+      whatsapp_group_url: oppRecord?.whatsapp_group_url,
+    });
 
-    if (savedRecord.referred_by_id && supabase) {
-      try {
-        const { data: customGroup } = await supabase
-          .from('talent_opportunity_whatsapp_groups')
-          .select('whatsapp_group_url')
-          .eq('talent_registration_id', savedRecord.referred_by_id)
-          .eq('opportunity_id', opportunity_id)
-          .eq('is_active', true)
-          .maybeSingle();
+    sendApplicationNotification({
+      applicant_name: cleanName,
+      applicant_email: cleanEmail,
+      applicant_phone: cleanPhone,
+      opportunity_title: cleanTitle,
+      qualification: answers?.qualification || answers?.degree || 'Relevant Qualification Uploaded',
+      referral_code: savedRecord.referral_code,
+      referrer_name: savedRecord.referrer_name,
+    }).catch((err) => console.warn('[Telegram Application Notification Note]', err.message));
 
-        if (customGroup && customGroup.whatsapp_group_url && customGroup.whatsapp_group_url.trim()) {
-          resolvedWhatsappGroupUrl = customGroup.whatsapp_group_url.trim();
-        }
-      } catch (waErr) {
-        console.warn('[Public Submit Custom WhatsApp Group Lookup Note]:', waErr.message);
-      }
-    }
+    // Asynchronously dispatch Confirmation Email to applicant with resolved WhatsApp group link (non-blocking / fail-safe)
+    sendApplicationConfirmationEmail({
+      ...savedRecord,
+      partner_name: oppRecord?.partner_name || 'Zenemoo',
+      whatsapp_group_url: resolvedWhatsappGroupUrl,
+    }).catch((err) => {
+      console.warn('[Application Confirmation Email Dispatch Note]:', err.message);
+    });
 
     return res.status(201).json({
       status: 'success',

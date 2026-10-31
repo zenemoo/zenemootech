@@ -3,7 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { supabaseService } from '../services/supabaseService.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
 import { syncApplicationToGoogleSheet } from '../services/googleSheetsService.js';
-import { sendApplicationConfirmationEmail } from './opportunityApplicationController.js';
+import { sendApplicationConfirmationEmail, resolveWhatsappGroupForApplication } from './opportunityApplicationController.js';
 import {
   loadDiskRegistrations,
   saveDiskRegistrations,
@@ -609,11 +609,19 @@ export const submitTalentOpportunityApplication = async (req, res) => {
 
     const savedApp = insertedData && insertedData[0] ? insertedData[0] : newRecord;
 
+    // Resolve Authoritative WhatsApp Group URL (Custom Vendor Group vs Admin Opportunity Default)
+    const resolvedWhatsappGroupUrl = await resolveWhatsappGroupForApplication({
+      ...savedApp,
+      opportunity_id: oppRecord.id,
+      whatsapp_group_url: oppRecord?.whatsapp_group_url,
+    });
+
     // 7. Asynchronously trigger background notifications (non-blocking)
     try {
       sendApplicationConfirmationEmail({
         ...savedApp,
         partner_name: oppRecord?.partner_name || 'Zenemoo',
+        whatsapp_group_url: resolvedWhatsappGroupUrl,
       }).catch((err) => {
         console.warn('[TalentHub Email Confirmation Note]:', err.message);
       });
@@ -633,27 +641,6 @@ export const submitTalentOpportunityApplication = async (req, res) => {
       });
     } catch (notifyErr) {
       console.warn('[TalentHub Post-Submission Notifications Note]:', notifyErr.message);
-    }
-
-    // Resolve Authoritative WhatsApp Group URL
-    let resolvedWhatsappGroupUrl = (oppRecord?.whatsapp_group_url || '').trim();
-
-    if (savedApp.referred_by_id && supabase) {
-      try {
-        const { data: customGroup } = await supabase
-          .from('talent_opportunity_whatsapp_groups')
-          .select('whatsapp_group_url')
-          .eq('talent_registration_id', savedApp.referred_by_id)
-          .eq('opportunity_id', oppRecord.id)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (customGroup && customGroup.whatsapp_group_url && customGroup.whatsapp_group_url.trim()) {
-          resolvedWhatsappGroupUrl = customGroup.whatsapp_group_url.trim();
-        }
-      } catch (waErr) {
-        console.warn('[TalentHub Custom WhatsApp Group Lookup Note]:', waErr.message);
-      }
     }
 
     return res.status(201).json({
