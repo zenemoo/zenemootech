@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { supabase } from '../config/supabase.js';
 import { sendApplicationNotification } from '../services/telegramNotificationService.js';
-import { syncApplicationToGoogleSheet, syncOpportunityApplicationsBulkToGoogleSheet } from '../services/googleSheetsService.js';
+import { syncApplicationToGoogleSheet, syncOpportunityApplicationsBulkToGoogleSheet, getGoogleSheetsClient, SPREADSHEET_ID } from '../services/googleSheetsService.js';
 import { sendMailViaBrevo } from '../services/emailService.js';
 import { generateApplicationConfirmationHtml } from '../services/applicationEmailTemplate.js';
 import { generateApplicationAcceptanceHtml } from '../services/applicationAcceptanceEmailTemplate.js';
@@ -835,5 +835,47 @@ export const resyncOpportunityApplications = async (req, res) => {
   } catch (err) {
     console.error('resyncOpportunityApplications exception:', err.message);
     return res.status(500).json({ error: err.message });
+  }
+};
+
+// DIAGNOSTIC ENDPOINT TO INSPECT SHEETS CONFIG AND SPREADSHEET TABS
+export const getSheetsDiagnostics = async (req, res) => {
+  try {
+    const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL || '';
+    const serviceEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || SPREADSHEET_ID;
+
+    let sheetTabs = [];
+    let serviceAccountError = null;
+
+    try {
+      const sheets = getGoogleSheetsClient();
+      if (sheets) {
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        sheetTabs = (meta.data.sheets || []).map((s) => ({
+          title: s.properties?.title,
+          sheetId: s.properties?.sheetId,
+          rowCount: s.properties?.gridProperties?.rowCount,
+          columnCount: s.properties?.gridProperties?.columnCount,
+        }));
+      } else {
+        serviceAccountError = 'getGoogleSheetsClient returned null';
+      }
+    } catch (err) {
+      serviceAccountError = err.message;
+    }
+
+    return res.json({
+      success: true,
+      spreadsheetId,
+      hasAppsScriptUrl: !!appsScriptUrl,
+      appsScriptUrl,
+      hasServiceAccount: !!serviceEmail,
+      serviceEmail,
+      serviceAccountError,
+      sheetTabs,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 };

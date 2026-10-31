@@ -10,11 +10,15 @@ import {
   resyncOpportunityApplications,
   sendConfirmationEmailEndpoint,
   resendAcceptanceEmailEndpoint,
+  getSheetsDiagnostics,
 } from '../controllers/opportunityApplicationController.js';
 import { applicationRateLimiter } from '../middleware/rateLimiter.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
 const router = express.Router();
+
+// Diagnostic Endpoint
+router.get('/sheets-diagnostics', verifyToken, requireRole(['admin']), getSheetsDiagnostics);
 
 // Public Applicant Endpoints
 router.post('/', applicationRateLimiter, submitApplication);

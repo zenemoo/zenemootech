@@ -9,7 +9,7 @@ export const SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${SPREADS
 /**
  * Initialize Google Sheets API Client (Service Account fallback)
  */
-const getGoogleSheetsClient = () => {
+export const getGoogleSheetsClient = () => {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
 
