@@ -299,6 +299,10 @@ export const syncApplicationToGoogleSheet = async (applicationRecord, opportunit
   // Resolve referral details (Referrer Name / Referral Code / Direct)
   const { isReferred, referrerName, referralCode, referralDisplayName } = await resolveReferralDetails(applicationRecord);
 
+  // CRITICAL: Always inject 'Referral Name' directly inside resolvedAnswers so the Google Apps Script
+  // creates/maps the Referral Name column and populates candidate referral attribution (Direct or Ref: ...)
+  resolvedAnswers['Referral Name'] = referralDisplayName || (isReferred ? (referrerName || referralCode) : 'Direct');
+
   // METHOD 1: Google Apps Script Web App (100% FREE - Zero Cost)
   const appsScriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   if (appsScriptUrl) {
@@ -586,7 +590,10 @@ export const syncOpportunityApplicationsBulkToGoogleSheet = async (opportunityId
   if (appsScriptUrl) {
     try {
       const secret = process.env.ZENEMOO_SHEETS_SYNC_SECRET ? process.env.ZENEMOO_SHEETS_SYNC_SECRET.trim() : '';
-      const formattedApps = records.map((record) => {
+      let syncedCount = 0;
+      let failedCount = 0;
+
+      for (const record of records) {
         let refName = (record.referrer_name || '').trim();
         let refCode = (record.referral_code || '').trim().toUpperCase();
         if (!refName && refCode && talentNameMap.has(refCode)) {
@@ -597,48 +604,88 @@ export const syncOpportunityApplicationsBulkToGoogleSheet = async (opportunityId
           ? (refCode && refName ? `Ref: ${refCode} (${refName})` : (refName || `Ref: ${refCode}`))
           : 'Direct';
 
-        return {
-          id: record.id,
-          applicant_id: record.applicant_id || `APP-${record.id}`,
-          applicant_name: record.applicant_name,
-          applicant_email: record.applicant_email,
-          applicant_phone: record.applicant_phone,
-          status: (record.status || 'pending').toUpperCase(),
-          created_at: record.created_at || new Date().toISOString(),
-          referral_name: refDisplay,
-          referrer_name: isRef ? (refName || refCode) : 'Direct',
-          referral_code: isRef ? refCode : '',
-          is_referred: isRef,
-          answers: record.answers || {},
-        };
-      });
+        let appAnswers = { ...(record.answers || {}) };
+        if (Array.isArray(opportunityObj?.custom_questions) && opportunityObj.custom_questions.length > 0) {
+          const normalized = {};
+          Object.entries(appAnswers).forEach(([k, v]) => {
+            const matchedQ = opportunityObj.custom_questions.find((q) => q && (q.id === k || q.key === k));
+            if (matchedQ && matchedQ.label) {
+              normalized[matchedQ.label.trim()] = v;
+            } else {
+              normalized[k] = v;
+            }
+          });
+          appAnswers = normalized;
+        }
 
-      const res = await fetch(appsScriptUrl.trim(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
+        // CRITICAL: Always inject 'Referral Name' into answers so Apps Script creates/maps the Referral Name column
+        appAnswers['Referral Name'] = refDisplay;
+
+        const payload = {
           secret,
-          action: 'bulk_sync_applications',
+          action: 'sync_application',
           payload: {
+            id: record.id,
+            applicant_id: record.applicant_id || `APP-${record.id}`,
+            opportunity_title: opportunityObj?.title || record.opportunity_title || 'Applications',
             sheet_name: sheetTitle,
-            opportunity_title: opportunityObj?.title || records[0]?.opportunity_title || 'Applications',
-            applications: formattedApps,
+            applicant_name: record.applicant_name,
+            applicant_email: record.applicant_email,
+            applicant_phone: record.applicant_phone,
+            status: (record.status || 'pending').toUpperCase(),
+            created_at: record.created_at || new Date().toISOString(),
+            referral_name: refDisplay,
+            referrer_name: isRef ? (refName || refCode) : 'Direct',
+            referral_code: isRef ? refCode : '',
+            is_referred: isRef,
+            answers: appAnswers,
           },
-        }),
-        redirect: 'follow',
-      });
+        };
 
-      const resJson = await res.json().catch(() => ({}));
-      if (res.ok && resJson.status === 'success') {
-        const appIds = records.map((r) => r.id);
-        await supabase
-          .from('opportunity_applications')
-          .update({ sync_status: 'synced', sync_error: null, last_synced_at: new Date().toISOString() })
-          .in('id', appIds);
-        return { success: true, total: records.length, synced: records.length, message: `Synchronized ${records.length} applications via Apps Script` };
+        try {
+          const res = await fetch(appsScriptUrl.trim(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload),
+            redirect: 'follow',
+          });
+          const resJson = await res.json().catch(() => ({}));
+          if (res.ok && resJson.status === 'success') {
+            syncedCount++;
+            await updateAppDbSyncStatus(record.id, 'synced');
+          } else {
+            failedCount++;
+            await updateAppDbSyncStatus(record.id, 'failed', resJson.message || `HTTP ${res.status}`);
+          }
+        } catch (fetchErr) {
+          failedCount++;
+          await updateAppDbSyncStatus(record.id, 'failed', fetchErr.message);
+        }
       }
+
+      // Also persist any newly resolved referrer names back to Supabase
+      if (talentNameMap.size > 0) {
+        for (const [code, name] of talentNameMap.entries()) {
+          supabase
+            .from('opportunity_applications')
+            .update({ referrer_name: name })
+            .eq('opportunity_id', opportunityId)
+            .ilike('referral_code', code)
+            .is('referrer_name', null)
+            .then(() => {})
+            .catch(() => {});
+        }
+      }
+
+      return {
+        success: syncedCount > 0,
+        total: records.length,
+        synced: syncedCount,
+        failed: failedCount,
+        message: `Synchronized ${syncedCount} of ${records.length} applications to Google Sheets with referral attribution.`,
+      };
     } catch (err) {
-      console.warn('[Apps Script Bulk Sync Fallback Note]:', err.message);
+      console.warn('[Apps Script Sequential Sync Error]:', err.message);
     }
   }
 

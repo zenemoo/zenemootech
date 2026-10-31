@@ -227,7 +227,7 @@ export const opportunityApplicationApi = {
   update: (id: string, data: any) => api.put(`/opportunity-applications/${id}`, data),
   delete: (id: string) => api.delete(`/opportunity-applications/${id}`),
   resyncSingle: (id: string) => api.post(`/opportunity-applications/${id}/resync`),
-  resyncAll: (opportunityId: string) => api.post(`/opportunity-applications/opportunity/${opportunityId}/resync-all`),
+  resyncAll: (opportunityId: string) => api.post(`/opportunity-applications/opportunity/${opportunityId}/resync-all`, {}, { timeout: 120000 }),
 };
 
 // Customer & Candidate Reviews APIs

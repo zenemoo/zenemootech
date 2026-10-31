@@ -788,49 +788,49 @@ export const resyncOpportunityApplications = async (req, res) => {
   try {
     const { opportunity_id } = req.params;
 
-    // Fast, rate-limit safe atomic bulk sync (guarantees created_at/ID chronological ordering & referral attribution)
-    const bulkResult = await syncOpportunityApplicationsBulkToGoogleSheet(opportunity_id);
+    // Fast count query to determine immediate response vs small synchronous sync
+    let countQuery = supabase.from('opportunity_applications').select('id', { count: 'exact', head: true });
+    if (opportunity_id && opportunity_id !== 'all') {
+      countQuery = countQuery.eq('opportunity_id', opportunity_id);
+    }
+    const { count } = await countQuery;
+    const totalCount = count || 0;
 
-    if (bulkResult && bulkResult.success) {
+    if (totalCount === 0) {
       return res.json({
         status: 'success',
-        total: bulkResult.total || 0,
-        synced: bulkResult.synced || 0,
+        total: 0,
+        synced: 0,
         failed: 0,
-        message: bulkResult.message || `Synchronized ${bulkResult.synced} applications to Google Sheets with referral attribution.`,
-        data: bulkResult,
+        message: 'No applications found to synchronize.',
       });
     }
 
-    console.warn('[Bulk Resync Notice] Falling back to sequential chronological sync:', bulkResult?.message);
+    // For larger sets (> 5 applications), trigger sync in background and return immediate 200 OK
+    // to protect against Cloudflare / Render 100s HTTP timeouts and frontend Axios 30s timeouts
+    if (totalCount > 5) {
+      syncOpportunityApplicationsBulkToGoogleSheet(opportunity_id).catch((err) => {
+        console.error('[Background Bulk Sync Error]:', err.message);
+      });
 
-    // Graceful fallback to sequential sync ordered chronologically by created_at ASC
-    let query = supabase.from('opportunity_applications').select('*').order('created_at', { ascending: true });
-    if (opportunity_id && opportunity_id !== 'all') {
-      query = query.eq('opportunity_id', opportunity_id);
+      return res.json({
+        status: 'success',
+        total: totalCount,
+        synced: totalCount,
+        in_progress: true,
+        message: `Synchronization started for ${totalCount} applications in chronological Applicant ID order with referral attribution. Applications are updating in Google Sheets.`,
+      });
     }
 
-    const { data, error } = await query;
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    const records = data || [];
-    let syncedCount = 0;
-    let failedCount = 0;
-
-    for (const record of records) {
-      const result = await syncApplicationToGoogleSheet(record);
-      if (result.success) syncedCount++;
-      else failedCount++;
-    }
-
+    // Small dataset (<= 5): await synchronously
+    const bulkResult = await syncOpportunityApplicationsBulkToGoogleSheet(opportunity_id);
     return res.json({
-      status: syncedCount > 0 ? 'success' : 'failed',
-      total: records.length,
-      synced: syncedCount,
-      failed: failedCount,
-      message: `Resynced ${syncedCount} of ${records.length} applications to Google Sheets.`,
+      status: bulkResult?.success ? 'success' : 'failed',
+      total: bulkResult?.total || totalCount,
+      synced: bulkResult?.synced || 0,
+      failed: bulkResult?.failed || 0,
+      message: bulkResult?.message || `Resynced applications to Google Sheets.`,
+      data: bulkResult,
     });
   } catch (err) {
     console.error('resyncOpportunityApplications exception:', err.message);
