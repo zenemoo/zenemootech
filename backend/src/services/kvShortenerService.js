@@ -160,6 +160,22 @@ export class KvShortenerService {
   }
 
   /**
+   * Normalizes URL for strict comparison and duplicate detection
+   */
+  normalizeUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    try {
+      let trimmed = rawUrl.trim().replace(/\/+$/, '');
+      const parsed = new URL(trimmed);
+      const hostname = parsed.hostname.toLowerCase();
+      const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+      return `${parsed.protocol.toLowerCase()}//${hostname}${pathname}${parsed.search}`;
+    } catch (_) {
+      return rawUrl.trim().toLowerCase().replace(/\/+$/, '');
+    }
+  }
+
+  /**
    * Checks if code exists in Cloudflare KV or fallback
    */
   async codeExists(code) {
@@ -187,6 +203,24 @@ export class KvShortenerService {
   async createLink({ destination_url, custom_code, title, notes, expires_at, created_by }) {
     if (!this.isValidDestinationUrl(destination_url)) {
       throw new Error('Invalid destination URL. Only HTTP and HTTPS destinations are permitted.');
+    }
+
+    // 1. Guard against duplicate destination URLs
+    const cleanDestination = destination_url.trim();
+    const normalizedTarget = this.normalizeUrl(cleanDestination);
+
+    for (const existing of this.memoryLinks.values()) {
+      if (existing && existing.destination_url) {
+        if (this.normalizeUrl(existing.destination_url) === normalizedTarget) {
+          const err = new Error(
+            `This destination URL is already registered under short link '/l/${existing.code}' (${existing.title || existing.code}).`
+          );
+          err.statusCode = 409;
+          err.code = 'DUPLICATE_DESTINATION';
+          err.existingLink = existing;
+          throw err;
+        }
+      }
     }
 
     let code = '';
@@ -324,14 +358,26 @@ export class KvShortenerService {
     // Filter by search query
     if (search && search.trim()) {
       const q = search.trim().toLowerCase();
-      allLinks = allLinks.filter(
-        (l) =>
-          l.code.toLowerCase().includes(q) ||
-          (l.title && l.title.toLowerCase().includes(q)) ||
-          l.destination_url.toLowerCase().includes(q) ||
-          (l.created_by && l.created_by.toLowerCase().includes(q)) ||
-          (l.notes && l.notes.toLowerCase().includes(q))
-      );
+      const cleanQ = q.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+
+      allLinks = allLinks.filter((l) => {
+        if (!l) return false;
+        const code = (l.code || '').toLowerCase();
+        const title = (l.title || '').toLowerCase();
+        const dest = (l.destination_url || l.url || '').toLowerCase();
+        const cleanDest = dest.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+        const createdBy = (l.created_by || '').toLowerCase();
+        const notes = (l.notes || '').toLowerCase();
+
+        return (
+          code.includes(q) ||
+          title.includes(q) ||
+          dest.includes(q) ||
+          (cleanQ && cleanDest.includes(cleanQ)) ||
+          createdBy.includes(q) ||
+          notes.includes(q)
+        );
+      });
     }
 
     // Filter by status

@@ -237,6 +237,23 @@ export const EXPORT_SECTION_METADATA: Record<string, SectionMeta> = {
       { key: 'subscribed_at', label: 'Subscribed At' },
     ],
   },
+  'url-shortener': {
+    sectionId: 'url-shortener',
+    sectionName: 'URL Shortener Gateway',
+    defaultColumns: [
+      { key: 'code', label: 'Short Code' },
+      { key: 'short_url', label: 'Full Short URL' },
+      { key: 'title', label: 'Title / Label' },
+      { key: 'destination_url', label: 'Destination URL' },
+      { key: 'status', label: 'Status' },
+      { key: 'clicks', label: 'Total Redirects' },
+      { key: 'unique_clicks', label: 'Unique Clicks' },
+      { key: 'expires_at', label: 'Expiry Date' },
+      { key: 'created_at', label: 'Created Date' },
+      { key: 'created_by', label: 'Created By' },
+      { key: 'notes', label: 'Notes' },
+    ],
+  },
   notifications: {
     sectionId: 'notifications',
     sectionName: 'System Notifications',
@@ -424,6 +441,10 @@ export function formatFieldValue(row: Record<string, any>, colKey: string): stri
       val = row.country || 'India';
     } else if (colKey === 'country_code') {
       val = row.country_code || row.countryCode || '+91';
+    } else if (colKey === 'short_url') {
+      val = row.short_url || (row.code ? `https://zenemoo.in/l/${row.code}` : '');
+    } else if (colKey === 'code') {
+      val = row.code ? `/l/${row.code}` : '';
     } else if (colKey === 'city_district') {
       val = [row.city, row.district].filter(Boolean).join(', ') || row.city_district;
     } else if (colKey === 'location') {

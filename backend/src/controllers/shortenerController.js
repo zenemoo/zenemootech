@@ -114,6 +114,14 @@ export const createShortenerLink = async (req, res, next) => {
       link: newLink,
     });
   } catch (err) {
+    if (err.statusCode === 409 || err.code === 'DUPLICATE_DESTINATION') {
+      return res.status(409).json({
+        success: false,
+        code: 'DUPLICATE_DESTINATION',
+        message: err.message,
+        existingLink: err.existingLink,
+      });
+    }
     return res.status(400).json({
       success: false,
       message: err.message || 'Failed to create short link.',

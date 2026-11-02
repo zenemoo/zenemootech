@@ -37,6 +37,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import QRCode from 'qrcode';
 import { shortenerApi, ShortenerLinkItem, ShortenerStats } from '../services/api';
+import { ExportButton } from './ExportButton';
 
 interface AdminUrlShortenerTabProps {
   onShowConfirm: (
@@ -83,6 +84,67 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
   const [copiedCodes, setCopiedCodes] = useState<Record<string, boolean>>({});
 
   const baseDomain = stats?.production_domain || 'https://zenemoo.in';
+
+  // Normalize URL helper for client-side comparison and duplicate detection
+  const normalizeUrl = useCallback((rawUrl: string) => {
+    if (!rawUrl || typeof rawUrl !== 'string') return '';
+    try {
+      let trimmed = rawUrl.trim().replace(/\/+$/, '');
+      const parsed = new URL(trimmed);
+      const hostname = parsed.hostname.toLowerCase();
+      const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+      return `${parsed.protocol.toLowerCase()}//${hostname}${pathname}${parsed.search}`;
+    } catch (_) {
+      return rawUrl.trim().toLowerCase().replace(/\/+$/, '');
+    }
+  }, []);
+
+  // Live duplicate destination detector for the create form
+  const duplicateLink = useMemo(() => {
+    if (!destinationUrl.trim()) return null;
+    const target = normalizeUrl(destinationUrl);
+    return links.find((l) => l.destination_url && normalizeUrl(l.destination_url) === target) || null;
+  }, [destinationUrl, links, normalizeUrl]);
+
+  // Real-time client-side filtered links for instant search and status filtering
+  const filteredLinks = useMemo(() => {
+    let list = links;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const cleanQ = q.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+      list = list.filter((l) => {
+        if (!l) return false;
+        const code = (l.code || '').toLowerCase();
+        const title = (l.title || '').toLowerCase();
+        const dest = (l.destination_url || '').toLowerCase();
+        const cleanDest = dest.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+        const notes = (l.notes || '').toLowerCase();
+        const createdBy = (l.created_by || '').toLowerCase();
+        return (
+          code.includes(q) ||
+          title.includes(q) ||
+          dest.includes(q) ||
+          (cleanQ && cleanDest.includes(cleanQ)) ||
+          notes.includes(q) ||
+          createdBy.includes(q)
+        );
+      });
+    }
+    if (statusFilter !== 'all') {
+      const nowMs = Date.now();
+      if (statusFilter === 'active') {
+        list = list.filter((l) => {
+          const isNotExpired = !l.expires_at || new Date(l.expires_at).getTime() > nowMs;
+          return (l.status === 'active' || l.is_active === true) && isNotExpired;
+        });
+      } else if (statusFilter === 'disabled') {
+        list = list.filter((l) => l.status === 'disabled' || l.is_active === false);
+      } else if (statusFilter === 'expired') {
+        list = list.filter((l) => l.expires_at && new Date(l.expires_at).getTime() <= nowMs);
+      }
+    }
+    return list;
+  }, [links, searchQuery, statusFilter]);
 
   // Fetch Stats & Links
   const fetchData = useCallback(async (quiet = false) => {
@@ -191,6 +253,11 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
 
     if (customCode.trim() && !/^[a-zA-Z0-9_-]{3,32}$/.test(customCode.trim())) {
       setFormError('Custom code must be 3-32 alphanumeric characters, hyphens, or underscores.');
+      return;
+    }
+
+    if (duplicateLink) {
+      setFormError(`This destination URL is already registered under short link '/l/${duplicateLink.code}' (${duplicateLink.title || duplicateLink.code}).`);
       return;
     }
 
@@ -328,14 +395,15 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
             <span className="hidden xs:inline">Sync</span>
           </button>
 
-          <button
-            onClick={handleExportCsv}
-            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all cursor-pointer"
-            title="Export CSV"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Export CSV</span>
-          </button>
+          <ExportButton
+            sectionId="url-shortener"
+            sectionName="URL Shortener Gateway"
+            dataset={links}
+            filteredDataset={filteredLinks}
+            showToast={(msg, type) => onAddToast(type === 'error' ? 'Export Failed' : 'Export Data', msg, type)}
+            label="Export Data"
+            className="px-3.5 py-2 text-xs font-mono"
+          />
 
           <button
             onClick={() => setIsCreateModalOpen(true)}
@@ -434,12 +502,18 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
             type="text"
             placeholder="Search by code, title, destination URL, or creator..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full pl-9 pr-8 py-2 rounded-lg bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-cyan-400 transition-all"
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setSearchQuery('');
+                setCurrentPage(1);
+              }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
             >
               <X className="w-3.5 h-3.5" />
@@ -451,7 +525,10 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
           {(['all', 'active', 'disabled', 'expired'] as const).map((s) => (
             <button
               key={s}
-              onClick={() => setStatusFilter(s)}
+              onClick={() => {
+                setStatusFilter(s);
+                setCurrentPage(1);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all capitalize cursor-pointer whitespace-nowrap ${
                 statusFilter === s
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
@@ -470,7 +547,7 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
           <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto mb-3" />
           <p className="text-sm font-mono text-slate-400">Querying Cloudflare Workers KV & links...</p>
         </div>
-      ) : links.length === 0 ? (
+      ) : filteredLinks.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-white/[0.02] border border-white/10">
           <Link2 className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <h3 className="text-base font-bold text-white mb-1">No Short Links Found</h3>
@@ -505,7 +582,7 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {links.map((link) => {
+                  {filteredLinks.map((link) => {
                     const badge = getDestinationBadge(link.destination_url);
                     const isCopied = copiedCodes[link.code];
                     const isExpired = link.expires_at && new Date(link.expires_at).getTime() <= Date.now();
@@ -652,68 +729,86 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
           </div>
 
           {/* MOBILE CARDS VIEW (ACTIVE ON PHONES & SMALL TABLETS) */}
-          <div className="block md:hidden space-y-3">
-            {links.map((link) => {
+          <div className="block md:hidden space-y-3.5">
+            {filteredLinks.map((link) => {
               const badge = getDestinationBadge(link.destination_url);
               const isCopied = copiedCodes[link.code];
               const isExpired = link.expires_at && new Date(link.expires_at).getTime() <= Date.now();
+              const hasDistinctTitle = link.title && link.title.trim() !== link.destination_url.trim();
 
               return (
                 <div
                   key={link.code}
-                  className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3"
+                  className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3 shadow-md hover:border-cyan-500/30 transition-all"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
+                  {/* Top Bar: Code, Copy, Status Badge */}
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-cyan-300 font-mono text-sm">
+                        <span className="font-bold text-cyan-300 font-mono text-sm tracking-tight truncate">
                           /l/{link.code}
                         </span>
                         <button
                           onClick={() => handleCopy(link.code)}
-                          className="p-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
-                          title="Copy"
+                          className="p-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white shrink-0 transition-colors cursor-pointer"
+                          title="Copy Short Link"
                         >
                           {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                         </button>
                       </div>
-                      {link.title && (
-                        <p className="text-xs text-white font-medium mt-0.5">{link.title}</p>
+                      {hasDistinctTitle && (
+                        <p className="text-xs text-white/90 font-medium truncate mt-1">
+                          {link.title}
+                        </p>
                       )}
                     </div>
 
-                    <div>
+                    <div className="shrink-0">
                       {isExpired ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                          Expired
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold uppercase tracking-wider">
+                          <XCircle className="w-2.5 h-2.5" /> Expired
                         </span>
                       ) : link.status === 'active' ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                          Active
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold uppercase tracking-wider">
+                          <CheckCircle2 className="w-2.5 h-2.5" /> Active
                         </span>
                       ) : (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                          Disabled
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold uppercase tracking-wider">
+                          <AlertTriangle className="w-2.5 h-2.5" /> Disabled
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="text-xs text-slate-300 break-all font-mono bg-black/40 p-2 rounded-lg border border-white/5">
+                  {/* Destination URL Box with Domain Classification Badge */}
+                  <div className="p-2.5 rounded-xl bg-black/50 border border-white/5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-slate-400">
+                      <span className="uppercase tracking-wider">Destination</span>
+                      {badge && (
+                        <span className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border ${badge.color}`}>
+                          <badge.icon className="w-2.5 h-2.5" />
+                          {badge.label}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate">{link.destination_url}</span>
+                      <span className="text-xs text-slate-200 font-mono truncate select-all">
+                        {link.destination_url}
+                      </span>
                       <a
                         href={link.destination_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-slate-400 hover:text-cyan-400 shrink-0"
+                        className="p-1 rounded bg-white/5 hover:bg-white/10 text-slate-400 hover:text-cyan-400 shrink-0 transition-colors"
+                        title="Open destination"
                       >
-                        <ExternalLink className="w-3 h-3" />
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
+                  {/* Metrics Bar */}
+                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 bg-white/[0.02] px-3 py-1.5 rounded-lg border border-white/5">
                     <div className="flex items-center gap-3">
                       <span>Clicks: <strong className="text-white">{link.clicks || 0}</strong></span>
                       <span className="inline-flex items-center gap-1 text-cyan-300">
@@ -721,53 +816,56 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                         Unique: <strong className="text-cyan-400">{link.unique_clicks ?? 0}</strong>
                       </span>
                     </div>
-                    <span>
+                    <span className="text-[10px] text-slate-500">
                       {link.expires_at ? `Exp: ${new Date(link.expires_at).toLocaleDateString()}` : 'No Expiry'}
                     </span>
                   </div>
 
-                  {badge && (
-                    <span className={`inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded border ${badge.color}`}>
-                      <badge.icon className="w-2.5 h-2.5" />
-                      {badge.label}
-                    </span>
-                  )}
-
-                  <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-white/5">
+                  {/* Action Toolbar: Balanced 5-Column Grid, Cleanly Anchored */}
+                  <div className="grid grid-cols-5 gap-1.5 pt-2 border-t border-white/10">
                     <button
                       onClick={() => handleOpenQrModal(link)}
-                      className="px-2.5 py-1.5 rounded-lg bg-white/5 text-slate-300 text-xs font-mono flex items-center gap-1"
+                      className="py-1.5 px-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      title="QR Code"
                     >
-                      <QrCode className="w-3 h-3" />
+                      <QrCode className="w-3 h-3 text-cyan-400" />
                       <span>QR</span>
                     </button>
                     <button
                       onClick={() => setActiveDetailLink(link)}
-                      className="px-2.5 py-1.5 rounded-lg bg-white/5 text-slate-300 text-xs font-mono flex items-center gap-1"
+                      className="py-1.5 px-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      title="Audit Log"
                     >
-                      <History className="w-3 h-3" />
+                      <History className="w-3 h-3 text-slate-400" />
                       <span>Audit</span>
                     </button>
                     <button
                       onClick={() => setEditingLink({ ...link })}
-                      className="px-2.5 py-1.5 rounded-lg bg-white/5 text-slate-300 text-xs font-mono flex items-center gap-1"
+                      className="py-1.5 px-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      title="Edit Link"
                     >
-                      <Edit className="w-3 h-3" />
+                      <Edit className="w-3 h-3 text-amber-400" />
                       <span>Edit</span>
                     </button>
                     <button
                       onClick={() => handleToggleStatus(link)}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-mono flex items-center gap-1 ${
-                        link.status === 'active' ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'
+                      className={`py-1.5 px-1 rounded-lg text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                        link.status === 'active'
+                          ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20'
+                          : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
                       }`}
+                      title={link.status === 'active' ? 'Disable link' : 'Enable link'}
                     >
-                      <span>{link.status === 'active' ? 'Disable' : 'Enable'}</span>
+                      <AlertCircle className="w-3 h-3" />
+                      <span className="truncate">{link.status === 'active' ? 'Disable' : 'Enable'}</span>
                     </button>
                     <button
                       onClick={() => handleDeleteLink(link)}
-                      className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400"
+                      className="py-1.5 px-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      title="Delete Link"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3 h-3" />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </div>
@@ -837,6 +935,44 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                           </span>
                         ) : null;
                       })()}
+                    </div>
+                  )}
+
+                  {duplicateLink && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2 animate-in fade-in">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold text-amber-300">Duplicate Destination Link Detected</div>
+                          <div className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                            This destination URL is already registered under short link{' '}
+                            <span className="font-mono font-bold text-cyan-300">/l/{duplicateLink.code}</span>
+                            {duplicateLink.title && duplicateLink.title.trim() !== duplicateLink.destination_url.trim()
+                              ? ` ("${duplicateLink.title}")`
+                              : ''}.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pl-6">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleCopy(duplicateLink.code);
+                            onAddToast('Copied', `Copied existing short link /l/${duplicateLink.code}`, 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-mono font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" /> Copy Existing Link
+                        </button>
+                        <a
+                          href={`${baseDomain}/l/${duplicateLink.code}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] font-mono flex items-center gap-1 transition-colors"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Test Link
+                        </a>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -918,8 +1054,12 @@ export const AdminUrlShortenerTab: React.FC<AdminUrlShortenerTabProps> = ({
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs font-mono flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20 disabled:opacity-50"
+                    disabled={isSubmitting || !!duplicateLink}
+                    className={`px-5 py-2 rounded-xl text-black font-bold text-xs font-mono flex items-center gap-2 shadow-lg transition-all ${
+                      isSubmitting || !!duplicateLink
+                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-60'
+                        : 'bg-cyan-500 hover:bg-cyan-400 cursor-pointer shadow-cyan-500/20 active:scale-95'
+                    }`}
                   >
                     {isSubmitting ? (
                       <>
