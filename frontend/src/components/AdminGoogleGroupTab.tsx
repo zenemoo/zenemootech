@@ -29,12 +29,19 @@ import {
   Eye,
   User,
   ListChecks,
+  Building2,
+  Filter,
 } from 'lucide-react';
 import { googleGroupApi } from '../services/api';
 
 interface PendingCandidate {
   email: string;
   sources: string[];
+  types?: string[];
+  vendors?: string[];
+  isDirect?: boolean;
+  isVendor?: boolean;
+  vendorName?: string | null;
 }
 
 interface GoogleGroupMember {
@@ -128,6 +135,19 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
   const pendingAbortRef = useRef<AbortController | null>(null);
   const [copiedBatch, setCopiedBatch] = useState(false);
 
+  // Source & Vendor Filter States for Pending Candidates
+  const [pendingCategory, setPendingCategory] = useState<'all' | 'direct' | 'vendor' | 'community'>('all');
+  const pendingCategoryRef = useRef<'all' | 'direct' | 'vendor' | 'community'>('all');
+  const [pendingVendor, setPendingVendor] = useState<string>('all');
+  const pendingVendorRef = useRef<string>('all');
+  const [availableVendors, setAvailableVendors] = useState<Array<{ name: string; count: number }>>([]);
+  const [categoryCounts, setCategoryCounts] = useState<{
+    all: number;
+    direct: number;
+    vendor: number;
+    community: number;
+  }>({ all: 0, direct: 0, vendor: 0, community: 0 });
+
   // Group Members State (Server-Side Paginated)
   const [members, setMembers] = useState<GoogleGroupMember[]>([]);
   const [membersPage, setMembersPage] = useState(1);
@@ -174,6 +194,14 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
   }, [pendingSearch]);
 
   useEffect(() => {
+    pendingCategoryRef.current = pendingCategory;
+  }, [pendingCategory]);
+
+  useEffect(() => {
+    pendingVendorRef.current = pendingVendor;
+  }, [pendingVendor]);
+
+  useEffect(() => {
     membersPageRef.current = membersPage;
   }, [membersPage]);
 
@@ -209,7 +237,13 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
   }, [showToast]);
 
   // 2. Load Pending Candidates (Server-Side 10 per page, Protected Against Race Conditions & In-Flight Abort)
-  const loadPending = useCallback(async (pageToLoad?: number, forceRefresh = false, searchStr?: string) => {
+  const loadPending = useCallback(async (
+    pageToLoad?: number,
+    forceRefresh = false,
+    searchStr?: string,
+    catFilter?: 'all' | 'direct' | 'vendor' | 'community',
+    vendFilter?: string
+  ) => {
     if (pendingAbortRef.current) {
       pendingAbortRef.current.abort();
     }
@@ -218,6 +252,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
 
     const targetPage = typeof pageToLoad === 'number' ? pageToLoad : pendingPageRef.current;
     const targetSearch = typeof searchStr === 'string' ? searchStr : pendingSearchRef.current;
+    const targetCat = catFilter !== undefined ? catFilter : pendingCategoryRef.current;
+    const targetVend = vendFilter !== undefined ? vendFilter : pendingVendorRef.current;
     const requestId = ++pendingRequestIdRef.current;
 
     setIsFetchingPending(true);
@@ -226,6 +262,8 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
         page: targetPage,
         pageSize: 10,
         search: targetSearch,
+        categoryFilter: targetCat,
+        vendorFilter: targetVend,
         forceRefresh,
       }, controller.signal);
 
@@ -238,6 +276,12 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
           setPendingPagination(res.data.pagination);
           // If page was clamped or adjusted, sync state
           setPendingPage(res.data.pagination.page);
+        }
+        if (res.data.filters?.counts) {
+          setCategoryCounts(res.data.filters.counts);
+        }
+        if (Array.isArray(res.data.filters?.vendors)) {
+          setAvailableVendors(res.data.filters.vendors);
         }
       }
     } catch (err: any) {
@@ -319,7 +363,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
       return;
     }
     setPendingPage(1);
-    loadPending(1, false, debouncedPendingSearch);
+    loadPending(1, false, debouncedPendingSearch, pendingCategoryRef.current, pendingVendorRef.current);
   }, [debouncedPendingSearch, loadPending]);
 
   // 400ms Debounce for Group Members Search
@@ -362,7 +406,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     }
     await Promise.all([
       loadOverview(false, true),
-      loadPending(pendingPageRef.current, true, pendingSearchRef.current),
+      loadPending(pendingPageRef.current, true, pendingSearchRef.current, pendingCategoryRef.current, pendingVendorRef.current),
       loadMembers(membersPageRef.current, true, membersSearchRef.current, originFilterRef.current),
       loadExclusions(),
     ]);
@@ -406,7 +450,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
             // Preserve current active pages after sync completes
             await Promise.all([
               loadOverview(true, true),
-              loadPending(pendingPageRef.current, true, pendingSearchRef.current),
+              loadPending(pendingPageRef.current, true, pendingSearchRef.current, pendingCategoryRef.current, pendingVendorRef.current),
               loadMembers(membersPageRef.current, true, membersSearchRef.current, originFilterRef.current),
             ]);
           } else if (data.status === 'FAILED') {
@@ -494,8 +538,40 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
     const clamped = Math.max(1, Math.min(newPage, pendingPagination.totalPages || 1));
     if (clamped === pendingPage && !isFetchingPending) return;
     setPendingPage(clamped);
-    loadPending(clamped, false, pendingSearchRef.current);
+    loadPending(clamped, false, pendingSearchRef.current, pendingCategoryRef.current, pendingVendorRef.current);
   };
+
+  // Category and Vendor filter change handlers
+  const handleCategoryChange = (cat: 'all' | 'direct' | 'vendor' | 'community') => {
+    setPendingCategory(cat);
+    pendingCategoryRef.current = cat;
+    setPendingVendor('all');
+    pendingVendorRef.current = 'all';
+    setPendingPage(1);
+    pendingPageRef.current = 1;
+    loadPending(1, false, pendingSearchRef.current, cat, 'all');
+  };
+
+  const handleVendorChange = (vendorName: string) => {
+    setPendingVendor(vendorName);
+    pendingVendorRef.current = vendorName;
+    setPendingPage(1);
+    pendingPageRef.current = 1;
+    loadPending(1, false, pendingSearchRef.current, pendingCategoryRef.current, vendorName);
+  };
+
+  // Dynamic label for batch copy button based on active filter
+  const copyButtonLabel = useMemo(() => {
+    if (copiedBatch) return `✓ ${pendingCandidates.length} emails copied`;
+    if (pendingCategory === 'direct') return `Copy ${pendingCandidates.length} Direct Emails`;
+    if (pendingCategory === 'vendor') {
+      return pendingVendor !== 'all'
+        ? `Copy ${pendingCandidates.length} Emails (${pendingVendor})`
+        : `Copy ${pendingCandidates.length} Vendor Emails`;
+    }
+    if (pendingCategory === 'community') return `Copy ${pendingCandidates.length} Community Emails`;
+    return `Copy ${pendingCandidates.length} Emails`;
+  }, [copiedBatch, pendingCandidates.length, pendingCategory, pendingVendor]);
 
   // Page Navigation Handlers for Members
   const handleMembersPageChange = (newPage: number) => {
@@ -695,7 +771,64 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
   }, [filteredExclusions, exclusionPage, exclusionPageSize]);
 
   // Source badge renderer
-  const renderSourceBadge = (sources?: string[], isEligible = false) => {
+  const renderSourceBadge = (sources?: string[], isEligible = false, candidate?: PendingCandidate) => {
+    // If candidate object is provided with vendor / direct flags:
+    if (candidate) {
+      const badges: React.ReactNode[] = [];
+
+      if (candidate.isVendor) {
+        const vName = candidate.vendorName || 'Partner';
+        badges.push(
+          <span
+            key="vendor"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium bg-purple-500/15 text-purple-300 border border-purple-500/30"
+            title={`Vendor Referral: ${vName}`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
+            <span className="truncate max-w-[150px]">Vendor: {vName}</span>
+          </span>
+        );
+      }
+
+      if (candidate.isDirect) {
+        badges.push(
+          <span
+            key="direct"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span>Direct Applicant</span>
+          </span>
+        );
+      }
+
+      if (candidate.types?.includes('talent') && !candidate.types?.includes('vendor') && !candidate.types?.includes('direct')) {
+        badges.push(
+          <span
+            key="talent"
+            className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-cyan-500/10 text-cyan-300 border border-cyan-500/20"
+          >
+            Talent Network
+          </span>
+        );
+      }
+
+      if (candidate.types?.includes('subscriber') && !candidate.types?.includes('vendor') && !candidate.types?.includes('direct')) {
+        badges.push(
+          <span
+            key="subscriber"
+            className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20"
+          >
+            Subscriber
+          </span>
+        );
+      }
+
+      if (badges.length > 0) {
+        return <div className="flex flex-wrap items-center gap-1.5">{badges}</div>;
+      }
+    }
+
     const srcList = sources || [];
     if (srcList.length === 0) {
       if (isEligible) {
@@ -714,14 +847,14 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
       let label = 'Subscribers';
 
       if (src.includes('Talent')) {
-        badgeClass = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+        badgeClass = 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20';
         label = 'Talent Reg.';
-      } else if (src.includes('Applicant')) {
-        badgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-        label = 'Opp. Applicant';
-      } else if (src.includes('Referrer')) {
-        badgeClass = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-        label = 'Opp. Referrer';
+      } else if (src.includes('Applicant') || src.includes('Direct')) {
+        badgeClass = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+        label = 'Direct Applicant';
+      } else if (src.includes('Vendor') || src.includes('Referr')) {
+        badgeClass = 'bg-purple-500/15 text-purple-300 border-purple-500/30';
+        label = src;
       }
 
       return (
@@ -1034,17 +1167,17 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                       ? 'bg-emerald-500 text-gray-950 shadow-emerald-500/20 ring-2 ring-emerald-400'
                       : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-gray-950 hover:opacity-95 shadow-orange-500/20'
                   }`}
-                  title="Copy exactly the visible 10 email addresses (newline separated) to paste in Google Groups"
+                  title="Copy exactly the visible email addresses (newline separated) to paste in Google Groups"
                 >
                   {copiedBatch ? (
                     <>
                       <Check className="h-4 w-4" />
-                      <span>✓ {pendingCandidates.length} emails copied</span>
+                      <span>{copyButtonLabel}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="h-4 w-4" />
-                      <span>Copy {pendingCandidates.length} Emails</span>
+                      <span>{copyButtonLabel}</span>
                     </>
                   )}
                 </button>
@@ -1061,8 +1194,103 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
               </div>
             </div>
 
+            {/* Category Filter Pills & Vendor Selector */}
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between border-t border-gray-800/60 pt-3">
+              {/* Category Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                {/* 1. All Sources */}
+                <button
+                  type="button"
+                  onClick={() => handleCategoryChange('all')}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                    pendingCategory === 'all'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                      : 'bg-gray-950/60 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700'
+                  }`}
+                >
+                  <Layers className="h-3.5 w-3.5 text-amber-400" />
+                  <span>All Sources</span>
+                  <span className="ml-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-mono text-gray-300">
+                    {categoryCounts.all}
+                  </span>
+                </button>
+
+                {/* 2. Direct / Individual */}
+                <button
+                  type="button"
+                  onClick={() => handleCategoryChange('direct')}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                    pendingCategory === 'direct'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                      : 'bg-gray-950/60 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700'
+                  }`}
+                >
+                  <User className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Direct / Individual</span>
+                  <span className="ml-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-mono text-emerald-300">
+                    {categoryCounts.direct}
+                  </span>
+                </button>
+
+                {/* 3. Vendor / Referred */}
+                <button
+                  type="button"
+                  onClick={() => handleCategoryChange('vendor')}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                    pendingCategory === 'vendor'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
+                      : 'bg-gray-950/60 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700'
+                  }`}
+                >
+                  <Building2 className="h-3.5 w-3.5 text-purple-400" />
+                  <span>Vendor / Referred</span>
+                  <span className="ml-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-mono text-purple-300">
+                    {categoryCounts.vendor}
+                  </span>
+                </button>
+
+                {/* 4. Subscribers & Talent */}
+                <button
+                  type="button"
+                  onClick={() => handleCategoryChange('community')}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                    pendingCategory === 'community'
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
+                      : 'bg-gray-950/60 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700'
+                  }`}
+                >
+                  <Mail className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Subscribers & Talent</span>
+                  <span className="ml-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-mono text-blue-300">
+                    {categoryCounts.community}
+                  </span>
+                </button>
+              </div>
+
+              {/* Vendor Selector Dropdown (Shown when Vendor/Referred is active, or if available) */}
+              {pendingCategory === 'vendor' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-purple-300 flex items-center gap-1 shrink-0">
+                    <Filter className="h-3.5 w-3.5 text-purple-400" /> Select Vendor:
+                  </span>
+                  <select
+                    value={pendingVendor}
+                    onChange={(e) => handleVendorChange(e.target.value)}
+                    className="rounded-xl border border-purple-500/40 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-purple-200 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  >
+                    <option value="all">All Vendors ({categoryCounts.vendor})</option>
+                    {availableVendors.map((v) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} ({v.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
             {/* Search Input */}
-            <div className="mt-3.5 relative w-full sm:max-w-md">
+            <div className="mt-3 relative w-full sm:max-w-md">
               <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
               <input
                 type="text"
@@ -1147,7 +1375,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                           </div>
                         </td>
 
-                        <td className="px-4 py-3">{renderSourceBadge(candidate.sources, true)}</td>
+                        <td className="px-4 py-3">{renderSourceBadge(candidate.sources, true, candidate)}</td>
 
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400 border border-amber-500/20">
@@ -1215,7 +1443,7 @@ export const AdminGoogleGroupTab: React.FC<AdminGoogleGroupTabProps> = ({ showTo
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      {renderSourceBadge(candidate.sources, true)}
+                      {renderSourceBadge(candidate.sources, true, candidate)}
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">
                         Pending
                       </span>

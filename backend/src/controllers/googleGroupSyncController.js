@@ -80,10 +80,10 @@ export const fetchEligibleEmailsFromSupabase = async () => {
   ] = await Promise.allSettled([
     supabase.from('subscribers').select('email').neq('status', 'unsubscribed'),
     supabase.from('talent_registrations').select('email').eq('is_archived', false).neq('status', 'banned').neq('status', 'rejected'),
-    supabase.from('opportunity_applications').select('applicant_email, referrer_email').neq('status', 'rejected'),
+    supabase.from('opportunity_applications').select('applicant_email, referrer_email, referrer_name, referred_by_id, referral_code').neq('status', 'rejected'),
   ]);
 
-  const addEmailWithSource = (emailValue, sourceKey, detailedLabel) => {
+  const addEmailWithSource = (emailValue, sourceKey, detailedLabel, meta = {}) => {
     const normalized = normalizeAndValidateEmail(emailValue);
     if (normalized) {
       const beforeSize = emailSet.size;
@@ -95,29 +95,63 @@ export const fetchEligibleEmailsFromSupabase = async () => {
         }
       }
       if (!emailSourcesMap.has(normalized)) {
-        emailSourcesMap.set(normalized, new Set());
+        emailSourcesMap.set(normalized, {
+          labels: new Set(),
+          types: new Set(),
+          vendors: new Set(),
+        });
       }
-      emailSourcesMap.get(normalized).add(detailedLabel);
+      const item = emailSourcesMap.get(normalized);
+      if (detailedLabel) item.labels.add(detailedLabel);
+      if (meta.type) item.types.add(meta.type);
+      if (meta.vendor) item.vendors.add(meta.vendor);
     }
   };
 
   if (subscribersRes.status === 'fulfilled' && subscribersRes.value?.data) {
     for (const row of subscribersRes.value.data) {
-      addEmailWithSource(row.email, 'subscribers', 'Subscribers');
+      addEmailWithSource(row.email, 'subscribers', 'Subscribers', { type: 'subscriber' });
     }
   }
   if (talentRes.status === 'fulfilled' && talentRes.value?.data) {
     for (const row of talentRes.value.data) {
-      addEmailWithSource(row.email, 'talent_registrations', 'Talent Registrations');
+      addEmailWithSource(row.email, 'talent_registrations', 'Talent Network', { type: 'talent' });
     }
   }
   if (applicationsRes.status === 'fulfilled' && applicationsRes.value?.data) {
     for (const row of applicationsRes.value.data) {
+      const refName = (row.referrer_name || '').trim();
+      const isVendor = Boolean(
+        (refName && refName.toLowerCase() !== 'direct' && refName.toLowerCase() !== 'none') ||
+        (row.referred_by_id && row.referred_by_id !== 'direct') ||
+        (row.referral_code && !row.referral_code.toUpperCase().includes('DIRECT'))
+      );
+      const cleanVendorName = isVendor ? (refName || row.referral_code || 'Vendor Partner') : null;
+
       if (row.applicant_email) {
-        addEmailWithSource(row.applicant_email, 'opportunity_applications', 'Opportunity Applications — Applicant');
+        if (isVendor) {
+          addEmailWithSource(
+            row.applicant_email,
+            'opportunity_applications',
+            `Vendor: ${cleanVendorName}`,
+            { type: 'vendor', vendor: cleanVendorName }
+          );
+        } else {
+          addEmailWithSource(
+            row.applicant_email,
+            'opportunity_applications',
+            'Direct Applicant',
+            { type: 'direct' }
+          );
+        }
       }
       if (row.referrer_email) {
-        addEmailWithSource(row.referrer_email, 'opportunity_applications', 'Opportunity Applications — Referrer');
+        addEmailWithSource(
+          row.referrer_email,
+          'opportunity_applications',
+          `Referrer: ${cleanVendorName || 'Partner'}`,
+          { type: 'vendor', vendor: cleanVendorName || 'Referrer' }
+        );
       }
     }
   }
@@ -311,11 +345,19 @@ export const getPendingCommunityEmails = async (req, res, next) => {
     const allPending = [];
     for (const email of eligibleEmailSet) {
       if (!groupMemberEmailSet.has(email) && !excludedEmailSet.has(email)) {
-        const sourcesSet = emailSourcesMap.get(email);
-        const sources = sourcesSet ? Array.from(sourcesSet) : [];
+        const itemMeta = emailSourcesMap.get(email);
+        const sources = itemMeta ? Array.from(itemMeta.labels || itemMeta) : [];
+        const types = itemMeta?.types ? Array.from(itemMeta.types) : [];
+        const vendors = itemMeta?.vendors ? Array.from(itemMeta.vendors) : [];
+
         allPending.push({
           email,
           sources,
+          types,
+          vendors,
+          isDirect: types.includes('direct'),
+          isVendor: types.includes('vendor'),
+          vendorName: vendors.length > 0 ? vendors[0] : null,
         });
       }
     }
@@ -323,13 +365,59 @@ export const getPendingCommunityEmails = async (req, res, next) => {
     // Sort alphabetically by email for stable pagination
     allPending.sort((a, b) => a.email.localeCompare(b.email));
 
-    // 4. Apply search filter if provided
+    // Calculate source counts and vendor list across all pending candidates
+    let directCount = 0;
+    let vendorCount = 0;
+    let communityCount = 0;
+    const vendorCountsMap = new Map();
+
+    for (const p of allPending) {
+      if (p.isDirect) directCount++;
+      if (p.isVendor) {
+        vendorCount++;
+        p.vendors.forEach((v) => {
+          const vClean = v.trim();
+          if (vClean) {
+            vendorCountsMap.set(vClean, (vendorCountsMap.get(vClean) || 0) + 1);
+          }
+        });
+      }
+      if (p.types.includes('subscriber') || p.types.includes('talent')) {
+        communityCount++;
+      }
+    }
+
+    const vendorList = Array.from(vendorCountsMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // 4. Apply category, vendor, and search filters
+    const categoryFilter = (req.query.category || req.query.categoryFilter || 'all').trim().toLowerCase();
+    const vendorFilter = (req.query.vendor || req.query.vendorFilter || 'all').trim();
+
     let filteredPending = allPending;
+
+    if (categoryFilter === 'direct') {
+      filteredPending = filteredPending.filter((p) => p.isDirect);
+    } else if (categoryFilter === 'vendor') {
+      filteredPending = filteredPending.filter((p) => p.isVendor);
+      if (vendorFilter && vendorFilter.toLowerCase() !== 'all') {
+        filteredPending = filteredPending.filter((p) =>
+          p.vendors.some((v) => v.toLowerCase() === vendorFilter.toLowerCase())
+        );
+      }
+    } else if (categoryFilter === 'community') {
+      filteredPending = filteredPending.filter((p) =>
+        p.types.includes('subscriber') || p.types.includes('talent')
+      );
+    }
+
     if (searchQuery) {
-      filteredPending = allPending.filter((item) => {
+      filteredPending = filteredPending.filter((item) => {
         return (
           item.email.includes(searchQuery) ||
-          item.sources.some((s) => s.toLowerCase().includes(searchQuery))
+          item.sources.some((s) => s.toLowerCase().includes(searchQuery)) ||
+          item.vendors.some((v) => v.toLowerCase().includes(searchQuery))
         );
       });
     }
@@ -351,6 +439,17 @@ export const getPendingCommunityEmails = async (req, res, next) => {
         totalPages,
         hasNext: clampedPage < totalPages,
         hasPrevious: clampedPage > 1,
+      },
+      filters: {
+        category: categoryFilter,
+        vendor: vendorFilter,
+        counts: {
+          all: allPending.length,
+          direct: directCount,
+          vendor: vendorCount,
+          community: communityCount,
+        },
+        vendors: vendorList,
       },
       summary: {
         totalEligible: eligibleEmailSet.size,
@@ -421,7 +520,7 @@ export const getGoogleGroupMembers = async (req, res, next) => {
     const enrichedMembers = rawMembers.map((m) => {
       const normEmail = normalizeAndValidateEmail(m.email) || m.email.toLowerCase();
       const sourcesSet = emailSourcesMap.get(normEmail);
-      const sources = sourcesSet ? Array.from(sourcesSet) : [];
+      const sources = sourcesSet ? Array.from(sourcesSet.labels || sourcesSet) : [];
       const isExcluded = exclusionMap.has(normEmail);
       const excludedAt = exclusionMap.get(normEmail) || null;
 

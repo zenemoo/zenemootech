@@ -1028,8 +1028,19 @@ export const bookingApi = {
 export const googleGroupApi = {
   getOverview: (params?: { forceRefresh?: boolean }) =>
     api.get('/admin/google-group/overview', { params }),
-  getPendingMembers: (params?: { page?: number; pageSize?: number; search?: string; forceRefresh?: boolean }, signal?: AbortSignal) =>
-    api.get('/admin/google-group/pending', { params, signal }),
+  getPendingMembers: (
+    params?: {
+      page?: number;
+      pageSize?: number;
+      search?: string;
+      category?: string;
+      categoryFilter?: string;
+      vendor?: string;
+      vendorFilter?: string;
+      forceRefresh?: boolean;
+    },
+    signal?: AbortSignal
+  ) => api.get('/admin/google-group/pending', { params, signal }),
   getMembers: (params?: { page?: number; pageSize?: number; search?: string; originFilter?: string; forceRefresh?: boolean }, signal?: AbortSignal) =>
     api.get('/admin/google-group/members', { params, signal }),
   getExclusions: () =>
