@@ -2097,6 +2097,80 @@ export const getGlobalContactsDirectory = async (req, res) => {
       console.warn('[ContactsDirectory] Users lookup notice:', e.message);
     }
 
+    // 5. Cloudflare Ingested Incoming Email Messages
+    try {
+      const { data: incoming, error: inErr } = await client
+        .from('incoming_email_messages')
+        .select('sender_name, sender_email, reply_to, recipient_email')
+        .not('sender_email', 'is', null)
+        .limit(2000);
+
+      if (!inErr && Array.isArray(incoming)) {
+        incoming.forEach((msg) => {
+          if (msg.sender_email) {
+            const cleanEmail = msg.sender_email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@')) {
+              const existing = contactsMap.get(cleanEmail);
+              if (!existing) {
+                contactsMap.set(cleanEmail, {
+                  email: cleanEmail,
+                  name: (msg.sender_name || '').trim(),
+                  role: 'Contact',
+                });
+              } else if (!existing.name && msg.sender_name) {
+                existing.name = msg.sender_name.trim();
+              }
+            }
+          }
+          if (msg.reply_to) {
+            const cleanReply = msg.reply_to.trim().toLowerCase();
+            if (cleanReply && cleanReply.includes('@') && !contactsMap.has(cleanReply)) {
+              contactsMap.set(cleanReply, {
+                email: cleanReply,
+                name: (msg.sender_name || '').trim(),
+                role: 'Contact',
+              });
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[ContactsDirectory] Incoming messages lookup notice:', e.message);
+    }
+
+    // 6. Sent Email History (Recipients from past dispatches)
+    try {
+      const { data: sentLogs, error: sentErr } = await client
+        .from('email_history')
+        .select('recipients')
+        .not('recipients', 'is', null)
+        .limit(1000);
+
+      if (!sentErr && Array.isArray(sentLogs)) {
+        sentLogs.forEach((log) => {
+          if (log.recipients) {
+            let raw = log.recipients;
+            try {
+              raw = decrypt(raw, true) || raw;
+            } catch (_) {}
+            const tokens = String(raw).split(/[,;\s]+/);
+            tokens.forEach((t) => {
+              const clean = t.trim().toLowerCase();
+              if (clean && clean.includes('@') && !contactsMap.has(clean)) {
+                contactsMap.set(clean, {
+                  email: clean,
+                  name: '',
+                  role: 'Recent',
+                });
+              }
+            });
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[ContactsDirectory] Sent logs lookup notice:', e.message);
+    }
+
     const contacts = Array.from(contactsMap.values());
     return res.json({
       success: true,
