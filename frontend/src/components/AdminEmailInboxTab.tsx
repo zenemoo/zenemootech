@@ -57,6 +57,7 @@ import {
   NormalizedEmailBody,
   parseEmailTokens,
 } from '../utils/emailEncodingHelper';
+import { seedContactsFromList } from '../utils/recentContactsService';
 
 export interface EmailMessageRecord {
   id: string;
@@ -456,6 +457,21 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           if (res.data?.success && Array.isArray(res.data.emails)) {
             const list = res.data.emails;
             setEmailsList(list);
+
+            // Harvest contacts into client cache (Zero network egress)
+            try {
+              const harvested: Array<{ email?: string; name?: string; role?: string }> = [];
+              list.forEach((em: any) => {
+                if (em.sender_email) {
+                  harvested.push({ email: em.sender_email, name: em.sender_name, role: 'Contact' });
+                }
+                if (em.recipient_email) {
+                  harvested.push({ email: em.recipient_email, role: 'Contact' });
+                }
+              });
+              seedContactsFromList(harvested);
+            } catch (_) {}
+
             const total = typeof res.data.total === 'number' ? res.data.total : list.length;
             const unread = typeof res.data.unreadCount === 'number' ? res.data.unreadCount : 0;
             const tPages = typeof res.data.totalPages === 'number' ? res.data.totalPages : Math.max(1, Math.ceil(total / pageSize));
@@ -491,6 +507,21 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
           if (res.data?.success && Array.isArray(res.data.emails)) {
             const list = res.data.emails;
             setEmailsList(list);
+
+            // Harvest contacts into client cache (Zero network egress)
+            try {
+              const harvested: Array<{ email?: string; name?: string; role?: string }> = [];
+              list.forEach((em: any) => {
+                if (em.sender_email) {
+                  harvested.push({ email: em.sender_email, name: em.sender_name, role: 'Contact' });
+                }
+                if (em.recipient_email) {
+                  harvested.push({ email: em.recipient_email, role: 'Contact' });
+                }
+              });
+              seedContactsFromList(harvested);
+            } catch (_) {}
+
             const total = typeof res.data.total === 'number' ? res.data.total : (res.data.count ?? list.length);
             const tPages = typeof res.data.totalPages === 'number' ? res.data.totalPages : Math.max(1, Math.ceil(total / pageSize));
 

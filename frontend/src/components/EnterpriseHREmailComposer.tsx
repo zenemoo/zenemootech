@@ -55,6 +55,13 @@ import {
 } from '../utils/timezoneUtils';
 import DOMPurify from 'dompurify';
 import { HtmlEmailBuilderModal } from './HtmlEmailBuilderModal';
+import {
+  searchContacts,
+  recordRecentRecipient,
+  seedContactsFromList,
+  RecentContact,
+} from '../utils/recentContactsService';
+import { EmailRecipientAutocompleteDropdown } from './EmailRecipientAutocompleteDropdown';
 
 interface EnterpriseHREmailComposerProps {
   showToast: (text: string, type: 'success' | 'error') => void;
@@ -306,6 +313,11 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
   const [showCC, setShowCC] = useState(false);
   const [showBCC, setShowBCC] = useState(false);
 
+  // Recipient Autocomplete Typeahead state (Gmail-style)
+  const [acField, setAcField] = useState<'to' | 'cc' | 'bcc' | null>(null);
+  const [acSuggestions, setAcSuggestions] = useState<RecentContact[]>([]);
+  const [acHighlightedIdx, setAcHighlightedIdx] = useState<number>(0);
+
   // 3. Subject & Body States
   const [subject, setSubject] = useState<string>('');
   const [htmlContent, setHtmlContent] = useState<string>('');
@@ -535,6 +547,13 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
         }
       }
 
+      // Record recipients into client store
+      try {
+        toChips.forEach((em) => recordRecentRecipient(em));
+        ccChips.forEach((em) => recordRecentRecipient(em));
+        bccChips.forEach((em) => recordRecentRecipient(em));
+      } catch (_) {}
+
       setToChips([]);
       setCcChips([]);
       setBccChips([]);
@@ -700,7 +719,15 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       try {
         const res = await userManagementApi.searchRoster('');
         if (res.data && res.data.success && Array.isArray(res.data.data)) {
-          setRosterMembers(res.data.data.filter((m: any) => m.email));
+          const members = res.data.data.filter((m: any) => m.email);
+          setRosterMembers(members);
+          seedContactsFromList(
+            members.map((m: any) => ({
+              email: m.email,
+              name: m.name,
+              role: m.role || m.department || 'Team',
+            }))
+          );
         }
       } catch (e) {}
     };
@@ -796,6 +823,7 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       if (isValidEmail(clean)) {
         if (!chips.includes(clean) && !validEmailsToAdd.includes(clean)) {
           validEmailsToAdd.push(clean);
+          recordRecentRecipient(clean);
         }
       } else {
         showToast(`Invalid email syntax: "${clean}"`, 'error');
@@ -806,6 +834,83 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
       setChips([...chips, ...validEmailsToAdd]);
       setInput('');
     }
+  };
+
+  // Gmail-style recipient autocomplete handlers
+  const handleAcInputChange = (
+    field: 'to' | 'cc' | 'bcc',
+    val: string,
+    setInput: React.Dispatch<React.SetStateAction<string>>,
+    currentChips: string[]
+  ) => {
+    setInput(val);
+    if (val.trim()) {
+      const results = searchContacts(val, currentChips, 8);
+      setAcSuggestions(results);
+      setAcHighlightedIdx(0);
+      setAcField(results.length > 0 ? field : null);
+    } else {
+      setAcSuggestions([]);
+      setAcField(null);
+    }
+  };
+
+  const handleSelectAcContact = (
+    field: 'to' | 'cc' | 'bcc',
+    contact: RecentContact
+  ) => {
+    const cleanEmail = contact.email.trim();
+    if (cleanEmail) {
+      if (field === 'to') {
+        if (!toChips.includes(cleanEmail)) setToChips([...toChips, cleanEmail]);
+        setToInput('');
+      } else if (field === 'cc') {
+        if (!ccChips.includes(cleanEmail)) setCcChips([...ccChips, cleanEmail]);
+        setCcInput('');
+      } else if (field === 'bcc') {
+        if (!bccChips.includes(cleanEmail)) setBccChips([...bccChips, cleanEmail]);
+        setBccInput('');
+      }
+      recordRecentRecipient(contact.email, contact.name, contact.role);
+    }
+    setAcSuggestions([]);
+    setAcField(null);
+  };
+
+  const handleAcKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    field: 'to' | 'cc' | 'bcc',
+    inputVal: string,
+    chips: string[],
+    setChips: React.Dispatch<React.SetStateAction<string[]>>,
+    setInput: React.Dispatch<React.SetStateAction<string>>
+  ) => {
+    if (acField === field && acSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAcHighlightedIdx((prev) => (prev + 1) % acSuggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAcHighlightedIdx((prev) => (prev - 1 + acSuggestions.length) % acSuggestions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        if (acHighlightedIdx >= 0 && acHighlightedIdx < acSuggestions.length) {
+          e.preventDefault();
+          handleSelectAcContact(field, acSuggestions[acHighlightedIdx]);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAcField(null);
+        return;
+      }
+    }
+
+    handleKeyDownRecipient(e, inputVal, chips, setChips, setInput);
   };
 
   const handleKeyDownRecipient = (
@@ -1343,6 +1448,14 @@ ${customPara}
       const res = await emailApi.send(payload);
       if (res.data && res.data.success) {
         showToast('🚀 Email dispatched successfully with all attachments!', 'success');
+
+        // Record recipients in client-side recent contacts store
+        try {
+          currentTo.forEach((em) => recordRecentRecipient(em));
+          ccChips.forEach((em) => recordRecentRecipient(em));
+          bccChips.forEach((em) => recordRecentRecipient(em));
+        } catch (_) {}
+
         setToChips([]);
         setCcChips([]);
         setBccChips([]);
@@ -1546,33 +1659,60 @@ ${customPara}
               ))}
             </div>
           )}
-          <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-emerald-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
-            {toChips.map((email, idx) => (
-              <span
-                key={idx}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
-              >
-                <span className="truncate">{email}</span>
-                <button
-                  type="button"
-                  onClick={() => setToChips(toChips.filter((_, i) => i !== idx))}
-                  className="hover:text-red-400 cursor-pointer shrink-0"
+          <div className="relative w-full">
+            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-emerald-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
+              {toChips.map((email, idx) => (
+                <span
+                  key={idx}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            ))}
+                  <span className="truncate">{email}</span>
+                  <button
+                    type="button"
+                    onClick={() => setToChips(toChips.filter((_, i) => i !== idx))}
+                    className="hover:text-red-400 cursor-pointer shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+              ))}
 
-            <input
-              type="text"
-              placeholder={toChips.length === 0 ? 'Type email & press Enter...' : 'Add more...'}
-              value={toInput}
-              onChange={(e) => setToInput(e.target.value)}
-              onKeyDown={(e) => handleKeyDownRecipient(e, toInput, toChips, setToChips, setToInput)}
-              onPaste={(e) => handlePasteRecipient(e, toChips, setToChips, setToInput)}
-              onBlur={() => handleAddChip(toInput, toChips, setToChips, setToInput)}
-              className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
-            />
+              <input
+                type="text"
+                placeholder={toChips.length === 0 ? 'Type email & press Enter...' : 'Add more...'}
+                value={toInput}
+                onChange={(e) => handleAcInputChange('to', e.target.value, setToInput, toChips)}
+                onKeyDown={(e) => handleAcKeyDown(e, 'to', toInput, toChips, setToChips, setToInput)}
+                onPaste={(e) => handlePasteRecipient(e, toChips, setToChips, setToInput)}
+                onFocus={() => {
+                  if (toInput.trim()) {
+                    const results = searchContacts(toInput, toChips, 8);
+                    setAcSuggestions(results);
+                    setAcHighlightedIdx(0);
+                    setAcField(results.length > 0 ? 'to' : null);
+                  }
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    if (toInput.trim() && acField !== 'to') {
+                      handleAddChip(toInput, toChips, setToChips, setToInput);
+                    }
+                  }, 150);
+                }}
+                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
+              />
+            </div>
+
+            {/* Recipient Autocomplete Dropdown */}
+            {acField === 'to' && acSuggestions.length > 0 && (
+              <EmailRecipientAutocompleteDropdown
+                suggestions={acSuggestions}
+                highlightedIndex={acHighlightedIdx}
+                onSelect={(contact) => handleSelectAcContact('to', contact)}
+                onClose={() => setAcField(null)}
+                query={toInput}
+              />
+            )}
           </div>
         </div>
 
@@ -1627,33 +1767,60 @@ ${customPara}
               </div>
             )}
 
-            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
-              {ccChips.map((email, idx) => (
-                <span
-                  key={idx}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
-                >
-                  <span className="truncate">{email}</span>
-                  <button
-                    type="button"
-                    onClick={() => setCcChips(ccChips.filter((_, i) => i !== idx))}
-                    className="hover:text-red-400 cursor-pointer shrink-0"
+            <div className="relative w-full">
+              <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
+                {ccChips.map((email, idx) => (
+                  <span
+                    key={idx}
+                    className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
                   >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </span>
-              ))}
+                    <span className="truncate">{email}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCcChips(ccChips.filter((_, i) => i !== idx))}
+                      className="hover:text-red-400 cursor-pointer shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
 
-              <input
-                type="text"
-                placeholder="Type CC email..."
-                value={ccInput}
-                onChange={(e) => setCcInput(e.target.value)}
-                onKeyDown={(e) => handleKeyDownRecipient(e, ccInput, ccChips, setCcChips, setCcInput)}
-                onPaste={(e) => handlePasteRecipient(e, ccChips, setCcChips, setCcInput)}
-                onBlur={() => handleAddChip(ccInput, ccChips, setCcChips, setCcInput)}
-                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
-              />
+                <input
+                  type="text"
+                  placeholder="Type CC email..."
+                  value={ccInput}
+                  onChange={(e) => handleAcInputChange('cc', e.target.value, setCcInput, ccChips)}
+                  onKeyDown={(e) => handleAcKeyDown(e, 'cc', ccInput, ccChips, setCcChips, setCcInput)}
+                  onPaste={(e) => handlePasteRecipient(e, ccChips, setCcChips, setCcInput)}
+                  onFocus={() => {
+                    if (ccInput.trim()) {
+                      const results = searchContacts(ccInput, ccChips, 8);
+                      setAcSuggestions(results);
+                      setAcHighlightedIdx(0);
+                      setAcField(results.length > 0 ? 'cc' : null);
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      if (ccInput.trim() && acField !== 'cc') {
+                        handleAddChip(ccInput, ccChips, setCcChips, setCcInput);
+                      }
+                    }, 150);
+                  }}
+                  className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
+                />
+              </div>
+
+              {/* CC Recipient Autocomplete Dropdown */}
+              {acField === 'cc' && acSuggestions.length > 0 && (
+                <EmailRecipientAutocompleteDropdown
+                  suggestions={acSuggestions}
+                  highlightedIndex={acHighlightedIdx}
+                  onSelect={(contact) => handleSelectAcContact('cc', contact)}
+                  onClose={() => setAcField(null)}
+                  query={ccInput}
+                />
+              )}
             </div>
           </div>
         )}
@@ -1709,33 +1876,60 @@ ${customPara}
               </div>
             )}
 
-            <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-purple-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
-              {bccChips.map((email, idx) => (
-                <span
-                  key={idx}
-                  className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
-                >
-                  <span className="truncate">{email}</span>
-                  <button
-                    type="button"
-                    onClick={() => setBccChips(bccChips.filter((_, i) => i !== idx))}
-                    className="hover:text-red-400 cursor-pointer shrink-0"
+            <div className="relative w-full">
+              <div className="p-2 rounded-xl bg-white/[0.04] border border-white/10 focus-within:border-purple-400 flex flex-wrap items-center gap-1.5 min-h-[44px] max-w-full overflow-x-hidden">
+                {bccChips.map((email, idx) => (
+                  <span
+                    key={idx}
+                    className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[11px] sm:text-xs font-mono font-bold flex items-center gap-1.5 shrink-0 max-w-full truncate"
                   >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </span>
-              ))}
+                    <span className="truncate">{email}</span>
+                    <button
+                      type="button"
+                      onClick={() => setBccChips(bccChips.filter((_, i) => i !== idx))}
+                      className="hover:text-red-400 cursor-pointer shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
 
-              <input
-                type="text"
-                placeholder="Type BCC email..."
-                value={bccInput}
-                onChange={(e) => setBccInput(e.target.value)}
-                onKeyDown={(e) => handleKeyDownRecipient(e, bccInput, bccChips, setBccChips, setBccInput)}
-                onPaste={(e) => handlePasteRecipient(e, bccChips, setBccChips, setBccInput)}
-                onBlur={() => handleAddChip(bccInput, bccChips, setBccChips, setBccInput)}
-                className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
-              />
+                <input
+                  type="text"
+                  placeholder="Type BCC email..."
+                  value={bccInput}
+                  onChange={(e) => handleAcInputChange('bcc', e.target.value, setBccInput, bccChips)}
+                  onKeyDown={(e) => handleAcKeyDown(e, 'bcc', bccInput, bccChips, setBccChips, setBccInput)}
+                  onPaste={(e) => handlePasteRecipient(e, bccChips, setBccChips, setBccInput)}
+                  onFocus={() => {
+                    if (bccInput.trim()) {
+                      const results = searchContacts(bccInput, bccChips, 8);
+                      setAcSuggestions(results);
+                      setAcHighlightedIdx(0);
+                      setAcField(results.length > 0 ? 'bcc' : null);
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      if (bccInput.trim() && acField !== 'bcc') {
+                        handleAddChip(bccInput, bccChips, setBccChips, setBccInput);
+                      }
+                    }, 150);
+                  }}
+                  className="flex-1 bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none min-w-[140px] sm:min-w-[200px]"
+                />
+              </div>
+
+              {/* BCC Recipient Autocomplete Dropdown */}
+              {acField === 'bcc' && acSuggestions.length > 0 && (
+                <EmailRecipientAutocompleteDropdown
+                  suggestions={acSuggestions}
+                  highlightedIndex={acHighlightedIdx}
+                  onSelect={(contact) => handleSelectAcContact('bcc', contact)}
+                  onClose={() => setAcField(null)}
+                  query={bccInput}
+                />
+              )}
             </div>
           </div>
         )}

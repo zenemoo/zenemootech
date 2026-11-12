@@ -52,6 +52,12 @@ import {
   isValidEmail,
   htmlToPlainText,
 } from '../utils/emailEncodingHelper';
+import {
+  searchContacts,
+  recordRecentRecipient,
+  RecentContact,
+} from '../utils/recentContactsService';
+import { EmailRecipientAutocompleteDropdown } from './EmailRecipientAutocompleteDropdown';
 
 const VERIFIED_SENDERS = [
   { email: 'contact@zenemoo.in', label: 'Zenemoo Business Team (contact@zenemoo.in)' },
@@ -147,7 +153,38 @@ const RecipientChipInput: React.FC<RecipientChipInputProps> = ({
   showBccButton,
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [suggestions, setSuggestions] = useState<RecentContact[]>([]);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [showDropdown, setShowDropdown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleInputChange = (val: string) => {
+    setInputValue(val);
+    if (val.trim()) {
+      const results = searchContacts(val, recipients, 8);
+      setSuggestions(results);
+      setHighlightedIndex(0);
+      setShowDropdown(results.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowDropdown(false);
+    }
+  };
+
+  const handleSelectContact = (contact: RecentContact) => {
+    const cleanEmail = contact.email.trim();
+    if (cleanEmail) {
+      const currentSet = new Set(recipients.map((r) => r.toLowerCase()));
+      if (!currentSet.has(cleanEmail.toLowerCase())) {
+        onChange([...recipients, cleanEmail]);
+      }
+      recordRecentRecipient(contact.email, contact.name, contact.role);
+    }
+    setInputValue('');
+    setSuggestions([]);
+    setShowDropdown(false);
+    inputRef.current?.focus();
+  };
 
   const addRecipients = (raw: string) => {
     const tokens = parseEmailTokens(raw);
@@ -160,14 +197,42 @@ const RecipientChipInput: React.FC<RecipientChipInputProps> = ({
       if (!currentSet.has(t)) {
         currentSet.add(t);
         updated.push(t);
+        recordRecentRecipient(t);
       }
     });
 
     onChange(updated);
     setInputValue('');
+    setSuggestions([]);
+    setShowDropdown(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showDropdown && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+          e.preventDefault();
+          handleSelectContact(suggestions[highlightedIndex]);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowDropdown(false);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' || e.key === ',' || e.key === ';' || e.key === 'Tab') {
       e.preventDefault();
       if (inputValue.trim()) {
@@ -192,79 +257,103 @@ const RecipientChipInput: React.FC<RecipientChipInputProps> = ({
   };
 
   return (
-    <div className="flex items-start gap-3 py-1">
+    <div className="flex items-start gap-3 py-1 relative">
       <span className="w-14 text-slate-400 font-bold shrink-0 pt-2 font-mono text-xs">{label}:</span>
-      <div
-        onClick={() => inputRef.current?.focus()}
-        className="flex-1 flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-white/[0.04] border border-white/10 min-h-[38px] cursor-text focus-within:border-cyan-400 transition-colors"
-      >
-        {recipients.map((email, idx) => {
-          const valid = isValidEmail(email);
-          return (
-            <span
-              key={`${email}_${idx}`}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-mono transition-all ${
-                valid
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-              }`}
-              title={valid ? email : `Invalid email format: ${email}`}
-            >
-              <span>{email}</span>
+      <div className="flex-1 relative min-w-0">
+        <div
+          onClick={() => inputRef.current?.focus()}
+          className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-white/[0.04] border border-white/10 min-h-[38px] cursor-text focus-within:border-cyan-400 transition-colors"
+        >
+          {recipients.map((email, idx) => {
+            const valid = isValidEmail(email);
+            return (
+              <span
+                key={`${email}_${idx}`}
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-mono transition-all ${
+                  valid
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}
+                title={valid ? email : `Invalid email format: ${email}`}
+              >
+                <span>{email}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemove(idx);
+                  }}
+                  className="p-0.5 rounded hover:bg-white/20 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            );
+          })}
+
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onFocus={() => {
+              if (inputValue.trim()) {
+                const results = searchContacts(inputValue, recipients, 8);
+                setSuggestions(results);
+                setShowDropdown(results.length > 0);
+              }
+            }}
+            onBlur={() => {
+              setTimeout(() => {
+                if (inputValue.trim() && !showDropdown) {
+                  addRecipients(inputValue);
+                }
+              }, 150);
+            }}
+            placeholder={recipients.length === 0 ? placeholder : ''}
+            className="flex-1 min-w-[140px] bg-transparent text-white placeholder-slate-500 text-xs font-mono outline-none px-1 py-0.5"
+          />
+
+          <div className="flex items-center gap-2 ml-auto pr-1 text-[11px] font-mono shrink-0">
+            {showCcButton && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleRemove(idx);
+                  onCcClick?.();
                 }}
-                className="p-0.5 rounded hover:bg-white/20 text-slate-400 hover:text-white cursor-pointer"
+                className="text-slate-400 hover:text-cyan-300 underline cursor-pointer"
               >
-                <X className="w-3 h-3" />
+                Cc
               </button>
-            </span>
-          );
-        })}
-
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onBlur={() => {
-            if (inputValue.trim()) addRecipients(inputValue);
-          }}
-          placeholder={recipients.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-[140px] bg-transparent text-white placeholder-slate-500 text-xs font-mono outline-none px-1 py-0.5"
-        />
-
-        <div className="flex items-center gap-2 ml-auto pr-1 text-[11px] font-mono shrink-0">
-          {showCcButton && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCcClick?.();
-              }}
-              className="text-slate-400 hover:text-cyan-300 underline cursor-pointer"
-            >
-              Cc
-            </button>
-          )}
-          {showBccButton && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBccClick?.();
-              }}
-              className="text-slate-400 hover:text-cyan-300 underline cursor-pointer"
-            >
-              Bcc
-            </button>
-          )}
+            )}
+            {showBccButton && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBccClick?.();
+                }}
+                className="text-slate-400 hover:text-cyan-300 underline cursor-pointer"
+              >
+                Bcc
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Floating Autocomplete Dropdown */}
+        {showDropdown && suggestions.length > 0 && (
+          <EmailRecipientAutocompleteDropdown
+            suggestions={suggestions}
+            highlightedIndex={highlightedIndex}
+            onSelect={handleSelectContact}
+            onClose={() => setShowDropdown(false)}
+            query={inputValue}
+          />
+        )}
       </div>
     </div>
   );
@@ -1183,6 +1272,13 @@ export const EmailComposeModal: React.FC<EmailComposeModalProps> = ({
         };
 
         delete composerDraftsStore[draftKey];
+
+        // Save recipients into client-side recent contacts (Zero network egress)
+        try {
+          prepared.cleanTo.forEach((em) => recordRecentRecipient(em));
+          prepared.cleanCc.forEach((em) => recordRecentRecipient(em));
+          prepared.cleanBcc.forEach((em) => recordRecentRecipient(em));
+        } catch (_) {}
 
         onSendSuccess(createdRecord);
         onClose();
