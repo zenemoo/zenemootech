@@ -806,6 +806,7 @@ export const emailInboxApi = {
     description?: string;
     mailbox_type?: string;
   }) => api.post('/emails/addresses', data),
+  getContactsDirectory: () => api.get('/emails/directory'),
 };
 
 // Team Member & HR Self-Service Profile APIs

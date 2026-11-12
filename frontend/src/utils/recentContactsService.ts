@@ -8,6 +8,8 @@
  * - Dynamic Auto-Harvesting: Automatically captures recipients on send, reply, and dashboard sync.
  */
 
+import { emailInboxApi } from '../services/api';
+
 export interface RecentContact {
   email: string;
   name: string;
@@ -115,11 +117,48 @@ export function saveStoredContacts(contacts: RecentContact[]): void {
   inMemoryContactsCache = contacts;
   if (typeof window === 'undefined') return;
   try {
-    // Keep up to 250 most relevant contacts to preserve space
-    const trimmed = contacts.slice(0, 250);
+    // Keep up to 5000 contacts in local device storage (~120KB)
+    const trimmed = contacts.slice(0, 5000);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch (err) {
     console.warn('[recentContactsService] Note saving contacts:', err);
+  }
+}
+
+const SYNC_KEY = 'zenemoo_contacts_last_sync';
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+let isSyncingDirectory = false;
+
+/**
+ * Once-a-day per device global contacts sync.
+ * Checks localStorage timestamp. If already synced within last 24h, skips completely (ZERO network egress).
+ * If 1st login of the day or new device, silently fetches directory in background.
+ */
+export async function syncGlobalContactsDirectoryOncePerDay(force: boolean = false): Promise<void> {
+  if (typeof window === 'undefined' || isSyncingDirectory) return;
+
+  try {
+    const lastSyncStr = localStorage.getItem(SYNC_KEY);
+    const now = Date.now();
+    if (!force && lastSyncStr) {
+      const lastSync = parseInt(lastSyncStr, 10);
+      if (!isNaN(lastSync) && now - lastSync < ONE_DAY_MS) {
+        // Already synced today - 0 network call, 0 egress!
+        return;
+      }
+    }
+
+    isSyncingDirectory = true;
+    const res = await emailInboxApi.getContactsDirectory();
+    if (res.data && res.data.success && Array.isArray(res.data.contacts)) {
+      seedContactsFromList(res.data.contacts);
+      localStorage.setItem(SYNC_KEY, String(now));
+    }
+  } catch (err: any) {
+    // Non-blocking fail-safe: offline or 401 should never break the UI
+    console.warn('[recentContactsService] Background contacts directory sync deferred:', err?.message || err);
+  } finally {
+    isSyncingDirectory = false;
   }
 }
 

@@ -11,6 +11,7 @@ import {
   getEmailStorageUsage,
   sendInboxEmail,
   getAttachmentDownload,
+  getGlobalContactsDirectory,
 } from '../controllers/emailInboxController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 import { emailSendRateLimiter } from '../middleware/rateLimiter.js';
@@ -19,6 +20,9 @@ const router = express.Router();
 
 // Cloudflare Email Routing Worker Ingestion Webhook (Secret Auth Header)
 router.post('/webhook/cloudflare', ingestCloudflareEmail);
+
+// Global Contacts Directory (Once-a-day background device cache)
+router.get('/directory', verifyToken, requireRole(['admin']), getGlobalContactsDirectory);
 
 // Admin Authorized Email Inbox Routes
 router.get('/storage-usage', verifyToken, requireRole(['admin']), getEmailStorageUsage);

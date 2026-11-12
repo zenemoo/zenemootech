@@ -1962,3 +1962,149 @@ export const sendInboxEmail = async (req, res, next) => {
     });
   }
 };
+
+/**
+ * 14. GET GLOBAL CONTACTS DIRECTORY
+ * Aggregates unique contacts from applications, talent registrations, contact inquiries, and team roster.
+ * Ultra-compact projection for once-a-day client-side caching (virtually zero egress).
+ */
+export const getGlobalContactsDirectory = async (req, res) => {
+  try {
+    const contactsMap = new Map();
+    const client = supabaseService || supabase;
+
+    if (!client) {
+      return res.json({ success: true, total: 0, contacts: [] });
+    }
+
+    // 1. Opportunity Applications (Candidates)
+    try {
+      const { data: apps, error: appErr } = await client
+        .from('opportunity_applications')
+        .select('applicant_name, applicant_email')
+        .not('applicant_email', 'is', null)
+        .limit(2000);
+
+      if (!appErr && Array.isArray(apps)) {
+        apps.forEach((a) => {
+          if (a.applicant_email) {
+            const cleanEmail = a.applicant_email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@') && !contactsMap.has(cleanEmail)) {
+              contactsMap.set(cleanEmail, {
+                email: cleanEmail,
+                name: (a.applicant_name || '').trim(),
+                role: 'Candidate',
+              });
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[ContactsDirectory] Apps lookup notice:', e.message);
+    }
+
+    // 2. Talent Registrations
+    try {
+      const { data: talents, error: talErr } = await client
+        .from('talent_registrations')
+        .select('full_name, email, primary_role')
+        .not('email', 'is', null)
+        .limit(2000);
+
+      if (!talErr && Array.isArray(talents)) {
+        talents.forEach((t) => {
+          if (t.email) {
+            const cleanEmail = t.email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@')) {
+              const existing = contactsMap.get(cleanEmail);
+              if (!existing) {
+                contactsMap.set(cleanEmail, {
+                  email: cleanEmail,
+                  name: (t.full_name || '').trim(),
+                  role: t.primary_role || 'Talent',
+                });
+              } else if (!existing.name && t.full_name) {
+                existing.name = t.full_name.trim();
+              }
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[ContactsDirectory] Talent lookup notice:', e.message);
+    }
+
+    // 3. Contact Inquiries
+    try {
+      const { data: inquiries, error: inqErr } = await client
+        .from('contacts')
+        .select('name, email')
+        .not('email', 'is', null)
+        .limit(1000);
+
+      if (!inqErr && Array.isArray(inquiries)) {
+        inquiries.forEach((inq) => {
+          if (inq.email) {
+            const cleanEmail = inq.email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@')) {
+              const existing = contactsMap.get(cleanEmail);
+              if (!existing) {
+                contactsMap.set(cleanEmail, {
+                  email: cleanEmail,
+                  name: (inq.name || '').trim(),
+                  role: 'Inquiry',
+                });
+              } else if (!existing.name && inq.name) {
+                existing.name = inq.name.trim();
+              }
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[ContactsDirectory] Inquiries lookup notice:', e.message);
+    }
+
+    // 4. Team Users / Roster
+    try {
+      const { data: users, error: userErr } = await client
+        .from('users')
+        .select('name, email, role')
+        .not('email', 'is', null)
+        .limit(500);
+
+      if (!userErr && Array.isArray(users)) {
+        users.forEach((u) => {
+          if (u.email) {
+            const cleanEmail = u.email.trim().toLowerCase();
+            if (cleanEmail && cleanEmail.includes('@')) {
+              const existing = contactsMap.get(cleanEmail);
+              if (!existing) {
+                contactsMap.set(cleanEmail, {
+                  email: cleanEmail,
+                  name: (u.name || '').trim(),
+                  role: 'Team',
+                });
+              } else {
+                existing.role = 'Team';
+                if (u.name) existing.name = u.name.trim();
+              }
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[ContactsDirectory] Users lookup notice:', e.message);
+    }
+
+    const contacts = Array.from(contactsMap.values());
+    return res.json({
+      success: true,
+      total: contacts.length,
+      contacts,
+    });
+  } catch (err) {
+    console.error('[ContactsDirectory] Error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve directory' });
+  }
+};

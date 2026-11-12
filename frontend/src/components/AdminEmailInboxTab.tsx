@@ -57,7 +57,7 @@ import {
   NormalizedEmailBody,
   parseEmailTokens,
 } from '../utils/emailEncodingHelper';
-import { seedContactsFromList } from '../utils/recentContactsService';
+import { seedContactsFromList, syncGlobalContactsDirectoryOncePerDay } from '../utils/recentContactsService';
 
 export interface EmailMessageRecord {
   id: string;
@@ -396,8 +396,11 @@ export const AdminEmailInboxTab: React.FC<AdminEmailInboxTabProps> = ({
     }
   }, [addToast]);
 
-  // Clean up object URLs on component unmount to prevent memory leaks
+  // Clean up object URLs on component unmount and sync contacts directory
   useEffect(() => {
+    // Silently sync global contacts directory once per day per device (0 egress after)
+    syncGlobalContactsDirectoryOncePerDay();
+
     return () => {
       blobCacheRef.current.forEach((item) => {
         try {

@@ -59,6 +59,7 @@ import {
   searchContacts,
   recordRecentRecipient,
   seedContactsFromList,
+  syncGlobalContactsDirectoryOncePerDay,
   RecentContact,
 } from '../utils/recentContactsService';
 import { EmailRecipientAutocompleteDropdown } from './EmailRecipientAutocompleteDropdown';
@@ -713,8 +714,9 @@ export const EnterpriseHREmailComposer: React.FC<EnterpriseHREmailComposerProps>
 
   const authorizedSenders = getAuthorizedSenders();
 
-  // Load team roster members on initial mount
+  // Load team roster members and sync contacts on initial mount
   useEffect(() => {
+    syncGlobalContactsDirectoryOncePerDay();
     const loadRoster = async () => {
       try {
         const res = await userManagementApi.searchRoster('');

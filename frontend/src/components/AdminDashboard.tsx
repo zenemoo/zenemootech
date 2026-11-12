@@ -44,6 +44,7 @@ import { AdminQrCodeStudioTab } from './AdminQrCodeStudioTab';
 import { AdminInvoicesTab } from './invoices/AdminInvoicesTab';
 import { AdminStaffIdCardGeneratorTab } from './AdminStaffIdCardGeneratorTab';
 import { AdminPrivateDocumentsVault } from './AdminPrivateDocumentsVault';
+import { syncGlobalContactsDirectoryOncePerDay } from '../utils/recentContactsService';
 
 export type AdminTabType =
   | 'team'
@@ -1574,6 +1575,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
   // Strict 30-minute absolute session watcher, sleep/wake protection & multi-tab sync
   useEffect(() => {
     if (!isAuthenticated) return;
+
+    // Silently sync global 1000+ contacts directory (once per day per device, zero egress after)
+    syncGlobalContactsDirectoryOncePerDay();
 
     // Checks current absolute expiry and triggers immediate logout if expired
     const checkAbsoluteExpiration = (triggerName?: string): boolean => {
