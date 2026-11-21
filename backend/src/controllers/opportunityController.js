@@ -21,6 +21,58 @@ export const invalidateOpportunitiesCache = () => {
   adminOpportunitiesCache = { data: null, timestamp: 0 };
 };
 
+/**
+ * Generates the next monotonic global Project ID in the format: ZEN-{TYPE}-{XXX}
+ * Scans all existing opportunities in the database, extracts the highest sequence number,
+ * and increments by 1.
+ */
+export const generateNextProjectCode = async (projectType = 'GEN') => {
+  try {
+    const rawType = String(projectType || 'GEN').toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
+    const cleanType = rawType.length > 0 ? rawType.substring(0, 6) : 'GEN';
+
+    // Fetch all existing public_id from opportunities
+    const { data: rows, error } = await supabase
+      .from('opportunities')
+      .select('public_id');
+
+    let maxSeq = 0;
+    if (!error && Array.isArray(rows)) {
+      for (const row of rows) {
+        const pid = String(row.public_id || '').trim().toUpperCase();
+        // Match ZEN-{TYPE}-{NUM} or any trailing digits
+        const match = pid.match(/^ZEN-[A-Z0-9]+-(\d+)$/i) || pid.match(/(\d+)$/);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+    }
+
+    const nextSeq = maxSeq + 1;
+    const padded = String(nextSeq).padStart(3, '0');
+    return `ZEN-${cleanType}-${padded}`;
+  } catch (err) {
+    console.warn('[generateNextProjectCode exception]:', err.message);
+    return `ZEN-GEN-${Date.now().toString().slice(-3)}`;
+  }
+};
+
+/**
+ * Public preview endpoint to query the next auto-incremented Project ID
+ */
+export const getNextProjectCodePreview = async (req, res) => {
+  try {
+    const pType = req.query.type || req.query.project_type || 'GEN';
+    const nextCode = await generateNextProjectCode(pType);
+    return res.json({ status: 'success', next_code: nextCode });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 const OPPORTUNITY_PUBLIC_COLUMNS = 'id, position, title, partner_name, badge, status, description, company_logo, poster_url, public_id, features, requirements, language_skills, eligibility_criteria, whatsapp_group_url, whatsapp_channel_url, telegram_url, contact_support_url, linkedin_post_url, x_post_url, facebook_post_url, instagram_url, youtube_url, other_social_url, application_post_url, pdf_link, contact_details, custom_questions, action_url, about_project, what_you_will_do, experience_requirements, equipment_requirements, internet_requirements, working_hours, project_duration, payment_info, payment_frequency, work_mode, availability_requirement, project_highlights, benefits, why_join, important_notes, created_at, updated_at';
 
 // 1. GET PUBLIC OPPORTUNITY PROGRAMS (Sorted by position ASC, excluding drafts)
@@ -42,7 +94,11 @@ export const getOpportunities = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    const resultList = data || [];
+    const rawList = data || [];
+    const resultList = rawList.map((item) => ({
+      ...item,
+      project_code: item.public_id || '',
+    }));
     opportunitiesCache = {
       data: resultList,
       timestamp: Date.now(),
@@ -73,7 +129,11 @@ export const getAdminOpportunities = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    const resultList = data || [];
+    const rawList = data || [];
+    const resultList = rawList.map((item) => ({
+      ...item,
+      project_code: item.public_id || '',
+    }));
     adminOpportunitiesCache = {
       data: resultList,
       timestamp: Date.now(),
@@ -100,7 +160,10 @@ export const sanitizeOpportunityPayload = (body, isCreate = false, fallbackPosit
   if (body.status !== undefined) payload.status = body.status || 'active';
   if (body.description !== undefined) payload.description = String(body.description || '').trim();
   if (body.action_url !== undefined) payload.action_url = String(body.action_url || '').trim();
-  if (body.public_id !== undefined) payload.public_id = body.public_id ? String(body.public_id).trim() : null;
+  if (body.public_id !== undefined || body.project_code !== undefined) {
+    const rawCode = body.project_code !== undefined ? body.project_code : body.public_id;
+    payload.public_id = rawCode ? String(rawCode).trim() : null;
+  }
   if (body.position !== undefined || isCreate) {
     const pos = Number(body.position);
     payload.position = (!pos || isNaN(pos) || pos < 1) ? fallbackPosition : pos;
@@ -197,6 +260,11 @@ export const createOpportunity = async (req, res) => {
     }
 
     const newRecord = sanitizeOpportunityPayload(req.body, true, finalPosition);
+
+    // Auto-generate monotonic unique global Project ID if not explicitly provided
+    if (!newRecord.public_id) {
+      newRecord.public_id = await generateNextProjectCode(req.body.project_type || 'GEN');
+    }
 
     const { data, error } = await supabase
       .from('opportunities')

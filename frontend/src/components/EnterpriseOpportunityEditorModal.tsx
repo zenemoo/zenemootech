@@ -79,6 +79,9 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
   // Core Form State
   const [title, setTitle] = useState('');
   const [partnerName, setPartnerName] = useState('');
+  const [projectType, setProjectType] = useState<'AUD' | 'VID' | 'IMG' | 'TXT' | 'ANN' | 'DATA' | 'GEN'>('AUD');
+  const [projectCode, setProjectCode] = useState('');
+  const [isEditingCustomCode, setIsEditingCustomCode] = useState(false);
   const [badge, setBadge] = useState('ACTIVE');
   const [status, setStatus] = useState<'active' | 'stopped' | 'coming_soon' | 'draft'>('active');
   const [position, setPosition] = useState(1);
@@ -156,6 +159,17 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
     if (opportunity) {
       setTitle(opportunity.title || '');
       setPartnerName(opportunity.partner_name || '');
+      const code = (opportunity.project_code || opportunity.public_id || '').trim();
+      setProjectCode(code);
+      const codeType = code ? code.split('-')[1]?.toUpperCase() : '';
+      if (codeType && ['AUD', 'VID', 'IMG', 'TXT', 'ANN', 'DATA', 'GEN'].includes(codeType)) {
+        setProjectType(codeType as any);
+      } else if (opportunity.project_type && ['AUD', 'VID', 'IMG', 'TXT', 'ANN', 'DATA', 'GEN'].includes(opportunity.project_type.toUpperCase())) {
+        setProjectType(opportunity.project_type.toUpperCase() as any);
+      } else {
+        setProjectType('AUD');
+      }
+      setIsEditingCustomCode(false);
       setBadge(opportunity.badge || 'ACTIVE');
       setStatus(opportunity.status || 'active');
       setPosition(opportunity.position || 1);
@@ -211,6 +225,9 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
       // Default new program values
       setTitle('');
       setPartnerName('DesiCrew Solutions');
+      setProjectType('AUD');
+      setProjectCode('');
+      setIsEditingCustomCode(false);
       setBadge('ACTIVE');
       setStatus('active');
       setPosition(1);
@@ -493,6 +510,9 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
 
         custom_questions: customQuestions,
         action_url: actionUrl.trim(),
+        public_id: projectCode.trim() || undefined,
+        project_code: projectCode.trim() || undefined,
+        project_type: projectType,
       };
 
       await onSave(payload);
@@ -711,6 +731,94 @@ export const EnterpriseOpportunityEditorModal: React.FC<EnterpriseOpportunityEdi
                     placeholder="e.g. DesiCrew Solutions"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
                   />
+                </div>
+
+                {/* Project Category & Type */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-mono font-bold text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      Project Category <span className="text-cyan-400">*</span>
+                    </span>
+                    <span className="text-[10px] text-cyan-400 font-mono">Format: ZEN-[TYPE]-[NUM]</span>
+                  </label>
+                  <select
+                    value={projectType}
+                    onChange={(e) => {
+                      const newType = e.target.value as any;
+                      setProjectType(newType);
+                      if (!isEditMode && projectCode) {
+                        const parts = projectCode.split('-');
+                        if (parts.length === 3) {
+                          setProjectCode(`ZEN-${newType}-${parts[2]}`);
+                        }
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 cursor-pointer font-bold"
+                  >
+                    <option value="AUD" className="bg-slate-900 text-white">🎙️ Audio Recording & Speech (AUD)</option>
+                    <option value="VID" className="bg-slate-900 text-white">📹 Video Collection & Annotation (VID)</option>
+                    <option value="IMG" className="bg-slate-900 text-white">📸 Image Collection & Photos (IMG)</option>
+                    <option value="TXT" className="bg-slate-900 text-white">📝 Text & NLP Translation (TXT)</option>
+                    <option value="ANN" className="bg-slate-900 text-white">🏷️ Data Annotation & Labeling (ANN)</option>
+                    <option value="DATA" className="bg-slate-900 text-white">📊 Data Collection & Surveys (DATA)</option>
+                    <option value="GEN" className="bg-slate-900 text-white">🌐 General / Multimodal AI (GEN)</option>
+                  </select>
+                </div>
+
+                {/* Unique Project ID Display & Control */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs font-mono font-bold text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                      Unique Project Tracking ID
+                    </span>
+                    {projectCode ? (
+                      <span className="text-[10px] text-emerald-400 font-mono font-bold">Assigned Project Code</span>
+                    ) : (
+                      <span className="text-[10px] text-cyan-400 font-mono font-bold">Next Incremental Global ID</span>
+                    )}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-extrabold flex items-center justify-between shadow-inner">
+                      <div className="flex items-center gap-2">
+                        <span className="text-cyan-400 font-mono text-sm tracking-wider">
+                          {projectCode || `ZEN-${projectType}-AUTO`}
+                        </span>
+                        {!projectCode && (
+                          <span className="text-[10px] font-sans font-medium text-slate-400">
+                            (Auto-assigned on publish)
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] uppercase font-mono tracking-wider px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                        {projectCode ? 'Active Code' : 'Global Counter'}
+                      </span>
+                    </div>
+                    {isEditMode ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingCustomCode(!isEditingCustomCode)}
+                        className="px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-mono border border-white/10 cursor-pointer"
+                        title="Edit Project ID manually if required"
+                      >
+                        {isEditingCustomCode ? 'Lock' : 'Edit ID'}
+                      </button>
+                    ) : null}
+                  </div>
+                  {isEditingCustomCode && (
+                    <input
+                      type="text"
+                      value={projectCode}
+                      onChange={(e) => setProjectCode(e.target.value.toUpperCase().trim())}
+                      placeholder={`e.g. ZEN-${projectType}-010`}
+                      className="w-full mt-1.5 px-4 py-2 rounded-xl bg-slate-900 border border-cyan-500 text-white font-mono text-xs focus:outline-none"
+                    />
+                  )}
+                  <p className="text-[11px] text-slate-400 font-sans leading-tight">
+                    {projectCode
+                      ? `Unique platform-wide Project ID shown on Admin, Public, Talent Hub, and candidate receipt emails.`
+                      : `When published, this opportunity will automatically receive the next platform-wide sequence number (e.g. ZEN-${projectType}-010).`}
+                  </p>
                 </div>
 
                 {/* Program Status */}

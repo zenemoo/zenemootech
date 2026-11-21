@@ -80,15 +80,20 @@ export const resolveWhatsappGroupForApplication = async (appRecord) => {
  */
 export const sendApplicationConfirmationEmail = async (appData) => {
   let enrichedAppData = { ...appData };
-  if (!enrichedAppData.partner_name && !enrichedAppData.company_name && enrichedAppData.opportunity_id && supabase) {
+  if ((!enrichedAppData.partner_name || !enrichedAppData.project_code) && enrichedAppData.opportunity_id && supabase) {
     try {
       const { data: opp } = await supabase
         .from('opportunities')
-        .select('partner_name')
+        .select('partner_name, public_id')
         .eq('id', enrichedAppData.opportunity_id)
         .maybeSingle();
-      if (opp && opp.partner_name) {
-        enrichedAppData.partner_name = opp.partner_name;
+      if (opp) {
+        if (opp.partner_name && !enrichedAppData.partner_name) {
+          enrichedAppData.partner_name = opp.partner_name;
+        }
+        if (opp.public_id && !enrichedAppData.project_code) {
+          enrichedAppData.project_code = opp.public_id;
+        }
       }
     } catch (_) {}
   }
@@ -156,15 +161,20 @@ export const sendApplicationConfirmationEmail = async (appData) => {
  */
 export const sendApplicationAcceptanceEmail = async (appData, isForceResend = false) => {
   let enrichedAppData = { ...appData };
-  if (!enrichedAppData.partner_name && !enrichedAppData.company_name && enrichedAppData.opportunity_id && supabase) {
+  if ((!enrichedAppData.partner_name || !enrichedAppData.project_code) && enrichedAppData.opportunity_id && supabase) {
     try {
       const { data: opp } = await supabase
         .from('opportunities')
-        .select('partner_name')
+        .select('partner_name, public_id')
         .eq('id', enrichedAppData.opportunity_id)
         .maybeSingle();
-      if (opp && opp.partner_name) {
-        enrichedAppData.partner_name = opp.partner_name;
+      if (opp) {
+        if (opp.partner_name && !enrichedAppData.partner_name) {
+          enrichedAppData.partner_name = opp.partner_name;
+        }
+        if (opp.public_id && !enrichedAppData.project_code) {
+          enrichedAppData.project_code = opp.public_id;
+        }
       }
     } catch (_) {}
   }
@@ -487,7 +497,7 @@ export const submitApplication = async (req, res) => {
     try {
       const { data: foundOpp } = await supabase
         .from('opportunities')
-        .select('id, title, status')
+        .select('id, title, status, partner_name, public_id, whatsapp_group_url')
         .eq('id', opportunity_id)
         .maybeSingle();
 
@@ -697,6 +707,7 @@ export const submitApplication = async (req, res) => {
     // Asynchronously dispatch Confirmation Email to applicant with resolved WhatsApp group link (non-blocking / fail-safe)
     sendApplicationConfirmationEmail({
       ...savedRecord,
+      project_code: oppRecord?.public_id || '',
       partner_name: oppRecord?.partner_name || 'Zenemoo',
       whatsapp_group_url: resolvedWhatsappGroupUrl,
     }).catch((err) => {

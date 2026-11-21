@@ -5614,12 +5614,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                     <div className="space-y-3">
                       {/* Header Controls */}
                       <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-mono text-slate-400">Position:</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] font-mono text-slate-400">Pos:</span>
                           <select
                             value={op.position}
                             onChange={(e) => handleOpportunityPositionChange(op, e.target.value)}
-                            className="px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono font-bold text-xs focus:outline-none cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono font-bold text-xs focus:outline-none cursor-pointer"
                           >
                             {opportunitiesList.map((_, idx) => (
                               <option key={idx + 1} value={idx + 1} className="bg-slate-900 text-white">
@@ -5627,6 +5627,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                               </option>
                             ))}
                           </select>
+
+                          {(op.project_code || op.public_id) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const code = op.project_code || op.public_id || '';
+                                navigator.clipboard.writeText(code);
+                                addToast('Copied', `Project ID ${code} copied to clipboard`, 'info');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono font-extrabold text-[11px] tracking-wider transition-all flex items-center gap-1 cursor-pointer"
+                              title="Click to copy unique Project ID"
+                            >
+                              <span>{op.project_code || op.public_id}</span>
+                            </button>
+                          )}
                         </div>
 
                         <span
@@ -5657,7 +5673,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit, initialT
                         )}
                         <div>
                           <h4 className="font-bold text-base text-white">{op.title}</h4>
-                          <div className="text-xs font-mono text-cyan-400 mt-0.5">{op.partner_name}</div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-xs font-mono text-cyan-400">{op.partner_name}</span>
+                            {(op.project_code || op.public_id) && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
+                                {op.project_code || op.public_id}
+                              </span>
+                            )}
+                          </div>
                           {op.badge && (
                             <span className="inline-block mt-1 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
                               {op.badge}

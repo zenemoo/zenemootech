@@ -42,6 +42,7 @@ export const ZENEMOO_LOGO_FALLBACK_URL = 'https://www.zenemoo.in/assets/logo-ema
  */
 export const generateApplicationConfirmationHtml = (appData = {}) => {
   const applicantId = escapeHtml(appData.applicant_id || 'APP-2026-CONFIRM');
+  const projectCode = escapeHtml(appData.project_code || appData.public_id || '');
   const name = escapeHtml(appData.applicant_name || 'Applicant');
   const email = escapeHtml(appData.applicant_email || '');
   const phone = escapeHtml(appData.applicant_phone || '');
@@ -147,6 +148,27 @@ export const generateApplicationConfirmationHtml = (appData = {}) => {
           <tr>
             <td class="content-padding" style="padding: 0 32px 20px 32px;">
               
+              ${projectCode ? `
+              <!-- CARD 0: PROJECT ID -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; margin-bottom:12px;">
+                <tr>
+                  <td style="padding:16px;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="36" valign="top" style="padding-right:12px;">
+                          <div style="width:34px; height:34px; border-radius:10px; background-color:#e0f2fe; text-align:center; line-height:34px; font-size:18px;">🎯</div>
+                        </td>
+                        <td valign="top">
+                          <div style="font-size:10px; font-family:monospace; text-transform:uppercase; color:#0369a1; font-weight:bold; letter-spacing:0.5px;">PROJECT ID</div>
+                          <div class="app-id-text" style="font-size:18px; font-family:monospace; font-weight:800; color:#0284c7; margin:3px 0 2px 0; word-break:break-all;">${projectCode}</div>
+                          <div style="font-size:11px; color:#64748b; line-height:1.4;">Official Zenemoo Project Identifier.</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>` : ''}
+
               <!-- CARD 1: APPLICATION ID -->
               <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:12px;">
                 <tr>
@@ -201,6 +223,11 @@ export const generateApplicationConfirmationHtml = (appData = {}) => {
                     </div>
                     
                     <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:13px; color:#cbd5e1; width:100%;">
+                      ${projectCode ? `
+                      <tr>
+                        <td width="130" valign="top" style="padding:6px 0; color:#94a3b8; font-weight:bold;">Project ID:</td>
+                        <td valign="top" style="padding:6px 0; color:#38bdf8; font-weight:bold; font-family:monospace; word-break:break-all;">${projectCode}</td>
+                      </tr>` : ''}
                       <tr>
                         <td width="130" valign="top" style="padding:6px 0; color:#94a3b8; font-weight:bold;">Applicant Name:</td>
                         <td valign="top" style="padding:6px 0; color:#ffffff; font-weight:bold; word-break:break-word;">${name}</td>

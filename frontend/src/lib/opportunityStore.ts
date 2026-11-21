@@ -26,6 +26,8 @@ export interface OpportunityProgram {
   company_logo?: string;
   poster_url?: string;
   public_id?: string;
+  project_code?: string;
+  project_type?: string;
   features: string[];
   requirements: string[];
   language_skills?: string[];
@@ -174,7 +176,9 @@ export const normalizeOpportunity = (op: any): OpportunityProgram => {
     description: String(op.description || '').trim(),
     company_logo: op.company_logo ? String(op.company_logo).trim() : undefined,
     poster_url: op.poster_url ? String(op.poster_url).trim() : undefined,
-    public_id: op.public_id ? String(op.public_id).trim() : undefined,
+    public_id: op.public_id || op.project_code ? String(op.public_id || op.project_code).trim() : undefined,
+    project_code: op.project_code || op.public_id ? String(op.project_code || op.public_id).trim() : undefined,
+    project_type: op.project_type ? String(op.project_type).trim() : undefined,
 
     features: Array.isArray(op.features) ? op.features.map((item: any) => String(item).trim()).filter(Boolean) : [],
     requirements: Array.isArray(op.requirements) ? op.requirements.map((item: any) => String(item).trim()).filter(Boolean) : [],
@@ -374,7 +378,9 @@ export const saveOpportunityToApi = async (opportunity: Partial<OpportunityProgr
     description: (opportunity.description || '').trim(),
     company_logo: (opportunity.company_logo || '').trim(),
     poster_url: (opportunity.poster_url || '').trim(),
-    public_id: (opportunity.public_id || '').trim(),
+    public_id: (opportunity.project_code || opportunity.public_id || '').trim(),
+    project_code: (opportunity.project_code || opportunity.public_id || '').trim(),
+    project_type: (opportunity.project_type || '').trim(),
     features: Array.isArray(opportunity.features) ? opportunity.features.map((item: any) => String(item).trim()).filter(Boolean) : [],
     requirements: Array.isArray(opportunity.requirements) ? opportunity.requirements.map((item: any) => String(item).trim()).filter(Boolean) : [],
     language_skills: Array.isArray(opportunity.language_skills) ? opportunity.language_skills.map((item: any) => String(item).trim()).filter(Boolean) : [],

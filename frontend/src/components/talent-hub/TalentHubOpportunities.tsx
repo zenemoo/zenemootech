@@ -394,9 +394,16 @@ export const TalentHubOpportunities: React.FC = () => {
                 {/* Body Content */}
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                   <div>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                      <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                      <span className="font-medium text-slate-300 truncate">{opp.partner_name || 'Zenemoo AI'}</span>
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-400 mb-1">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span className="font-medium text-slate-300 truncate">{opp.partner_name || 'Zenemoo AI'}</span>
+                      </div>
+                      {(opp.project_code || opp.public_id) && (
+                        <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-[10px] font-bold shrink-0">
+                          {opp.project_code || opp.public_id}
+                        </span>
+                      )}
                     </div>
 
                     <h3 className="text-base font-bold text-white tracking-tight font-display line-clamp-2">

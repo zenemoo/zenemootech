@@ -58,6 +58,9 @@ export interface OpportunityItem {
   title: string;
   partner_name?: string;
   badge?: string;
+  public_id?: string;
+  project_code?: string;
+  project_type?: string;
   status: string; // 'active' | 'open' | 'coming_soon' | 'closed'
   description?: string;
   company_logo?: string;
@@ -104,6 +107,7 @@ export interface OpportunityItem {
 export interface ApplicationItem {
   id: string;
   applicant_id: string;
+  project_code?: string;
   opportunity_id: string;
   opportunity_title: string;
   applicant_name: string;

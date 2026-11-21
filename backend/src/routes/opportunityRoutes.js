@@ -6,6 +6,7 @@ import {
   updateOpportunity,
   reorderOpportunity,
   deleteOpportunity,
+  getNextProjectCodePreview,
 } from '../controllers/opportunityController.js';
 import { verifyToken, requireRole } from '../middleware/rbacMiddleware.js';
 
@@ -13,6 +14,9 @@ const router = express.Router();
 
 // Public opportunity listing (only active & coming_soon)
 router.get('/', getOpportunities);
+
+// Auto-generated next Project ID preview helper
+router.get('/next-code', verifyToken, requireRole(['admin']), getNextProjectCodePreview);
 
 // Admin-only management endpoints
 router.get('/admin/all', verifyToken, requireRole(['admin']), getAdminOpportunities);

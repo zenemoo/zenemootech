@@ -220,9 +220,18 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
               >
                 {/* Left Details */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-xs font-bold text-cyan-400">
-                      {app.applicant_id || app.id?.substring(0, 8)}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {(() => {
+                      const opp = opportunities.find((o) => o.id === app.opportunity_id);
+                      const projectCode = (opp as any)?.project_code || opp?.public_id || (app as any).project_code;
+                      return projectCode ? (
+                        <span className="font-mono text-xs font-bold text-cyan-300 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
+                          {projectCode}
+                        </span>
+                      ) : null;
+                    })()}
+                    <span className="font-mono text-xs font-bold text-slate-300">
+                      ID: {app.applicant_id || app.id?.substring(0, 8)}
                     </span>
                     <span className="text-slate-600">&bull;</span>
                     <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
@@ -329,7 +338,18 @@ export const TalentHubApplications: React.FC<TalentHubApplicationsProps> = ({
 
                 {/* Opportunity Info */}
                 <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-1">
-                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">Opportunity</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">Opportunity</span>
+                    {(() => {
+                      const opp = opportunities.find((o) => o.id === selectedApplication.opportunity_id);
+                      const projectCode = (opp as any)?.project_code || opp?.public_id || (selectedApplication as any).project_code;
+                      return projectCode ? (
+                        <span className="text-xs font-mono font-bold text-cyan-300 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30">
+                          {projectCode}
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
                   <h3 className="text-base font-bold text-white font-display">{selectedApplication.opportunity_title}</h3>
                   <div className="flex flex-wrap items-center gap-4 text-slate-400 text-[11px] font-mono pt-1">
                     <span>Applied: {new Date(selectedApplication.created_at).toLocaleString()}</span>

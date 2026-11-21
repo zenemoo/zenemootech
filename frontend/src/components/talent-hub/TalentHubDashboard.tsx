@@ -304,6 +304,9 @@ export const TalentHubDashboard: React.FC<TalentHubDashboardProps> = ({ onNaviga
                       ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
                       : 'text-amber-300 bg-amber-500/10 border-amber-500/30';
 
+                  const matchedOpp = opportunities.find((o) => o.id === app.opportunity_id);
+                  const projectCode = (matchedOpp as any)?.project_code || matchedOpp?.public_id || (app as any).project_code || '';
+
                   return (
                     <div
                       key={app.id}
@@ -311,7 +314,14 @@ export const TalentHubDashboard: React.FC<TalentHubDashboardProps> = ({ onNaviga
                       className="p-3.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-cyan-500/20 flex items-center justify-between cursor-pointer transition-colors"
                     >
                       <div className="max-w-[70%] truncate">
-                        <p className="text-xs font-semibold text-white truncate">{app.opportunity_title || 'Opportunity'}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-white truncate">{app.opportunity_title || 'Opportunity'}</p>
+                          {projectCode && (
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 shrink-0">
+                              {projectCode}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
                           ID: {app.applicant_id || app.id?.substring(0, 8)} &bull; {new Date(app.created_at).toLocaleDateString()}
                         </p>
@@ -367,7 +377,14 @@ export const TalentHubDashboard: React.FC<TalentHubDashboardProps> = ({ onNaviga
                       className="p-3.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-blue-500/20 flex items-center justify-between cursor-pointer transition-colors"
                     >
                       <div className="max-w-[70%] truncate">
-                        <p className="text-xs font-semibold text-white truncate">{opp.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-white truncate">{opp.title}</p>
+                          {(opp.project_code || opp.public_id) && (
+                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 shrink-0">
+                              {opp.project_code || opp.public_id}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-slate-400 mt-0.5">{opp.partner_name || 'Zenemoo AI'}</p>
                       </div>
                       <span
