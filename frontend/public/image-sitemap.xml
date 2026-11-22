@@ -330,6 +330,15 @@
   <url>
     <loc>https://www.zenemoo.in/images</loc>
     <image:image>
+      <image:loc>https://www.zenemoo.in/cdn/zenemoo_poster_happy-diwali-poster_1795371781939.jpg</image:loc>
+      <image:title>Happy Diwali Poster — Official Zenemoo Festivals &amp; Greetings</image:title>
+      <image:caption>Official celebration and festival greeting poster for Happy Diwali Poster by Zenemoo AI Tech team.</image:caption>
+    </image:image>
+  </url>
+
+  <url>
+    <loc>https://www.zenemoo.in/images</loc>
+    <image:image>
       <image:loc>https://www.zenemoo.in/cdn/assets/udyam-qr.png</image:loc>
       <image:title>Zenemoo Officially MSME Registered — Government of India — Official Zenemoo Official Badges &amp; Certifications</image:title>
       <image:caption>Official announcement and verification QR code of Zenemoo&apos;s registration under the Ministry of MSME, Govt. of India.</image:caption>
