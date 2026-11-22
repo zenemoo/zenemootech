@@ -24,7 +24,7 @@ import {
   IdCard
 } from 'lucide-react';
 import { OpportunityProgram } from '../lib/opportunityStore';
-import { TeamMember } from '../lib/teamStore';
+import { TeamMember, getSlugFromName } from '../lib/teamStore';
 import { toBrandedCdnUrl, toCloudinaryDirectUrl } from '../lib/cdnHelper';
 
 interface AdminImageSitemapTabProps {
@@ -326,8 +326,8 @@ export const AdminImageSitemapTab: React.FC<AdminImageSitemapTabProps> = ({
                 const hasPhoto = !!rawImage;
                 const brandedCdnUrl = hasPhoto ? toBrandedCdnUrl(rawImage) : '';
                 const sourceCloudinaryUrl = hasPhoto ? toCloudinaryDirectUrl(rawImage) : '';
-                const slugOrId = member.slug || member.id;
-                const publicProfileUrl = `/team/${slugOrId}`;
+                const cleanSlug = member.slug || getSlugFromName(member.name);
+                const publicProfileUrl = `/team/${cleanSlug}`;
 
                 return (
                   <div key={member.id} className="p-5 hover:bg-white/[0.015] transition-colors space-y-4">

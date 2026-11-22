@@ -56,9 +56,12 @@ export const TeamMemberProfilePage: React.FC<TeamMemberProfilePageProps> = ({
       setLoading(true);
       try {
         const members = await getStoredTeamMembers();
+        const target = slug.toLowerCase().trim();
         const found = members.find((m) => {
-          const mSlug = m.slug || getSlugFromName(m.name);
-          return mSlug.toLowerCase() === slug.toLowerCase();
+          const mSlug = (m.slug || getSlugFromName(m.name)).toLowerCase();
+          const mId = (m.id || '').toLowerCase();
+          const mEmpId = (m.employee_id || '').toLowerCase();
+          return mSlug === target || mId === target || mEmpId === target;
         });
         setMember(found || null);
       } catch (err) {

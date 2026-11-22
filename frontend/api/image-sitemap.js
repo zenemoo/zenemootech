@@ -37,6 +37,16 @@ function xmlEscape(str) {
     .replace(/'/g, '&apos;');
 }
 
+function getSlugFromName(name) {
+  if (!name) return 'team-member';
+  return String(name)
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export default async function handler(req, res) {
   try {
     let opportunities = [];
@@ -147,11 +157,11 @@ export default async function handler(req, res) {
       const name = member.name || 'Team Member';
       const role = member.designation || 'Specialist';
       const dept = member.department || 'Data Operations';
-      const slugOrId = member.slug || member.id;
+      const cleanSlug = member.slug || getSlugFromName(member.name);
       const bio = (member.bio || '').replace(/\s+/g, ' ').substring(0, 160);
 
       xml += `  <url>\n`;
-      xml += `    <loc>https://www.zenemoo.in/team/${xmlEscape(slugOrId)}</loc>\n`;
+      xml += `    <loc>https://www.zenemoo.in/team/${xmlEscape(cleanSlug)}</loc>\n`;
       xml += `    <image:image>\n`;
       xml += `      <image:loc>${xmlEscape(cdnImageUrl)}</image:loc>\n`;
       xml += `      <image:title>${xmlEscape(`${name} — ${role} | Zenemoo Language & Data Solutions`)}</image:title>\n`;
