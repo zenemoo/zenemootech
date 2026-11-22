@@ -72,10 +72,11 @@ export const getImageSitemap = async (req, res) => {
   try {
     let opportunities = [];
     let teamMembers = [];
+    let galleryImages = [];
 
     if (supabase) {
       try {
-        const [oppsRes, teamRes] = await Promise.all([
+        const [oppsRes, teamRes, galleryRes] = await Promise.all([
           supabase
             .from('opportunities')
             .select('id, title, public_id, poster_url, status, description, work_mode, partner_name, created_at, updated_at')
@@ -84,7 +85,12 @@ export const getImageSitemap = async (req, res) => {
           supabase
             .from('team')
             .select('id, name, designation, department, image_url, slug, bio')
-            .order('position', { ascending: true })
+            .order('position', { ascending: true }),
+          supabase
+            .from('gallery_images')
+            .select('*')
+            .eq('status', 'active')
+            .order('created_at', { ascending: false })
         ]);
 
         if (!oppsRes.error && Array.isArray(oppsRes.data)) {
@@ -92,6 +98,9 @@ export const getImageSitemap = async (req, res) => {
         }
         if (!teamRes.error && Array.isArray(teamRes.data)) {
           teamMembers = teamRes.data;
+        }
+        if (!galleryRes.error && Array.isArray(galleryRes.data)) {
+          galleryImages = galleryRes.data;
         }
       } catch (dbErr) {
         console.warn('Supabase sitemap query warning:', dbErr.message);
@@ -189,6 +198,25 @@ export const getImageSitemap = async (req, res) => {
       xml += `      <image:loc>${xmlEscape(cdnImageUrl)}</image:loc>\n`;
       xml += `      <image:title>${xmlEscape(`${name} — ${role} | Zenemoo Language & Data Solutions`)}</image:title>\n`;
       xml += `      <image:caption>${xmlEscape(`Official portrait of ${name}, ${role} (${dept}) at Zenemoo. ${bio}`)}</image:caption>\n`;
+      xml += `    </image:image>\n`;
+      xml += `  </url>\n\n`;
+    }
+
+    // 5. Official Zenemoo Media & Image Gallery Posters
+    xml += `  <!-- 5. Official Zenemoo Media & Image Gallery Posters -->\n`;
+    for (const item of galleryImages) {
+      if (!item || (!item.cdn_url && !item.image_url)) continue;
+      const cdnUrl = item.cdn_url || toBrandedCdnUrl(item.image_url);
+      const title = item.title || 'Zenemoo Official Poster';
+      const category = item.category || 'Festival & Greetings';
+      const caption = item.caption || item.alt_text || `Official ${category} poster by Zenemoo`;
+
+      xml += `  <url>\n`;
+      xml += `    <loc>https://www.zenemoo.in/images</loc>\n`;
+      xml += `    <image:image>\n`;
+      xml += `      <image:loc>${xmlEscape(cdnUrl)}</image:loc>\n`;
+      xml += `      <image:title>${xmlEscape(`${title} — Official Zenemoo ${category}`)}</image:title>\n`;
+      xml += `      <image:caption>${xmlEscape(caption)}</image:caption>\n`;
       xml += `    </image:image>\n`;
       xml += `  </url>\n\n`;
     }

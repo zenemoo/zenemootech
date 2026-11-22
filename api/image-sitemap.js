@@ -51,14 +51,18 @@ export default async function handler(req, res) {
   try {
     let opportunities = [];
     let teamMembers = [];
+    let galleryImages = [];
 
-    // Fetch live opportunities and team members from backend API
+    // Fetch live opportunities, team members, and gallery images from backend API
     try {
-      const [oppRes, teamRes] = await Promise.all([
+      const [oppRes, teamRes, galleryRes] = await Promise.all([
         fetch('https://zenemootech-api.onrender.com/api/opportunities', {
           headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
         }),
         fetch('https://zenemootech-api.onrender.com/api/team', {
+          headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
+        }),
+        fetch('https://zenemootech-api.onrender.com/api/gallery', {
           headers: { 'User-Agent': 'Zenemoo-Sitemap-Generator/1.0' },
         }),
       ]);
@@ -70,6 +74,10 @@ export default async function handler(req, res) {
       if (teamRes.ok) {
         const json = await teamRes.json();
         if (json && Array.isArray(json.data)) teamMembers = json.data;
+      }
+      if (galleryRes.ok) {
+        const json = await galleryRes.json();
+        if (json && Array.isArray(json.data)) galleryImages = json.data;
       }
     } catch (e) {
       console.warn('[Image Sitemap API Fetch Warning]:', e.message);
@@ -166,6 +174,25 @@ export default async function handler(req, res) {
       xml += `      <image:loc>${xmlEscape(cdnImageUrl)}</image:loc>\n`;
       xml += `      <image:title>${xmlEscape(`${name} — ${role} | Zenemoo Language & Data Solutions`)}</image:title>\n`;
       xml += `      <image:caption>${xmlEscape(`Official portrait of ${name}, ${role} (${dept}) at Zenemoo. ${bio}`)}</image:caption>\n`;
+      xml += `    </image:image>\n`;
+      xml += `  </url>\n\n`;
+    }
+
+    // 5. Official Zenemoo Media & Image Gallery Posters
+    xml += `  <!-- 5. Official Zenemoo Media & Image Gallery Posters -->\n`;
+    for (const item of galleryImages) {
+      if (!item || (!item.cdn_url && !item.image_url)) continue;
+      const cdnUrl = item.cdn_url || toBrandedCdnUrl(item.image_url);
+      const title = item.title || 'Zenemoo Official Poster';
+      const category = item.category || 'Festival & Greetings';
+      const caption = item.caption || item.alt_text || `Official ${category} poster by Zenemoo`;
+
+      xml += `  <url>\n`;
+      xml += `    <loc>https://www.zenemoo.in/images</loc>\n`;
+      xml += `    <image:image>\n`;
+      xml += `      <image:loc>${xmlEscape(cdnUrl)}</image:loc>\n`;
+      xml += `      <image:title>${xmlEscape(`${title} — Official Zenemoo ${category}`)}</image:title>\n`;
+      xml += `      <image:caption>${xmlEscape(caption)}</image:caption>\n`;
       xml += `    </image:image>\n`;
       xml += `  </url>\n\n`;
     }

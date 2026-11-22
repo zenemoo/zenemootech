@@ -1,0 +1,40 @@
+[
+  {
+    "id": "poster_msme_official_01",
+    "title": "Zenemoo Officially MSME Registered — Government of India",
+    "slug": "zenemoo-officially-msme-registered",
+    "category": "Official Badges & Certifications",
+    "image_url": "https://www.zenemoo.in/assets/udyam-qr.png",
+    "cdn_url": "https://www.zenemoo.in/cdn/assets/udyam-qr.png",
+    "cloudinary_public_id": "",
+    "alt_text": "Zenemoo officially MSME registered certificate verification QR code by Ministry of Micro, Small and Medium Enterprises, Government of India.",
+    "caption": "Official announcement and verification QR code of Zenemoo's registration under the Ministry of MSME, Govt. of India.",
+    "tags": ["MSME", "Government of India", "Certification", "Udyam", "Zenemoo Tech"],
+    "aspect_ratio": "1:1",
+    "width": 1080,
+    "height": 1080,
+    "file_size_formatted": "120 KB",
+    "status": "active",
+    "created_at": "2026-08-01T10:00:00.000Z",
+    "updated_at": "2026-11-22T17:00:00.000Z"
+  },
+  {
+    "id": "poster_brand_logo_main_02",
+    "title": "Zenemoo Official Brand Identity & Neural Crest",
+    "slug": "zenemoo-official-brand-identity",
+    "category": "Brand Graphics",
+    "image_url": "https://www.zenemoo.in/assets/logo.png",
+    "cdn_url": "https://www.zenemoo.in/cdn/assets/logo.png",
+    "cloudinary_public_id": "",
+    "alt_text": "Zenemoo Official Logo — Enterprise AI Language and Multilingual Data Solutions brandmark.",
+    "caption": "Official corporate logo and visual identity of Zenemoo AI Data Solutions.",
+    "tags": ["Brandmark", "Zenemoo Logo", "AI Data", "Corporate Identity"],
+    "aspect_ratio": "1:1",
+    "width": 512,
+    "height": 512,
+    "file_size_formatted": "15.4 KB",
+    "status": "active",
+    "created_at": "2026-07-28T04:00:00.000Z",
+    "updated_at": "2026-11-22T17:00:00.000Z"
+  }
+]

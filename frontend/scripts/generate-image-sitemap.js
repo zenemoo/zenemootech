@@ -49,16 +49,20 @@ function getSlugFromName(name) {
 }
 
 async function run() {
-  console.log('🔄 Fetching live opportunities & team members for image-sitemap.xml generation...');
+  console.log('🔄 Fetching live opportunities, team members & gallery posters for image-sitemap.xml generation...');
   let opportunities = [];
   let teamMembers = [];
+  let galleryImages = [];
 
   try {
-    const [oppRes, teamRes] = await Promise.all([
+    const [oppRes, teamRes, galleryRes] = await Promise.all([
       fetch('https://zenemootech-api.onrender.com/api/opportunities', {
         headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
       }),
       fetch('https://zenemootech-api.onrender.com/api/team', {
+        headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
+      }),
+      fetch('https://zenemootech-api.onrender.com/api/gallery', {
         headers: { 'User-Agent': 'Zenemoo-Build-Sitemap-Generator/1.0' },
       }),
     ]);
@@ -71,8 +75,22 @@ async function run() {
       const json = await teamRes.json();
       if (json && Array.isArray(json.data)) teamMembers = json.data;
     }
+    if (galleryRes.ok) {
+      const json = await galleryRes.json();
+      if (json && Array.isArray(json.data)) galleryImages = json.data;
+    }
   } catch (err) {
     console.warn('⚠️ Could not fetch from API for static sitemap:', err.message);
+  }
+
+  // Fallback to local gallery_images.json if API was unreachable during build
+  if (galleryImages.length === 0) {
+    try {
+      const localGalleryPath = path.resolve(__dirname, '../../backend/src/database/gallery_images.json');
+      if (fs.existsSync(localGalleryPath)) {
+        galleryImages = JSON.parse(fs.readFileSync(localGalleryPath, 'utf8'));
+      }
+    } catch (e) {}
   }
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -166,6 +184,25 @@ async function run() {
     xml += `      <image:loc>${xmlEscape(cdnImageUrl)}</image:loc>\n`;
     xml += `      <image:title>${xmlEscape(`${name} — ${role} | Zenemoo Language & Data Solutions`)}</image:title>\n`;
     xml += `      <image:caption>${xmlEscape(`Official portrait of ${name}, ${role} (${dept}) at Zenemoo. ${bio}`)}</image:caption>\n`;
+    xml += `    </image:image>\n`;
+    xml += `  </url>\n\n`;
+  }
+
+  // 5. Official Zenemoo Media & Image Gallery Posters
+  xml += `  <!-- 5. Official Zenemoo Media & Image Gallery Posters -->\n`;
+  for (const item of galleryImages) {
+    if (!item || (!item.cdn_url && !item.image_url)) continue;
+    const cdnUrl = item.cdn_url || toBrandedCdnUrl(item.image_url);
+    const title = item.title || 'Zenemoo Official Poster';
+    const category = item.category || 'Festival & Greetings';
+    const caption = item.caption || item.alt_text || `Official ${category} poster by Zenemoo`;
+
+    xml += `  <url>\n`;
+    xml += `    <loc>https://www.zenemoo.in/images</loc>\n`;
+    xml += `    <image:image>\n`;
+    xml += `      <image:loc>${xmlEscape(cdnUrl)}</image:loc>\n`;
+    xml += `      <image:title>${xmlEscape(`${title} — Official Zenemoo ${category}`)}</image:title>\n`;
+    xml += `      <image:caption>${xmlEscape(caption)}</image:caption>\n`;
     xml += `    </image:image>\n`;
     xml += `  </url>\n\n`;
   }

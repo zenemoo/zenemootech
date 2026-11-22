@@ -56,6 +56,7 @@ import { ZenemooReceiptVerifyPage } from './components/ZenemooReceiptVerifyPage'
 import { PublicPaymentReceiptPage } from './components/PublicPaymentReceiptPage';
 import { ZenemooApplicationVerifyPage } from './components/ZenemooApplicationVerifyPage';
 import { ZenemooCompanyPortfolioPage } from './components/ZenemooCompanyPortfolioPage';
+import { ZenemooImageGalleryPage } from './components/ZenemooImageGalleryPage';
 import { ZenemooTalentHubPage } from './components/talent-hub/ZenemooTalentHubPage';
 import { ZenemooTeamJoinPage } from './components/ZenemooTeamJoinPage';
 import { ZenemooPoolPage } from './components/pool/ZenemooPoolPage';
@@ -71,7 +72,7 @@ import { getAuthReturnDestination, clearAuthReturnDestination } from './lib/auth
 function AppInner() {
   const { authState, isRegistered, session } = useTalentHubAuth();
   const [currentRoute, setCurrentRoute] = useState<
-    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'pool' | 'pool-detail' | 'pool-history' | 'redirect-gateway' | 'qr-studio' | '404'
+    'home' | 'admin' | 'email' | 'team-login' | 'team-dashboard' | 'hr-login' | 'hr-dashboard' | 'team-directory' | 'team-profile' | 'team-join' | 'opportunities' | 'opportunity-detail' | 'privacy' | 'terms' | 'forgot-password' | 'forgot-password-verify' | 'forgot-password-reset' | 'zenemooai' | 'unsubscribe' | 'reviews' | 'talent-registration' | 'talent-hub' | 'talent-hub-dashboard' | 'talent-hub-profile' | 'talent-hub-opportunities' | 'talent-hub-applications' | 'talent-hub-referrals' | 'talent-hub-team' | 'talent-hub-payments' | 'talent-hub-pools' | 'talent-hub-support' | 'talent-hub-support-history' | 'ai-data' | 'ai-data-detail' | 'app-hub' | 'app-android' | 'app-team-android' | 'team-portal' | 'book-a-call' | 'sitemap' | 'support-zenemoo' | 'pay' | 'receipt-verify' | 'public-payment-receipt' | 'application-verify' | 'portfolio' | 'image-gallery' | 'pool' | 'pool-detail' | 'pool-history' | 'redirect-gateway' | 'qr-studio' | '404'
   >('home');
   const [selectedShortCode, setSelectedShortCode] = useState<string>('');
   const [selectedPoolPublicId, setSelectedPoolPublicId] = useState<string>('');
@@ -336,6 +337,7 @@ function AppInner() {
         | 'public-payment-receipt'
         | 'application-verify'
         | 'portfolio'
+        | 'image-gallery'
         | 'pool'
         | 'pool-detail'
         | 'pool-history'
@@ -767,6 +769,17 @@ function AppInner() {
         hash === '#/company-portfolio'
       ) {
         matchedRoute = 'portfolio';
+      } else if (
+        path === '/images' ||
+        path === '/images/' ||
+        path === '/image' ||
+        path === '/image/' ||
+        hash === '#images' ||
+        hash === '#/images' ||
+        hash === '#image' ||
+        hash === '#/image'
+      ) {
+        matchedRoute = 'image-gallery';
       } else if (
         path === '/pool/history' ||
         path === '/pool/history/' ||
@@ -1399,6 +1412,21 @@ function AppInner() {
         />
       ) : currentRoute === 'portfolio' ? (
         <ZenemooCompanyPortfolioPage />
+      ) : currentRoute === 'image-gallery' ? (
+        <ZenemooImageGalleryPage
+          onBack={handleBackToHome}
+          onOpenAiDrawer={() => setIsAiDrawerOpen(true)}
+          onNavigateToOpportunity={(id) => {
+            setSelectedOpportunityId(id);
+            setCurrentRoute('opportunity-detail');
+            window.history.pushState(null, '', `/opportunity/${id}`);
+          }}
+          onNavigateToTeam={(slug) => {
+            setSelectedTeamSlug(slug);
+            setCurrentRoute('team-profile');
+            window.history.pushState(null, '', `/team/${slug}`);
+          }}
+        />
       ) : currentRoute === 'pool' || currentRoute === 'pool-detail' ? (
         <ZenemooPoolPage
           initialPublicId={currentRoute === 'pool-detail' ? selectedPoolPublicId : undefined}

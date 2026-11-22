@@ -286,6 +286,40 @@ export const brandingApi = {
   deleteLogo: () => api.delete('/branding/logo'),
 };
 
+export interface GalleryImageItem {
+  id: string;
+  title: string;
+  slug?: string;
+  category: string;
+  image_url: string;
+  cdn_url: string;
+  cloudinary_public_id?: string;
+  alt_text?: string;
+  caption?: string;
+  tags?: string[];
+  aspect_ratio?: string;
+  width?: number;
+  height?: number;
+  file_size_formatted?: string;
+  status: 'active' | 'draft' | 'archived';
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const galleryApi = {
+  getAll: (params?: { category?: string; search?: string; status?: string }) =>
+    api.get<{ success: boolean; count: number; data: GalleryImageItem[] }>('/gallery', { params }),
+  create: (data: FormData | Partial<GalleryImageItem>) => {
+    if (data instanceof FormData) {
+      return api.post<{ success: boolean; message: string; data: GalleryImageItem }>('/gallery', data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.post<{ success: boolean; message: string; data: GalleryImageItem }>('/gallery', data);
+  },
+  delete: (id: string) => api.delete<{ success: boolean; message: string }>(`/gallery/${id}`),
+};
+
 export interface CompanyPortfolioItem {
   id?: string;
   title: string;
